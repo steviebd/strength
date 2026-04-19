@@ -1,21 +1,22 @@
 {
   "name": "strength",
   "version": "1.0.0",
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wrangler": "^4.83.0"
+  },
+  "packageManager": "bun@1.2.9",
   "private": true,
+  "scripts": {
+    "dev:expo": "infisical run --env=dev -- bun --filter @strength/expo dev",
+    "dev:worker": "infisical run --env=dev -- bun --filter @strength/worker dev",
+    "db:generate": "bun --filter @strength/db db:generate",
+    "db:apply:local": "bun --filter @strength/worker db:apply:local",
+    "typecheck": "bun --filter '*' typecheck",
+    "setup": "bun install"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
-  ],
-  "scripts": {
-    "dev": "bun --cwd apps/expo start",
-    "dev:worker": "lsof -ti:8787 | xargs kill -9 2>/dev/null; bun --cwd apps/worker dev --port 8787",
-    "build:worker": "bun --cwd apps/worker build",
-    "db:generate": "bun --cwd packages/db generate",
-    "db:migrate": "bun --cwd packages/db migrate",
-    "db:push": "bun --cwd packages/db push",
-    "setup": "bun install"
-  },
-  "devDependencies": {
-    "wrangler": "^4.0.0"
-  }
+  ]
 }

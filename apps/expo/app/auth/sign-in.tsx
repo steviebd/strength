@@ -1,96 +1,113 @@
-import { useState } from 'react';
-import { Link, router } from 'expo-router';
-import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
-import { useAuth } from '@/lib/auth-context';
+import { useState } from "react";
+import { Link, router } from "expo-router";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { AuthShell } from "@/components/auth-shell";
+import { authClient } from "@/lib/auth-client";
+
+const BG = "#0a0a0a";
+const BORDER = "#2a2a2a";
+const TEXT = "#f5f5f5";
+const MUTED = "#a0a0a0";
+const PINE = "#1f4d3c";
+const CORAL = "#ef6f4f";
 
 export default function SignInScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const { signIn, signInWithGoogle } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit() {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
+    setError(null);
+    setIsSubmitting(true);
 
-    setIsLoading(true);
     try {
-      await signIn(email, password);
-      router.replace('/');
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Sign in failed');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+      const result = await authClient.signIn.email({
+        email,
+        password,
+      });
 
-  function handleGoogleSignIn() {
-    signInWithGoogle();
+      if (result.error) {
+        setError(result.error.message ?? "Unable to sign in.");
+        return;
+      }
+
+      router.replace("/");
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === "Network request failed"
+          ? "Unable to reach the auth server. Confirm the Worker is running and EXPO_PUBLIC_API_URL points at a reachable host."
+          : error instanceof Error
+            ? error.message
+            : "Unable to sign in.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
-    <View className="flex-1 justify-center px-6 bg-white dark:bg-black">
-      <View className="mb-8">
-        <Text className="text-3xl font-bold text-gray-900 dark:text-white">Welcome back</Text>
-        <Text className="mt-2 text-gray-600 dark:text-gray-400">Sign in to continue</Text>
-      </View>
-
-      <View className="space-y-4">
-        <View>
-          <Text className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Email</Text>
-          <TextInput
-            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            placeholder="you@example.com"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
+    <AuthShell
+      eyebrow="Strength"
+      title="Welcome back"
+      subtitle="Sign in to continue your journey."
+    >
+      <View style={{ gap: 20 }}>
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "500", color: MUTED }}>Email</Text>
+          <View style={{ position: "relative" }}>
+            <Text style={{ position: "absolute", left: 16, top: 16, fontSize: 16, color: MUTED }}>✉️</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: BORDER, backgroundColor: BG, borderRadius: 12, paddingVertical: 16, paddingLeft: 48, paddingRight: 16, fontSize: 16, color: TEXT }}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="you@example.com"
+              placeholderTextColor="#6b7280"
+              value={email}
+              onChangeText={setEmail}
+            />
+          </View>
         </View>
 
-        <View>
-          <Text className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Password</Text>
-          <TextInput
-            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            placeholder="••••••••"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+        <View style={{ gap: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "500", color: MUTED }}>Password</Text>
+          <View style={{ position: "relative" }}>
+            <Text style={{ position: "absolute", left: 16, top: 16, fontSize: 16, color: MUTED }}>🔒</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: BORDER, backgroundColor: BG, borderRadius: 12, paddingVertical: 16, paddingLeft: 48, paddingRight: 16, fontSize: 16, color: TEXT }}
+              secureTextEntry
+              placeholder="Enter your password"
+              placeholderTextColor="#6b7280"
+              value={password}
+              onChangeText={setPassword}
+            />
+          </View>
         </View>
 
-        <TouchableOpacity
-          className="w-full rounded-lg bg-blue-600 px-4 py-3 disabled:opacity-50"
+        {error ? (
+          <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "rgba(239, 68, 68, 0.2)", backgroundColor: "rgba(239, 68, 68, 0.1)", paddingHorizontal: 16, paddingVertical: 12 }}>
+            <Text style={{ fontSize: 14, color: "#ef4444" }}>{error}</Text>
+          </View>
+        ) : null}
+
+        <Pressable
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: PINE, borderRadius: 12, paddingVertical: 16, marginTop: 8, opacity: isSubmitting ? 0.6 : 1 }}
+          disabled={isSubmitting}
           onPress={handleSubmit}
-          disabled={isLoading}
         >
-          <Text className="text-center font-semibold text-white">
-            {isLoading ? 'Signing in...' : 'Sign in'}
+          {isSubmitting && <ActivityIndicator size="small" color="#ffffff" />}
+          <Text style={{ fontSize: 16, fontWeight: "600", color: "#fff" }}>
+            {isSubmitting ? "Signing in..." : "Sign in"}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
-        <View className="flex flex-row items-center justify-center py-4">
-          <View className="h-px flex-1 bg-gray-300 dark:bg-gray-700" />
-          <Text className="px-4 text-gray-500">or</Text>
-          <View className="h-px flex-1 bg-gray-300 dark:bg-gray-700" />
+        <View style={{ flexDirection: "row", justifyContent: "center", paddingTop: 8 }}>
+          <Text style={{ fontSize: 14, color: MUTED }}>Don't have an account? </Text>
+          <Link href="/auth/sign-up">
+            <Text style={{ fontSize: 14, fontWeight: "600", color: CORAL }}>Create one</Text>
+          </Link>
         </View>
-
-        <TouchableOpacity
-          className="flex flex-row items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-          onPress={handleGoogleSignIn}
-        >
-          <Text className="font-semibold text-gray-900 dark:text-white">Continue with Google</Text>
-        </TouchableOpacity>
       </View>
-
-      <View className="mt-6 flex flex-row justify-center">
-        <Text className="text-gray-600 dark:text-gray-400">Don't have an account? </Text>
-        <Link href="/auth/sign-up">
-          <Text className="font-semibold text-blue-600">Sign up</Text>
-        </Link>
-      </View>
-    </View>
+    </AuthShell>
   );
 }

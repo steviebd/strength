@@ -1,50 +1,57 @@
-# Welcome to your Expo app 👋
+# strength
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Greenfield Expo + Cloudflare Worker starter with:
 
-## Get started
+- Expo Router
+- Tailwind CSS via NativeWind
+- Infisical for local secret injection
+- Cloudflare Worker + D1
+- Drizzle for database access
+- Better Auth for development-only signup and login
+- Bun workspaces
 
-1. Install dependencies
+The Expo app is currently pinned to SDK 54 so it works with the Expo Go version available on the target Android device during development.
 
-   ```bash
-   npm install
-   ```
+## What is implemented
 
-2. Start the app
+- Email/password sign up and sign in in the Expo app
+- Better Auth mounted on a Hono Worker
+- D1-backed Better Auth tables defined in Drizzle
+- Auth intentionally enabled only when `APP_ENV=development`
+- No local `.env` file; secrets are injected with `infisical run`
 
-   ```bash
-   npx expo start
-   ```
+## Secrets to create in Infisical
 
-In the output, you'll find options to open the app in a
+Store these in the `dev` environment for this project:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- `APP_ENV=development`
+- `BETTER_AUTH_SECRET=<generate a long random secret>`
+- `BETTER_AUTH_URL=http://<your-machine-lan-ip>:8787`
+- `EXPO_PUBLIC_API_URL=http://<your-machine-lan-ip>:8787`
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device or Android emulator, `127.0.0.1` points at the device itself and auth requests will fail.
 
-## Get a fresh project
+## Local setup
 
-When you're ready, run:
+1. Install the Infisical CLI and authenticate it.
+2. Confirm `.infisical.json` points at the right Infisical project.
+3. Install dependencies with `bun install`.
+4. Create a D1 database with `cd apps/worker && wrangler d1 create strength-db`.
+5. Copy the returned database ID into [apps/worker/wrangler.toml](/Users/steven/strength/apps/worker/wrangler.toml:1).
+6. Apply the local migration with `bun run db:apply:local`.
+
+## Development
+
+Run these in separate terminals:
 
 ```bash
-npm run reset-project
+bun run dev:worker
+bun run dev:expo
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+The Worker serves Better Auth at `/api/auth/*`, and Expo talks to it using the Better Auth Expo client plugin with SecureStore-backed cookie handling.
 
-## Learn more
+## Notes
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- This starter is intentionally small and only solves the auth bootstrap flow.
+- `APP_ENV` gates auth so production deploys do not accidentally expose unfinished auth behavior.

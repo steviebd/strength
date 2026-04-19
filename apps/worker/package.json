@@ -1,21 +1,20 @@
 {
   "name": "@strength/worker",
-  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --ip 0.0.0.0",
     "deploy": "wrangler deploy",
-    "build": "wrangler deploy --dry-run"
+    "db:apply:local": "wrangler d1 migrations apply strength-db --local",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@strength/config": "workspace:*",
+    "@better-auth/expo": "^1.6.5",
     "@strength/db": "workspace:*",
-    "better-auth": "^1.0.0",
-    "drizzle-orm": "^0.40.0",
-    "hono": "^4.0.0"
+    "better-auth": "^1.6.5",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.14"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.0.0",
-    "wrangler": "^4.0.0"
+    "@cloudflare/workers-types": "^4.20260418.1"
   }
 }

@@ -1,89 +1,90 @@
-import { drizzle } from 'drizzle-orm/d1';
-import { betterAuth } from 'better-auth';
-import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { Hono } from 'hono';
-import { getSecrets } from '@strength/config';
-import * as schema from '@strength/db';
+import { cors } from "hono/cors";
+import { Hono } from "hono";
+import { createAuth, isDevAuthEnabled, type WorkerEnv } from "./auth";
 
-interface Env {
-  DB: D1Database;
-  INFISICAL_TOKEN: string;
-  INFISICAL_WORKSPACE_ID?: string;
-  INFISICAL_ENVIRONMENT?: string;
+type Variables = {
+  user: ReturnType<typeof createAuth>["$Infer"]["Session"]["user"] | null;
+  session: ReturnType<typeof createAuth>["$Infer"]["Session"]["session"] | null;
+};
+
+const app = new Hono<{ Bindings: WorkerEnv; Variables: Variables }>();
+
+function isAllowedDevOrigin(origin: string) {
+  return (
+    origin.startsWith("strength://") ||
+    /^exp:\/\/.+/i.test(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
+    /^http:\/\/(?:10|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))(?:\.\d{1,3}){2}(?::\d+)?$/i.test(origin)
+  );
 }
 
-const app = new Hono<{ Bindings: Env }>();
+app.use(
+  "/api/auth/*",
+  cors({
+    origin: (origin) => (isAllowedDevOrigin(origin) ? origin : null),
+    allowHeaders: ["Content-Type", "Authorization", "Cookie"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    exposeHeaders: ["Set-Cookie"],
+    credentials: true,
+  }),
+);
 
-app.use('*', async (c, next) => {
-  const db = drizzle(c.env.DB, { schema });
-  const secrets = await getSecrets();
-  
-  const auth = betterAuth({
-    database: drizzleAdapter(db, {
-      provider: 'sqlite',
-      schema: {
-        user: schema.users,
-        session: schema.sessions,
-        account: schema.accounts,
-        verification: schema.verifications,
-      },
-    }),
-    secret: secrets.BETTER_AUTH_SECRET,
-    socialProviders: {
-      google: {
-        clientId: secrets.GOOGLE_CLIENT_ID,
-        clientSecret: secrets.GOOGLE_CLIENT_SECRET,
-      },
-    },
-    trustedOrigins: ['exp://localhost:8081'],
-  });
-
-  const authRequest = auth.handleRequest({
-    method: c.req.method,
-    headers: c.req.raw.headers,
-    request: c.req.raw,
-  });
-
-  const response = await authRequest;
-
-  if (response) {
-    return c.json(response.body, response.status, response.headers);
+app.use("*", async (c, next) => {
+  if (!isDevAuthEnabled(c.env)) {
+    c.set("user", null);
+    c.set("session", null);
+    await next();
+    return;
   }
 
-  return next();
-});
+  const requiresSession = c.req.path.startsWith("/api/auth/") || c.req.path === "/api/me";
 
-app.all('/api/auth/*', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
-  const secrets = await getSecrets();
-  
-  const auth = betterAuth({
-    database: drizzleAdapter(db, {
-      provider: 'sqlite',
-      schema: {
-        user: schema.users,
-        session: schema.sessions,
-        account: schema.accounts,
-        verification: schema.verifications,
-      },
-    }),
-    secret: secrets.BETTER_AUTH_SECRET,
-    socialProviders: {
-      google: {
-        clientId: secrets.GOOGLE_CLIENT_ID,
-        clientSecret: secrets.GOOGLE_CLIENT_SECRET,
-      },
-    },
-    trustedOrigins: ['exp://localhost:8081'],
-  });
+  if (!requiresSession) {
+    c.set("user", null);
+    c.set("session", null);
+    await next();
+    return;
+  }
 
-  return auth.handler({
-    method: c.req.method,
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({
     headers: c.req.raw.headers,
-    request: c.req.raw,
+  });
+
+  c.set("user", session?.user ?? null);
+  c.set("session", session?.session ?? null);
+
+  await next();
+});
+
+app.get("/api/health", (c) => {
+  return c.json({
+    ok: true,
+    authMode: isDevAuthEnabled(c.env) ? "development" : "disabled",
   });
 });
 
-app.get('/api/health', (c) => c.json({ status: 'ok' }));
+app.get("/api/me", (c) => {
+  const user = c.get("user");
+  const session = c.get("session");
+
+  if (!user || !session) {
+    return c.json({ message: "Unauthorized" }, 401);
+  }
+
+  return c.json({ user, session });
+});
+
+app.on(["GET", "POST"], "/api/auth/*", (c) => {
+  if (!isDevAuthEnabled(c.env)) {
+    return c.json(
+      { message: "Authentication is intentionally disabled outside development right now." },
+      403,
+    );
+  }
+
+  const auth = createAuth(c.env);
+  return auth.handler(c.req.raw);
+});
 
 export default app;
