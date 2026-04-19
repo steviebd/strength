@@ -1,0 +1,21 @@
+{
+  "name": "strength",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "yarn workspace @strength/expo start",
+    "dev:worker": "yarn workspace @strength/worker dev",
+    "build:worker": "yarn workspace @strength/worker build",
+    "db:generate": "yarn workspace @strength/db generate",
+    "db:migrate": "yarn workspace @strength/db migrate",
+    "db:push": "yarn workspace @strength/db push",
+    "lint": "yarn workspaces foreach run lint"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
