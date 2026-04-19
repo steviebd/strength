@@ -1,39 +1,43 @@
 import { drizzle } from 'drizzle-orm/d1';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import * as schema from '@strength/db';
 import { Hono } from 'hono';
+import { getSecrets } from '@strength/config';
+import * as schema from '@strength/db';
 
 interface Env {
   DB: D1Database;
-  BETTER_AUTH_SECRET: string;
-  GOOGLE_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
+  INFISICAL_TOKEN: string;
+  INFISICAL_WORKSPACE_ID?: string;
+  INFISICAL_ENVIRONMENT?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
 
-const auth = betterAuth({
-  database: drizzleAdapter(drizzle(process.env.DB as D1Database), {
-    provider: 'sqlite',
-    schema: {
-      user: schema.users,
-      session: schema.sessions,
-      account: schema.accounts,
-      verification: schema.verifications,
-    },
-  }),
-  secret: process.env.BETTER_AUTH_SECRET,
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    },
-  },
-  trustedOrigins: ['exp://localhost:8081'],
-});
-
 app.use('*', async (c, next) => {
+  const db = drizzle(c.env.DB, { schema });
+  const secrets = await getSecrets();
+  
+  const auth = betterAuth({
+    database: drizzleAdapter(db, {
+      provider: 'sqlite',
+      schema: {
+        user: schema.users,
+        session: schema.sessions,
+        account: schema.accounts,
+        verification: schema.verifications,
+      },
+    }),
+    secret: secrets.BETTER_AUTH_SECRET,
+    socialProviders: {
+      google: {
+        clientId: secrets.GOOGLE_CLIENT_ID,
+        clientSecret: secrets.GOOGLE_CLIENT_SECRET,
+      },
+    },
+    trustedOrigins: ['exp://localhost:8081'],
+  });
+
   const authRequest = auth.handleRequest({
     method: c.req.method,
     headers: c.req.raw.headers,
@@ -50,6 +54,29 @@ app.use('*', async (c, next) => {
 });
 
 app.all('/api/auth/*', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  const secrets = await getSecrets();
+  
+  const auth = betterAuth({
+    database: drizzleAdapter(db, {
+      provider: 'sqlite',
+      schema: {
+        user: schema.users,
+        session: schema.sessions,
+        account: schema.accounts,
+        verification: schema.verifications,
+      },
+    }),
+    secret: secrets.BETTER_AUTH_SECRET,
+    socialProviders: {
+      google: {
+        clientId: secrets.GOOGLE_CLIENT_ID,
+        clientSecret: secrets.GOOGLE_CLIENT_SECRET,
+      },
+    },
+    trustedOrigins: ['exp://localhost:8081'],
+  });
+
   return auth.handler({
     method: c.req.method,
     headers: c.req.raw.headers,

@@ -7,13 +7,13 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "yarn workspace @strength/expo start",
-    "dev:worker": "yarn workspace @strength/worker dev",
-    "build:worker": "yarn workspace @strength/worker build",
-    "db:generate": "yarn workspace @strength/db generate",
-    "db:migrate": "yarn workspace @strength/db migrate",
-    "db:push": "yarn workspace @strength/db push",
-    "lint": "yarn workspaces foreach run lint"
+    "dev": "bun --cwd apps/expo start",
+    "dev:worker": "lsof -ti:8787 | xargs kill -9 2>/dev/null; bun --cwd apps/worker dev --port 8787",
+    "build:worker": "bun --cwd apps/worker build",
+    "db:generate": "bun --cwd packages/db generate",
+    "db:migrate": "bun --cwd packages/db migrate",
+    "db:push": "bun --cwd packages/db push",
+    "setup": "bun install"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

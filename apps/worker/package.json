@@ -8,8 +8,10 @@
     "build": "wrangler deploy --dry-run"
   },
   "dependencies": {
+    "@strength/config": "workspace:*",
     "@strength/db": "workspace:*",
     "better-auth": "^1.0.0",
+    "drizzle-orm": "^0.40.0",
     "hono": "^4.0.0"
   },
   "devDependencies": {
