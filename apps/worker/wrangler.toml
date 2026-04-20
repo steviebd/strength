@@ -2,6 +2,7 @@ name = "strength-worker"
 main = "src/index.ts"
 compatibility_date = "2025-02-25"
 compatibility_flags = ["nodejs_compat"]
+log_level = "debug"
 
 [[d1_databases]]
 binding = "DB"

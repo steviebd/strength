@@ -1,0 +1,106 @@
+import { createContext, useContext, type ReactNode } from 'react';
+import { useWorkoutSession } from '@/hooks/useWorkoutSession';
+
+export interface WorkoutSet {
+  id: string;
+  workoutExerciseId: string;
+  setNumber: number;
+  weight: number | null;
+  reps: number | null;
+  rpe: number | null;
+  isComplete: boolean;
+  completedAt: string | null;
+  createdAt: string | null;
+}
+
+export interface WorkoutExercise {
+  id: string;
+  exerciseId: string;
+  name: string;
+  muscleGroup: string | null;
+  orderIndex: number;
+  sets: WorkoutSet[];
+  notes: string | null;
+  isAmrap: boolean;
+}
+
+export interface Workout {
+  id: string;
+  name: string;
+  startedAt: string;
+  completedAt: string | null;
+  notes: string | null;
+  exercises: WorkoutExercise[];
+  totalVolume?: number;
+  totalSets?: number;
+  durationMinutes?: number;
+  exerciseCount?: number;
+}
+
+export interface Exercise {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  description: string;
+  videoTutorial?: {
+    youtubeId: string;
+    title: string;
+    coachName: string;
+    keyCues: string[];
+  };
+}
+
+export type ExerciseLibraryItem = Exercise;
+
+export interface WorkoutSessionState {
+  workout: Workout | null;
+  exercises: WorkoutExercise[];
+  isLoading: boolean;
+  error: string | null;
+  duration: number;
+  isActive: boolean;
+}
+
+interface WorkoutSessionContextValue {
+  workout: Workout | null;
+  exercises: WorkoutExercise[];
+  isLoading: boolean;
+  error: string | null;
+  duration: number;
+  formattedDuration: string;
+  isActive: boolean;
+  weightUnit: 'kg' | 'lbs';
+  startWorkout: (name: string) => Promise<void>;
+  loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
+  completeWorkout: () => Promise<void>;
+  discardWorkout: () => void;
+  addExercise: (exercise: Exercise) => void;
+  updateExercise: (workoutExerciseId: string, updates: Partial<WorkoutExercise>) => void;
+  removeExercise: (workoutExerciseId: string) => void;
+  addSet: (workoutExerciseId: string) => void;
+  updateSet: (setId: string, updates: Partial<WorkoutSet>) => void;
+  deleteSet: (setId: string) => void;
+  toggleSetComplete: (setId: string) => void;
+  getLastWorkoutData: (exerciseId: string) => { weight: number; reps: number } | null;
+  availableExercises: Exercise[];
+}
+
+const WorkoutSessionContext = createContext<WorkoutSessionContextValue | null>(null);
+
+export function WorkoutSessionProvider({ children }: { children: ReactNode }) {
+  const workoutSession = useWorkoutSession();
+
+  return (
+    <WorkoutSessionContext.Provider value={workoutSession}>
+      {children}
+    </WorkoutSessionContext.Provider>
+  );
+}
+
+export function useWorkoutSessionContext(): WorkoutSessionContextValue {
+  const context = useContext(WorkoutSessionContext);
+  if (!context) {
+    throw new Error('useWorkoutSessionContext must be used within WorkoutSessionProvider');
+  }
+  return context;
+}
