@@ -20,6 +20,7 @@
     "expo-network": "~8.0.8",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
+    "expo-web-browser": "~14.2.0",
     "nativewind": "^4.2.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

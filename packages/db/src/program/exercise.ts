@@ -1,6 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
-import { exercises, generateId, type ExerciseLibraryItem } from '../schema';
+import { exercises, generateId } from '../schema';
+import type { ExerciseLibraryItem } from '../exercise-library';
 import { exerciseLibrary } from '../exercise-library';
 
 export type LiftType = 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row';

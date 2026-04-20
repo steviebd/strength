@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { getLastWorkout, setLastWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import type {
   Workout,
@@ -222,6 +223,20 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       await apiFetch(`/api/workouts/${workout.id}/complete`, {
         method: 'PUT',
       });
+      for (const exercise of exercises) {
+        const completedSets = exercise.sets.filter((s) => s.isComplete);
+        if (completedSets.length > 0) {
+          const lastSet = completedSets[completedSets.length - 1];
+          if (lastSet.weight !== null || lastSet.reps !== null) {
+            await setLastWorkout(exercise.exerciseId, {
+              weight: lastSet.weight,
+              reps: lastSet.reps,
+              rpe: lastSet.rpe,
+              date: new Date().toISOString(),
+            });
+          }
+        }
+      }
       setWorkout((prev) => (prev ? { ...prev, completedAt: new Date().toISOString() } : null));
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -255,25 +270,23 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   const addExercise = useCallback(
     async (exercise: Exercise) => {
       try {
-        const lastWorkoutResponse = await apiFetch<{
-          exerciseId: string;
-          workoutDate: string | null;
-          sets: { weight: number; reps: number; rpe: number | null }[];
-        } | null>(`/api/workouts/last/${exercise.id}`);
+        const cached = await getLastWorkout(exercise.id);
 
         const newSets: WorkoutSet[] =
-          lastWorkoutResponse && lastWorkoutResponse.sets.length > 0
-            ? lastWorkoutResponse.sets.map((s, idx) => ({
-                id: generateId(),
-                workoutExerciseId: '',
-                setNumber: idx + 1,
-                weight: s.weight,
-                reps: s.reps,
-                rpe: s.rpe,
-                isComplete: false,
-                completedAt: null,
-                createdAt: new Date().toISOString(),
-              }))
+          cached && cached.weight !== null && cached.reps !== null
+            ? [
+                {
+                  id: generateId(),
+                  workoutExerciseId: '',
+                  setNumber: 1,
+                  weight: cached.weight,
+                  reps: cached.reps,
+                  rpe: cached.rpe ?? null,
+                  isComplete: false,
+                  completedAt: null,
+                  createdAt: new Date().toISOString(),
+                },
+              ]
             : [
                 {
                   id: generateId(),

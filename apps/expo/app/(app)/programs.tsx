@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { env } from '@/lib/env';
 import { apiFetch } from '@/lib/api';
+import { addPendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 
 type WeightUnit = 'kg' | 'lbs';
@@ -372,6 +373,17 @@ export default function ProgramsScreen() {
         return;
       }
 
+      await addPendingWorkout({
+        id: result.workoutId,
+        name: program.name,
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        source: 'program',
+        programCycleId: program.id,
+        cycleWorkoutId: result.workoutId,
+        exercises: [],
+      });
+
       router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
@@ -438,112 +450,42 @@ export default function ProgramsScreen() {
             <View className="flex-1 items-center justify-center py-20">
               <ActivityIndicator size="large" color="#ef6f4f" />
             </View>
-          ) : activePrograms.length > 0 ? (
-            <View className="mb-6 gap-4">
-              {activePrograms.map((activeProgram) => {
-                const isOpening = openingProgramWorkoutId === activeProgram.id;
-                const currentSession = activeProgram.currentSession ?? 1;
-                const displaySessionNumber = getDisplaySessionNumber(activeProgram);
-                const progress = Math.min(
-                  100,
-                  (displaySessionNumber / activeProgram.totalSessionsPlanned) * 100,
-                );
-
-                return (
-                  <View
-                    key={activeProgram.id}
-                    className="rounded-2xl border border-coral/50 bg-coral/10 p-5"
+          ) : (
+            <>
+              <Text className="text-darkText text-lg font-semibold mb-4">Available Programs</Text>
+              <View className="gap-4">
+                {availablePrograms.map((program) => (
+                  <Pressable
+                    key={program.slug}
+                    className="rounded-xl border border-darkBorder bg-darkCard p-5"
+                    onPress={() => openProgramDetail(program)}
                   >
-                    <View className="mb-3 flex-row items-center justify-between">
-                      <View className="rounded-full bg-coral/20 px-3 py-1">
-                        <Text className="text-coral text-xs font-semibold">Active</Text>
+                    <View className="flex-row items-start justify-between mb-2">
+                      <View className="flex-1">
+                        <Text className="text-darkText text-base font-semibold">
+                          {program.name}
+                        </Text>
+                        <Text className="text-darkMuted text-xs mt-1">{program.description}</Text>
                       </View>
-                      {activeProgram.currentWeek ? (
-                        <Text className="text-darkMuted text-xs">
-                          Week {activeProgram.currentWeek} · Session {currentSession}
-                        </Text>
-                      ) : null}
                     </View>
-                    <Text className="mb-1 text-lg font-semibold text-darkText">
-                      {activeProgram.name}
-                    </Text>
-                    <Text className="mb-4 text-sm text-darkMuted">
-                      {displaySessionNumber} / {activeProgram.totalSessionsPlanned} sessions
-                    </Text>
-                    <View className="h-2 overflow-hidden rounded-full bg-darkBorder">
+                    <View className="flex-row items-center gap-2 mt-3">
                       <View
-                        className="h-full rounded-full bg-coral"
-                        style={{ width: `${progress}%` }}
-                      />
+                        className={`rounded-full px-2 py-1 ${getDifficultyColor(program.difficulty)}`}
+                      >
+                        <Text className="text-xs font-medium capitalize">{program.difficulty}</Text>
+                      </View>
+                      <Text className="text-darkMuted text-xs">·</Text>
+                      <Text className="text-darkMuted text-xs">
+                        {program.daysPerWeek} days/week
+                      </Text>
+                      <Text className="text-darkMuted text-xs">·</Text>
+                      <Text className="text-darkMuted text-xs">{program.estimatedWeeks} weeks</Text>
                     </View>
-                    <View className="mt-4 flex-row gap-3">
-                      <Pressable
-                        className={`flex-1 flex-row items-center justify-center rounded-xl bg-coral px-4 py-3 ${
-                          isOpening ? 'opacity-50' : ''
-                        }`}
-                        onPress={() => handleOpenCurrentProgramWorkout(activeProgram)}
-                        disabled={isOpening || deletingProgramId === activeProgram.id}
-                      >
-                        {isOpening ? <ActivityIndicator size="small" color="#ffffff" /> : null}
-                        <Text className="text-sm font-semibold text-white">
-                          {isOpening ? ' Opening...' : 'Resume session'}
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        className="items-center justify-center rounded-xl border border-pine/40 px-4 py-3"
-                        onPress={() => router.push(`/program-1rm-test?cycleId=${activeProgram.id}`)}
-                        disabled={isOpening || deletingProgramId === activeProgram.id}
-                      >
-                        <Text className="text-sm font-medium text-pine">1RM Test</Text>
-                      </Pressable>
-                      <Pressable
-                        className={`items-center justify-center rounded-xl border border-red-500/40 px-4 py-3 ${
-                          deletingProgramId === activeProgram.id ? 'opacity-50' : ''
-                        }`}
-                        onPress={() => handleDeleteProgram(activeProgram)}
-                        disabled={isOpening || deletingProgramId === activeProgram.id}
-                      >
-                        {deletingProgramId === activeProgram.id ? (
-                          <ActivityIndicator size="small" color="#f87171" />
-                        ) : (
-                          <Text className="text-sm font-medium text-red-400">Delete</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
-
-          <Text className="text-darkText text-lg font-semibold mb-4">Available Programs</Text>
-          <View className="gap-4">
-            {availablePrograms.map((program) => (
-              <Pressable
-                key={program.slug}
-                className="rounded-xl border border-darkBorder bg-darkCard p-5"
-                onPress={() => openProgramDetail(program)}
-              >
-                <View className="flex-row items-start justify-between mb-2">
-                  <View className="flex-1">
-                    <Text className="text-darkText text-base font-semibold">{program.name}</Text>
-                    <Text className="text-darkMuted text-xs mt-1">{program.description}</Text>
-                  </View>
-                </View>
-                <View className="flex-row items-center gap-2 mt-3">
-                  <View
-                    className={`rounded-full px-2 py-1 ${getDifficultyColor(program.difficulty)}`}
-                  >
-                    <Text className="text-xs font-medium capitalize">{program.difficulty}</Text>
-                  </View>
-                  <Text className="text-darkMuted text-xs">·</Text>
-                  <Text className="text-darkMuted text-xs">{program.daysPerWeek} days/week</Text>
-                  <Text className="text-darkMuted text-xs">·</Text>
-                  <Text className="text-darkMuted text-xs">{program.estimatedWeeks} weeks</Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
         </View>
       </ScrollView>
 

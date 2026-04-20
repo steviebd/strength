@@ -6,16 +6,18 @@ export function apiFetch<T = unknown>(endpoint: string, options?: RequestInit): 
     ? endpoint
     : `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
-  const cookie = authClient.getCookie();
   const headers = new Headers(options?.headers);
-  if (cookie) {
-    headers.set('Cookie', cookie);
+  if ('getCookie' in authClient) {
+    const cookie = authClient.getCookie();
+    if (cookie) {
+      headers.set('Cookie', cookie);
+    }
   }
 
   return fetch(url, {
     ...options,
     headers,
-    credentials: 'omit',
+    credentials: 'include',
   }).then((res) => {
     if (!res.ok) {
       return res

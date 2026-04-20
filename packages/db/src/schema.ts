@@ -125,6 +125,7 @@ export const workouts = sqliteTable('workouts', {
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
   templateId: text('template_id').references(() => templates.id, { onDelete: 'set null' }),
+  programCycleId: text('program_cycle_id'),
   name: text('name').notNull(),
   startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
@@ -283,4 +284,255 @@ export const _programCycleWorkoutsScheduledDateIdx = index(
 
 export const _templateExercisesTemplateIdIdx = index('idx_template_exercises_template_id').on(
   templateExercises.templateId,
+);
+
+export const userIntegration = sqliteTable('user_integration', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  providerUserId: text('provider_user_id'),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token'),
+  accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp_ms' }),
+  scope: text('scope'),
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const whoopProfile = sqliteTable('whoop_profile', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  whoopUserId: text('whoop_user_id').notNull().unique(),
+  email: text('email'),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
+  rawData: text('raw_data'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const whoopWorkout = sqliteTable('whoop_workout', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  whoopWorkoutId: text('whoop_workout_id').notNull().unique(),
+  start: integer('start', { mode: 'timestamp_ms' }).notNull(),
+  end: integer('end', { mode: 'timestamp_ms' }).notNull(),
+  timezoneOffset: text('timezone_offset'),
+  sportName: text('sport_name'),
+  scoreState: text('score_state'),
+  score: text('score'),
+  during: text('during'),
+  zoneDuration: text('zone_duration'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const whoopRecovery = sqliteTable('whoop_recovery', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  whoopRecoveryId: text('whoop_recovery_id').notNull().unique(),
+  cycleId: text('cycle_id'),
+  date: integer('date', { mode: 'timestamp_ms' }).notNull(),
+  recoveryScore: integer('recovery_score'),
+  hrvRmssdMilli: real('hrv_rmssd_milli'),
+  hrvRmssdBaseline: real('hrv_rmssd_baseline'),
+  restingHeartRate: integer('resting_heart_rate'),
+  restingHeartRateBaseline: integer('resting_heart_rate_baseline'),
+  respiratoryRate: real('respiratory_rate'),
+  respiratoryRateBaseline: real('respiratory_rate_baseline'),
+  rawData: text('raw_data'),
+  recoveryScoreTier: text('recovery_score_tier'),
+  timezoneOffset: text('timezone_offset'),
+  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const whoopCycle = sqliteTable('whoop_cycle', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  whoopCycleId: text('whoop_cycle_id').notNull().unique(),
+  start: integer('start', { mode: 'timestamp_ms' }).notNull(),
+  end: integer('end', { mode: 'timestamp_ms' }).notNull(),
+  timezoneOffset: text('timezone_offset'),
+  dayStrain: real('day_strain'),
+  averageHeartRate: integer('average_heart_rate'),
+  maxHeartRate: integer('max_heart_rate'),
+  kilojoule: real('kilojoule'),
+  percentRecorded: real('percent_recorded'),
+  distanceMeter: integer('distance_meter'),
+  altitudeGainMeter: integer('altitude_gain_meter'),
+  altitudeChangeMeter: integer('altitude_change_meter'),
+  rawData: text('raw_data'),
+  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const whoopSleep = sqliteTable('whoop_sleep', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  whoopSleepId: text('whoop_sleep_id').notNull().unique(),
+  start: integer('start', { mode: 'timestamp_ms' }).notNull(),
+  end: integer('end', { mode: 'timestamp_ms' }).notNull(),
+  timezoneOffset: text('timezone_offset'),
+  sleepPerformancePercentage: integer('sleep_performance_percentage'),
+  totalSleepTimeMilli: integer('total_sleep_time_milli'),
+  sleepEfficiencyPercentage: real('sleep_efficiency_percentage'),
+  slowWaveSleepTimeMilli: integer('slow_wave_sleep_time_milli'),
+  remSleepTimeMilli: integer('rem_sleep_time_milli'),
+  lightSleepTimeMilli: integer('light_sleep_time_milli'),
+  wakeTimeMilli: integer('wake_time_milli'),
+  arousalTimeMilli: integer('arousal_time_milli'),
+  disturbanceCount: integer('disturbance_count'),
+  sleepLatencyMilli: integer('sleep_latency_milli'),
+  sleepConsistencyPercentage: real('sleep_consistency_percentage'),
+  sleepNeedBaselineMilli: integer('sleep_need_baseline_milli'),
+  sleepNeedFromSleepDebtMilli: integer('sleep_need_from_sleep_debt_milli'),
+  sleepNeedFromRecentStrainMilli: integer('sleep_need_from_recent_strain_milli'),
+  sleepNeedFromRecentNapMilli: integer('sleep_need_from_recent_nap_milli'),
+  rawData: text('raw_data'),
+  sleepQualityTier: text('sleep_quality_tier'),
+  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const whoopBodyMeasurement = sqliteTable('whoop_body_measurement', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  whoopMeasurementId: text('whoop_measurement_id').notNull().unique(),
+  heightMeter: real('height_meter'),
+  weightKilogram: real('weight_kilogram'),
+  maxHeartRate: integer('max_heart_rate'),
+  measurementDate: integer('measurement_date', { mode: 'timestamp_ms' }),
+  rawData: text('raw_data'),
+  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const rateLimit = sqliteTable('rate_limit', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id').notNull(),
+  endpoint: text('endpoint').notNull(),
+  requests: integer('requests').notNull().default(0),
+  windowStart: text('window_start').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const _userIntegrationUserIdIdx = index('idx_user_integration_user_id').on(
+  userIntegration.userId,
+);
+export const _userIntegrationProviderIdx = index('idx_user_integration_provider').on(
+  userIntegration.provider,
+);
+export const _userIntegrationUserIdProviderIdx = index('idx_user_integration_user_id_provider').on(
+  userIntegration.userId,
+  userIntegration.provider,
+);
+
+export const _whoopProfileUserIdIdx = index('idx_whoop_profile_user_id').on(whoopProfile.userId);
+export const _whoopProfileWhoopUserIdIdx = index('idx_whoop_profile_whoop_user_id').on(
+  whoopProfile.whoopUserId,
+);
+
+export const _whoopWorkoutUserIdIdx = index('idx_whoop_workout_user_id').on(whoopWorkout.userId);
+export const _whoopWorkoutWhoopWorkoutIdIdx = index('idx_whoop_workout_whoop_workout_id').on(
+  whoopWorkout.whoopWorkoutId,
+);
+export const _whoopWorkoutStartIdx = index('idx_whoop_workout_start').on(whoopWorkout.start);
+export const _whoopWorkoutUserIdStartIdx = index('idx_whoop_workout_user_id_start').on(
+  whoopWorkout.userId,
+  whoopWorkout.start,
+);
+
+export const _whoopRecoveryUserIdIdx = index('idx_whoop_recovery_user_id').on(whoopRecovery.userId);
+export const _whoopRecoveryWhoopRecoveryIdIdx = index('idx_whoop_recovery_whoop_recovery_id').on(
+  whoopRecovery.whoopRecoveryId,
+);
+export const _whoopRecoveryDateIdx = index('idx_whoop_recovery_date').on(whoopRecovery.date);
+export const _whoopRecoveryUserIdDateIdx = index('idx_whoop_recovery_user_id_date').on(
+  whoopRecovery.userId,
+  whoopRecovery.date,
+);
+export const _whoopRecoveryCycleIdIdx = index('idx_whoop_recovery_cycle_id').on(
+  whoopRecovery.cycleId,
+);
+
+export const _whoopCycleUserIdIdx = index('idx_whoop_cycle_user_id').on(whoopCycle.userId);
+export const _whoopCycleWhoopCycleIdIdx = index('idx_whoop_cycle_whoop_cycle_id').on(
+  whoopCycle.whoopCycleId,
+);
+export const _whoopCycleStartIdx = index('idx_whoop_cycle_start').on(whoopCycle.start);
+export const _whoopCycleUserIdStartIdx = index('idx_whoop_cycle_user_id_start').on(
+  whoopCycle.userId,
+  whoopCycle.start,
+);
+export const _whoopCycleDayStrainIdx = index('idx_whoop_cycle_day_strain').on(whoopCycle.dayStrain);
+
+export const _whoopSleepUserIdIdx = index('idx_whoop_sleep_user_id').on(whoopSleep.userId);
+export const _whoopSleepWhoopSleepIdIdx = index('idx_whoop_sleep_whoop_sleep_id').on(
+  whoopSleep.whoopSleepId,
+);
+export const _whoopSleepStartIdx = index('idx_whoop_sleep_start').on(whoopSleep.start);
+export const _whoopSleepUserIdStartIdx = index('idx_whoop_sleep_user_id_start').on(
+  whoopSleep.userId,
+  whoopSleep.start,
+);
+export const _whoopSleepUserIdSleepPerformanceIdx = index(
+  'idx_whoop_sleep_user_id_sleep_performance',
+).on(whoopSleep.userId, whoopSleep.sleepPerformancePercentage);
+
+export const _whoopBodyMeasurementUserIdIdx = index('idx_whoop_body_measurement_user_id').on(
+  whoopBodyMeasurement.userId,
+);
+export const _whoopBodyMeasurementWhoopMeasurementIdIdx = index(
+  'idx_whoop_body_measurement_whoop_measurement_id',
+).on(whoopBodyMeasurement.whoopMeasurementId);
+export const _whoopBodyMeasurementMeasurementDateIdx = index(
+  'idx_whoop_body_measurement_measurement_date',
+).on(whoopBodyMeasurement.measurementDate);
+export const _whoopBodyMeasurementUserIdMeasurementDateIdx = index(
+  'idx_whoop_body_measurement_user_id_measurement_date',
+).on(whoopBodyMeasurement.userId, whoopBodyMeasurement.measurementDate);
+
+export const _rateLimitUserIdEndpointIdx = index('idx_rate_limit_user_id_endpoint').on(
+  rateLimit.userId,
+  rateLimit.endpoint,
+);
+export const _rateLimitWindowStartIdx = index('idx_rate_limit_window_start').on(
+  rateLimit.windowStart,
 );

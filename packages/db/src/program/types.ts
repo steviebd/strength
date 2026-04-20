@@ -6,6 +6,7 @@ export interface CreateProgramCycleData {
   deadlift1rm: number;
   ohp1rm: number;
   totalSessionsPlanned: number;
+  estimatedWeeks?: number;
   preferredGymDays?: string;
   preferredTimeOfDay?: string;
   programStartDate?: string;

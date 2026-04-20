@@ -13,6 +13,8 @@ interface WorkoutCardProps {
   totalVolume: number | null;
   exerciseCount: number;
   weightUnit?: WeightUnit;
+  isPending?: boolean;
+  onDelete?: () => void;
 }
 
 export function WorkoutCard({
@@ -23,6 +25,8 @@ export function WorkoutCard({
   totalVolume,
   exerciseCount,
   weightUnit = 'kg',
+  isPending,
+  onDelete,
 }: WorkoutCardProps) {
   const router = useRouter();
 
@@ -48,14 +52,34 @@ export function WorkoutCard({
 
   return (
     <Pressable
-      className="rounded-xl border border-darkBorder bg-darkCard p-4"
+      className={`rounded-xl border bg-darkCard p-4 ${isPending ? 'border-amber-500/50 border-dashed' : 'border-darkBorder'}`}
       onPress={() => router.push({ pathname: '/workout-session', params: { workoutId: id } })}
     >
       <View className="mb-3 flex-row items-center justify-between">
-        <Text className="text-darkText text-lg font-semibold" numberOfLines={1}>
-          {name}
-        </Text>
-        <Text className="text-darkMuted text-xs">{formatDate(date)}</Text>
+        <View className="flex-row items-center gap-2 flex-1">
+          <Text className="text-darkText text-lg font-semibold" numberOfLines={1}>
+            {name}
+          </Text>
+          {isPending && (
+            <View className="rounded-full bg-amber-500/20 px-2 py-0.5">
+              <Text className="text-amber-400 text-xs font-medium">Pending</Text>
+            </View>
+          )}
+        </View>
+        <View className="flex-row items-center gap-2">
+          <Text className="text-darkMuted text-xs">{formatDate(date)}</Text>
+          {onDelete && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-1"
+            >
+              <Text className="text-red-400 text-sm">Delete</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
       <View className="flex-row gap-4">
         <View className="flex-1">

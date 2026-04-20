@@ -10,3 +10,6 @@ database_name = "strength-db"
 database_id = "replace-with-your-d1-database-id"
 preview_database_id = "strength-db"
 migrations_dir = "../../packages/db/drizzle/migrations"
+
+[vars]
+WHOOP_SYNC_RATE_LIMIT_PER_HOUR = "10"

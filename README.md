@@ -28,6 +28,24 @@ Store these in the `dev` environment for this project:
 - `BETTER_AUTH_SECRET=<generate a long random secret>`
 - `BETTER_AUTH_URL=http://<your-machine-lan-ip>:8787`
 - `EXPO_PUBLIC_API_URL=http://<your-machine-lan-ip>:8787`
+- `WHOOP_CLIENT_ID=<from Whoop developer portal>`
+- `WHOOP_CLIENT_SECRET=<from Whoop developer portal>`
+
+### WHOOP OAuth Setup
+
+In the [Whoop Developer Portal](https://developer.whoop.com), set your OAuth Redirect URI to:
+
+```
+${BETTER_AUTH_URL}/api/auth/whoop/callback
+```
+
+For local development with the iOS simulator on the same Mac, this would be:
+
+```
+http://localhost:8787/api/auth/whoop/callback
+```
+
+For physical devices or Android emulator, use your machine's LAN IP (e.g., `http://192.168.1.x:8787/api/auth/whoop/callback`).
 
 If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device or Android emulator, `127.0.0.1` points at the device itself and auth requests will fail.
 

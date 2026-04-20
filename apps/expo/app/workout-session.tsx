@@ -18,6 +18,7 @@ import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
+import { removePendingWorkout } from '@/lib/storage';
 import type { Workout } from '@/context/WorkoutSessionContext';
 import { ScrollProvider } from '@/context/ScrollContext';
 
@@ -224,6 +225,9 @@ export default function WorkoutSessionScreen() {
 
   const handleCompleteWorkout = useCallback(async () => {
     await completeWorkout();
+    if (workoutId && isProgramSession) {
+      await removePendingWorkout(workoutId);
+    }
     if (workoutId) {
       queryClient.invalidateQueries({ queryKey: ['workout', workoutId] });
     }
@@ -232,7 +236,7 @@ export default function WorkoutSessionScreen() {
       router.push(`/program-1rm-test?cycleId=${cycleId}`);
       return;
     }
-    router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts');
+    router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts?view=history');
   }, [
     completeWorkout,
     cycleId,
@@ -269,7 +273,7 @@ export default function WorkoutSessionScreen() {
     );
   }
 
-  if (!isActive && !workout) {
+  if (!isActive && !workout && !workoutId) {
     return (
       <View className="flex-1 bg-darkBg px-6 pt-16">
         <Text className="text-darkText mb-6 text-2xl font-bold">Start Workout</Text>
@@ -371,7 +375,7 @@ export default function WorkoutSessionScreen() {
                         router.push(`/program-1rm-test?cycleId=${cycleId}`);
                         return;
                       }
-                      router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts');
+                      router.push('/(app)/workouts');
                     }}
                   >
                     <Text className="text-darkMuted font-semibold">Discard</Text>

@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev:expo": "infisical run --env=dev -- bun --filter @strength/expo dev",
-    "dev:worker": "infisical run --env=dev -- bun --filter @strength/worker dev",
+    "dev:worker": "cd apps/worker && infisical export --env=dev --silent --format=dotenv --output-file=.dev.vars && bun run dev",
     "db:generate": "bun --filter @strength/db db:generate",
     "db:push:dev": "cd apps/worker && wrangler d1 migrations apply strength-db --local",
     "db:reset": "rm -rf apps/worker/.wrangler/ && bun run db:push:dev",

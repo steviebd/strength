@@ -1,7 +1,17 @@
-import { useState } from 'react';
-import { View, Text, Pressable, TextInput, Modal, ActivityIndicator, FlatList } from 'react-native';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  TextInput,
+  Modal,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { TemplateList } from '@/components/template/TemplateList';
 import { TemplateEditor } from '@/components/template/TemplateEditor';
@@ -9,6 +19,13 @@ import { WorkoutCard } from '@/components/workout/WorkoutCard';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
+import {
+  getCachedPrograms,
+  setCachedPrograms,
+  getPendingWorkouts,
+  addPendingWorkout,
+  removePendingWorkout,
+} from '@/lib/storage';
 import type { Template } from '@/hooks/useTemplateEditor';
 
 interface WorkoutHistoryItem {
@@ -32,18 +49,43 @@ interface ActiveProgram {
   totalSessionsPlanned: number;
 }
 
+interface PendingWorkout {
+  id: string;
+  name: string;
+  startedAt: string;
+  completedAt: null;
+  source: 'program';
+  programCycleId: string;
+  cycleWorkoutId: string;
+  exerciseCount: number;
+}
+
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
   return apiFetch<WorkoutHistoryItem[]>('/api/workouts');
 }
 
 async function fetchActivePrograms(): Promise<ActiveProgram[]> {
-  return apiFetch<ActiveProgram[]>('/api/programs/active');
+  const cached = await getCachedPrograms();
+
+  try {
+    const programs = await apiFetch<ActiveProgram[]>('/api/programs/active');
+    await setCachedPrograms(programs);
+    return programs;
+  } catch (e) {
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+    throw e;
+  }
 }
 
 export default function WorkoutsIndex() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [view, setView] = useState<'templates' | 'history'>('templates');
+  const params = useLocalSearchParams<{ view?: string }>();
+  const [view, setView] = useState<'templates' | 'history'>(
+    params.view === 'history' ? 'history' : 'templates',
+  );
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [showStartWorkout, setShowStartWorkout] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -53,17 +95,53 @@ export default function WorkoutsIndex() {
   const [workoutName, setWorkoutName] = useState('');
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
+  const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
   const queryClient = useQueryClient();
 
-  const { data: workoutHistory = [], isLoading: isLoadingHistory } = useQuery({
+  const loadPendingWorkouts = useCallback(async () => {
+    const workouts = await getPendingWorkouts();
+    setPendingWorkouts(workouts);
+  }, []);
+
+  useEffect(() => {
+    void loadPendingWorkouts();
+  }, [loadPendingWorkouts]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadPendingWorkouts();
+      void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+    }, [loadPendingWorkouts, queryClient]),
+  );
+
+  useEffect(() => {
+    if (view === 'history') {
+      void loadPendingWorkouts();
+      void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+    }
+  }, [loadPendingWorkouts, view, queryClient]);
+
+  const {
+    data: workoutHistory = [],
+    isLoading: isLoadingHistory,
+    error: workoutHistoryError,
+  } = useQuery({
     queryKey: ['workoutHistory'],
     queryFn: fetchWorkoutHistory,
     enabled: view === 'history',
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
   const { data: activePrograms = [], isLoading: isLoadingActivePrograms } = useQuery({
     queryKey: ['activePrograms'],
     queryFn: fetchActivePrograms,
   });
+
+  const mergedHistory = useMemo(() => {
+    const serverIds = new Set(workoutHistory.map((w) => w.id));
+    const pendingFiltered = pendingWorkouts.filter((p) => !serverIds.has(p.id));
+    return [...pendingFiltered, ...workoutHistory];
+  }, [pendingWorkouts, workoutHistory]);
 
   const getDisplaySessionNumber = (program: ActiveProgram) =>
     Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
@@ -127,12 +205,40 @@ export default function WorkoutsIndex() {
         return;
       }
 
+      await addPendingWorkout({
+        id: result.workoutId,
+        name: program.name,
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        source: 'program',
+        programCycleId: program.id,
+        cycleWorkoutId: result.workoutId,
+        exerciseCount: 0,
+      });
+      setPendingWorkouts((prev) => [
+        ...prev,
+        {
+          id: result.workoutId,
+          name: program.name,
+          startedAt: new Date().toISOString(),
+          completedAt: null,
+          source: 'program',
+          programCycleId: program.id,
+          cycleWorkoutId: result.workoutId,
+          exerciseCount: 0,
+        },
+      ]);
       router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
     } finally {
       setOpeningProgramWorkoutId(null);
     }
+  };
+
+  const handleDeletePendingWorkout = async (workoutId: string) => {
+    await removePendingWorkout(workoutId);
+    setPendingWorkouts((prev) => prev.filter((p) => p.id !== workoutId));
   };
 
   const handleDeleteProgram = (program: ActiveProgram) => {
@@ -156,7 +262,7 @@ export default function WorkoutsIndex() {
     ]);
   };
 
-  const renderHistoryItem = ({ item }: { item: WorkoutHistoryItem }) => (
+  const renderHistoryItem = ({ item, isPending }: { item: any; isPending?: boolean }) => (
     <View className="mb-3">
       <WorkoutCard
         id={item.id}
@@ -166,6 +272,8 @@ export default function WorkoutsIndex() {
         totalVolume={item.totalVolume}
         exerciseCount={item.exerciseCount ?? 0}
         weightUnit={weightUnit}
+        isPending={isPending}
+        onDelete={isPending ? () => handleDeletePendingWorkout(item.id) : undefined}
       />
     </View>
   );
@@ -227,7 +335,7 @@ export default function WorkoutsIndex() {
                     {isOpening ? (
                       <ActivityIndicator size="small" color="#ffffff" />
                     ) : (
-                      <Text className="text-sm font-semibold text-white">Resume session</Text>
+                      <Text className="text-sm font-semibold text-white">Start Next Session</Text>
                     )}
                   </Pressable>
                   <Pressable
@@ -303,11 +411,20 @@ export default function WorkoutsIndex() {
             />
           </View>
         </View>
-      ) : isLoadingHistory ? (
+      ) : isLoadingHistory && pendingWorkouts.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#ef6f4f" />
         </View>
-      ) : workoutHistory.length === 0 ? (
+      ) : workoutHistoryError ? (
+        <View className="flex-1 items-center justify-center px-6">
+          <Text className="mb-2 text-xl font-bold text-darkText">Error Loading History</Text>
+          <Text className="text-center text-darkMuted">
+            {workoutHistoryError instanceof Error
+              ? workoutHistoryError.message
+              : 'Failed to load workout history'}
+          </Text>
+        </View>
+      ) : mergedHistory.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-darkText text-xl font-bold mb-2">No Workouts Yet</Text>
           <Text className="text-darkMuted text-center">
@@ -315,14 +432,13 @@ export default function WorkoutsIndex() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={workoutHistory}
-          renderItem={renderHistoryItem}
-          keyExtractor={(item) => item.id}
-          className="flex-1 p-4"
-          contentContainerStyle={{ paddingBottom: 100 }}
-          ListHeaderComponent={renderActiveProgramsSection()}
-        />
+        <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
+          {mergedHistory.map((item, index) => {
+            const isPending =
+              index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id);
+            return <View key={item.id}>{renderHistoryItem({ item, isPending })}</View>;
+          })}
+        </ScrollView>
       )}
 
       <Modal

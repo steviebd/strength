@@ -1,7 +1,7 @@
 /* oxlint-disable no-unused-vars */
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
-import { createAuth, isDevAuthEnabled, type WorkerEnv } from './auth';
+import { createAuth, isDevAuthEnabled, resolveWorkerEnv, type WorkerEnv } from './auth';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, like, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
@@ -14,6 +14,16 @@ import {
   softDeleteProgramCycle,
 } from '@strength/db';
 import { getProgram, generateWorkoutSchedule } from './programs';
+import { buildWhoopAuthorizationUrl, exchangeCodeForTokens, WHOOP_API_BASE } from './whoop/auth';
+import {
+  storeWhoopTokens,
+  revokeWhoopIntegration,
+  getValidAccessToken,
+} from './whoop/token-rotation';
+import { getWhoopProfile } from './whoop/api';
+import { syncAllWhoopData } from './whoop/sync';
+import { verifyWebhookSignature, handleWebhookEvent } from './whoop/webhook';
+import { isWhoopConnected, getWhoopUserId, getWhoopProfileByUserId } from './whoop/user';
 
 type Variables = {
   user: ReturnType<typeof createAuth>['$Infer']['Session']['user'] | null;
@@ -175,7 +185,12 @@ app.put('/api/profile/preferences', async (c) => {
   }
 });
 
-app.on(['GET', 'POST'], '/api/auth/*', (c) => {
+app.on(['GET', 'POST'], '/api/auth/*', async (c, next) => {
+  if (c.req.path === '/api/auth/whoop/callback') {
+    await next();
+    return;
+  }
+
   if (!isDevAuthEnabled(c.env)) {
     return c.json(
       { message: 'Authentication is intentionally disabled outside development right now.' },
@@ -264,7 +279,7 @@ async function getLastCompletedExerciseSnapshot(db: any, userId: string, exercis
     workoutDate: recentWorkoutExercise.workoutCompletedAt
       ? new Date(recentWorkoutExercise.workoutCompletedAt).toISOString().split('T')[0]
       : null,
-    sets: allSets.map((s) => ({
+    sets: allSets.map((s: { weight: number | null; reps: number | null; rpe: number | null; setNumber: number | null }) => ({
       weight: s.weight,
       reps: s.reps,
       rpe: s.rpe,
@@ -447,6 +462,11 @@ function getCurrentCycleWorkout(
     weekNumber: number;
     sessionNumber: number;
     isComplete?: boolean;
+    targetLifts?: string | null;
+    sessionName?: string;
+    scheduledDate?: string | null;
+    scheduledTime?: string | null;
+    workoutId?: string | null;
   }>,
 ) {
   return (
@@ -651,7 +671,7 @@ async function createWorkoutFromProgramCycleWorkout(
       db,
       userId,
       targetLift.name,
-      targetLift.lift,
+      targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
     );
 
     const workoutExercise = await db
@@ -745,7 +765,7 @@ async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId:
     .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
     .all();
 
-  const currentIndex = cycleWorkouts.findIndex((cw) => cw.id === linkedCycleWorkout.id);
+  const currentIndex = cycleWorkouts.findIndex((cw: { id: string }) => cw.id === linkedCycleWorkout.id);
   const nextCycleWorkout = currentIndex >= 0 ? cycleWorkouts[currentIndex + 1] : null;
   const now = new Date();
 
@@ -1626,7 +1646,7 @@ app.post('/api/workouts', async (c) => {
 
         const setRows =
           historySnapshot && historySnapshot.sets.length > 0
-            ? historySnapshot.sets.map((set, index) => ({
+            ? historySnapshot.sets.map((set: { weight: number | null; reps: number | null; rpe: number | null }, index: number) => ({
                 workoutExerciseId: workoutExercise.id,
                 setNumber: index + 1,
                 weight: set.weight,
@@ -2050,7 +2070,7 @@ app.get('/api/workouts/last/:exerciseId', async (c) => {
     return c.json({
       exerciseId: snapshot.exerciseId,
       workoutDate: snapshot.workoutDate,
-      sets: snapshot.sets.map((set) => ({
+      sets: snapshot.sets.map((set: { weight: number | null; reps: number | null; rpe: number | null }) => ({
         weight: set.weight,
         reps: set.reps,
         rpe: set.rpe,
@@ -2176,8 +2196,8 @@ app.post('/api/programs', async (c) => {
         weekNumber: workout.weekNumber,
         sessionNumber: workout.sessionNumber,
         sessionName: workout.sessionName,
-        scheduledDate: scheduleEntry?.scheduledDate?.toISOString().split('T')[0] || null,
-        scheduledTime: scheduleEntry?.scheduledTime || null,
+        scheduledDate: scheduleEntry?.scheduledDate?.toISOString().split('T')[0] ?? undefined,
+        scheduledTime: scheduleEntry?.scheduledTime ?? undefined,
         targetLifts: JSON.stringify({
           exercises: allExercises.filter((exercise) => !exercise.isAccessory),
           accessories: allExercises.filter((exercise) => exercise.isAccessory),
@@ -2680,6 +2700,277 @@ app.post('/api/programs/cycles/:id/complete-session', async (c) => {
   } catch (_e) {
     return c.json({ message: 'Failed to complete session' }, 500);
   }
+});
+
+// WHOOP Integration Routes
+
+app.get('/connect-whoop', (c) => {
+  const success = c.req.query('success');
+  const error = c.req.query('error');
+
+  const title = success ? 'WHOOP Connected' : 'WHOOP Connection Failed';
+  const message = success
+    ? 'Your WHOOP account was connected successfully. You can return to the app now.'
+    : `The WHOOP connection did not complete.${error ? ` Error: ${error}` : ''}`;
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0b1110;
+        color: #f5f5f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(560px, calc(100vw - 32px));
+        padding: 32px;
+        border-radius: 24px;
+        background: #121918;
+        border: 1px solid #26302d;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.24);
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+      p {
+        margin: 0;
+        color: #b7c0bd;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${title}</h1>
+      <p>${message}</p>
+    </main>
+  </body>
+</html>`;
+
+  return c.html(html);
+});
+
+// POST /api/whoop/auth - Get OAuth authorization URL
+app.post('/api/whoop/auth', async (c) => {
+  const resolvedEnv = resolveWorkerEnv(c.env);
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+
+  // Check if already connected
+  const connected = await isWhoopConnected(db, userId);
+  if (connected) {
+    return c.json({ message: 'WHOOP already connected', connected: true }, 200);
+  }
+
+  if (!resolvedEnv.WHOOP_CLIENT_ID) {
+    console.error('[WHOOP] Missing WHOOP_CLIENT_ID in worker environment');
+    return c.json({ error: 'WHOOP_CLIENT_ID is missing from the worker environment' }, 500);
+  }
+
+  // Build OAuth URL
+  const redirectUri = `${resolvedEnv.BETTER_AUTH_URL}/api/auth/whoop/callback`;
+  const state = crypto.randomUUID();
+
+  // Store state in cookie for verification
+  const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri);
+
+  return c.json({ authUrl, state });
+});
+
+// GET /api/auth/whoop/callback - OAuth callback
+app.get('/api/auth/whoop/callback', async (c) => {
+  const resolvedEnv = resolveWorkerEnv(c.env);
+  const code = c.req.query('code');
+  const state = c.req.query('state');
+  const error = c.req.query('error');
+
+  if (error) {
+    return c.redirect(`/connect-whoop?error=${encodeURIComponent(error)}`);
+  }
+
+  if (!code) {
+    return c.redirect('/connect-whoop?error=no_code');
+  }
+
+  // Get session from cookie (callback is accessed after auth)
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+
+  if (!session?.user) {
+    return c.redirect('/connect-whoop?error=session_expired');
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const redirectUri = `${resolvedEnv.BETTER_AUTH_URL}/api/auth/whoop/callback`;
+
+  try {
+    // Exchange code for tokens
+    const tokens = await exchangeCodeForTokens(resolvedEnv, code, redirectUri);
+
+    // Get WHOOP profile to get their user ID
+    const whoopProfile = await getWhoopProfile(tokens.access_token);
+
+    // Store tokens
+    await storeWhoopTokens(
+      db,
+      resolvedEnv,
+      userId,
+      String(whoopProfile.user_id),
+      tokens.access_token,
+      tokens.refresh_token,
+      new Date(tokens.expires_at!),
+      tokens.scope,
+    );
+
+    // Auto-sync all WHOOP data
+    const syncResult = await syncAllWhoopData(db, resolvedEnv, userId);
+    console.log('[WHOOP] Auto-sync result:', syncResult);
+
+    return c.redirect('/connect-whoop?success=true');
+  } catch (e) {
+    console.error('[WHOOP] Callback error:', e);
+    return c.redirect(
+      `/connect-whoop?error=${encodeURIComponent(e instanceof Error ? e.message : 'unknown')}`,
+    );
+  }
+});
+
+// POST /api/whoop/sync-all - Sync all WHOOP data
+app.post('/api/whoop/sync-all', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+
+  // Check if connected
+  const connected = await isWhoopConnected(db, userId);
+  if (!connected) {
+    return c.json({ message: 'WHOOP not connected' }, 400);
+  }
+
+  try {
+    const result = await syncAllWhoopData(db, c.env, userId);
+    return c.json({
+      success: result.errors.length === 0,
+      ...result,
+    });
+  } catch (e) {
+    console.error('[WHOOP] Sync error:', e);
+    return c.json(
+      { message: 'Sync failed', error: e instanceof Error ? e.message : 'Unknown' },
+      500,
+    );
+  }
+});
+
+// GET /api/whoop/status - Check WHOOP connection status
+app.get('/api/whoop/status', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+
+  const connected = await isWhoopConnected(db, userId);
+  if (!connected) {
+    return c.json({ connected: false });
+  }
+
+  const whoopUserId = await getWhoopUserId(db, userId);
+  const profile = await getWhoopProfileByUserId(db, userId);
+
+  return c.json({
+    connected: true,
+    whoopUserId,
+    profile: profile
+      ? {
+          email: profile.email,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+        }
+      : null,
+  });
+});
+
+// POST /api/whoop/disconnect - Disconnect WHOOP
+app.post('/api/whoop/disconnect', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+
+  try {
+    await revokeWhoopIntegration(db, userId);
+    return c.json({ success: true });
+  } catch (e) {
+    console.error('[WHOOP] Disconnect error:', e);
+    return c.json({ message: 'Disconnect failed' }, 500);
+  }
+});
+
+// POST /api/webhooks/whoop - WHOOP webhook receiver
+app.post('/api/webhooks/whoop', async (c) => {
+  const timestamp = c.req.raw.headers.get('X-Whoop-Timestamp') ?? '';
+  const signature = c.req.raw.headers.get('X-Whoop-Signature') ?? '';
+  const rawBody = await c.req.raw.text();
+
+  // Verify signature
+  const isValid = await verifyWebhookSignature(c.env, timestamp, signature, rawBody);
+  if (!isValid) {
+    console.error('[WHOOP Webhook] Invalid signature');
+    return c.json({ error: 'Invalid signature' }, 401);
+  }
+
+  try {
+    const body = JSON.parse(rawBody);
+    const eventType = body.eventType ?? body.type ?? 'unknown';
+    const whoopUserId = String(body.userId ?? body.user_id ?? '');
+
+    if (!whoopUserId) {
+      return c.json({ error: 'Missing user ID' }, 400);
+    }
+
+    const db = getDb(c);
+    const result = await handleWebhookEvent(db, c.env, {
+      eventType,
+      userId: whoopUserId,
+      data: body,
+    });
+
+    if (result.success) {
+      return c.json({ success: true });
+    } else {
+      return c.json({ error: result.error }, 400);
+    }
+  } catch (e) {
+    console.error('[WHOOP Webhook] Error:', e);
+    return c.json({ error: 'Webhook processing failed' }, 500);
+  }
+});
+
+// GET /api/webhooks/whoop - WHOOP webhook verification (GET for URL verification)
+app.get('/api/webhooks/whoop', async (c) => {
+  return c.json({ ok: true, message: 'WHOOP webhook endpoint active' });
 });
 
 export default app;
