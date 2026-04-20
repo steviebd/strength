@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_CHUNK_SIZE, DEFAULT_CONCURRENCY, batchParallel, chunkedQuery } from './d1-batch';
+import {
+  DEFAULT_CHUNK_SIZE,
+  DEFAULT_CONCURRENCY,
+  DEFAULT_MAX_QUERY_PARAMS,
+  batchParallel,
+  chunkedInsert,
+  chunkedQuery,
+} from './d1-batch';
 
 describe('d1-batch constants', () => {
   it('DEFAULT_CHUNK_SIZE should be 100', () => {
@@ -8,6 +15,10 @@ describe('d1-batch constants', () => {
 
   it('DEFAULT_CONCURRENCY should be 4', () => {
     expect(DEFAULT_CONCURRENCY).toBe(4);
+  });
+
+  it('DEFAULT_MAX_QUERY_PARAMS should be 100', () => {
+    expect(DEFAULT_MAX_QUERY_PARAMS).toBe(100);
   });
 });
 
@@ -155,5 +166,45 @@ describe('chunkedQuery ordering', () => {
 
     expect(callCount).toBe(3);
     expect(results.map((r) => r.id)).toEqual(ids);
+  });
+});
+
+describe('chunkedInsert', () => {
+  it('should reduce insert chunk size when rows are too wide for the query param budget', async () => {
+    const insertedChunks: number[] = [];
+    const db = {
+      insert: () => ({
+        values: (chunk: unknown[]) => ({
+          run: async () => {
+            insertedChunks.push(chunk.length);
+            return { rowsAffected: chunk.length };
+          },
+        }),
+      }),
+    };
+
+    const rows = Array.from({ length: 36 }, (_, i) => ({
+      id: `row-${i}`,
+      cycleId: 'cycle-1',
+      templateId: null,
+      weekNumber: 1,
+      sessionNumber: i + 1,
+      sessionName: `Session ${i + 1}`,
+      targetLifts: '[]',
+      isComplete: false,
+      workoutId: null,
+      scheduledDate: '2026-04-20',
+      scheduledTime: '07:00',
+    }));
+
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      chunkSize: 100,
+      maxQueryParams: 100,
+    });
+
+    expect(inserted).toBe(36);
+    expect(insertedChunks).toEqual([9, 9, 9, 9]);
   });
 });

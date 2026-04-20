@@ -73,7 +73,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
 
       workouts.push({
         weekNumber: week,
-        sessionNumber: session,
+        sessionNumber: workoutIndex,
         sessionName: `Week ${week} - ${isDayA ? 'Day A' : 'Day B'}`,
         exercises,
       });

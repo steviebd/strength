@@ -25,11 +25,12 @@ export interface TargetLift {
   lift?: string;
   targetWeight: number;
   sets: number;
-  reps: number;
+  reps: number | string;
   isAccessory?: boolean;
   isRequired?: boolean;
   accessoryId?: string;
   addedWeight?: number;
+  isAmrap?: boolean;
 }
 
 export interface ProgramCycleWorkoutData {

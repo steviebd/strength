@@ -33,7 +33,11 @@ async function fetchWorkout(workoutId: string): Promise<Workout> {
 
 export default function WorkoutSessionScreen() {
   const router = useRouter();
-  const { workoutId, source } = useLocalSearchParams<{ workoutId?: string; source?: string }>();
+  const { workoutId, source, cycleId } = useLocalSearchParams<{
+    workoutId?: string;
+    source?: string;
+    cycleId?: string;
+  }>();
   const {
     workout,
     exercises,
@@ -94,6 +98,7 @@ export default function WorkoutSessionScreen() {
 
   const isViewingCompleted = !!workoutId && !!workout?.completedAt;
   const isProgramSession = source === 'program';
+  const isProgramOneRMTest = source === 'program-1rm-test';
 
   const computedVolume = exercises.reduce((total, ex) => {
     return (
@@ -223,8 +228,20 @@ export default function WorkoutSessionScreen() {
       queryClient.invalidateQueries({ queryKey: ['workout', workoutId] });
     }
     queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+    if (isProgramOneRMTest && typeof cycleId === 'string') {
+      router.push(`/program-1rm-test?cycleId=${cycleId}`);
+      return;
+    }
     router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts');
-  }, [completeWorkout, isProgramSession, queryClient, router, workoutId]);
+  }, [
+    completeWorkout,
+    cycleId,
+    isProgramOneRMTest,
+    isProgramSession,
+    queryClient,
+    router,
+    workoutId,
+  ]);
 
   if (workoutId && isLoadingWorkout) {
     return (
@@ -350,6 +367,10 @@ export default function WorkoutSessionScreen() {
                     className="flex-1 h-12 items-center justify-center rounded-xl border border-darkBorder bg-darkCard"
                     onPress={async () => {
                       await discardWorkout();
+                      if (isProgramOneRMTest && typeof cycleId === 'string') {
+                        router.push(`/program-1rm-test?cycleId=${cycleId}`);
+                        return;
+                      }
                       router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts');
                     }}
                   >

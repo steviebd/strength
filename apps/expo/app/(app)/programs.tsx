@@ -3,7 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
+  LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -12,10 +13,10 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { env } from '@/lib/env';
 import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { ScrollProvider } from '@/context/ScrollContext';
 
 type WeightUnit = 'kg' | 'lbs';
 
@@ -37,7 +38,15 @@ interface ActiveProgram {
   name: string;
   currentWeek: number | null;
   currentSession: number | null;
+  totalSessionsCompleted: number;
   totalSessionsPlanned: number;
+}
+
+interface LatestOneRMs {
+  squat1rm: number | null;
+  bench1rm: number | null;
+  deadlift1rm: number | null;
+  ohp1rm: number | null;
 }
 
 const PROGRAM_INFO: ProgramListItem[] = [
@@ -129,43 +138,134 @@ const PROGRAM_INFO: ProgramListItem[] = [
   },
 ];
 
+function getDisplaySessionNumber(program: ActiveProgram) {
+  return Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
+}
+
 export default function ProgramsScreen() {
   const router = useRouter();
-  const [activeProgram, setActiveProgram] = useState<ActiveProgram | null>(null);
+  const [availablePrograms, setAvailablePrograms] = useState<ProgramListItem[]>(PROGRAM_INFO);
+  const [activePrograms, setActivePrograms] = useState<ActiveProgram[]>([]);
+  const [latestOneRMs, setLatestOneRMs] = useState<LatestOneRMs | null>(null);
   const [loading, setLoading] = useState(true);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<ProgramListItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [startingProgram, setStartingProgram] = useState(false);
-  const [openingProgramWorkout, setOpeningProgramWorkout] = useState(false);
+  const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
+  const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const { weightUnit } = useUserPreferences();
+  const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRefs = useRef<Record<string, TextInput | null>>({});
+  const inputPositions = useRef<Record<string, number>>({});
+  const activeInputKey = useRef<string | null>(null);
+  const keyboardHeight = useRef(0);
+  const scrollViewportHeight = useRef(0);
+  const scrollOffsetY = useRef(0);
+  const pendingScrollTimeouts = useRef<number[]>([]);
+  const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
+
   const scrollToInput = (key: string) => {
-    const ref = inputRefs.current[key];
-    if (ref && scrollViewRef.current) {
-      ref.measure(
-        (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-          const KEYBOARD_HEIGHT = 400;
-          const TOP_OFFSET = 50;
-          const targetY = pageY - KEYBOARD_HEIGHT - TOP_OFFSET;
-          scrollViewRef.current?.scrollTo({ y: Math.max(0, targetY), animated: true });
-        },
-      );
+    const scrollView = scrollViewRef.current;
+    if (!scrollView || scrollViewportHeight.current === 0) {
+      return;
+    }
+
+    const inputY = inputPositions.current[key];
+    if (inputY === undefined) {
+      return;
+    }
+
+    const desiredTopOffset = Platform.OS === 'android' ? 8 : 24;
+    const targetY = Math.max(0, inputY - desiredTopOffset);
+
+    scrollView.scrollTo({ y: targetY, animated: true });
+  };
+
+  const clearPendingScrolls = () => {
+    pendingScrollTimeouts.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    pendingScrollTimeouts.current = [];
+  };
+
+  const scheduleScrollToInput = (key: string) => {
+    clearPendingScrolls();
+    [0, 120, 280, 420].forEach((delay) => {
+      const timeoutId = setTimeout(() => {
+        if (activeInputKey.current === key) {
+          scrollToInput(key);
+        }
+      }, delay);
+      pendingScrollTimeouts.current.push(timeoutId as unknown as number);
+    });
+  };
+
+  const focusNextInput = (key: (typeof inputOrder)[number]) => {
+    const currentIndex = inputOrder.indexOf(key);
+    const nextKey = inputOrder[currentIndex + 1];
+
+    if (nextKey) {
+      inputRefs.current[nextKey]?.focus();
     }
   };
 
+  const handleInputLayout =
+    (key: string) =>
+    (event: LayoutChangeEvent): void => {
+      inputPositions.current[key] = event.nativeEvent.layout.y;
+    };
+
   useEffect(() => {
-    fetchActiveProgram();
+    void fetchProgramsScreenData();
   }, []);
 
-  async function fetchActiveProgram() {
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      keyboardHeight.current = event.endCoordinates.height;
+      setKeyboardInset(event.endCoordinates.height);
+
+      if (activeInputKey.current) {
+        scheduleScrollToInput(activeInputKey.current);
+      }
+    });
+
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      keyboardHeight.current = 0;
+      setKeyboardInset(0);
+      clearPendingScrolls();
+    });
+
+    return () => {
+      clearPendingScrolls();
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  async function fetchProgramsScreenData() {
     try {
-      const data = await apiFetch<ActiveProgram | null>('/api/programs/active');
-      setActiveProgram(data);
+      const [programs, activePrograms] = await Promise.all([
+        apiFetch<ProgramListItem[]>('/api/programs'),
+        apiFetch<ActiveProgram[]>('/api/programs/active'),
+      ]);
+      setAvailablePrograms(
+        Array.isArray(programs) && programs.length > 0 ? programs : PROGRAM_INFO,
+      );
+      setActivePrograms(Array.isArray(activePrograms) ? activePrograms : []);
+      try {
+        const latestOneRMs = await apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms');
+        setLatestOneRMs(latestOneRMs);
+      } catch {
+        setLatestOneRMs(null);
+      }
     } catch (e) {
-      console.error('Failed to fetch active program:', e);
+      console.error('Failed to fetch programs:', e);
     } finally {
       setLoading(false);
     }
@@ -240,7 +340,7 @@ export default function ProgramsScreen() {
       setShowDetailModal(false);
       setSelectedProgram(null);
       setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
-      await fetchActiveProgram();
+      await fetchProgramsScreenData();
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
     } finally {
@@ -248,18 +348,18 @@ export default function ProgramsScreen() {
     }
   };
 
-  const handleOpenCurrentProgramWorkout = async () => {
-    if (!activeProgram?.id) {
+  const handleOpenCurrentProgramWorkout = async (program: ActiveProgram) => {
+    if (!program.id) {
       return;
     }
 
-    setOpeningProgramWorkout(true);
+    setOpeningProgramWorkoutId(program.id);
     try {
       const result = await apiFetch<{
         workoutId: string;
         created: boolean;
         completed: boolean;
-      }>(`/api/programs/cycles/${activeProgram.id}/workouts/current/start`, {
+      }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
       });
 
@@ -268,7 +368,7 @@ export default function ProgramsScreen() {
           'Session Already Completed',
           'This program session has already been completed.',
         );
-        await fetchActiveProgram();
+        await fetchProgramsScreenData();
         return;
       }
 
@@ -276,8 +376,29 @@ export default function ProgramsScreen() {
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
     } finally {
-      setOpeningProgramWorkout(false);
+      setOpeningProgramWorkoutId(null);
     }
+  };
+
+  const handleDeleteProgram = (program: ActiveProgram) => {
+    Alert.alert('Delete Active Program', `Delete ${program.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingProgramId(program.id);
+          try {
+            await apiFetch(`/api/programs/cycles/${program.id}`, { method: 'DELETE' });
+            await fetchProgramsScreenData();
+          } catch (e) {
+            Alert.alert('Error', e instanceof Error ? e.message : 'Failed to delete program');
+          } finally {
+            setDeletingProgramId(null);
+          }
+        },
+      },
+    ]);
   };
 
   const openProgramDetail = (program: ProgramListItem) => {
@@ -286,6 +407,19 @@ export default function ProgramsScreen() {
   };
 
   const openStartModal = () => {
+    if (latestOneRMs) {
+      const toDisplay = (value: number | null) => {
+        if (value === null) return '';
+        return weightUnit === 'lbs' ? (value * 2.20462).toFixed(1) : value.toString();
+      };
+
+      setValues({
+        squat: toDisplay(latestOneRMs.squat1rm),
+        bench: toDisplay(latestOneRMs.bench1rm),
+        deadlift: toDisplay(latestOneRMs.deadlift1rm),
+        ohp: toDisplay(latestOneRMs.ohp1rm),
+      });
+    }
     setShowStartModal(true);
   };
 
@@ -304,50 +438,87 @@ export default function ProgramsScreen() {
             <View className="flex-1 items-center justify-center py-20">
               <ActivityIndicator size="large" color="#ef6f4f" />
             </View>
-          ) : activeProgram ? (
-            <Pressable
-              className="mb-6 rounded-2xl border border-coral/50 bg-coral/10 p-5"
-              onPress={handleOpenCurrentProgramWorkout}
-              disabled={openingProgramWorkout}
-            >
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="rounded-full bg-coral/20 px-3 py-1">
-                  <Text className="text-coral text-xs font-semibold">Active</Text>
-                </View>
-                {activeProgram.currentWeek && (
-                  <Text className="text-darkMuted text-xs">
-                    Week {activeProgram.currentWeek} · Session {activeProgram.currentSession ?? 1}
-                  </Text>
-                )}
-              </View>
-              <Text className="text-darkText text-lg font-semibold mb-1">{activeProgram.name}</Text>
-              <Text className="text-darkMuted text-sm mb-4">
-                {activeProgram.currentSession ?? 1} / {activeProgram.totalSessionsPlanned} sessions
-              </Text>
-              <View className="h-2 overflow-hidden rounded-full bg-darkBorder">
-                <View
-                  className="h-full rounded-full bg-coral"
-                  style={{
-                    width: `${((activeProgram.currentSession ?? 1) / activeProgram.totalSessionsPlanned) * 100}%`,
-                  }}
-                />
-              </View>
-              <View className="mt-4 flex-row items-center justify-between">
-                <Text className="text-coral text-sm font-medium">
-                  {openingProgramWorkout ? 'Opening session...' : 'Resume current session'}
-                </Text>
-                {openingProgramWorkout ? (
-                  <ActivityIndicator size="small" color="#ef6f4f" />
-                ) : (
-                  <Text className="text-coral text-base">→</Text>
-                )}
-              </View>
-            </Pressable>
+          ) : activePrograms.length > 0 ? (
+            <View className="mb-6 gap-4">
+              {activePrograms.map((activeProgram) => {
+                const isOpening = openingProgramWorkoutId === activeProgram.id;
+                const currentSession = activeProgram.currentSession ?? 1;
+                const displaySessionNumber = getDisplaySessionNumber(activeProgram);
+                const progress = Math.min(
+                  100,
+                  (displaySessionNumber / activeProgram.totalSessionsPlanned) * 100,
+                );
+
+                return (
+                  <View
+                    key={activeProgram.id}
+                    className="rounded-2xl border border-coral/50 bg-coral/10 p-5"
+                  >
+                    <View className="mb-3 flex-row items-center justify-between">
+                      <View className="rounded-full bg-coral/20 px-3 py-1">
+                        <Text className="text-coral text-xs font-semibold">Active</Text>
+                      </View>
+                      {activeProgram.currentWeek ? (
+                        <Text className="text-darkMuted text-xs">
+                          Week {activeProgram.currentWeek} · Session {currentSession}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text className="mb-1 text-lg font-semibold text-darkText">
+                      {activeProgram.name}
+                    </Text>
+                    <Text className="mb-4 text-sm text-darkMuted">
+                      {displaySessionNumber} / {activeProgram.totalSessionsPlanned} sessions
+                    </Text>
+                    <View className="h-2 overflow-hidden rounded-full bg-darkBorder">
+                      <View
+                        className="h-full rounded-full bg-coral"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </View>
+                    <View className="mt-4 flex-row gap-3">
+                      <Pressable
+                        className={`flex-1 flex-row items-center justify-center rounded-xl bg-coral px-4 py-3 ${
+                          isOpening ? 'opacity-50' : ''
+                        }`}
+                        onPress={() => handleOpenCurrentProgramWorkout(activeProgram)}
+                        disabled={isOpening || deletingProgramId === activeProgram.id}
+                      >
+                        {isOpening ? <ActivityIndicator size="small" color="#ffffff" /> : null}
+                        <Text className="text-sm font-semibold text-white">
+                          {isOpening ? ' Opening...' : 'Resume session'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        className="items-center justify-center rounded-xl border border-pine/40 px-4 py-3"
+                        onPress={() => router.push(`/program-1rm-test?cycleId=${activeProgram.id}`)}
+                        disabled={isOpening || deletingProgramId === activeProgram.id}
+                      >
+                        <Text className="text-sm font-medium text-pine">1RM Test</Text>
+                      </Pressable>
+                      <Pressable
+                        className={`items-center justify-center rounded-xl border border-red-500/40 px-4 py-3 ${
+                          deletingProgramId === activeProgram.id ? 'opacity-50' : ''
+                        }`}
+                        onPress={() => handleDeleteProgram(activeProgram)}
+                        disabled={isOpening || deletingProgramId === activeProgram.id}
+                      >
+                        {deletingProgramId === activeProgram.id ? (
+                          <ActivityIndicator size="small" color="#f87171" />
+                        ) : (
+                          <Text className="text-sm font-medium text-red-400">Delete</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           ) : null}
 
           <Text className="text-darkText text-lg font-semibold mb-4">Available Programs</Text>
           <View className="gap-4">
-            {PROGRAM_INFO.map((program) => (
+            {availablePrograms.map((program) => (
               <Pressable
                 key={program.slug}
                 className="rounded-xl border border-darkBorder bg-darkCard p-5"
@@ -423,103 +594,119 @@ export default function ProgramsScreen() {
 
       {/* 1RM Input Modal */}
       <View className={showStartModal ? 'absolute inset-0 bg-darkBg' : 'hidden'}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-          style={{ flex: 1 }}
+        <ScrollView
+          ref={scrollViewRef}
+          className="flex-1"
+          contentContainerStyle={{
+            paddingBottom: keyboardInset + insets.bottom + Math.max(520, viewportHeight * 1.35),
+          }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          onLayout={(event) => {
+            scrollViewportHeight.current = event.nativeEvent.layout.height;
+            setViewportHeight(event.nativeEvent.layout.height);
+          }}
+          onScroll={(event) => {
+            scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         >
-          <ScrollProvider scrollViewRef={scrollViewRef}>
-            <ScrollView
-              ref={scrollViewRef}
-              className="flex-1"
-              contentContainerStyle={{ paddingBottom: 100 }}
-              keyboardShouldPersistTaps="handled"
+          <View className="px-6 pt-16">
+            <View className="flex-row items-center justify-between mb-6">
+              <Pressable
+                onPress={() => setShowStartModal(false)}
+                className="h-10 w-10 items-center justify-center rounded-full bg-darkBorder"
+              >
+                <Text className="text-darkText text-xl">←</Text>
+              </Pressable>
+              <Text className="text-darkText text-lg font-semibold">Enter 1RM</Text>
+              <View className="w-10" />
+            </View>
+
+            <View className="rounded-xl border border-darkBorder bg-darkCard p-4 mb-6">
+              <Text className="text-darkText text-sm font-semibold mb-2">
+                How to estimate your 1RM
+              </Text>
+              <Text className="text-darkMuted text-xs leading-relaxed">
+                Your 1RM is the maximum weight you can lift for a single rep with good form. If
+                you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
+                using the formula: 1RM = weight × (1 + reps/30).
+              </Text>
+            </View>
+
+            <Text className="text-darkMuted text-sm mb-1">Starting Program</Text>
+            <Text className="text-darkText text-xl font-semibold mb-2">
+              {selectedProgram?.name}
+            </Text>
+            <Text className="text-darkMuted text-sm mb-8">
+              Enter your current one-rep max (1RM) estimates for each lift. These will be used to
+              calculate your working weights.
+            </Text>
+
+            <View className="gap-4 mb-8">
+              {[
+                { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
+                { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
+                { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
+                { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
+              ].map(({ key, label, icon }) => (
+                <View key={key} className="rounded-xl border border-darkBorder bg-darkCard p-4">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-xl">{icon}</Text>
+                      <Text className="text-darkText font-medium">{label}</Text>
+                    </View>
+                    <Text className="text-darkMuted text-xs">{weightUnit}</Text>
+                  </View>
+                  <TextInput
+                    ref={(ref) => {
+                      inputRefs.current[key] = ref;
+                    }}
+                    className="text-darkText text-2xl font-bold bg-darkBg rounded-lg px-4 py-3"
+                    onLayout={handleInputLayout(key)}
+                    value={values[key as keyof typeof values]}
+                    onChangeText={(v) =>
+                      setValues((prev) => ({ ...prev, [key]: v.replace(/[^0-9.]/g, '') }))
+                    }
+                    onFocus={() => {
+                      activeInputKey.current = key;
+                      scheduleScrollToInput(key);
+                    }}
+                    onBlur={() => {
+                      if (activeInputKey.current === key) {
+                        activeInputKey.current = null;
+                      }
+                      clearPendingScrolls();
+                    }}
+                    placeholder="0"
+                    placeholderTextColor="#71717a"
+                    keyboardType="decimal-pad"
+                    returnKeyType={key === 'ohp' ? 'done' : 'next'}
+                    blurOnSubmit={key === 'ohp'}
+                    onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
+                  />
+                </View>
+              ))}
+            </View>
+
+            <Pressable
+              className={`rounded-xl bg-coral py-4 ${startingProgram ? 'opacity-50' : ''}`}
+              onPress={handleStartProgram}
+              disabled={startingProgram}
             >
-              <View className="px-6 pt-16">
-                <View className="flex-row items-center justify-between mb-6">
-                  <Pressable
-                    onPress={() => setShowStartModal(false)}
-                    className="h-10 w-10 items-center justify-center rounded-full bg-darkBorder"
-                  >
-                    <Text className="text-darkText text-xl">←</Text>
-                  </Pressable>
-                  <Text className="text-darkText text-lg font-semibold">Enter 1RM</Text>
-                  <View className="w-10" />
+              {startingProgram ? (
+                <View className="flex-row items-center justify-center gap-2">
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text className="text-white font-semibold">Starting Program...</Text>
                 </View>
-
-                <View className="rounded-xl border border-darkBorder bg-darkCard p-4 mb-6">
-                  <Text className="text-darkText text-sm font-semibold mb-2">
-                    How to estimate your 1RM
-                  </Text>
-                  <Text className="text-darkMuted text-xs leading-relaxed">
-                    Your 1RM is the maximum weight you can lift for a single rep with good form. If
-                    you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
-                    using the formula: 1RM = weight × (1 + reps/30).
-                  </Text>
-                </View>
-
-                <Text className="text-darkMuted text-sm mb-1">Starting Program</Text>
-                <Text className="text-darkText text-xl font-semibold mb-2">
-                  {selectedProgram?.name}
+              ) : (
+                <Text className="text-center text-base font-semibold text-white">
+                  Start Program
                 </Text>
-                <Text className="text-darkMuted text-sm mb-8">
-                  Enter your current one-rep max (1RM) estimates for each lift. These will be used
-                  to calculate your working weights.
-                </Text>
-
-                <View className="gap-4 mb-8">
-                  {[
-                    { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
-                    { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
-                    { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
-                    { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
-                  ].map(({ key, label, icon }) => (
-                    <View key={key} className="rounded-xl border border-darkBorder bg-darkCard p-4">
-                      <View className="flex-row items-center justify-between mb-2">
-                        <View className="flex-row items-center gap-2">
-                          <Text className="text-xl">{icon}</Text>
-                          <Text className="text-darkText font-medium">{label}</Text>
-                        </View>
-                        <Text className="text-darkMuted text-xs">{weightUnit}</Text>
-                      </View>
-                      <TextInput
-                        ref={(ref) => {
-                          inputRefs.current[key] = ref;
-                        }}
-                        className="text-darkText text-2xl font-bold bg-darkBg rounded-lg px-4 py-3"
-                        value={values[key as keyof typeof values]}
-                        onChangeText={(v) =>
-                          setValues((prev) => ({ ...prev, [key]: v.replace(/[^0-9.]/g, '') }))
-                        }
-                        onFocus={() => scrollToInput(key)}
-                        placeholder="0"
-                        placeholderTextColor="#71717a"
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  ))}
-                </View>
-
-                <Pressable
-                  className={`rounded-xl bg-coral py-4 ${startingProgram ? 'opacity-50' : ''}`}
-                  onPress={handleStartProgram}
-                  disabled={startingProgram}
-                >
-                  {startingProgram ? (
-                    <View className="flex-row items-center justify-center gap-2">
-                      <ActivityIndicator size="small" color="#ffffff" />
-                      <Text className="text-white font-semibold">Starting Program...</Text>
-                    </View>
-                  ) : (
-                    <Text className="text-center text-base font-semibold text-white">
-                      Start Program
-                    </Text>
-                  )}
-                </Pressable>
-              </View>
-            </ScrollView>
-          </ScrollProvider>
-        </KeyboardAvoidingView>
+              )}
+            </Pressable>
+          </View>
+        </ScrollView>
       </View>
     </View>
   );

@@ -18,9 +18,11 @@ function calculateTargetWeight(
 
 export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
+  let workoutIndex = 0;
 
   for (let week = 1; week <= 8; week++) {
     for (let session = 1; session <= 3; session++) {
+      workoutIndex++;
       const exercises: ProgramWorkout['exercises'] = [];
 
       if (session === 1) {
@@ -148,7 +150,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
 
       workouts.push({
         weekNumber: week,
-        sessionNumber: session,
+        sessionNumber: workoutIndex,
         sessionName:
           session === 1 ? 'Lower Strength' : session === 2 ? 'Upper Strength' : 'Full Body',
         exercises,

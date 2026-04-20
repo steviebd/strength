@@ -30,8 +30,9 @@ export const megsquatsUpperAccessories: ProgramAccessory[] = [
 ];
 
 export function getMegsquatsAccessories(_week: number, session: number): ProgramAccessory[] {
-  const isLowerA = session === 1;
-  const isUpperA = session === 2;
+  const dayOfWeek = ((session - 1) % 3) + 1;
+  const isLowerA = dayOfWeek === 1;
+  const isUpperA = dayOfWeek === 2;
 
   if (isLowerA) {
     return megsquatsAccessories.filter((acc) => ['leg-curls', 'planks'].includes(acc.accessoryId));

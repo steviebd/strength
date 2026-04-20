@@ -19,11 +19,13 @@ export const fullBodyAccessories: ProgramAccessory[] = [
 ];
 
 export function getJenSinklerAccessories(_week: number, session: number): ProgramAccessory[] {
-  if (session === 1) {
+  const dayOfWeek = ((session - 1) % 3) + 1;
+
+  if (dayOfWeek === 1) {
     return [{ accessoryId: 'planks', sets: 3, reps: '45 sec', isRequired: false }];
   }
 
-  if (session === 2) {
+  if (dayOfWeek === 2) {
     return [
       { accessoryId: 'dumbbell-curl', sets: 3, reps: 12, isRequired: false },
       { accessoryId: 'lateral-raises', sets: 3, reps: 15, isRequired: false },

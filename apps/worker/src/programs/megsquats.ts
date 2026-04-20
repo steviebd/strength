@@ -28,6 +28,7 @@ function calculateTargetWeight(
 
 export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
+  let workoutIndex = 0;
   const trainingMaxes = {
     squat: oneRMs.squat * 0.85,
     bench: oneRMs.bench * 0.85,
@@ -39,6 +40,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
     const isDeload = week === 4 || week === 8 || week === 12;
 
     for (let session = 1; session <= 3; session++) {
+      workoutIndex++;
       const isLowerA = session === 1;
       const isUpperA = session === 2;
 
@@ -207,7 +209,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
 
       workouts.push({
         weekNumber: week,
-        sessionNumber: session,
+        sessionNumber: workoutIndex,
         sessionName: isLowerA ? 'Lower A' : isUpperA ? 'Upper A' : 'Full Body',
         exercises,
       });

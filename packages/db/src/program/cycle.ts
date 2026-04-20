@@ -61,6 +61,7 @@ export async function createProgramCycle(
   userId: string,
   data: CreateProgramCycleData,
 ): Promise<UserProgramCycleRow> {
+  const firstWorkout = data.workouts?.[0];
   const cycle = await db
     .insert(userProgramCycles)
     .values({
@@ -81,8 +82,8 @@ export async function createProgramCycle(
       preferredTimeOfDay: data.preferredTimeOfDay ?? null,
       programStartDate: data.programStartDate ?? null,
       firstSessionDate: data.firstSessionDate ?? null,
-      currentWeek: 1,
-      currentSession: 1,
+      currentWeek: firstWorkout?.weekNumber ?? 1,
+      currentSession: firstWorkout?.sessionNumber ?? 1,
       totalSessionsCompleted: 0,
       status: 'active',
     })

@@ -5,6 +5,7 @@ type DbClient = DrizzleD1Database<Record<string, unknown>>;
 
 export const DEFAULT_CHUNK_SIZE = 100;
 export const DEFAULT_CONCURRENCY = 4;
+export const DEFAULT_MAX_QUERY_PARAMS = 100;
 
 export async function batchParallel<T>(
   tasks: (() => Promise<T>)[],
@@ -47,6 +48,27 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
+function getSafeInsertChunkSize(
+  rows: Record<string, unknown>[],
+  chunkSize: number,
+  maxQueryParams: number,
+): number {
+  const definedColumns = new Set<string>();
+  for (const row of rows) {
+    for (const [key, value] of Object.entries(row)) {
+      if (value !== undefined) {
+        definedColumns.add(key);
+      }
+    }
+  }
+
+  if (definedColumns.size === 0) {
+    return chunkSize;
+  }
+
+  return Math.max(1, Math.min(chunkSize, Math.floor(maxQueryParams / definedColumns.size)));
+}
+
 export async function chunkedQuery<T>(
   db: DbClient,
   config: {
@@ -86,13 +108,24 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     table: T;
     rows: T['$inferInsert'][];
     chunkSize?: number;
+    maxQueryParams?: number;
   },
 ): Promise<number> {
-  const { table, rows, chunkSize = DEFAULT_CHUNK_SIZE } = config;
+  const {
+    table,
+    rows,
+    chunkSize = DEFAULT_CHUNK_SIZE,
+    maxQueryParams = DEFAULT_MAX_QUERY_PARAMS,
+  } = config;
 
   if (rows.length === 0) return 0;
 
-  const chunks = chunkArray(rows, chunkSize);
+  const safeChunkSize = getSafeInsertChunkSize(
+    rows as Record<string, unknown>[],
+    chunkSize,
+    maxQueryParams,
+  );
+  const chunks = chunkArray(rows, safeChunkSize);
 
   const chunkTasks = chunks.map((chunk) => async () => {
     const result = (await db.insert(table).values(chunk).run()) as unknown as {

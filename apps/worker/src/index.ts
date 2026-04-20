@@ -11,6 +11,7 @@ import {
   getOrCreateExerciseForUser,
   getProgramCycleWithWorkouts,
   getProgramCycleById,
+  softDeleteProgramCycle,
 } from '@strength/db';
 import { getProgram, generateWorkoutSchedule } from './programs';
 
@@ -295,17 +296,330 @@ function normalizeProgramReps(value: unknown): number | null {
   return null;
 }
 
+type SerializedProgramTargetLift = {
+  name?: unknown;
+  lift?: unknown;
+  accessoryId?: unknown;
+  targetWeight?: unknown;
+  addedWeight?: unknown;
+  sets?: unknown;
+  reps?: unknown;
+  isAccessory?: unknown;
+  isRequired?: unknown;
+  isAmrap?: unknown;
+};
+
+type NormalizedProgramTargetLift = {
+  name: string;
+  lift?: string;
+  accessoryId?: string;
+  targetWeight: number | null;
+  addedWeight: number;
+  sets: number;
+  reps: number | string | null;
+  isAccessory: boolean;
+  isRequired: boolean;
+  isAmrap: boolean;
+};
+
+function isProgramAmrap(targetLift: { name?: unknown; reps?: unknown; isAmrap?: unknown }) {
+  if (targetLift.isAmrap === true) {
+    return true;
+  }
+
+  if (typeof targetLift.reps === 'string' && targetLift.reps.trim().toUpperCase() === 'AMRAP') {
+    return true;
+  }
+
+  return typeof targetLift.name === 'string' && /\d+\+$/.test(targetLift.name.trim());
+}
+
+function normalizeProgramTargetLift(
+  targetLift: SerializedProgramTargetLift,
+  defaults?: { isAccessory?: boolean; isRequired?: boolean },
+): NormalizedProgramTargetLift | null {
+  if (typeof targetLift.name !== 'string' || targetLift.name.trim().length === 0) {
+    return null;
+  }
+
+  const isAccessory =
+    typeof targetLift.isAccessory === 'boolean'
+      ? targetLift.isAccessory
+      : (defaults?.isAccessory ?? false);
+  const isRequired =
+    typeof targetLift.isRequired === 'boolean'
+      ? targetLift.isRequired
+      : (defaults?.isRequired ?? true);
+  const isAmrap = isProgramAmrap(targetLift);
+
+  return {
+    name: targetLift.name,
+    lift: typeof targetLift.lift === 'string' ? targetLift.lift : undefined,
+    accessoryId: typeof targetLift.accessoryId === 'string' ? targetLift.accessoryId : undefined,
+    targetWeight:
+      typeof targetLift.targetWeight === 'number' && Number.isFinite(targetLift.targetWeight)
+        ? targetLift.targetWeight
+        : null,
+    addedWeight:
+      typeof targetLift.addedWeight === 'number' && Number.isFinite(targetLift.addedWeight)
+        ? targetLift.addedWeight
+        : 0,
+    sets: normalizeProgramSetCount(targetLift.sets, 1),
+    reps:
+      typeof targetLift.reps === 'number' || typeof targetLift.reps === 'string'
+        ? targetLift.reps
+        : null,
+    isAccessory,
+    isRequired,
+    isAmrap,
+  };
+}
+
 function parseProgramTargetLifts(targetLifts: string | null | undefined) {
   if (!targetLifts) {
-    return [];
+    return {
+      exercises: [] as NormalizedProgramTargetLift[],
+      accessories: [] as NormalizedProgramTargetLift[],
+      all: [] as NormalizedProgramTargetLift[],
+    };
   }
 
   try {
     const parsed = JSON.parse(targetLifts);
-    return Array.isArray(parsed) ? parsed : [];
+    const exercises: NormalizedProgramTargetLift[] = [];
+    const accessories: NormalizedProgramTargetLift[] = [];
+
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        const normalized = normalizeProgramTargetLift(item ?? {});
+        if (!normalized) {
+          continue;
+        }
+
+        if (normalized.isAccessory) {
+          accessories.push(normalized);
+        } else {
+          exercises.push(normalized);
+        }
+      }
+    } else if (parsed && typeof parsed === 'object') {
+      const record = parsed as {
+        exercises?: SerializedProgramTargetLift[];
+        accessories?: SerializedProgramTargetLift[];
+      };
+
+      for (const item of record.exercises ?? []) {
+        const normalized = normalizeProgramTargetLift(item ?? {}, { isAccessory: false });
+        if (normalized) {
+          exercises.push(normalized);
+        }
+      }
+
+      for (const item of record.accessories ?? []) {
+        const normalized = normalizeProgramTargetLift(item ?? {}, {
+          isAccessory: true,
+          isRequired: false,
+        });
+        if (normalized) {
+          accessories.push(normalized);
+        }
+      }
+    }
+
+    return {
+      exercises,
+      accessories,
+      all: [...exercises, ...accessories],
+    };
   } catch {
-    return [];
+    return {
+      exercises: [] as NormalizedProgramTargetLift[],
+      accessories: [] as NormalizedProgramTargetLift[],
+      all: [] as NormalizedProgramTargetLift[],
+    };
   }
+}
+
+function getCurrentCycleWorkout(
+  cycle: { currentWeek: number; currentSession: number },
+  workouts: Array<{
+    id: string;
+    weekNumber: number;
+    sessionNumber: number;
+    isComplete?: boolean;
+  }>,
+) {
+  return (
+    workouts.find(
+      (workout) =>
+        workout.weekNumber === cycle.currentWeek && workout.sessionNumber === cycle.currentSession,
+    ) ??
+    workouts.find((workout) => !workout.isComplete) ??
+    null
+  );
+}
+
+async function getLatestOneRMsForUser(db: any, userId: string) {
+  const latestOneRMWorkout = await db
+    .select({
+      squat1rm: schema.workouts.squat1rm,
+      bench1rm: schema.workouts.bench1rm,
+      deadlift1rm: schema.workouts.deadlift1rm,
+      ohp1rm: schema.workouts.ohp1rm,
+      completedAt: schema.workouts.completedAt,
+    })
+    .from(schema.workouts)
+    .where(
+      and(
+        eq(schema.workouts.userId, userId),
+        eq(schema.workouts.name, '1RM Test'),
+        sql`${schema.workouts.completedAt} IS NOT NULL`,
+      ),
+    )
+    .orderBy(desc(schema.workouts.completedAt))
+    .limit(1)
+    .get();
+
+  if (
+    latestOneRMWorkout &&
+    (latestOneRMWorkout.squat1rm ||
+      latestOneRMWorkout.bench1rm ||
+      latestOneRMWorkout.deadlift1rm ||
+      latestOneRMWorkout.ohp1rm)
+  ) {
+    return latestOneRMWorkout;
+  }
+
+  const latestCycle = await db
+    .select({
+      squat1rm: schema.userProgramCycles.squat1rm,
+      bench1rm: schema.userProgramCycles.bench1rm,
+      deadlift1rm: schema.userProgramCycles.deadlift1rm,
+      ohp1rm: schema.userProgramCycles.ohp1rm,
+      completedAt: schema.userProgramCycles.startedAt,
+    })
+    .from(schema.userProgramCycles)
+    .where(eq(schema.userProgramCycles.userId, userId))
+    .orderBy(desc(schema.userProgramCycles.startedAt))
+    .limit(1)
+    .get();
+
+  return latestCycle ?? null;
+}
+
+async function getLatestOneRMTestWorkoutForCycle(db: any, userId: string, cycleId: string) {
+  return db
+    .select()
+    .from(schema.workouts)
+    .where(
+      and(
+        eq(schema.workouts.userId, userId),
+        eq(schema.workouts.programCycleId, cycleId),
+        eq(schema.workouts.name, '1RM Test'),
+        eq(schema.workouts.isDeleted, false),
+      ),
+    )
+    .orderBy(desc(schema.workouts.completedAt), desc(schema.workouts.createdAt))
+    .limit(1)
+    .get();
+}
+
+async function createOneRMTestWorkout(db: any, userId: string, cycleId: string) {
+  const cycle = await getProgramCycleById(db, cycleId, userId);
+  if (!cycle) {
+    return null;
+  }
+
+  const existingWorkout = await getLatestOneRMTestWorkoutForCycle(db, userId, cycleId);
+  if (existingWorkout && !existingWorkout.completedAt) {
+    return existingWorkout;
+  }
+
+  const now = new Date();
+  const workout = await db
+    .insert(schema.workouts)
+    .values({
+      userId,
+      programCycleId: cycleId,
+      name: '1RM Test',
+      notes: null,
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+      startingSquat1rm: cycle.startingSquat1rm ?? cycle.squat1rm,
+      startingBench1rm: cycle.startingBench1rm ?? cycle.bench1rm,
+      startingDeadlift1rm: cycle.startingDeadlift1rm ?? cycle.deadlift1rm,
+      startingOhp1rm: cycle.startingOhp1rm ?? cycle.ohp1rm,
+    })
+    .returning()
+    .get();
+
+  const mainLifts = [
+    { name: 'Squat', lift: 'squat' as const },
+    { name: 'Bench Press', lift: 'bench' as const },
+    { name: 'Deadlift', lift: 'deadlift' as const },
+    { name: 'Overhead Press', lift: 'ohp' as const },
+  ];
+
+  for (let i = 0; i < mainLifts.length; i++) {
+    const lift = mainLifts[i];
+    const exerciseId = await getOrCreateExerciseForUser(db, userId, lift.name, lift.lift);
+    const workoutExercise = await db
+      .insert(schema.workoutExercises)
+      .values({
+        workoutId: workout.id,
+        exerciseId,
+        orderIndex: i,
+        isAmrap: false,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+
+    await db
+      .insert(schema.workoutSets)
+      .values({
+        workoutExerciseId: workoutExercise.id,
+        setNumber: 1,
+        weight: 0,
+        reps: 1,
+        rpe: null,
+        isComplete: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  }
+
+  return workout;
+}
+
+async function updateProgramCycleOneRMs(
+  db: any,
+  userId: string,
+  cycleId: string,
+  data: { squat1rm?: number; bench1rm?: number; deadlift1rm?: number; ohp1rm?: number },
+) {
+  const existingCycle = await getProgramCycleById(db, cycleId, userId);
+  if (!existingCycle) {
+    return null;
+  }
+
+  return db
+    .update(schema.userProgramCycles)
+    .set({
+      ...data,
+      startingSquat1rm: existingCycle.startingSquat1rm ?? existingCycle.squat1rm,
+      startingBench1rm: existingCycle.startingBench1rm ?? existingCycle.bench1rm,
+      startingDeadlift1rm: existingCycle.startingDeadlift1rm ?? existingCycle.deadlift1rm,
+      startingOhp1rm: existingCycle.startingOhp1rm ?? existingCycle.ohp1rm,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(schema.userProgramCycles.id, cycleId), eq(schema.userProgramCycles.userId, userId)),
+    )
+    .returning()
+    .get();
 }
 
 async function createWorkoutFromProgramCycleWorkout(
@@ -330,8 +644,9 @@ async function createWorkoutFromProgramCycleWorkout(
 
   const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
 
-  for (let i = 0; i < targetLifts.length; i++) {
-    const targetLift = targetLifts[i];
+  for (let i = 0; i < targetLifts.all.length; i++) {
+    const targetLift = targetLifts.all[i];
+    const isAmrap = targetLift.isAmrap;
     const exerciseId = await getOrCreateExerciseForUser(
       db,
       userId,
@@ -345,42 +660,29 @@ async function createWorkoutFromProgramCycleWorkout(
         workoutId: workout.id,
         exerciseId,
         orderIndex: i,
-        isAmrap: false,
+        isAmrap,
         updatedAt: now,
       })
       .returning()
       .get();
 
-    const historySnapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
     const fallbackSetCount = normalizeProgramSetCount(targetLift.sets, 1);
     const fallbackWeight =
       typeof targetLift.targetWeight === 'number' && Number.isFinite(targetLift.targetWeight)
         ? targetLift.targetWeight
         : null;
-    const fallbackReps = normalizeProgramReps(targetLift.reps);
+    const fallbackReps = isAmrap ? null : normalizeProgramReps(targetLift.reps);
 
-    const setRows =
-      historySnapshot && historySnapshot.sets.length > 0
-        ? historySnapshot.sets.map((set, index) => ({
-            workoutExerciseId: workoutExercise.id,
-            setNumber: index + 1,
-            weight: set.weight,
-            reps: set.reps,
-            rpe: set.rpe,
-            isComplete: false,
-            createdAt: now,
-            updatedAt: now,
-          }))
-        : Array.from({ length: fallbackSetCount }, (_, index) => ({
-            workoutExerciseId: workoutExercise.id,
-            setNumber: index + 1,
-            weight: fallbackWeight,
-            reps: fallbackReps,
-            rpe: null,
-            isComplete: false,
-            createdAt: now,
-            updatedAt: now,
-          }));
+    const setRows = Array.from({ length: fallbackSetCount }, (_, index) => ({
+      workoutExerciseId: workoutExercise.id,
+      setNumber: index + 1,
+      weight: fallbackWeight,
+      reps: fallbackReps,
+      rpe: null,
+      isComplete: false,
+      createdAt: now,
+      updatedAt: now,
+    }));
 
     await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
   }
@@ -1768,9 +2070,27 @@ app.get('/api/programs', async (c) => {
     difficulty: p.info.difficulty,
     daysPerWeek: p.info.daysPerWeek,
     estimatedWeeks: p.info.estimatedWeeks,
+    totalSessions: p.info.totalSessions,
     mainLifts: p.info.mainLifts,
   }));
   return c.json(programsList);
+});
+
+app.get('/api/programs/latest-1rms', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const db = getDb(c);
+  const userId = session.user.id;
+
+  try {
+    const latestOneRMs = await getLatestOneRMsForUser(db, userId);
+    return c.json(latestOneRMs);
+  } catch (_e) {
+    return c.json({ message: 'Failed to fetch latest 1RMs' }, 500);
+  }
 });
 
 app.post('/api/programs', async (c) => {
@@ -1839,6 +2159,7 @@ app.post('/api/programs', async (c) => {
           targetWeight: e.targetWeight,
           sets: e.sets,
           reps: e.reps,
+          isAmrap: e.isAmrap ?? false,
           isAccessory: false,
         })),
         ...(workout.accessories || []).map((a) => ({
@@ -1847,6 +2168,7 @@ app.post('/api/programs', async (c) => {
           targetWeight: a.targetWeight,
           sets: a.sets,
           reps: a.reps,
+          isAmrap: a.isAmrap ?? false,
           isAccessory: true,
         })),
       ];
@@ -1856,7 +2178,10 @@ app.post('/api/programs', async (c) => {
         sessionName: workout.sessionName,
         scheduledDate: scheduleEntry?.scheduledDate?.toISOString().split('T')[0] || null,
         scheduledTime: scheduleEntry?.scheduledTime || null,
-        targetLifts: JSON.stringify(allExercises),
+        targetLifts: JSON.stringify({
+          exercises: allExercises.filter((exercise) => !exercise.isAccessory),
+          accessories: allExercises.filter((exercise) => exercise.isAccessory),
+        }),
       };
     });
 
@@ -1903,10 +2228,33 @@ app.get('/api/programs/active', async (c) => {
           eq(schema.userProgramCycles.status, 'active'),
         ),
       )
-      .get();
+      .orderBy(desc(schema.userProgramCycles.startedAt))
+      .all();
     return c.json(result);
   } catch (_e) {
     return c.json({ message: 'Failed to fetch active program' }, 500);
+  }
+});
+
+app.delete('/api/programs/cycles/:id', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+
+  try {
+    const deleted = await softDeleteProgramCycle(db, cycleId, userId);
+    if (!deleted) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (_e) {
+    return c.json({ message: 'Failed to delete program cycle' }, 500);
   }
 });
 
@@ -1963,6 +2311,75 @@ app.get('/api/programs/cycles/:id', async (c) => {
   }
 });
 
+app.put('/api/programs/cycles/:id', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+
+  try {
+    const body = await c.req.json();
+    const { squat1rm, bench1rm, deadlift1rm, ohp1rm, currentWeek, currentSession, isComplete } =
+      body;
+
+    let updated = null;
+    const hasOneRMUpdate =
+      squat1rm !== undefined ||
+      bench1rm !== undefined ||
+      deadlift1rm !== undefined ||
+      ohp1rm !== undefined;
+
+    if (hasOneRMUpdate) {
+      updated = await updateProgramCycleOneRMs(db, userId, cycleId, {
+        squat1rm,
+        bench1rm,
+        deadlift1rm,
+        ohp1rm,
+      });
+    }
+
+    if (currentWeek !== undefined || currentSession !== undefined || isComplete === true) {
+      const cycle = await getProgramCycleById(db, cycleId, userId);
+      if (!cycle) {
+        return c.json({ message: 'Program cycle not found' }, 404);
+      }
+
+      updated = await db
+        .update(schema.userProgramCycles)
+        .set({
+          ...(currentWeek !== undefined && { currentWeek }),
+          ...(currentSession !== undefined && { currentSession }),
+          ...(isComplete === true && {
+            isComplete: true,
+            status: 'completed',
+            completedAt: new Date(),
+          }),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.userProgramCycles.id, cycleId),
+            eq(schema.userProgramCycles.userId, userId),
+          ),
+        )
+        .returning()
+        .get();
+    }
+
+    if (!updated) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+
+    return c.json(updated);
+  } catch (_e) {
+    return c.json({ message: 'Failed to update program cycle' }, 500);
+  }
+});
+
 app.get('/api/programs/cycles/:id/workouts', async (c) => {
   const session = await requireAuth(c);
   if (!session?.user) {
@@ -1995,16 +2412,151 @@ app.get('/api/programs/cycles/:id/workouts/current', async (c) => {
     if (!result) {
       return c.json({ message: 'Program cycle not found' }, 404);
     }
-    const { currentWeek, currentSession } = result.cycle;
-    const currentWorkout = result.workouts.find(
-      (w) => w.weekNumber === currentWeek && w.sessionNumber === currentSession,
-    );
+    const currentWorkout = getCurrentCycleWorkout(result.cycle, result.workouts);
     if (!currentWorkout) {
       return c.json({ message: 'Current workout not found' }, 404);
     }
-    return c.json(currentWorkout);
+    const parsedTargetLifts = parseProgramTargetLifts(currentWorkout.targetLifts);
+
+    return c.json({
+      id: currentWorkout.id,
+      weekNumber: currentWorkout.weekNumber,
+      sessionNumber: currentWorkout.sessionNumber,
+      sessionName: currentWorkout.sessionName,
+      isComplete: currentWorkout.isComplete,
+      scheduledDate: currentWorkout.scheduledDate,
+      scheduledTime: currentWorkout.scheduledTime,
+      exercises: parsedTargetLifts.all.map((exercise, index) => ({
+        id: `${currentWorkout.id}:${index}`,
+        orderIndex: index,
+        targetWeight: exercise.targetWeight,
+        addedWeight: exercise.addedWeight,
+        sets: exercise.sets,
+        reps:
+          typeof exercise.reps === 'number' ? exercise.reps : normalizeProgramReps(exercise.reps),
+        repsRaw: typeof exercise.reps === 'string' ? exercise.reps : null,
+        isAmrap: exercise.isAmrap,
+        isAccessory: exercise.isAccessory,
+        isRequired: exercise.isRequired,
+        exercise: {
+          id: exercise.accessoryId ?? exercise.lift ?? exercise.name,
+          name: exercise.name,
+          muscleGroup: null,
+        },
+      })),
+    });
   } catch (_e) {
     return c.json({ message: 'Failed to fetch current workout' }, 500);
+  }
+});
+
+app.post('/api/programs/cycles/:id/create-1rm-test-workout', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+
+  try {
+    const workout = await createOneRMTestWorkout(db, userId, cycleId);
+    if (!workout) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+
+    return c.json({ workoutId: workout.id, workoutName: workout.name }, 201);
+  } catch (_e) {
+    return c.json({ message: 'Failed to create 1RM test workout' }, 500);
+  }
+});
+
+app.get('/api/programs/cycles/:id/1rm-test-workout', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+
+  try {
+    const workout = await getLatestOneRMTestWorkoutForCycle(db, userId, cycleId);
+    if (!workout) {
+      return c.json({ message: '1RM test workout not found' }, 404);
+    }
+
+    return c.json(workout);
+  } catch (_e) {
+    return c.json({ message: 'Failed to fetch 1RM test workout' }, 500);
+  }
+});
+
+app.put('/api/programs/cycles/:id/1rm-test-workout', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+
+  try {
+    const body = await c.req.json();
+    const shouldCompleteCycle = body.isComplete === true;
+    const workout = await getLatestOneRMTestWorkoutForCycle(db, userId, cycleId);
+    if (!workout) {
+      return c.json({ message: '1RM test workout not found' }, 404);
+    }
+
+    const updatedWorkout = await db
+      .update(schema.workouts)
+      .set({
+        squat1rm: body.squat1rm,
+        bench1rm: body.bench1rm,
+        deadlift1rm: body.deadlift1rm,
+        ohp1rm: body.ohp1rm,
+        startingSquat1rm: body.startingSquat1rm,
+        startingBench1rm: body.startingBench1rm,
+        startingDeadlift1rm: body.startingDeadlift1rm,
+        startingOhp1rm: body.startingOhp1rm,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.workouts.id, workout.id), eq(schema.workouts.userId, userId)))
+      .returning()
+      .get();
+
+    await updateProgramCycleOneRMs(db, userId, cycleId, {
+      squat1rm: body.squat1rm,
+      bench1rm: body.bench1rm,
+      deadlift1rm: body.deadlift1rm,
+      ohp1rm: body.ohp1rm,
+    });
+
+    if (shouldCompleteCycle) {
+      await db
+        .update(schema.userProgramCycles)
+        .set({
+          isComplete: true,
+          status: 'completed',
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.userProgramCycles.id, cycleId),
+            eq(schema.userProgramCycles.userId, userId),
+          ),
+        )
+        .run();
+    }
+
+    return c.json(updatedWorkout);
+  } catch (_e) {
+    return c.json({ message: 'Failed to update 1RM test workout' }, 500);
   }
 });
 
@@ -2022,10 +2574,7 @@ app.post('/api/programs/cycles/:id/workouts/current/start', async (c) => {
       return c.json({ message: 'Program cycle not found' }, 404);
     }
 
-    const { currentWeek, currentSession } = result.cycle;
-    const currentCycleWorkout = result.workouts.find(
-      (w) => w.weekNumber === currentWeek && w.sessionNumber === currentSession,
-    );
+    const currentCycleWorkout = getCurrentCycleWorkout(result.cycle, result.workouts);
 
     if (!currentCycleWorkout) {
       return c.json({ message: 'Current workout not found' }, 404);
@@ -2087,23 +2636,34 @@ app.post('/api/programs/cycles/:id/complete-session', async (c) => {
       return c.json({ message: 'Program cycle not found' }, 404);
     }
 
-    const { currentWeek, currentSession, totalSessionsCompleted, status } = cycleData;
+    const { totalSessionsCompleted } = cycleData;
     const newSessionsCompleted = totalSessionsCompleted + 1;
+    const cycleWorkouts = await db
+      .select({
+        id: schema.programCycleWorkouts.id,
+        weekNumber: schema.programCycleWorkouts.weekNumber,
+        sessionNumber: schema.programCycleWorkouts.sessionNumber,
+      })
+      .from(schema.programCycleWorkouts)
+      .where(eq(schema.programCycleWorkouts.cycleId, cycleId))
+      .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
+      .all();
 
-    const daysPerWeek = 3;
-    let newSession = currentSession + 1;
-    let newWeek = currentWeek;
-
-    if (newSession > daysPerWeek) {
-      newSession = 1;
-      newWeek = currentWeek + 1;
-    }
+    const nextCycleWorkout = cycleWorkouts[newSessionsCompleted] ?? null;
 
     const result = await db
       .update(schema.userProgramCycles)
       .set({
-        currentWeek: newWeek,
-        currentSession: newSession,
+        ...(nextCycleWorkout
+          ? {
+              currentWeek: nextCycleWorkout.weekNumber,
+              currentSession: nextCycleWorkout.sessionNumber,
+            }
+          : {
+              status: 'completed',
+              isComplete: true,
+              completedAt: new Date(),
+            }),
         totalSessionsCompleted: newSessionsCompleted,
         updatedAt: new Date(),
       })

@@ -120,4 +120,5 @@ export interface WorkoutAccessory {
   targetWeight: number;
   addedWeight: number;
   isRequired: boolean;
+  isAmrap?: boolean;
 }

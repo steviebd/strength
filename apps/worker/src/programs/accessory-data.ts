@@ -359,6 +359,7 @@ export function generateWorkoutAccessories(
       targetWeight: calculateAccessoryWeight(acc.accessoryId, oneRMs),
       addedWeight: 0,
       isRequired: acc.isRequired,
+      isAmrap: typeof acc.reps === 'string' && acc.reps.trim().toUpperCase() === 'AMRAP',
     };
   });
 }
