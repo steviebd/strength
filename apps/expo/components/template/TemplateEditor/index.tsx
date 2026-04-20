@@ -715,6 +715,7 @@ export function TemplateEditor({
         title="Add Exercise"
       >
         <ExerciseSearch
+          visible={showExerciseSearch}
           onSelect={handleAddExercise}
           onClose={() => setShowExerciseSearch(false)}
           excludeIds={currentExercises.map((e) => e.exerciseId)}

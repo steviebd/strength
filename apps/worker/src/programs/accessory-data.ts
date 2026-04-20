@@ -149,7 +149,7 @@ export const ACCESSORIES: Record<string, AccessoryDefinition> = {
   },
   'lat-pulldowns': {
     id: 'lat-pulldowns',
-    name: 'Lat Pulldowns',
+    name: 'Lat Pulldown',
     category: 'pull',
     baseLift: 'deadlift',
     defaultPercentage: 0.5,
@@ -177,7 +177,7 @@ export const ACCESSORIES: Record<string, AccessoryDefinition> = {
 
   lunges: {
     id: 'lunges',
-    name: 'Lunges',
+    name: 'Walking Lunges',
     category: 'leg',
     baseLift: 'squat',
     defaultPercentage: 0.35,

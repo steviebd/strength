@@ -74,7 +74,7 @@ interface WorkoutSessionContextValue {
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => void;
-  addExercise: (exercise: Exercise) => void;
+  addExercise: (exercise: Exercise) => Promise<void>;
   updateExercise: (workoutExerciseId: string, updates: Partial<WorkoutExercise>) => void;
   removeExercise: (workoutExerciseId: string) => void;
   addSet: (workoutExerciseId: string) => void;

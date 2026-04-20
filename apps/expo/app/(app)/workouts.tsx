@@ -106,17 +106,6 @@ export default function WorkoutsIndex() {
       >
         <View className="flex-row items-center justify-between">
           <Text className="text-darkText text-xl font-bold">Workouts</Text>
-          <View className="flex-row gap-2">
-            <Pressable
-              onPress={() => setShowStartWorkout(true)}
-              className="rounded-full bg-pine px-4 py-2"
-            >
-              <Text className="text-white text-sm font-semibold">Start</Text>
-            </Pressable>
-            <Pressable onPress={handleNewTemplate} className="rounded-full bg-coral px-4 py-2">
-              <Text className="text-white text-sm font-semibold">+ New</Text>
-            </Pressable>
-          </View>
         </View>
         <View className="mt-4 flex-row rounded-xl bg-darkCard p-1">
           <Pressable
@@ -221,6 +210,21 @@ export default function WorkoutsIndex() {
           onSaved={handleTemplateSaved}
         />
       </Modal>
+
+      <View className="absolute bottom-8 left-6 right-6 flex-row gap-3">
+        <Pressable
+          onPress={() => setShowStartWorkout(true)}
+          className="flex-1 items-center justify-center rounded-full bg-pine py-4"
+        >
+          <Text className="text-white text-sm font-semibold">Start Custom Workout</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleNewTemplate}
+          className="flex-1 items-center justify-center rounded-full bg-coral py-4"
+        >
+          <Text className="text-white text-sm font-semibold">+ New Template</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

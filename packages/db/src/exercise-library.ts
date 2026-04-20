@@ -495,6 +495,13 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
     description:
       'A low-impact cycling exercise providing excellent cardiovascular benefits without stressing the joints.',
   },
+  {
+    id: 'box-jump',
+    name: 'Box Jump',
+    muscleGroup: 'Cardio',
+    description:
+      'A plyometric exercise jumping onto a box, building explosive power and cardiovascular endurance.',
+  },
 
   {
     id: 'front-squat',

@@ -33,7 +33,7 @@ async function fetchWorkout(workoutId: string): Promise<Workout> {
 
 export default function WorkoutSessionScreen() {
   const router = useRouter();
-  const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
+  const { workoutId, source } = useLocalSearchParams<{ workoutId?: string; source?: string }>();
   const {
     workout,
     exercises,
@@ -93,6 +93,7 @@ export default function WorkoutSessionScreen() {
   const KG_TO_LBS = 2.20462;
 
   const isViewingCompleted = !!workoutId && !!workout?.completedAt;
+  const isProgramSession = source === 'program';
 
   const computedVolume = exercises.reduce((total, ex) => {
     return (
@@ -118,8 +119,8 @@ export default function WorkoutSessionScreen() {
   }, [startWorkout, workoutName]);
 
   const handleAddExercise = useCallback(
-    (exercise: ExerciseLibraryItem) => {
-      addExercise(exercise);
+    async (exercise: ExerciseLibraryItem) => {
+      await addExercise(exercise);
     },
     [addExercise],
   );
@@ -222,8 +223,8 @@ export default function WorkoutSessionScreen() {
       queryClient.invalidateQueries({ queryKey: ['workout', workoutId] });
     }
     queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
-    router.push('/(app)/workouts');
-  }, [completeWorkout, queryClient, router, workoutId]);
+    router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts');
+  }, [completeWorkout, isProgramSession, queryClient, router, workoutId]);
 
   if (workoutId && isLoadingWorkout) {
     return (
@@ -336,7 +337,9 @@ export default function WorkoutSessionScreen() {
                   </Pressable>
                   <Pressable
                     className="flex-1 h-12 items-center justify-center rounded-xl bg-pine"
-                    onPress={() => router.push('/(app)/workouts')}
+                    onPress={() =>
+                      router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts')
+                    }
                   >
                     <Text className="text-white font-semibold">Close</Text>
                   </Pressable>
@@ -347,7 +350,7 @@ export default function WorkoutSessionScreen() {
                     className="flex-1 h-12 items-center justify-center rounded-xl border border-darkBorder bg-darkCard"
                     onPress={async () => {
                       await discardWorkout();
-                      router.push('/(app)/workouts');
+                      router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts');
                     }}
                   >
                     <Text className="text-darkMuted font-semibold">Discard</Text>
@@ -440,6 +443,7 @@ export default function WorkoutSessionScreen() {
 
           <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
             <ExerciseSearch
+              visible={showAddExercise}
               onSelect={handleAddExercise}
               onClose={() => setShowAddExercise(false)}
               excludeIds={exercises.map((e) => e.exerciseId)}

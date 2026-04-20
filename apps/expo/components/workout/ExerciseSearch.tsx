@@ -1,22 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import { FlatList, Pressable, Text, TextInput, View, ActivityIndicator } from 'react-native';
 import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db';
-import { env } from '@/lib/env';
-import { authClient } from '@/lib/auth-client';
+import {
+  createCustomExercise,
+  ensurePersistedExercise,
+  listUserExercises,
+  type UserExercise,
+} from '@/lib/exercises';
 import type { ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
-
-interface UserExercise {
-  id: string;
-  name: string;
-  muscleGroup: string | null;
-  description: string | null;
-  libraryId: string | null;
-}
 
 interface ExerciseSearchProps {
   onSelect: (exercise: ExerciseLibraryItem) => void;
   onClose: () => void;
   excludeIds?: string[];
+  visible?: boolean;
 }
 
 type CombinedExercise = LibItem & { libraryId?: string };
@@ -46,7 +43,12 @@ interface CreateFormState {
   description: string;
 }
 
-export function ExerciseSearch({ onSelect, onClose, excludeIds = [] }: ExerciseSearchProps) {
+export function ExerciseSearch({
+  onSelect,
+  onClose,
+  excludeIds = [],
+  visible = true,
+}: ExerciseSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [userExercises, setUserExercises] = useState<UserExercise[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,25 +62,16 @@ export function ExerciseSearch({ onSelect, onClose, excludeIds = [] }: ExerciseS
   const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
     const controller = new AbortController();
-    async function fetchUserExercises() {
-      if (searchQuery.trim().length === 0) {
-        setUserExercises([]);
-        return;
-      }
+    async function fetchUserExercises(search: string) {
       setLoading(true);
       try {
-        const res = await fetch(
-          `${env.apiUrl}/api/exercises?search=${encodeURIComponent(searchQuery)}`,
-          {
-            credentials: 'include',
-            signal: controller.signal,
-          },
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setUserExercises(data);
-        }
+        const data = await listUserExercises(search, controller.signal);
+        setUserExercises(data);
       } catch (e) {
         if (e instanceof Error && e.name !== 'AbortError') {
           console.error('Failed to fetch user exercises:', e);
@@ -87,12 +80,12 @@ export function ExerciseSearch({ onSelect, onClose, excludeIds = [] }: ExerciseS
         setLoading(false);
       }
     }
-    const timeoutId = setTimeout(fetchUserExercises, 300);
+    const timeoutId = setTimeout(() => fetchUserExercises(searchQuery), 300);
     return () => {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [searchQuery]);
+  }, [searchQuery, visible]);
 
   async function handleCreateExercise() {
     if (!createForm.name.trim()) {
@@ -106,38 +99,27 @@ export function ExerciseSearch({ onSelect, onClose, excludeIds = [] }: ExerciseS
     setCreating(true);
     setCreateError(null);
     try {
-      const cookie = authClient.getCookie();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (cookie) {
-        headers['Cookie'] = cookie;
-      }
-      const res = await fetch(`${env.apiUrl}/api/exercises`, {
-        method: 'POST',
-        credentials: 'include',
-        headers,
-        body: JSON.stringify({
-          name: createForm.name.trim(),
-          muscleGroup: createForm.muscleGroup,
-          description: createForm.description.trim() || null,
-        }),
-      });
-      if (res.ok) {
-        const newExercise = await res.json();
-        onSelect({
+      const newExercise = await createCustomExercise(createForm);
+      setUserExercises((prev) => [
+        ...prev,
+        {
           id: newExercise.id,
           name: newExercise.name,
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
-        });
-        onClose();
-      } else {
-        const data = await res.json();
-        console.error('Create exercise failed:', data);
-        setCreateError(data.message || 'Failed to create exercise');
-      }
+          libraryId: null,
+        },
+      ]);
+      onSelect({
+        id: newExercise.id,
+        name: newExercise.name,
+        muscleGroup: newExercise.muscleGroup,
+        description: newExercise.description,
+      });
+      onClose();
     } catch (e) {
       console.error('Create exercise error:', e);
-      setCreateError('Failed to create exercise');
+      setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
       setCreating(false);
     }
@@ -153,9 +135,14 @@ export function ExerciseSearch({ onSelect, onClose, excludeIds = [] }: ExerciseS
   const filteredLibraryExercises = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     return exerciseLibrary.filter(
-      (ex) => ex.name.toLowerCase().includes(query) && !excludeIds.includes(ex.id),
+      (ex) =>
+        ex.name.toLowerCase().includes(query) &&
+        !excludeIds.includes(ex.id) &&
+        !userExercises.some((userExercise) => {
+          return userExercise.libraryId === ex.id && excludeIds.includes(userExercise.id);
+        }),
     );
-  }, [searchQuery, excludeIds]);
+  }, [searchQuery, excludeIds, userExercises]);
 
   const listData = useMemo((): ListItem[] => {
     const items: ListItem[] = [];
@@ -189,9 +176,55 @@ export function ExerciseSearch({ onSelect, onClose, excludeIds = [] }: ExerciseS
     return (
       <Pressable
         className="flex flex-row items-center justify-between border-b border-darkBorder/50 p-4 active:bg-darkCard"
-        onPress={() => {
-          onSelect(ex as ExerciseLibraryItem);
-          onClose();
+        onPress={async () => {
+          if (isUser) {
+            onSelect(ex as ExerciseLibraryItem);
+            onClose();
+            return;
+          }
+          const existingUserExercise = userExercises.find((ue) => ue.libraryId === ex.id);
+          if (existingUserExercise) {
+            if (excludeIds.includes(existingUserExercise.id)) {
+              onClose();
+              return;
+            }
+            onSelect({
+              id: existingUserExercise.id,
+              name: existingUserExercise.name,
+              muscleGroup: existingUserExercise.muscleGroup,
+              description: existingUserExercise.description,
+            });
+            onClose();
+            return;
+          }
+          try {
+            const newExercise = await ensurePersistedExercise(ex);
+            setUserExercises((prev) => {
+              if (prev.some((userExercise) => userExercise.id === newExercise.id)) {
+                return prev;
+              }
+
+              return [
+                ...prev,
+                {
+                  id: newExercise.id,
+                  name: newExercise.name,
+                  muscleGroup: newExercise.muscleGroup,
+                  description: newExercise.description,
+                  libraryId: newExercise.libraryId,
+                },
+              ];
+            });
+            onSelect({
+              id: newExercise.id,
+              name: newExercise.name,
+              muscleGroup: newExercise.muscleGroup,
+              description: newExercise.description,
+            });
+            onClose();
+          } catch (e) {
+            console.error('Failed to create exercise from library:', e);
+          }
         }}
       >
         <View className="flex-1 min-w-0">

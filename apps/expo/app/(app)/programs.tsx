@@ -32,7 +32,7 @@ interface ProgramListItem {
 }
 
 interface ActiveProgram {
-  id: number;
+  id: string;
   programSlug: string;
   name: string;
   currentWeek: number | null;
@@ -137,6 +137,7 @@ export default function ProgramsScreen() {
   const [selectedProgram, setSelectedProgram] = useState<ProgramListItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [startingProgram, setStartingProgram] = useState(false);
+  const [openingProgramWorkout, setOpeningProgramWorkout] = useState(false);
   const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
   const { weightUnit } = useUserPreferences();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -146,8 +147,8 @@ export default function ProgramsScreen() {
     if (ref && scrollViewRef.current) {
       ref.measure(
         (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-          const KEYBOARD_HEIGHT = 300;
-          const TOP_OFFSET = 100;
+          const KEYBOARD_HEIGHT = 400;
+          const TOP_OFFSET = 50;
           const targetY = pageY - KEYBOARD_HEIGHT - TOP_OFFSET;
           scrollViewRef.current?.scrollTo({ y: Math.max(0, targetY), animated: true });
         },
@@ -161,15 +162,8 @@ export default function ProgramsScreen() {
 
   async function fetchActiveProgram() {
     try {
-      const res = await fetch(`${env.apiUrl}/api/programs/active`, {
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data) {
-          setActiveProgram(data);
-        }
-      }
+      const data = await apiFetch<ActiveProgram | null>('/api/programs/active');
+      setActiveProgram(data);
     } catch (e) {
       console.error('Failed to fetch active program:', e);
     } finally {
@@ -227,10 +221,9 @@ export default function ProgramsScreen() {
     try {
       const convertToKg = (value: number) => (weightUnit === 'lbs' ? value * LBS_TO_KG : value);
 
-      const res = await fetch(`${env.apiUrl}/api/programs`, {
+      await apiFetch('/api/programs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           programSlug: selectedProgram.slug,
           name: selectedProgram.name,
@@ -243,21 +236,47 @@ export default function ProgramsScreen() {
         }),
       });
 
-      if (res.ok) {
-        const _data = await res.json();
-        setShowStartModal(false);
-        setShowDetailModal(false);
-        setSelectedProgram(null);
-        setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
-        fetchActiveProgram();
-      } else {
-        const error = await res.json();
-        Alert.alert('Error', error.message || 'Failed to start program');
-      }
-    } catch (_e) {
-      Alert.alert('Error', 'Failed to start program. Please try again.');
+      setShowStartModal(false);
+      setShowDetailModal(false);
+      setSelectedProgram(null);
+      setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
+      await fetchActiveProgram();
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
     } finally {
       setStartingProgram(false);
+    }
+  };
+
+  const handleOpenCurrentProgramWorkout = async () => {
+    if (!activeProgram?.id) {
+      return;
+    }
+
+    setOpeningProgramWorkout(true);
+    try {
+      const result = await apiFetch<{
+        workoutId: string;
+        created: boolean;
+        completed: boolean;
+      }>(`/api/programs/cycles/${activeProgram.id}/workouts/current/start`, {
+        method: 'POST',
+      });
+
+      if (result.completed) {
+        Alert.alert(
+          'Session Already Completed',
+          'This program session has already been completed.',
+        );
+        await fetchActiveProgram();
+        return;
+      }
+
+      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
+    } finally {
+      setOpeningProgramWorkout(false);
     }
   };
 
@@ -288,7 +307,8 @@ export default function ProgramsScreen() {
           ) : activeProgram ? (
             <Pressable
               className="mb-6 rounded-2xl border border-coral/50 bg-coral/10 p-5"
-              onPress={() => router.push('/workout-session')}
+              onPress={handleOpenCurrentProgramWorkout}
+              disabled={openingProgramWorkout}
             >
               <View className="flex-row items-center justify-between mb-3">
                 <View className="rounded-full bg-coral/20 px-3 py-1">
@@ -311,6 +331,16 @@ export default function ProgramsScreen() {
                     width: `${((activeProgram.currentSession ?? 1) / activeProgram.totalSessionsPlanned) * 100}%`,
                   }}
                 />
+              </View>
+              <View className="mt-4 flex-row items-center justify-between">
+                <Text className="text-coral text-sm font-medium">
+                  {openingProgramWorkout ? 'Opening session...' : 'Resume current session'}
+                </Text>
+                {openingProgramWorkout ? (
+                  <ActivityIndicator size="small" color="#ef6f4f" />
+                ) : (
+                  <Text className="text-coral text-base">→</Text>
+                )}
               </View>
             </Pressable>
           ) : null}
@@ -417,6 +447,17 @@ export default function ProgramsScreen() {
                   <View className="w-10" />
                 </View>
 
+                <View className="rounded-xl border border-darkBorder bg-darkCard p-4 mb-6">
+                  <Text className="text-darkText text-sm font-semibold mb-2">
+                    How to estimate your 1RM
+                  </Text>
+                  <Text className="text-darkMuted text-xs leading-relaxed">
+                    Your 1RM is the maximum weight you can lift for a single rep with good form. If
+                    you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
+                    using the formula: 1RM = weight × (1 + reps/30).
+                  </Text>
+                </View>
+
                 <Text className="text-darkMuted text-sm mb-1">Starting Program</Text>
                 <Text className="text-darkText text-xl font-semibold mb-2">
                   {selectedProgram?.name}
@@ -457,17 +498,6 @@ export default function ProgramsScreen() {
                       />
                     </View>
                   ))}
-                </View>
-
-                <View className="rounded-xl border border-darkBorder bg-darkCard p-4 mb-6">
-                  <Text className="text-darkText text-sm font-semibold mb-2">
-                    How to estimate your 1RM
-                  </Text>
-                  <Text className="text-darkMuted text-xs leading-relaxed">
-                    Your 1RM is the maximum weight you can lift for a single rep with good form. If
-                    you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
-                    using the formula: 1RM = weight × (1 + reps/30).
-                  </Text>
                 </View>
 
                 <Pressable

@@ -65,12 +65,12 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
     }
   };
 
-  const handleAddExercise = (exercise: {
+  const handleAddExercise = async (exercise: {
     id: string;
     name: string;
     muscleGroup: string | null;
   }) => {
-    addExercise(exercise);
+    await addExercise(exercise);
     setShowExercisePicker(false);
   };
 

@@ -1,11 +1,23 @@
-import { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Modal } from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
 import {
   exerciseLibrary,
   type ExerciseLibraryItem,
 } from '../../../../packages/db/src/exercise-library';
-import { env } from '@/lib/env';
-import { authClient } from '@/lib/auth-client';
+import {
+  createCustomExercise,
+  ensurePersistedExercise,
+  listUserExercises,
+  type UserExercise,
+} from '@/lib/exercises';
 
 interface ExercisePickerProps {
   visible: boolean;
@@ -68,16 +80,42 @@ export function ExercisePicker({
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [userExercises, setUserExercises] = useState<UserExercise[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const filteredExercises = useMemo(() => {
-    return exerciseLibrary.filter((ex) => {
-      const matchesSearch =
-        ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ex.description.toLowerCase().includes(searchQuery.toLowerCase());
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    const controller = new AbortController();
+    async function fetchUserExercises(search: string) {
+      setLoading(true);
+      try {
+        const data = await listUserExercises(search, controller.signal);
+        setUserExercises(data);
+      } catch (e) {
+        if (e instanceof Error && e.name !== 'AbortError') {
+          console.error('Failed to fetch user exercises:', e);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    const timeoutId = setTimeout(() => fetchUserExercises(searchQuery), 300);
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [searchQuery, visible]);
+
+  const filteredUserExercises = useMemo(() => {
+    return userExercises.filter((ex) => {
+      const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesMuscle = selectedMuscleGroup === 'All' || ex.muscleGroup === selectedMuscleGroup;
-      return matchesSearch && matchesMuscle;
+      return matchesSearch && matchesMuscle && !selectedIds.includes(ex.id);
     });
-  }, [searchQuery, selectedMuscleGroup]);
+  }, [userExercises, searchQuery, selectedMuscleGroup, selectedIds]);
 
   async function handleCreateExercise() {
     if (!createForm.name.trim()) {
@@ -91,45 +129,87 @@ export function ExercisePicker({
     setCreating(true);
     setCreateError(null);
     try {
-      const cookie = authClient.getCookie();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (cookie) {
-        headers['Cookie'] = cookie;
-      }
-      const res = await fetch(`${env.apiUrl}/api/exercises`, {
-        method: 'POST',
-        credentials: 'include',
-        headers,
-        body: JSON.stringify({
-          name: createForm.name.trim(),
-          muscleGroup: createForm.muscleGroup,
-          description: createForm.description.trim() || null,
-        }),
-      });
-      if (res.ok) {
-        const newExercise = await res.json();
-        onSelect({
+      const newExercise = await createCustomExercise(createForm);
+      setUserExercises((prev) => [
+        ...prev,
+        {
           id: newExercise.id,
           name: newExercise.name,
           muscleGroup: newExercise.muscleGroup,
-        });
-        onClose();
-        setShowCreateForm(false);
-        setCreateForm({ name: '', muscleGroup: '', description: '' });
-      } else {
-        const data = await res.json();
-        console.error('Create exercise failed:', data);
-        setCreateError(data.message || 'Failed to create exercise');
-      }
+          description: newExercise.description,
+          libraryId: newExercise.libraryId,
+        },
+      ]);
+      onSelect({
+        id: newExercise.id,
+        name: newExercise.name,
+        muscleGroup: newExercise.muscleGroup,
+      });
+      onClose();
+      setShowCreateForm(false);
+      setCreateForm({ name: '', muscleGroup: '', description: '' });
     } catch (e) {
       console.error('Create exercise error:', e);
-      setCreateError('Failed to create exercise');
+      setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
       setCreating(false);
     }
   }
 
-  const handleSelect = (exercise: ExerciseLibraryItem) => {
+  const filteredLibraryExercises = useMemo(() => {
+    return exerciseLibrary.filter((ex) => {
+      const matchesSearch =
+        ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ex.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesMuscle = selectedMuscleGroup === 'All' || ex.muscleGroup === selectedMuscleGroup;
+      const isAlreadySelectedByPersistedId = userExercises.some((userExercise) => {
+        return userExercise.libraryId === ex.id && selectedIds.includes(userExercise.id);
+      });
+
+      return (
+        matchesSearch &&
+        matchesMuscle &&
+        !selectedIds.includes(ex.id) &&
+        !isAlreadySelectedByPersistedId
+      );
+    });
+  }, [searchQuery, selectedMuscleGroup, selectedIds, userExercises]);
+
+  const handleSelectLibrary = async (exercise: ExerciseLibraryItem) => {
+    if (selectedIds.includes(exercise.id)) {
+      onClose();
+      return;
+    }
+
+    try {
+      const persistedExercise = await ensurePersistedExercise(exercise);
+
+      if (selectedIds.includes(persistedExercise.id)) {
+        onClose();
+        return;
+      }
+
+      setUserExercises((prev) => {
+        if (prev.some((userExercise) => userExercise.id === persistedExercise.id)) {
+          return prev;
+        }
+
+        return [...prev, persistedExercise];
+      });
+
+      onSelect({
+        id: persistedExercise.id,
+        name: persistedExercise.name,
+        muscleGroup: persistedExercise.muscleGroup,
+      });
+      onClose();
+    } catch (e) {
+      console.error('Failed to persist library exercise:', e);
+      setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
+    }
+  };
+
+  const handleSelectUser = (exercise: UserExercise) => {
     if (!selectedIds.includes(exercise.id)) {
       onSelect({
         id: exercise.id,
@@ -162,13 +242,20 @@ export function ExercisePicker({
           </View>
           {!showCreateForm && (
             <>
-              <TextInput
-                className="rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
-                placeholder="Search exercises..."
-                placeholderTextColor="#71717a"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
+              <View className="relative">
+                <TextInput
+                  className="rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
+                  placeholder="Search exercises..."
+                  placeholderTextColor="#71717a"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {loading && (
+                  <View className="absolute right-3 top-3">
+                    <ActivityIndicator size="small" color="#f97316" />
+                  </View>
+                )}
+              </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -285,41 +372,74 @@ export function ExercisePicker({
             </Pressable>
 
             <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
-              {filteredExercises.length === 0 ? (
+              {filteredUserExercises.length === 0 && filteredLibraryExercises.length === 0 ? (
                 <View className="items-center justify-center py-12">
                   <Text className="text-darkMuted">No exercises found</Text>
                 </View>
               ) : (
-                filteredExercises.map((exercise) => {
-                  const isSelected = selectedIds.includes(exercise.id);
-                  return (
-                    <Pressable
-                      key={exercise.id}
-                      onPress={() => handleSelect(exercise)}
-                      disabled={isSelected}
-                      className={`mb-2 rounded-xl border p-4 ${isSelected ? 'border-coral/30 bg-coral/10 opacity-50' : 'border-darkBorder bg-darkCard'}`}
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-1">
-                          <Text className="text-darkText text-base font-medium">
-                            {exercise.name}
-                          </Text>
-                          <Text className="text-darkMuted mt-1 text-xs">
-                            {exercise.muscleGroup}
-                          </Text>
-                          <Text className="text-darkMuted mt-1 text-xs" numberOfLines={2}>
-                            {exercise.description}
-                          </Text>
-                        </View>
-                        {isSelected && (
-                          <View className="ml-3 rounded-full bg-coral/20 px-3 py-1">
-                            <Text className="text-coral text-xs">Added</Text>
+                <>
+                  {filteredUserExercises.length > 0 && (
+                    <>
+                      <Text className="text-darkMuted text-xs font-semibold uppercase tracking-wider mb-2">
+                        Your Exercises
+                      </Text>
+                      {filteredUserExercises.map((exercise) => (
+                        <Pressable
+                          key={exercise.id}
+                          onPress={() => handleSelectUser(exercise)}
+                          className="mb-2 rounded-xl border border-coral/30 bg-coral/10 p-4"
+                        >
+                          <View className="flex-row items-center justify-between">
+                            <View className="flex-1">
+                              <Text className="text-darkText text-base font-medium">
+                                {exercise.name}
+                              </Text>
+                              <Text className="text-darkMuted mt-1 text-xs">
+                                {exercise.muscleGroup || 'No muscle group'}
+                              </Text>
+                            </View>
+                            <View className="ml-3 rounded-full bg-coral/20 px-3 py-1">
+                              <Text className="text-coral text-xs font-semibold">+ Add</Text>
+                            </View>
                           </View>
-                        )}
-                      </View>
-                    </Pressable>
-                  );
-                })
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
+                  {filteredLibraryExercises.length > 0 && (
+                    <>
+                      <Text className="text-darkMuted text-xs font-semibold uppercase tracking-wider mb-2 mt-4">
+                        Exercise Library
+                      </Text>
+                      {filteredLibraryExercises.map((exercise) => {
+                        return (
+                          <Pressable
+                            key={exercise.id}
+                            onPress={() => handleSelectLibrary(exercise)}
+                            className="mb-2 rounded-xl border border-darkBorder bg-darkCard p-4"
+                          >
+                            <View className="flex-row items-center justify-between">
+                              <View className="flex-1">
+                                <Text className="text-darkText text-base font-medium">
+                                  {exercise.name}
+                                </Text>
+                                <Text className="text-darkMuted mt-1 text-xs">
+                                  {exercise.muscleGroup}
+                                </Text>
+                                <Text className="text-darkMuted mt-1 text-xs" numberOfLines={2}>
+                                  {exercise.description}
+                                </Text>
+                              </View>
+                              <View className="ml-3 rounded-full bg-coral/20 px-3 py-1">
+                                <Text className="text-coral text-xs font-semibold">+ Add</Text>
+                              </View>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
               )}
             </ScrollView>
           </>

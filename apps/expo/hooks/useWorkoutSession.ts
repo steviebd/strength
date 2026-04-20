@@ -36,7 +36,7 @@ interface UseWorkoutSessionReturn {
   loadWorkout: (workoutId: string) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => Promise<void>;
-  addExercise: (exercise: Exercise) => void;
+  addExercise: (exercise: Exercise) => Promise<void>;
   updateExercise: (workoutExerciseId: string, updates: Partial<WorkoutExercise>) => void;
   removeExercise: (workoutExerciseId: string) => void;
   addSet: (workoutExerciseId: string) => void;
@@ -253,18 +253,55 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   }, [workout]);
 
   const addExercise = useCallback(
-    (exercise: Exercise) => {
-      const newWorkoutExercise: WorkoutExercise = {
-        id: generateId(),
-        exerciseId: exercise.id,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup,
-        orderIndex: exercises.length,
-        sets: [],
-        notes: null,
-        isAmrap: exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'),
-      };
-      setExercises((prev) => [...prev, newWorkoutExercise]);
+    async (exercise: Exercise) => {
+      try {
+        const lastWorkoutResponse = await apiFetch<{
+          exerciseId: string;
+          workoutDate: string | null;
+          sets: { weight: number; reps: number; rpe: number | null }[];
+        } | null>(`/api/workouts/last/${exercise.id}`);
+
+        const newSets: WorkoutSet[] =
+          lastWorkoutResponse && lastWorkoutResponse.sets.length > 0
+            ? lastWorkoutResponse.sets.map((s, idx) => ({
+                id: generateId(),
+                workoutExerciseId: '',
+                setNumber: idx + 1,
+                weight: s.weight,
+                reps: s.reps,
+                rpe: s.rpe,
+                isComplete: false,
+                completedAt: null,
+                createdAt: new Date().toISOString(),
+              }))
+            : [
+                {
+                  id: generateId(),
+                  workoutExerciseId: '',
+                  setNumber: 1,
+                  weight: null,
+                  reps: null,
+                  rpe: null,
+                  isComplete: false,
+                  completedAt: null,
+                  createdAt: new Date().toISOString(),
+                },
+              ];
+
+        const newWorkoutExercise: WorkoutExercise = {
+          id: generateId(),
+          exerciseId: exercise.id,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          orderIndex: exercises.length,
+          sets: newSets,
+          notes: null,
+          isAmrap: exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'),
+        };
+        setExercises((prev) => [...prev, newWorkoutExercise]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add exercise');
+      }
     },
     [exercises.length],
   );

@@ -38,7 +38,11 @@ interface UseTemplateEditorReturn {
   loadTemplate: (templateId: string) => Promise<void>;
   saveTemplate: () => Promise<Template | null>;
   deleteTemplate: () => Promise<boolean>;
-  addExercise: (exercise: { id: string; name: string; muscleGroup: string | null }) => void;
+  addExercise: (exercise: {
+    id: string;
+    name: string;
+    muscleGroup: string | null;
+  }) => Promise<void>;
   removeExercise: (exerciseId: string) => void;
   updateExercise: (exerciseId: string, updates: Partial<TemplateExercise>) => void;
   reorderExercises: (fromIndex: number, toIndex: number) => void;
@@ -51,6 +55,12 @@ interface UseTemplateEditorReturn {
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
+interface LastWorkoutResponse {
+  exerciseId: string;
+  workoutDate: string | null;
+  sets: { weight: number | null; reps: number | null; rpe: number | null }[];
 }
 
 export function useTemplateEditor(): UseTemplateEditorReturn {
@@ -221,15 +231,29 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
   }, [template?.id]);
 
   const addExercise = useCallback(
-    (exercise: { id: string; name: string; muscleGroup: string | null }) => {
+    async (exercise: { id: string; name: string; muscleGroup: string | null }) => {
+      let historyDefaults: LastWorkoutResponse | null = null;
+
+      try {
+        historyDefaults = await apiFetch<LastWorkoutResponse | null>(
+          `/api/workouts/last/${exercise.id}`,
+        );
+      } catch (err) {
+        console.error('Failed to load history defaults for template exercise:', err);
+      }
+
+      const firstSetWithValues = historyDefaults?.sets.find(
+        (set) => set.weight !== null || set.reps !== null,
+      );
+
       const newExercise: TemplateExercise = {
         id: generateId(),
         exerciseId: exercise.id,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        sets: 3,
-        reps: 10,
-        targetWeight: 0,
+        sets: historyDefaults?.sets.length || 3,
+        reps: firstSetWithValues?.reps ?? 10,
+        targetWeight: firstSetWithValues?.weight ?? 0,
         isAmrap: false,
         isAccessory: false,
         isRequired: true,

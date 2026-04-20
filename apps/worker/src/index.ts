@@ -6,6 +6,13 @@ import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, like, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { exerciseLibrary, chunkedQuery, chunkedInsert } from '@strength/db';
+import {
+  createProgramCycle,
+  getOrCreateExerciseForUser,
+  getProgramCycleWithWorkouts,
+  getProgramCycleById,
+} from '@strength/db';
+import { getProgram, generateWorkoutSchedule } from './programs';
 
 type Variables = {
   user: ReturnType<typeof createAuth>['$Infer']['Session']['user'] | null;
@@ -46,15 +53,6 @@ app.options('/api/*', async (c) => {
 
 app.use('*', async (c, next) => {
   if (!isDevAuthEnabled(c.env)) {
-    c.set('user', null);
-    c.set('session', null);
-    await next();
-    return;
-  }
-
-  const requiresSession = c.req.path.startsWith('/api/auth/') || c.req.path === '/api/me';
-
-  if (!requiresSession) {
     c.set('user', null);
     c.set('session', null);
     await next();
@@ -189,18 +187,367 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => {
 });
 
 async function requireAuth(c: any) {
+  if (!isDevAuthEnabled(c.env)) {
+    return { user: null, session: null };
+  }
   const auth = createAuth(c.env);
   const cookieHeader = c.req.raw.headers.get('cookie');
-  console.log('DEBUG requireAuth - cookie:', cookieHeader?.slice(0, 200) ?? 'none');
   const authHeader = c.req.raw.headers.get('authorization');
-  console.log('DEBUG requireAuth - auth header:', authHeader ?? 'none');
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  console.log('DEBUG requireAuth - session:', JSON.stringify(session));
   return session;
 }
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
+}
+
+async function getLastCompletedExerciseSnapshot(db: any, userId: string, exerciseId: string) {
+  let resolvedExerciseId = exerciseId;
+
+  const existingUserExercise = await db
+    .select({ id: schema.exercises.id })
+    .from(schema.exercises)
+    .where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.userId, userId)))
+    .get();
+
+  if (!existingUserExercise) {
+    const byLibraryId = await db
+      .select({ id: schema.exercises.id })
+      .from(schema.exercises)
+      .where(and(eq(schema.exercises.libraryId, exerciseId), eq(schema.exercises.userId, userId)))
+      .get();
+
+    if (byLibraryId) {
+      resolvedExerciseId = byLibraryId.id;
+    }
+  } else {
+    resolvedExerciseId = existingUserExercise.id;
+  }
+
+  const recentWorkoutExercise = await db
+    .select({
+      workoutExerciseId: schema.workoutExercises.id,
+      workoutCompletedAt: schema.workouts.completedAt,
+    })
+    .from(schema.workoutExercises)
+    .innerJoin(schema.workouts, eq(schema.workoutExercises.workoutId, schema.workouts.id))
+    .where(
+      and(
+        eq(schema.workoutExercises.exerciseId, resolvedExerciseId),
+        eq(schema.workouts.userId, userId),
+        sql`${schema.workouts.completedAt} IS NOT NULL`,
+      ),
+    )
+    .orderBy(desc(schema.workouts.completedAt))
+    .limit(1)
+    .get();
+
+  if (!recentWorkoutExercise) {
+    return null;
+  }
+
+  const allSets = await db
+    .select({
+      weight: schema.workoutSets.weight,
+      reps: schema.workoutSets.reps,
+      rpe: schema.workoutSets.rpe,
+      setNumber: schema.workoutSets.setNumber,
+    })
+    .from(schema.workoutSets)
+    .where(eq(schema.workoutSets.workoutExerciseId, recentWorkoutExercise.workoutExerciseId))
+    .orderBy(schema.workoutSets.setNumber)
+    .all();
+
+  return {
+    exerciseId: resolvedExerciseId,
+    workoutDate: recentWorkoutExercise.workoutCompletedAt
+      ? new Date(recentWorkoutExercise.workoutCompletedAt).toISOString().split('T')[0]
+      : null,
+    sets: allSets.map((s) => ({
+      weight: s.weight,
+      reps: s.reps,
+      rpe: s.rpe,
+      setNumber: s.setNumber,
+    })),
+  };
+}
+
+function normalizeProgramSetCount(value: unknown, fallback = 1) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  return fallback;
+}
+
+function normalizeProgramReps(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function parseProgramTargetLifts(targetLifts: string | null | undefined) {
+  if (!targetLifts) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(targetLifts);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function createWorkoutFromProgramCycleWorkout(
+  db: any,
+  userId: string,
+  cycleId: string,
+  cycleWorkout: any,
+) {
+  const now = new Date();
+  const workout = await db
+    .insert(schema.workouts)
+    .values({
+      userId,
+      name: cycleWorkout.sessionName,
+      notes: null,
+      startedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+
+  const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
+
+  for (let i = 0; i < targetLifts.length; i++) {
+    const targetLift = targetLifts[i];
+    const exerciseId = await getOrCreateExerciseForUser(
+      db,
+      userId,
+      targetLift.name,
+      targetLift.lift,
+    );
+
+    const workoutExercise = await db
+      .insert(schema.workoutExercises)
+      .values({
+        workoutId: workout.id,
+        exerciseId,
+        orderIndex: i,
+        isAmrap: false,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+
+    const historySnapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
+    const fallbackSetCount = normalizeProgramSetCount(targetLift.sets, 1);
+    const fallbackWeight =
+      typeof targetLift.targetWeight === 'number' && Number.isFinite(targetLift.targetWeight)
+        ? targetLift.targetWeight
+        : null;
+    const fallbackReps = normalizeProgramReps(targetLift.reps);
+
+    const setRows =
+      historySnapshot && historySnapshot.sets.length > 0
+        ? historySnapshot.sets.map((set, index) => ({
+            workoutExerciseId: workoutExercise.id,
+            setNumber: index + 1,
+            weight: set.weight,
+            reps: set.reps,
+            rpe: set.rpe,
+            isComplete: false,
+            createdAt: now,
+            updatedAt: now,
+          }))
+        : Array.from({ length: fallbackSetCount }, (_, index) => ({
+            workoutExerciseId: workoutExercise.id,
+            setNumber: index + 1,
+            weight: fallbackWeight,
+            reps: fallbackReps,
+            rpe: null,
+            isComplete: false,
+            createdAt: now,
+            updatedAt: now,
+          }));
+
+    await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
+  }
+
+  await db
+    .update(schema.programCycleWorkouts)
+    .set({
+      workoutId: workout.id,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(schema.programCycleWorkouts.id, cycleWorkout.id),
+        eq(schema.programCycleWorkouts.cycleId, cycleId),
+      ),
+    )
+    .run();
+
+  return workout;
+}
+
+async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId: string) {
+  const linkedCycleWorkout = await db
+    .select({
+      id: schema.programCycleWorkouts.id,
+      cycleId: schema.programCycleWorkouts.cycleId,
+      weekNumber: schema.programCycleWorkouts.weekNumber,
+      sessionNumber: schema.programCycleWorkouts.sessionNumber,
+      isComplete: schema.programCycleWorkouts.isComplete,
+      currentWeek: schema.userProgramCycles.currentWeek,
+      currentSession: schema.userProgramCycles.currentSession,
+      totalSessionsCompleted: schema.userProgramCycles.totalSessionsCompleted,
+      totalSessionsPlanned: schema.userProgramCycles.totalSessionsPlanned,
+    })
+    .from(schema.programCycleWorkouts)
+    .innerJoin(
+      schema.userProgramCycles,
+      eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+    )
+    .where(
+      and(
+        eq(schema.programCycleWorkouts.workoutId, workoutId),
+        eq(schema.userProgramCycles.userId, userId),
+      ),
+    )
+    .get();
+
+  if (!linkedCycleWorkout || linkedCycleWorkout.isComplete) {
+    return;
+  }
+
+  const cycleWorkouts = await db
+    .select({
+      id: schema.programCycleWorkouts.id,
+      weekNumber: schema.programCycleWorkouts.weekNumber,
+      sessionNumber: schema.programCycleWorkouts.sessionNumber,
+    })
+    .from(schema.programCycleWorkouts)
+    .where(eq(schema.programCycleWorkouts.cycleId, linkedCycleWorkout.cycleId))
+    .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
+    .all();
+
+  const currentIndex = cycleWorkouts.findIndex((cw) => cw.id === linkedCycleWorkout.id);
+  const nextCycleWorkout = currentIndex >= 0 ? cycleWorkouts[currentIndex + 1] : null;
+  const now = new Date();
+
+  await db
+    .update(schema.programCycleWorkouts)
+    .set({
+      isComplete: true,
+      updatedAt: now,
+    })
+    .where(eq(schema.programCycleWorkouts.id, linkedCycleWorkout.id))
+    .run();
+
+  const cycleUpdate: Record<string, unknown> = {
+    totalSessionsCompleted: linkedCycleWorkout.totalSessionsCompleted + 1,
+    updatedAt: now,
+  };
+
+  if (nextCycleWorkout) {
+    cycleUpdate.currentWeek = nextCycleWorkout.weekNumber;
+    cycleUpdate.currentSession = nextCycleWorkout.sessionNumber;
+  } else {
+    cycleUpdate.status = 'completed';
+    cycleUpdate.isComplete = true;
+    cycleUpdate.completedAt = now;
+  }
+
+  await db
+    .update(schema.userProgramCycles)
+    .set(cycleUpdate)
+    .where(
+      and(
+        eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
+        eq(schema.userProgramCycles.userId, userId),
+      ),
+    )
+    .run();
+}
+
+async function resolveToUserExerciseId(
+  db: any,
+  userId: string,
+  exerciseId: string,
+): Promise<string> {
+  const existingExercise = await db
+    .select({ id: schema.exercises.id })
+    .from(schema.exercises)
+    .where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.userId, userId)))
+    .get();
+
+  if (existingExercise) {
+    return existingExercise.id;
+  }
+
+  const existingLibraryExercise = await db
+    .select({ id: schema.exercises.id })
+    .from(schema.exercises)
+    .where(and(eq(schema.exercises.userId, userId), eq(schema.exercises.libraryId, exerciseId)))
+    .get();
+
+  if (existingLibraryExercise) {
+    return existingLibraryExercise.id;
+  }
+
+  const libraryExercise = exerciseLibrary.find((e) => e.id === exerciseId);
+
+  if (libraryExercise) {
+    const now = new Date();
+    const created = await db
+      .insert(schema.exercises)
+      .values({
+        userId,
+        name: libraryExercise.name,
+        muscleGroup: libraryExercise.muscleGroup,
+        description: libraryExercise.description,
+        libraryId: libraryExercise.id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: schema.exercises.id })
+      .get();
+    return created.id;
+  }
+
+  return exerciseId;
+}
+
+async function findExistingUserExerciseByName(db: any, userId: string, name: string) {
+  const normalizedName = name.trim().toLowerCase();
+
+  if (!normalizedName) {
+    return null;
+  }
+
+  return db
+    .select()
+    .from(schema.exercises)
+    .where(
+      and(
+        eq(schema.exercises.userId, userId),
+        eq(schema.exercises.isDeleted, false),
+        sql`lower(${schema.exercises.name}) = ${normalizedName}`,
+      ),
+    )
+    .get();
 }
 
 app.get('/api/exercises', async (c) => {
@@ -246,18 +593,48 @@ app.post('/api/exercises', async (c) => {
   try {
     const body = await c.req.json();
     const { name, muscleGroup, description, libraryId } = body;
-    if (!name) {
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+    if (!trimmedName) {
       return c.json({ message: 'Name is required' }, 400);
     }
+
+    if (libraryId) {
+      const resolvedExerciseId = await resolveToUserExerciseId(db, userId, libraryId);
+      const existingLibraryExercise = await db
+        .select()
+        .from(schema.exercises)
+        .where(
+          and(
+            eq(schema.exercises.id, resolvedExerciseId),
+            eq(schema.exercises.userId, userId),
+            eq(schema.exercises.isDeleted, false),
+          ),
+        )
+        .get();
+
+      if (!existingLibraryExercise) {
+        return c.json({ message: 'Exercise not found' }, 404);
+      }
+
+      return c.json(existingLibraryExercise, 201);
+    }
+
+    const existingExercise = await findExistingUserExerciseByName(db, userId, trimmedName);
+
+    if (existingExercise) {
+      return c.json(existingExercise, 200);
+    }
+
     const now = new Date();
     const result = await db
       .insert(schema.exercises)
       .values({
         userId,
-        name,
+        name: trimmedName,
         muscleGroup: muscleGroup || null,
         description: description || null,
-        libraryId: libraryId || null,
+        libraryId: null,
         createdAt: now,
         updatedAt: now,
       })
@@ -939,17 +1316,34 @@ app.post('/api/workouts', async (c) => {
           })
           .returning()
           .get();
-        const sets = templateExercise.sets ?? 3;
-        const weight = (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0);
-        const setRows = Array.from({ length: sets }, (_, s) => ({
-          workoutExerciseId: workoutExercise.id,
-          setNumber: s + 1,
-          weight: weight,
-          reps: templateExercise.isAmrap ? null : (templateExercise.reps ?? 0),
-          isComplete: false,
-          createdAt: now,
-          updatedAt: now,
-        }));
+        const historySnapshot = await getLastCompletedExerciseSnapshot(
+          db,
+          userId,
+          templateExercise.exerciseId,
+        );
+
+        const setRows =
+          historySnapshot && historySnapshot.sets.length > 0
+            ? historySnapshot.sets.map((set, index) => ({
+                workoutExerciseId: workoutExercise.id,
+                setNumber: index + 1,
+                weight: set.weight,
+                reps: set.reps,
+                rpe: set.rpe,
+                isComplete: false,
+                createdAt: now,
+                updatedAt: now,
+              }))
+            : Array.from({ length: templateExercise.sets ?? 3 }, (_, s) => ({
+                workoutExerciseId: workoutExercise.id,
+                setNumber: s + 1,
+                weight: (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0),
+                reps: templateExercise.isAmrap ? null : (templateExercise.reps ?? 0),
+                isComplete: false,
+                createdAt: now,
+                updatedAt: now,
+              }));
+
         await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
       }
     }
@@ -1073,11 +1467,22 @@ app.delete('/api/workouts/:id', async (c) => {
   const db = getDb(c);
   const id = c.req.param('id');
   try {
+    const now = new Date();
     const result = await db
       .update(schema.workouts)
-      .set({ isDeleted: true, updatedAt: new Date() })
+      .set({ isDeleted: true, updatedAt: now })
       .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
       .run();
+
+    await db
+      .update(schema.programCycleWorkouts)
+      .set({
+        workoutId: null,
+        updatedAt: now,
+      })
+      .where(eq(schema.programCycleWorkouts.workoutId, id))
+      .run();
+
     return c.json({ success: result.success });
   } catch (_e) {
     return c.json({ message: 'Failed to delete workout' }, 500);
@@ -1131,6 +1536,9 @@ app.put('/api/workouts/:id/complete', async (c) => {
       .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
       .returning()
       .get();
+
+    await advanceProgramCycleForWorkout(db, userId, id);
+
     return c.json({ ...result, exerciseCount: aggregates?.exerciseCount ?? 0 });
   } catch (_e) {
     return c.json({ message: 'Failed to complete workout' }, 500);
@@ -1159,49 +1567,7 @@ app.post('/api/workouts/:id/exercises', async (c) => {
     if (!exerciseId || orderIndex === undefined) {
       return c.json({ message: 'exerciseId and orderIndex are required' }, 400);
     }
-    let resolvedExerciseId = exerciseId;
-    const existingExercise = await db
-      .select({ id: schema.exercises.id })
-      .from(schema.exercises)
-      .where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.userId, userId)))
-      .get();
-
-    if (!existingExercise) {
-      const existingLibraryExercise = await db
-        .select({ id: schema.exercises.id })
-        .from(schema.exercises)
-        .where(and(eq(schema.exercises.userId, userId), eq(schema.exercises.libraryId, exerciseId)))
-        .get();
-
-      if (existingLibraryExercise) {
-        resolvedExerciseId = existingLibraryExercise.id;
-      } else {
-        const libraryExercise = exerciseLibrary.find((exercise) => exercise.id === exerciseId);
-
-        if (libraryExercise) {
-          const now = new Date();
-          const createdExercise = await db
-            .insert(schema.exercises)
-            .values({
-              userId,
-              name: libraryExercise.name,
-              muscleGroup: libraryExercise.muscleGroup,
-              description: libraryExercise.description,
-              libraryId: libraryExercise.id,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .returning({ id: schema.exercises.id })
-            .get();
-
-          if (!createdExercise) {
-            return c.json({ message: 'Failed to create exercise' }, 500);
-          }
-
-          resolvedExerciseId = createdExercise.id;
-        }
-      }
-    }
+    const resolvedExerciseId = await resolveToUserExerciseId(db, userId, exerciseId);
     const now = new Date();
     const result = await db
       .insert(schema.workoutExercises)
@@ -1373,33 +1739,20 @@ app.get('/api/workouts/last/:exerciseId', async (c) => {
   const db = getDb(c);
   const exerciseId = c.req.param('exerciseId');
   try {
-    const recentSet = await db
-      .select({
-        weight: schema.workoutSets.weight,
-        reps: schema.workoutSets.reps,
-        rpe: schema.workoutSets.rpe,
-        completedAt: schema.workoutSets.completedAt,
-      })
-      .from(schema.workoutSets)
-      .innerJoin(
-        schema.workoutExercises,
-        eq(schema.workoutSets.workoutExerciseId, schema.workoutExercises.id),
-      )
-      .innerJoin(schema.workouts, eq(schema.workoutExercises.workoutId, schema.workouts.id))
-      .where(
-        and(eq(schema.workoutExercises.exerciseId, exerciseId), eq(schema.workouts.userId, userId)),
-      )
-      .orderBy(desc(schema.workouts.completedAt))
-      .limit(1)
-      .get();
-    if (!recentSet) {
+    const snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
+
+    if (!snapshot) {
       return c.json(null);
     }
+
     return c.json({
-      exerciseId,
-      weight: recentSet.weight,
-      reps: recentSet.reps,
-      rpe: recentSet.rpe,
+      exerciseId: snapshot.exerciseId,
+      workoutDate: snapshot.workoutDate,
+      sets: snapshot.sets.map((set) => ({
+        weight: set.weight,
+        reps: set.reps,
+        rpe: set.rpe,
+      })),
     });
   } catch (_e) {
     return c.json({ message: 'Failed to fetch last workout data' }, 500);
@@ -1436,32 +1789,99 @@ app.post('/api/programs', async (c) => {
       bench1rm,
       deadlift1rm,
       ohp1rm,
+      preferredGymDays,
+      preferredTimeOfDay,
+      programStartDate,
+      firstSessionDate,
+    } = body;
+    if (!programSlug || !name) {
+      return c.json({ message: 'programSlug and name are required' }, 400);
+    }
+
+    const programConfig = getProgram(programSlug);
+    if (!programConfig) {
+      return c.json({ message: 'Program not found' }, 404);
+    }
+
+    const oneRMs = {
+      squat: squat1rm || 0,
+      bench: bench1rm || 0,
+      deadlift: deadlift1rm || 0,
+      ohp: ohp1rm || 0,
+    };
+
+    const generatedWorkouts = programConfig.generateWorkouts(oneRMs);
+
+    const startDate = programStartDate ? new Date(programStartDate) : new Date();
+    const firstDate = firstSessionDate ? new Date(firstSessionDate) : undefined;
+
+    const scheduleOptions = {
+      preferredDays: preferredGymDays || ['monday', 'wednesday', 'friday'],
+      preferredTimeOfDay: preferredTimeOfDay || 'morning',
+    };
+
+    const schedule = generateWorkoutSchedule(
+      generatedWorkouts.map((w) => ({
+        weekNumber: w.weekNumber,
+        sessionNumber: w.sessionNumber,
+        sessionName: w.sessionName,
+      })),
+      startDate,
+      { ...scheduleOptions, forceFirstSessionDate: firstDate },
+    );
+
+    const workouts = generatedWorkouts.map((workout, index) => {
+      const scheduleEntry = schedule[index];
+      const allExercises = [
+        ...workout.exercises.map((e) => ({
+          name: e.name,
+          lift: e.lift,
+          targetWeight: e.targetWeight,
+          sets: e.sets,
+          reps: e.reps,
+          isAccessory: false,
+        })),
+        ...(workout.accessories || []).map((a) => ({
+          name: a.name,
+          accessoryId: a.accessoryId,
+          targetWeight: a.targetWeight,
+          sets: a.sets,
+          reps: a.reps,
+          isAccessory: true,
+        })),
+      ];
+      return {
+        weekNumber: workout.weekNumber,
+        sessionNumber: workout.sessionNumber,
+        sessionName: workout.sessionName,
+        scheduledDate: scheduleEntry?.scheduledDate?.toISOString().split('T')[0] || null,
+        scheduledTime: scheduleEntry?.scheduledTime || null,
+        targetLifts: JSON.stringify(allExercises),
+      };
+    });
+
+    const totalSessionsPlanned = generatedWorkouts.length;
+    const estimatedWeeks = programConfig.info.estimatedWeeks;
+
+    const cycle = await createProgramCycle(db, userId, {
+      programSlug,
+      name,
+      squat1rm: squat1rm || 0,
+      bench1rm: bench1rm || 0,
+      deadlift1rm: deadlift1rm || 0,
+      ohp1rm: ohp1rm || 0,
       totalSessionsPlanned,
       estimatedWeeks,
-    } = body;
-    if (!programSlug || !name || !totalSessionsPlanned) {
-      return c.json({ message: 'programSlug, name, and totalSessionsPlanned are required' }, 400);
-    }
-    const result = await db
-      .insert(schema.userProgramCycles)
-      .values({
-        userId,
-        programSlug,
-        name,
-        squat1rm: squat1rm || 0,
-        bench1rm: bench1rm || 0,
-        deadlift1rm: deadlift1rm || 0,
-        ohp1rm: ohp1rm || 0,
-        totalSessionsPlanned,
-        estimatedWeeks,
-        status: 'active',
-        startedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning()
-      .get();
-    return c.json(result, 201);
+      preferredGymDays,
+      preferredTimeOfDay,
+      programStartDate,
+      firstSessionDate,
+      workouts,
+    });
+
+    return c.json(cycle, 201);
   } catch (_e) {
+    console.error('Failed to start program:', _e);
     return c.json({ message: 'Failed to start program' }, 500);
   }
 });
@@ -1521,6 +1941,184 @@ app.put('/api/programs/active', async (c) => {
     return c.json(result);
   } catch (_e) {
     return c.json({ message: 'Failed to update program cycle' }, 500);
+  }
+});
+
+app.get('/api/programs/cycles/:id', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+  try {
+    const result = await getProgramCycleWithWorkouts(db, cycleId, userId);
+    if (!result) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+    return c.json(result);
+  } catch (_e) {
+    return c.json({ message: 'Failed to fetch program cycle' }, 500);
+  }
+});
+
+app.get('/api/programs/cycles/:id/workouts', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+  try {
+    const result = await getProgramCycleWithWorkouts(db, cycleId, userId);
+    if (!result) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+    return c.json(result.workouts);
+  } catch (_e) {
+    return c.json({ message: 'Failed to fetch workouts' }, 500);
+  }
+});
+
+app.get('/api/programs/cycles/:id/workouts/current', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+  try {
+    const result = await getProgramCycleWithWorkouts(db, cycleId, userId);
+    if (!result) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+    const { currentWeek, currentSession } = result.cycle;
+    const currentWorkout = result.workouts.find(
+      (w) => w.weekNumber === currentWeek && w.sessionNumber === currentSession,
+    );
+    if (!currentWorkout) {
+      return c.json({ message: 'Current workout not found' }, 404);
+    }
+    return c.json(currentWorkout);
+  } catch (_e) {
+    return c.json({ message: 'Failed to fetch current workout' }, 500);
+  }
+});
+
+app.post('/api/programs/cycles/:id/workouts/current/start', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+  try {
+    const result = await getProgramCycleWithWorkouts(db, cycleId, userId);
+    if (!result) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+
+    const { currentWeek, currentSession } = result.cycle;
+    const currentCycleWorkout = result.workouts.find(
+      (w) => w.weekNumber === currentWeek && w.sessionNumber === currentSession,
+    );
+
+    if (!currentCycleWorkout) {
+      return c.json({ message: 'Current workout not found' }, 404);
+    }
+
+    if (currentCycleWorkout.workoutId) {
+      const existingWorkout = await db
+        .select({
+          id: schema.workouts.id,
+          completedAt: schema.workouts.completedAt,
+          isDeleted: schema.workouts.isDeleted,
+        })
+        .from(schema.workouts)
+        .where(
+          and(
+            eq(schema.workouts.id, currentCycleWorkout.workoutId),
+            eq(schema.workouts.userId, userId),
+          ),
+        )
+        .get();
+
+      if (existingWorkout && !existingWorkout.isDeleted) {
+        return c.json({
+          workoutId: existingWorkout.id,
+          created: false,
+          completed: !!existingWorkout.completedAt,
+        });
+      }
+    }
+
+    const workout = await createWorkoutFromProgramCycleWorkout(
+      db,
+      userId,
+      cycleId,
+      currentCycleWorkout,
+    );
+
+    return c.json({
+      workoutId: workout.id,
+      created: true,
+      completed: false,
+    });
+  } catch (_e) {
+    return c.json({ message: 'Failed to start current workout' }, 500);
+  }
+});
+
+app.post('/api/programs/cycles/:id/complete-session', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+  try {
+    const cycleData = await getProgramCycleById(db, cycleId, userId);
+    if (!cycleData) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+
+    const { currentWeek, currentSession, totalSessionsCompleted, status } = cycleData;
+    const newSessionsCompleted = totalSessionsCompleted + 1;
+
+    const daysPerWeek = 3;
+    let newSession = currentSession + 1;
+    let newWeek = currentWeek;
+
+    if (newSession > daysPerWeek) {
+      newSession = 1;
+      newWeek = currentWeek + 1;
+    }
+
+    const result = await db
+      .update(schema.userProgramCycles)
+      .set({
+        currentWeek: newWeek,
+        currentSession: newSession,
+        totalSessionsCompleted: newSessionsCompleted,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(schema.userProgramCycles.id, cycleId), eq(schema.userProgramCycles.userId, userId)),
+      )
+      .returning()
+      .get();
+
+    if (!result) {
+      return c.json({ message: 'Failed to update program cycle' }, 500);
+    }
+    return c.json(result);
+  } catch (_e) {
+    return c.json({ message: 'Failed to complete session' }, 500);
   }
 });
 
