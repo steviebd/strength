@@ -3,9 +3,17 @@ import { cors } from 'hono/cors';
 import { Hono } from 'hono';
 import { createAuth, isDevAuthEnabled, resolveWorkerEnv, type WorkerEnv } from './auth';
 import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, like, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, gt, like, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
-import { exerciseLibrary, chunkedQuery, chunkedInsert } from '@strength/db';
+import {
+  exerciseLibrary,
+  chunkedQuery,
+  chunkedInsert,
+  whoopRecovery,
+  whoopSleep,
+  whoopCycle,
+  whoopWorkout,
+} from '@strength/db';
 import {
   createProgramCycle,
   getOrCreateExerciseForUser,
@@ -217,6 +225,61 @@ function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
 }
 
+function parseJsonObject(value: string | null | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch (_e) {
+    return null;
+  }
+
+  return null;
+}
+
+function getObject(
+  source: Record<string, unknown> | null | undefined,
+  key: string,
+): Record<string, unknown> | null {
+  const value = source?.[key];
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getNumber(source: Record<string, unknown> | null | undefined, key: string): number | null {
+  const value = source?.[key];
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getTimestamp(
+  source: Record<string, unknown> | null | undefined,
+  key: string,
+): number | null {
+  const value = source?.[key];
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function withWhoopFallbacks<T extends Record<string, unknown>, U extends Record<string, unknown>>(
+  row: T,
+  patch: U,
+): T & U {
+  return { ...row, ...patch };
+}
+
 async function getLastCompletedExerciseSnapshot(db: any, userId: string, exerciseId: string) {
   let resolvedExerciseId = exerciseId;
 
@@ -279,12 +342,19 @@ async function getLastCompletedExerciseSnapshot(db: any, userId: string, exercis
     workoutDate: recentWorkoutExercise.workoutCompletedAt
       ? new Date(recentWorkoutExercise.workoutCompletedAt).toISOString().split('T')[0]
       : null,
-    sets: allSets.map((s: { weight: number | null; reps: number | null; rpe: number | null; setNumber: number | null }) => ({
-      weight: s.weight,
-      reps: s.reps,
-      rpe: s.rpe,
-      setNumber: s.setNumber,
-    })),
+    sets: allSets.map(
+      (s: {
+        weight: number | null;
+        reps: number | null;
+        rpe: number | null;
+        setNumber: number | null;
+      }) => ({
+        weight: s.weight,
+        reps: s.reps,
+        rpe: s.rpe,
+        setNumber: s.setNumber,
+      }),
+    ),
   };
 }
 
@@ -765,7 +835,9 @@ async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId:
     .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
     .all();
 
-  const currentIndex = cycleWorkouts.findIndex((cw: { id: string }) => cw.id === linkedCycleWorkout.id);
+  const currentIndex = cycleWorkouts.findIndex(
+    (cw: { id: string }) => cw.id === linkedCycleWorkout.id,
+  );
   const nextCycleWorkout = currentIndex >= 0 ? cycleWorkouts[currentIndex + 1] : null;
   const now = new Date();
 
@@ -1646,16 +1718,21 @@ app.post('/api/workouts', async (c) => {
 
         const setRows =
           historySnapshot && historySnapshot.sets.length > 0
-            ? historySnapshot.sets.map((set: { weight: number | null; reps: number | null; rpe: number | null }, index: number) => ({
-                workoutExerciseId: workoutExercise.id,
-                setNumber: index + 1,
-                weight: set.weight,
-                reps: set.reps,
-                rpe: set.rpe,
-                isComplete: false,
-                createdAt: now,
-                updatedAt: now,
-              }))
+            ? historySnapshot.sets.map(
+                (
+                  set: { weight: number | null; reps: number | null; rpe: number | null },
+                  index: number,
+                ) => ({
+                  workoutExerciseId: workoutExercise.id,
+                  setNumber: index + 1,
+                  weight: set.weight,
+                  reps: set.reps,
+                  rpe: set.rpe,
+                  isComplete: false,
+                  createdAt: now,
+                  updatedAt: now,
+                }),
+              )
             : Array.from({ length: templateExercise.sets ?? 3 }, (_, s) => ({
                 workoutExerciseId: workoutExercise.id,
                 setNumber: s + 1,
@@ -2070,11 +2147,13 @@ app.get('/api/workouts/last/:exerciseId', async (c) => {
     return c.json({
       exerciseId: snapshot.exerciseId,
       workoutDate: snapshot.workoutDate,
-      sets: snapshot.sets.map((set: { weight: number | null; reps: number | null; rpe: number | null }) => ({
-        weight: set.weight,
-        reps: set.reps,
-        rpe: set.rpe,
-      })),
+      sets: snapshot.sets.map(
+        (set: { weight: number | null; reps: number | null; rpe: number | null }) => ({
+          weight: set.weight,
+          reps: set.reps,
+          rpe: set.rpe,
+        }),
+      ),
     });
   } catch (_e) {
     return c.json({ message: 'Failed to fetch last workout data' }, 500);
@@ -2910,6 +2989,153 @@ app.get('/api/whoop/status', async (c) => {
   });
 });
 
+// GET /api/whoop/data - Get WHOOP data (recovery, sleep, cycles, workouts)
+app.get('/api/whoop/data', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+
+  const connected = await isWhoopConnected(db, userId);
+  if (!connected) {
+    return c.json({ message: 'WHOOP not connected' }, 400);
+  }
+
+  const days = parseInt(c.req.query('days') ?? '30', 10);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  try {
+    const [recovery, sleep, cycles, workouts] = await Promise.all([
+      db
+        .select()
+        .from(whoopRecovery)
+        .where(eq(whoopRecovery.userId, userId))
+        .orderBy(desc(whoopRecovery.date)),
+      db
+        .select()
+        .from(whoopSleep)
+        .where(and(eq(whoopSleep.userId, userId), gt(whoopSleep.start, since)))
+        .orderBy(desc(whoopSleep.start)),
+      db
+        .select()
+        .from(whoopCycle)
+        .where(and(eq(whoopCycle.userId, userId), gt(whoopCycle.start, since)))
+        .orderBy(desc(whoopCycle.start)),
+      db
+        .select()
+        .from(whoopWorkout)
+        .where(and(eq(whoopWorkout.userId, userId), gt(whoopWorkout.start, since)))
+        .orderBy(desc(whoopWorkout.start)),
+    ]);
+
+    const normalizedRecovery = recovery.map((row) => {
+      const rawData = parseJsonObject(row.rawData);
+      const score = getObject(rawData, 'score');
+      const storedDate =
+        row.date instanceof Date && !Number.isNaN(row.date.getTime()) ? row.date.getTime() : null;
+      const fallbackDate =
+        getTimestamp(rawData, 'created_at') ??
+        getTimestamp(rawData, 'updated_at') ??
+        (row.createdAt instanceof Date ? row.createdAt.getTime() : null);
+
+      return withWhoopFallbacks(row, {
+        date: new Date(storedDate ?? fallbackDate ?? Date.now()),
+        recoveryScore: row.recoveryScore ?? getNumber(score, 'recovery_score'),
+        hrvRmssdMilli: row.hrvRmssdMilli ?? getNumber(score, 'hrv_rmssd_milli'),
+        restingHeartRate: row.restingHeartRate ?? getNumber(score, 'resting_heart_rate'),
+      });
+    });
+
+    const filteredRecovery = normalizedRecovery.filter(
+      (row) => row.date instanceof Date && row.date.getTime() > since.getTime(),
+    );
+
+    const normalizedSleep = sleep.map((row) => {
+      const rawData = parseJsonObject(row.rawData);
+      const score = getObject(rawData, 'score');
+      const stageSummary = getObject(score, 'stage_summary');
+      const sleepNeeded = getObject(score, 'sleep_needed');
+      const lightSleep =
+        row.lightSleepTimeMilli ?? getNumber(stageSummary, 'total_light_sleep_time_milli');
+      const slowWaveSleep =
+        row.slowWaveSleepTimeMilli ?? getNumber(stageSummary, 'total_slow_wave_sleep_time_milli');
+      const remSleep =
+        row.remSleepTimeMilli ?? getNumber(stageSummary, 'total_rem_sleep_time_milli');
+      const totalSleepTime =
+        row.totalSleepTimeMilli ??
+        [lightSleep, slowWaveSleep, remSleep].reduce((sum, value) => sum + (value ?? 0), 0);
+
+      return withWhoopFallbacks(row, {
+        sleepPerformancePercentage:
+          row.sleepPerformancePercentage ?? getNumber(score, 'sleep_performance_percentage'),
+        totalSleepTimeMilli: totalSleepTime > 0 ? totalSleepTime : null,
+        sleepEfficiencyPercentage:
+          row.sleepEfficiencyPercentage ?? getNumber(score, 'sleep_efficiency_percentage'),
+        slowWaveSleepTimeMilli: slowWaveSleep,
+        remSleepTimeMilli: remSleep,
+        lightSleepTimeMilli: lightSleep,
+        wakeTimeMilli: row.wakeTimeMilli ?? getNumber(stageSummary, 'total_awake_time_milli'),
+        disturbanceCount: row.disturbanceCount ?? getNumber(stageSummary, 'disturbance_count'),
+        sleepConsistencyPercentage:
+          row.sleepConsistencyPercentage ?? getNumber(score, 'sleep_consistency_percentage'),
+        sleepNeedBaselineMilli:
+          row.sleepNeedBaselineMilli ?? getNumber(sleepNeeded, 'baseline_milli'),
+        sleepNeedFromSleepDebtMilli:
+          row.sleepNeedFromSleepDebtMilli ?? getNumber(sleepNeeded, 'need_from_sleep_debt_milli'),
+        sleepNeedFromRecentStrainMilli:
+          row.sleepNeedFromRecentStrainMilli ??
+          getNumber(sleepNeeded, 'need_from_recent_strain_milli'),
+        sleepNeedFromRecentNapMilli:
+          row.sleepNeedFromRecentNapMilli ?? getNumber(sleepNeeded, 'need_from_recent_nap_milli'),
+        respiratoryRate: getNumber(score, 'respiratory_rate'),
+      });
+    });
+
+    const normalizedCycles = cycles.map((row) => {
+      const rawData = parseJsonObject(row.rawData);
+      const score = getObject(rawData, 'score');
+
+      return withWhoopFallbacks(row, {
+        dayStrain: row.dayStrain ?? getNumber(score, 'strain'),
+        averageHeartRate: row.averageHeartRate ?? getNumber(score, 'average_heart_rate'),
+        maxHeartRate: row.maxHeartRate ?? getNumber(score, 'max_heart_rate'),
+        kilojoule: row.kilojoule ?? getNumber(score, 'kilojoule'),
+      });
+    });
+
+    const normalizedWorkouts = workouts.map((row) => {
+      const score = parseJsonObject(row.score);
+      const kilojoule = getNumber(score, 'kilojoule');
+
+      return withWhoopFallbacks(row, {
+        strain: getNumber(score, 'strain'),
+        averageHeartRate: getNumber(score, 'average_heart_rate'),
+        maxHeartRate: getNumber(score, 'max_heart_rate'),
+        kilojoule,
+        caloriesKcal: kilojoule != null ? Math.round(kilojoule / 4.184) : null,
+      } as Partial<typeof row> & {
+        strain: number | null;
+        averageHeartRate: number | null;
+        maxHeartRate: number | null;
+        kilojoule: number | null;
+        caloriesKcal: number | null;
+      });
+    });
+
+    return c.json({
+      recovery: filteredRecovery,
+      sleep: normalizedSleep,
+      cycles: normalizedCycles,
+      workouts: normalizedWorkouts,
+    });
+  } catch (e) {
+    console.error('[WHOOP] Data fetch error:', e);
+    return c.json({ message: 'Failed to fetch WHOOP data' }, 500);
+  }
+});
+
 // POST /api/whoop/disconnect - Disconnect WHOOP
 app.post('/api/whoop/disconnect', async (c) => {
   const session = await requireAuth(c);
@@ -2972,5 +3198,33 @@ app.post('/api/webhooks/whoop', async (c) => {
 app.get('/api/webhooks/whoop', async (c) => {
   return c.json({ ok: true, message: 'WHOOP webhook endpoint active' });
 });
+
+// Nutrition API Routes
+import { chatHandler } from './api/nutrition/chat';
+import { dailySummaryHandler } from './api/nutrition/daily-summary';
+import { getEntriesHandler, createEntryHandler } from './api/nutrition/entries';
+import {
+  getEntryHandler,
+  updateEntryHandler,
+  deleteEntryHandler,
+} from './api/nutrition/entries.$id';
+import { getBodyStatsHandler, upsertBodyStatsHandler } from './api/nutrition/body-stats';
+import { upsertTrainingContextHandler } from './api/nutrition/training-context';
+
+app.post('/api/nutrition/chat', chatHandler);
+
+app.get('/api/nutrition/daily-summary', dailySummaryHandler);
+
+app.get('/api/nutrition/entries', getEntriesHandler);
+app.post('/api/nutrition/entries', createEntryHandler);
+
+app.get('/api/nutrition/entries/:id', getEntryHandler);
+app.put('/api/nutrition/entries/:id', updateEntryHandler);
+app.delete('/api/nutrition/entries/:id', deleteEntryHandler);
+
+app.get('/api/nutrition/body-stats', getBodyStatsHandler);
+app.post('/api/nutrition/body-stats', upsertBodyStatsHandler);
+
+app.post('/api/nutrition/training-context', upsertTrainingContextHandler);
 
 export default app;

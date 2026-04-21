@@ -11,7 +11,7 @@ import {
   whoopSleep,
   whoopBodyMeasurement,
 } from '@strength/db';
-import { getValidAccessToken } from './token-rotation';
+import { forceRefreshAccessToken, getValidAccessToken } from './token-rotation';
 import {
   fetchWorkouts,
   fetchRecoveries,
@@ -98,6 +98,7 @@ async function syncWorkouts(
 
   let newCount = 0;
   for (const workout of workouts) {
+    const zoneDurations = workout.score?.zone_durations;
     try {
       await db
         .insert(whoopWorkout)
@@ -111,7 +112,7 @@ async function syncWorkouts(
           scoreState: workout.score_state,
           score: workout.score ? JSON.stringify(workout.score) : null,
           during: workout.during ? JSON.stringify(workout.during) : null,
-          zoneDuration: workout.zone_duration ? JSON.stringify(workout.zone_duration) : null,
+          zoneDuration: zoneDurations ? JSON.stringify(zoneDurations) : null,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
@@ -133,24 +134,33 @@ async function syncRecoveries(
 
   let newCount = 0;
   for (const recovery of recoveries) {
+    const whoopRecoveryId = recovery.sleep_id ?? recovery.cycle_id;
+    const recoveryScore = recovery.score?.recovery_score ?? null;
+    const restingHeartRate = recovery.score?.resting_heart_rate ?? null;
+    const hrvRmssdMilli = recovery.score?.hrv_rmssd_milli ?? null;
+
+    if (!whoopRecoveryId) {
+      continue;
+    }
+
     try {
       await db
         .insert(whoopRecovery)
         .values({
           userId,
-          whoopRecoveryId: recovery.id,
+          whoopRecoveryId: String(whoopRecoveryId),
           cycleId: recovery.cycle_id || null,
-          date: new Date(recovery.date),
-          recoveryScore: recovery.recovery_score,
-          hrvRmssdMilli: recovery.hrv_rmssd_milli,
-          hrvRmssdBaseline: recovery.hrv_rmssd_baseline,
-          restingHeartRate: recovery.resting_heart_rate,
-          restingHeartRateBaseline: recovery.resting_heart_rate_baseline,
-          respiratoryRate: recovery.respiratory_rate,
-          respiratoryRateBaseline: recovery.respiratory_rate_baseline,
+          date: new Date(recovery.created_at ?? recovery.updated_at ?? Date.now()),
+          recoveryScore,
+          hrvRmssdMilli,
+          hrvRmssdBaseline: null,
+          restingHeartRate,
+          restingHeartRateBaseline: null,
+          respiratoryRate: null,
+          respiratoryRateBaseline: null,
           rawData: JSON.stringify(recovery),
-          recoveryScoreTier: recovery.recovery_score_tier || getScoreTier(recovery.recovery_score),
-          timezoneOffset: recovery.timezone_offset,
+          recoveryScoreTier: recoveryScore != null ? getScoreTier(recoveryScore) : null,
+          timezoneOffset: null,
           webhookReceivedAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -173,6 +183,7 @@ async function syncCycles(
 
   let newCount = 0;
   for (const cycle of cycles) {
+    const score = cycle.score;
     try {
       await db
         .insert(whoopCycle)
@@ -182,14 +193,14 @@ async function syncCycles(
           start: new Date(cycle.start),
           end: new Date(cycle.end),
           timezoneOffset: cycle.timezone_offset,
-          dayStrain: cycle.day_strain,
-          averageHeartRate: cycle.average_heart_rate,
-          maxHeartRate: cycle.max_heart_rate,
-          kilojoule: cycle.kilojoule || null,
-          percentRecorded: cycle.percent_recorded,
-          distanceMeter: cycle.distance_meter || null,
-          altitudeGainMeter: cycle.altitude_gain_meter || null,
-          altitudeChangeMeter: cycle.altitude_change_meter || null,
+          dayStrain: score?.strain ?? null,
+          averageHeartRate: score?.average_heart_rate ?? null,
+          maxHeartRate: score?.max_heart_rate ?? null,
+          kilojoule: score?.kilojoule ?? null,
+          percentRecorded: score?.percent_recorded ?? null,
+          distanceMeter: score?.distance_meter ?? null,
+          altitudeGainMeter: score?.altitude_gain_meter ?? null,
+          altitudeChangeMeter: score?.altitude_change_meter ?? null,
           rawData: JSON.stringify(cycle),
           webhookReceivedAt: new Date(),
           createdAt: new Date(),
@@ -213,6 +224,13 @@ async function syncSleep(
 
   let newCount = 0;
   for (const sleep of records) {
+    const stageSummary = sleep.score?.stage_summary;
+    const sleepNeeded = sleep.score?.sleep_needed;
+    const totalSleepTimeMilli =
+      (stageSummary?.total_light_sleep_time_milli ?? 0) +
+      (stageSummary?.total_slow_wave_sleep_time_milli ?? 0) +
+      (stageSummary?.total_rem_sleep_time_milli ?? 0);
+
     try {
       await db
         .insert(whoopSleep)
@@ -222,24 +240,26 @@ async function syncSleep(
           start: new Date(sleep.start),
           end: new Date(sleep.end),
           timezoneOffset: sleep.timezone_offset,
-          sleepPerformancePercentage: sleep.sleep_performance_percentage,
-          totalSleepTimeMilli: sleep.total_sleep_time_milli,
-          sleepEfficiencyPercentage: sleep.sleep_efficiency_percentage,
-          slowWaveSleepTimeMilli: sleep.slow_wave_sleep_time_milli,
-          remSleepTimeMilli: sleep.rem_sleep_time_milli,
-          lightSleepTimeMilli: sleep.light_sleep_time_milli,
-          wakeTimeMilli: sleep.wake_time_milli,
-          arousalTimeMilli: sleep.arousal_time_milli,
-          disturbanceCount: sleep.disturbance_count,
-          sleepLatencyMilli: sleep.sleep_latency_milli,
-          sleepConsistencyPercentage: sleep.sleep_consistency_percentage,
-          sleepNeedBaselineMilli: sleep.sleep_need_baseline_milli,
-          sleepNeedFromSleepDebtMilli: sleep.sleep_need_from_sleep_debt_milli,
-          sleepNeedFromRecentStrainMilli: sleep.sleep_need_from_recent_strain_milli,
-          sleepNeedFromRecentNapMilli: sleep.sleep_need_from_recent_nap_milli,
+          sleepPerformancePercentage: sleep.score?.sleep_performance_percentage ?? null,
+          totalSleepTimeMilli: totalSleepTimeMilli > 0 ? totalSleepTimeMilli : null,
+          sleepEfficiencyPercentage: sleep.score?.sleep_efficiency_percentage ?? null,
+          slowWaveSleepTimeMilli: stageSummary?.total_slow_wave_sleep_time_milli ?? null,
+          remSleepTimeMilli: stageSummary?.total_rem_sleep_time_milli ?? null,
+          lightSleepTimeMilli: stageSummary?.total_light_sleep_time_milli ?? null,
+          wakeTimeMilli: stageSummary?.total_awake_time_milli ?? null,
+          arousalTimeMilli: null,
+          disturbanceCount: stageSummary?.disturbance_count ?? null,
+          sleepLatencyMilli: null,
+          sleepConsistencyPercentage: sleep.score?.sleep_consistency_percentage ?? null,
+          sleepNeedBaselineMilli: sleepNeeded?.baseline_milli ?? null,
+          sleepNeedFromSleepDebtMilli: sleepNeeded?.need_from_sleep_debt_milli ?? null,
+          sleepNeedFromRecentStrainMilli: sleepNeeded?.need_from_recent_strain_milli ?? null,
+          sleepNeedFromRecentNapMilli: sleepNeeded?.need_from_recent_nap_milli ?? null,
           rawData: JSON.stringify(sleep),
           sleepQualityTier:
-            sleep.sleep_quality_tier || getSleepQualityTier(sleep.sleep_performance_percentage),
+            sleep.score?.sleep_performance_percentage != null
+              ? getSleepQualityTier(sleep.score.sleep_performance_percentage)
+              : null,
           webhookReceivedAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -307,32 +327,53 @@ export async function syncAllWhoopData(
     return result;
   }
 
-  const accessToken = tokenResult.token;
+  let accessToken = tokenResult.token;
+
+  async function runWithFreshToken<T>(
+    label: string,
+    action: (token: string) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await action(accessToken);
+    } catch (e) {
+      if (e && typeof e === 'object' && 'status' in e && e.status === 401) {
+        const refreshed = await forceRefreshAccessToken(db, env, userId);
+        if (!refreshed.token) {
+          throw new Error(`${label} token refresh failed: ${refreshed.error ?? 'Unknown error'}`);
+        }
+
+        accessToken = refreshed.token;
+        return action(accessToken);
+      }
+
+      throw e;
+    }
+  }
 
   try {
     try {
-      const profile = await getWhoopProfile(accessToken);
+      const profile = await runWithFreshToken('Profile', getWhoopProfile);
       result.profile = await syncProfile(db, userId, profile);
     } catch (e) {
       result.errors.push(`Profile: ${e instanceof Error ? e.message : 'Unknown'}`);
     }
 
     try {
-      const workouts = await fetchWorkouts(accessToken);
+      const workouts = await runWithFreshToken('Workouts', fetchWorkouts);
       result.workouts = await syncWorkouts(db, userId, workouts);
     } catch (e) {
       result.errors.push(`Workouts: ${e instanceof Error ? e.message : 'Unknown'}`);
     }
 
     try {
-      const recoveries = await fetchRecoveries(accessToken);
+      const recoveries = await runWithFreshToken('Recovery', fetchRecoveries);
       result.recovery = await syncRecoveries(db, userId, recoveries);
     } catch (e) {
       result.errors.push(`Recovery: ${e instanceof Error ? e.message : 'Unknown'}`);
     }
 
     try {
-      const cycles = await fetchCycles(accessToken);
+      const cycles = await runWithFreshToken('Cycles', fetchCycles);
       result.cycles = await syncCycles(db, userId, cycles);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown';
@@ -344,14 +385,14 @@ export async function syncAllWhoopData(
     }
 
     try {
-      const sleep = await fetchSleep(accessToken);
+      const sleep = await runWithFreshToken('Sleep', fetchSleep);
       result.sleep = await syncSleep(db, userId, sleep);
     } catch (e) {
       result.errors.push(`Sleep: ${e instanceof Error ? e.message : 'Unknown'}`);
     }
 
     try {
-      const measurements = await fetchBodyMeasurements(accessToken);
+      const measurements = await runWithFreshToken('Body Measurements', fetchBodyMeasurements);
       result.bodyMeasurements = await syncBodyMeasurements(db, userId, measurements);
     } catch (e) {
       result.errors.push(`Body Measurements: ${e instanceof Error ? e.message : 'Unknown'}`);

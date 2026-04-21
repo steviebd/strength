@@ -1,5 +1,6 @@
 import { Pressable, Text, View, ActivityIndicator } from 'react-native';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'expo-router';
 import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
@@ -36,6 +37,7 @@ async function syncWhoop(): Promise<{ success: boolean; errors?: string[] }> {
 }
 
 export default function Profile() {
+  const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
   const { weightUnit, setWeightUnit, isLoading } = useUserPreferences();
 
@@ -172,7 +174,7 @@ export default function Profile() {
                 <Text className="text-darkMuted text-sm">Status</Text>
                 <View className="flex-row items-center gap-2">
                   <View className="h-2 w-2 rounded-full bg-green-500" />
-                  <Text className="text-green text-sm">Connected</Text>
+                  <Text className="text-green-500 text-sm">Connected</Text>
                 </View>
               </View>
 
@@ -205,6 +207,13 @@ export default function Profile() {
                   ) : (
                     <Text className="text-center text-sm font-semibold text-white">Sync Data</Text>
                   )}
+                </Pressable>
+
+                <Pressable
+                  onPress={() => router.push('/(app)/whoop')}
+                  className="flex-1 rounded-xl bg-darkBorder py-3"
+                >
+                  <Text className="text-center text-sm font-semibold text-darkText">View Data</Text>
                 </Pressable>
 
                 <Pressable

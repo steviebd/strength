@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1776580712255,
-      "tag": "0000_rapid_darwin",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1776601217951,
-      "tag": "0001_amused_steel_serpent",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1776646379109,
-      "tag": "0002_modern_stark_industries",
+      "when": 1776728913980,
+      "tag": "0000_minor_captain_america",
       "breakpoints": true
     }
   ]

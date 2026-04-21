@@ -536,3 +536,88 @@ export const _rateLimitUserIdEndpointIdx = index('idx_rate_limit_user_id_endpoin
 export const _rateLimitWindowStartIdx = index('idx_rate_limit_window_start').on(
   rateLimit.windowStart,
 );
+
+export const nutritionEntries = sqliteTable('nutrition_entries', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  mealType: text('meal_type'),
+  name: text('name'),
+  calories: real('calories'),
+  proteinG: real('protein_g'),
+  carbsG: real('carbs_g'),
+  fatG: real('fat_g'),
+  aiAnalysis: text('ai_analysis'),
+  loggedAt: text('logged_at').notNull(),
+  date: text('date').notNull(),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const nutritionChatMessages = sqliteTable('nutrition_chat_messages', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  role: text('role').notNull(),
+  content: text('content').notNull(),
+  hasImage: integer('has_image', { mode: 'boolean' }).default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const userBodyStats = sqliteTable('user_body_stats', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  bodyweightKg: real('bodyweight_kg'),
+  heightCm: real('height_cm'),
+  targetCalories: integer('target_calories'),
+  targetProteinG: integer('target_protein_g'),
+  targetCarbsG: integer('target_carbs_g'),
+  targetFatG: integer('target_fat_g'),
+  recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const nutritionTrainingContext = sqliteTable('nutrition_training_context', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => generateId()),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  trainingType: text('training_type').notNull(),
+  customLabel: text('custom_label'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const _nutritionEntriesUserDateIdx = index('idx_nutrition_entries_user_date').on(
+  nutritionEntries.userId,
+  nutritionEntries.date,
+);
+export const _nutritionEntriesUserDeletedIdx = index('idx_nutrition_entries_user_deleted').on(
+  nutritionEntries.userId,
+  nutritionEntries.isDeleted,
+);
+export const _nutritionChatMessagesUserDateIdx = index('idx_nutrition_chat_messages_user_date').on(
+  nutritionChatMessages.userId,
+  nutritionChatMessages.date,
+);
+export const _userBodyStatsUserIdx = index('idx_user_body_stats_user').on(userBodyStats.userId);
+export const _nutritionTrainingContextUserDateIdx = index(
+  'idx_nutrition_training_context_user_date',
+).on(nutritionTrainingContext.userId, nutritionTrainingContext.date);

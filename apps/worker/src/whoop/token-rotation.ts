@@ -14,6 +14,11 @@ interface TokenResult {
   error?: string;
 }
 
+interface DecryptedTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
 async function getIntegration(
   db: DrizzleD1Database<typeof schema>,
   userId: string,
@@ -51,6 +56,55 @@ async function shouldRotate(integration: typeof userIntegration.$inferSelect): P
   return false;
 }
 
+async function decryptStoredTokens(
+  integration: typeof userIntegration.$inferSelect,
+  encryptionKey: string,
+): Promise<DecryptedTokens> {
+  let accessToken: string;
+  try {
+    accessToken = await decryptToken(integration.accessToken, encryptionKey);
+  } catch {
+    accessToken = integration.accessToken;
+  }
+
+  let refreshToken: string;
+  try {
+    refreshToken = await decryptToken(integration.refreshToken!, encryptionKey);
+  } catch {
+    refreshToken = integration.refreshToken!;
+  }
+
+  return { accessToken, refreshToken };
+}
+
+async function refreshWhoopAccessToken(
+  db: DrizzleD1Database<typeof schema>,
+  env: ReturnType<typeof resolveWorkerEnv>,
+  integration: typeof userIntegration.$inferSelect,
+  refreshToken: string,
+): Promise<string> {
+  const newTokens = await refreshAccessToken(env, refreshToken);
+
+  const encryptedAccessToken = await encryptToken(
+    newTokens.access_token,
+    env.ENCRYPTION_MASTER_KEY!,
+  );
+  const nextRefreshToken = newTokens.refresh_token || refreshToken;
+  const encryptedRefreshToken = await encryptToken(nextRefreshToken, env.ENCRYPTION_MASTER_KEY!);
+
+  await db
+    .update(userIntegration)
+    .set({
+      accessToken: encryptedAccessToken,
+      refreshToken: encryptedRefreshToken,
+      accessTokenExpiresAt: new Date(newTokens.expires_at ?? Date.now()),
+      updatedAt: new Date(),
+    })
+    .where(eq(userIntegration.id, integration.id));
+
+  return newTokens.access_token;
+}
+
 export async function getValidAccessToken(
   db: DrizzleD1Database<typeof schema>,
   env: WorkerEnv,
@@ -68,42 +122,49 @@ export async function getValidAccessToken(
   }
 
   try {
-    let decryptedToken: string;
-    try {
-      decryptedToken = await decryptToken(integration.accessToken, resolvedEnv.ENCRYPTION_MASTER_KEY!);
-    } catch {
-      decryptedToken = integration.accessToken;
-    }
+    const { accessToken, refreshToken } = await decryptStoredTokens(
+      integration,
+      resolvedEnv.ENCRYPTION_MASTER_KEY!,
+    );
 
     if (await shouldRotate(integration)) {
       console.log('[WHOOP Token] Token needs rotation, refreshing...');
-      const newTokens = await refreshAccessToken(resolvedEnv, integration.refreshToken);
-
-      const encryptedAccessToken = await encryptToken(
-        newTokens.access_token,
-        resolvedEnv.ENCRYPTION_MASTER_KEY!,
-      );
-      const encryptedRefreshToken = await encryptToken(
-        newTokens.refresh_token,
-        resolvedEnv.ENCRYPTION_MASTER_KEY!,
-      );
-
-      await db
-        .update(userIntegration)
-        .set({
-          accessToken: encryptedAccessToken,
-          refreshToken: encryptedRefreshToken,
-          accessTokenExpiresAt: new Date(newTokens.expires_at ?? Date.now()),
-          updatedAt: new Date(),
-        })
-        .where(eq(userIntegration.id, integration.id));
-
-      return { token: newTokens.access_token };
+      const token = await refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken);
+      return { token };
     }
 
-    return { token: decryptedToken };
+    return { token: accessToken };
   } catch (error) {
     console.error('[WHOOP Token] Error getting valid access token:', error);
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+export async function forceRefreshAccessToken(
+  db: DrizzleD1Database<typeof schema>,
+  env: WorkerEnv,
+  userId: string,
+): Promise<TokenResult> {
+  const resolvedEnv = resolveWorkerEnv(env);
+  const integration = await getIntegration(db, userId, 'whoop');
+
+  if (!integration) {
+    return { error: 'No WHOOP integration found' };
+  }
+
+  if (!integration.refreshToken) {
+    return { error: 'No refresh token available' };
+  }
+
+  try {
+    const { refreshToken } = await decryptStoredTokens(
+      integration,
+      resolvedEnv.ENCRYPTION_MASTER_KEY!,
+    );
+    const token = await refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken);
+    return { token };
+  } catch (error) {
+    console.error('[WHOOP Token] Error force-refreshing access token:', error);
     return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
@@ -120,7 +181,10 @@ export async function storeWhoopTokens(
 ): Promise<void> {
   const resolvedEnv = resolveWorkerEnv(env);
   const encryptedAccessToken = await encryptToken(accessToken, resolvedEnv.ENCRYPTION_MASTER_KEY!);
-  const encryptedRefreshToken = await encryptToken(refreshToken, resolvedEnv.ENCRYPTION_MASTER_KEY!);
+  const encryptedRefreshToken = await encryptToken(
+    refreshToken,
+    resolvedEnv.ENCRYPTION_MASTER_KEY!,
+  );
 
   const existing = await getIntegration(db, userId, 'whoop');
 

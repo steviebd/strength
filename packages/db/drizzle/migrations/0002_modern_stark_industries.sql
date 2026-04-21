@@ -1,1 +1,0 @@
-ALTER TABLE `user_program_cycles` ADD `estimated_weeks` integer;

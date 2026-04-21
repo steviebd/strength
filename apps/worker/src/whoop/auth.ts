@@ -64,7 +64,7 @@ export async function exchangeCodeForTokens(
     throw new Error(`WHOOP token exchange failed: ${response.status} - ${error}`);
   }
 
-  const data = await response.json() as WhoopTokenResponse & { expires_in: number };
+  const data = (await response.json()) as WhoopTokenResponse & { expires_in: number };
   return {
     ...data,
     expires_at: Date.now() + data.expires_in * 1000,
@@ -94,7 +94,7 @@ export async function refreshAccessToken(
     throw new Error(`WHOOP token refresh failed: ${response.status} - ${error}`);
   }
 
-  const data = await response.json() as WhoopTokenResponse & { expires_in: number };
+  const data = (await response.json()) as WhoopTokenResponse & { expires_in: number };
   return {
     ...data,
     expires_at: Date.now() + data.expires_in * 1000,

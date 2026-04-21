@@ -14,24 +14,42 @@ export interface WhoopWorkout {
   timezone_offset: string;
   sport_name: string;
   score_state: string;
-  score?: unknown;
+  score?: {
+    strain?: number;
+    average_heart_rate?: number;
+    max_heart_rate?: number;
+    kilojoule?: number;
+    percent_recorded?: number;
+    distance_meter?: number | null;
+    altitude_gain_meter?: number | null;
+    altitude_change_meter?: number | null;
+    zone_durations?: {
+      zone_zero_milli?: number;
+      zone_one_milli?: number;
+      zone_two_milli?: number;
+      zone_three_milli?: number;
+      zone_four_milli?: number;
+      zone_five_milli?: number;
+    };
+  };
   during?: unknown;
   zone_duration?: unknown;
 }
 
 export interface WhoopRecovery {
-  id: string;
-  cycle_id: string;
-  date: string;
-  recovery_score: number;
-  hrv_rmssd_milli: number;
-  hrv_rmssd_baseline: number;
-  resting_heart_rate: number;
-  resting_heart_rate_baseline: number;
-  respiratory_rate: number;
-  respiratory_rate_baseline: number;
-  recovery_score_tier: 'low' | 'medium' | 'high';
-  timezone_offset: string;
+  cycle_id?: string;
+  sleep_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  score_state?: string;
+  score?: {
+    recovery_score?: number;
+    resting_heart_rate?: number;
+    hrv_rmssd_milli?: number;
+    spo2_percentage?: number;
+    skin_temp_celsius?: number;
+    user_calibrating?: boolean;
+  };
 }
 
 export interface WhoopCycle {
@@ -39,14 +57,17 @@ export interface WhoopCycle {
   start: string;
   end: string;
   timezone_offset: string;
-  day_strain: number;
-  average_heart_rate: number;
-  max_heart_rate: number;
-  kilojoule?: number;
-  percent_recorded: number;
-  distance_meter?: number;
-  altitude_gain_meter?: number;
-  altitude_change_meter?: number;
+  score_state?: string;
+  score?: {
+    strain?: number;
+    average_heart_rate?: number;
+    max_heart_rate?: number;
+    kilojoule?: number;
+    percent_recorded?: number;
+    distance_meter?: number | null;
+    altitude_gain_meter?: number | null;
+    altitude_change_meter?: number | null;
+  };
 }
 
 export interface WhoopSleep {
@@ -54,22 +75,30 @@ export interface WhoopSleep {
   start: string;
   end: string;
   timezone_offset: string;
-  sleep_performance_percentage: number;
-  total_sleep_time_milli: number;
-  sleep_efficiency_percentage: number;
-  slow_wave_sleep_time_milli: number;
-  rem_sleep_time_milli: number;
-  light_sleep_time_milli: number;
-  wake_time_milli: number;
-  arousal_time_milli: number;
-  disturbance_count: number;
-  sleep_latency_milli: number;
-  sleep_consistency_percentage: number;
-  sleep_need_baseline_milli: number;
-  sleep_need_from_sleep_debt_milli: number;
-  sleep_need_from_recent_strain_milli: number;
-  sleep_need_from_recent_nap_milli: number;
-  sleep_quality_tier: 'poor' | 'fair' | 'good' | 'excellent';
+  nap?: boolean;
+  score_state?: string;
+  score?: {
+    stage_summary?: {
+      total_in_bed_time_milli?: number;
+      total_awake_time_milli?: number;
+      total_no_data_time_milli?: number;
+      total_light_sleep_time_milli?: number;
+      total_slow_wave_sleep_time_milli?: number;
+      total_rem_sleep_time_milli?: number;
+      sleep_cycle_count?: number;
+      disturbance_count?: number;
+    };
+    sleep_needed?: {
+      baseline_milli?: number;
+      need_from_sleep_debt_milli?: number;
+      need_from_recent_strain_milli?: number;
+      need_from_recent_nap_milli?: number;
+    };
+    respiratory_rate?: number;
+    sleep_performance_percentage?: number;
+    sleep_consistency_percentage?: number;
+    sleep_efficiency_percentage?: number;
+  };
 }
 
 export interface WhoopBodyMeasurement {

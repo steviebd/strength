@@ -13,3 +13,5 @@ migrations_dir = "../../packages/db/drizzle/migrations"
 
 [vars]
 WHOOP_SYNC_RATE_LIMIT_PER_HOUR = "10"
+AI_GATEWAY_NAME = "workout-ai-dev"
+AI_MODEL_NAME = "workers-ai/@cf/moonshotai/kimi-k2.5"

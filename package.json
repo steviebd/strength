@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev:expo": "infisical run --env=dev -- bun --filter @strength/expo dev",
-    "dev:worker": "cd apps/worker && infisical export --env=dev --silent --format=dotenv --output-file=.dev.vars && bun run dev",
+    "dev:worker": "infisical run --env=dev -- bun run --filter @strength/worker dev",
     "db:generate": "bun --filter @strength/db db:generate",
     "db:push:dev": "cd apps/worker && wrangler d1 migrations apply strength-db --local",
     "db:reset": "rm -rf apps/worker/.wrangler/ && bun run db:push:dev",
@@ -22,7 +22,7 @@
   "devDependencies": {
     "typescript": "5.9.3",
     "vite-plus": "^0.1.18",
-    "wrangler": "^4.83.0"
+    "wrangler": "^4.84.0"
   },
   "packageManager": "bun@1.2.9"
 }

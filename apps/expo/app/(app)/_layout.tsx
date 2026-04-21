@@ -63,6 +63,12 @@ export default function AppLayout() {
             tabBarIcon: () => <Text style={{ fontSize: 24 }}>👤</Text>,
           }}
         />
+        <Tabs.Screen
+          name="whoop"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
     </QueryProvider>
   );

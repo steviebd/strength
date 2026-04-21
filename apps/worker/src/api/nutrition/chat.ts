@@ -1,0 +1,360 @@
+import { streamText } from 'ai';
+import { eq, and, gte, lte, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/d1';
+import { model } from '../../lib/ai';
+import {
+  assembleSystemPrompt,
+  assembleStructuredNutritionContext,
+  type SystemPromptContext,
+  type NutritionAssistantContext,
+  type TrainingContext,
+  type WhoopData,
+  type DailyIntake,
+  type MacroTargets,
+} from '../../lib/ai/nutrition-prompts';
+import * as schema from '@strength/db';
+
+function getDb(c: any) {
+  return drizzle(c.env.DB, { schema });
+}
+
+interface ChatRequest {
+  messages: Array<{ role: string; content: string }>;
+  date: string;
+  hasImage: boolean;
+  imageBase64?: string;
+}
+
+async function getWhoopDataForDay(
+  db: any,
+  userId: string,
+  date: string,
+  _timezone: string,
+): Promise<WhoopData> {
+  const targetDate = new Date(date + 'T00:00:00Z');
+  const startOfDay = new Date(targetDate);
+  const endOfDay = new Date(targetDate);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const recovery = await db
+    .select()
+    .from(schema.whoopRecovery)
+    .where(
+      and(
+        eq(schema.whoopRecovery.userId, userId),
+        gte(schema.whoopRecovery.date, startOfDay),
+        lte(schema.whoopRecovery.date, endOfDay),
+      ),
+    )
+    .get();
+
+  const cycle = await db
+    .select()
+    .from(schema.whoopCycle)
+    .where(
+      and(
+        eq(schema.whoopCycle.userId, userId),
+        gte(schema.whoopCycle.start, startOfDay),
+        lte(schema.whoopCycle.start, endOfDay),
+      ),
+    )
+    .get();
+
+  const recoveryScore = recovery?.recoveryScore ?? null;
+  const recoveryStatus = recovery?.recoveryScoreTier ?? null;
+  const hrv = recovery?.hrvRmssdMilli ?? null;
+  const restingHeartRate = recovery?.restingHeartRate ?? null;
+  const caloriesBurned = cycle?.dayStrain ? Math.round(cycle.dayStrain * 10) : null;
+  const totalStrain = cycle?.dayStrain ?? null;
+
+  return {
+    recoveryScore,
+    recoveryStatus,
+    hrv,
+    restingHeartRate,
+    caloriesBurned,
+    totalStrain,
+  };
+}
+
+function calculateMacroTargets(
+  bodyweightKg: number,
+  trainingType: string | null,
+  hasProgram: boolean,
+  customTargets?: {
+    targetCalories?: number;
+    targetProteinG?: number;
+    targetCarbsG?: number;
+    targetFatG?: number;
+  },
+): MacroTargets {
+  if (customTargets?.targetCalories) {
+    return {
+      calories: customTargets.targetCalories,
+      proteinG: customTargets.targetProteinG ?? Math.round(bodyweightKg * 2),
+      carbsG: customTargets.targetCarbsG ?? Math.round(bodyweightKg * 3),
+      fatG: customTargets.targetFatG ?? Math.round(bodyweightKg * 0.8),
+    };
+  }
+
+  const proteinG = Math.round(bodyweightKg * 2);
+  const fatG = Math.round(bodyweightKg * 0.8);
+  const proteinCals = proteinG * 4;
+  const fatCals = fatG * 9;
+  const remainingCals = 2500 - proteinCals - fatCals;
+  const carbsG = Math.round(remainingCals / 4);
+
+  let multiplier = 1;
+  if (trainingType === 'powerlifting') {
+    multiplier = 1.1;
+  } else if (trainingType === 'cardio') {
+    multiplier = 1.05;
+  } else if (trainingType === 'rest_day') {
+    multiplier = 0.95;
+  }
+
+  return {
+    calories: Math.round(2500 * multiplier),
+    proteinG,
+    carbsG,
+    fatG,
+  };
+}
+
+export async function chatHandler(c: any) {
+  const session = await c.get('session');
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+
+  let body: ChatRequest;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid request body' }, 400);
+  }
+
+  const { messages, date, hasImage, imageBase64 } = body;
+
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return c.json({ error: 'Messages are required' }, 400);
+  }
+
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
+  }
+
+  const imageCount = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.nutritionChatMessages)
+    .where(
+      and(
+        eq(schema.nutritionChatMessages.userId, userId),
+        eq(schema.nutritionChatMessages.hasImage, true),
+        gte(schema.nutritionChatMessages.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+      ),
+    )
+    .get();
+
+  if ((imageCount?.count ?? 0) >= 50 && hasImage) {
+    return c.json({ error: 'Rate limit exceeded', code: 'RATE_LIMITED' }, 429);
+  }
+
+  const prefs = await db
+    .select()
+    .from(schema.userPreferences)
+    .where(eq(schema.userPreferences.userId, userId))
+    .get();
+
+  const bodyStats = await db
+    .select()
+    .from(schema.userBodyStats)
+    .where(eq(schema.userBodyStats.userId, userId))
+    .get();
+
+  const activeProgram = await db
+    .select()
+    .from(schema.userProgramCycles)
+    .where(
+      and(
+        eq(schema.userProgramCycles.userId, userId),
+        eq(schema.userProgramCycles.status, 'active'),
+      ),
+    )
+    .get();
+
+  const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
+  const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
+  const timezone = 'UTC';
+  const bodyweightKg = bodyStats?.bodyweightKg ?? null;
+  const hasProgram = !!activeProgram;
+
+  const entries = await db
+    .select()
+    .from(schema.nutritionEntries)
+    .where(
+      and(
+        eq(schema.nutritionEntries.userId, userId),
+        eq(schema.nutritionEntries.date, date),
+        eq(schema.nutritionEntries.isDeleted, false),
+      ),
+    )
+    .all();
+
+  const totalCalories = entries.reduce((sum, e) => sum + (e.calories ?? 0), 0);
+  const totalProteinG = entries.reduce((sum, e) => sum + (e.proteinG ?? 0), 0);
+  const totalCarbsG = entries.reduce((sum, e) => sum + (e.carbsG ?? 0), 0);
+  const totalFatG = entries.reduce((sum, e) => sum + (e.fatG ?? 0), 0);
+
+  const trainingContextRow = await db
+    .select()
+    .from(schema.nutritionTrainingContext)
+    .where(
+      and(
+        eq(schema.nutritionTrainingContext.userId, userId),
+        eq(schema.nutritionTrainingContext.date, date),
+      ),
+    )
+    .get();
+
+  const trainingCtx: TrainingContext | null = trainingContextRow
+    ? {
+        type: trainingContextRow.trainingType as TrainingContext['type'],
+        customLabel: trainingContextRow.customLabel ?? undefined,
+      }
+    : null;
+
+  const whoopData = await getWhoopDataForDay(db, userId, date, timezone);
+
+  const macroTargets = calculateMacroTargets(
+    bodyweightKg ?? 80,
+    trainingCtx?.type ?? null,
+    hasProgram,
+    {
+      targetCalories: bodyStats?.targetCalories ?? undefined,
+      targetProteinG: bodyStats?.targetProteinG ?? undefined,
+      targetCarbsG: bodyStats?.targetCarbsG ?? undefined,
+      targetFatG: bodyStats?.targetFatG ?? undefined,
+    },
+  );
+
+  const dailyIntake: DailyIntake = {
+    totalCalories,
+    totalProteinG,
+    totalCarbsG,
+    totalFatG,
+  };
+
+  const systemContext: SystemPromptContext = {
+    bodyweightKg,
+    energyUnit,
+    weightUnit,
+    trainingContext: trainingCtx,
+    whoopData,
+    dailyIntake,
+    macroTargets,
+  };
+
+  const assistantContext: NutritionAssistantContext = {
+    ...systemContext,
+    date,
+    hasActiveProgram: hasProgram,
+  };
+
+  const systemPrompt = assembleSystemPrompt(systemContext);
+  const structuredContextPrompt = assembleStructuredNutritionContext(assistantContext);
+
+  const userMessageContent = messages[messages.length - 1].content;
+  const hasImageFlag = hasImage && !!imageBase64;
+
+  await db.insert(schema.nutritionChatMessages).values({
+    userId,
+    date,
+    role: 'user',
+    content: userMessageContent,
+    hasImage: hasImageFlag,
+    createdAt: new Date(),
+  });
+
+  let userContent:
+    | string
+    | Array<{ type: 'text'; text: string } | { type: 'image'; image: string }>;
+  if (hasImage && imageBase64) {
+    userContent = [
+      { type: 'text', text: userMessageContent },
+      { type: 'image', image: imageBase64 },
+    ];
+  } else {
+    userContent = userMessageContent;
+  }
+
+  const systemMessage = { role: 'system' as const, content: systemPrompt };
+  const structuredContextMessage = {
+    role: 'system' as const,
+    content: structuredContextPrompt,
+  };
+  const priorMessages = messages.slice(0, -1).map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }));
+  const userMessage = { role: 'user' as const, content: userContent };
+  const aiMessages = [systemMessage, structuredContextMessage, ...priorMessages, userMessage];
+
+  const result = streamText({
+    model,
+    messages: aiMessages,
+  });
+
+  let fullResponseText = '';
+  const textEncoder = new TextEncoder();
+  let isClosed = false;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const delta of result.fullStream) {
+          if (isClosed) break;
+          if (delta.type === 'text-delta') {
+            fullResponseText += delta.text;
+          }
+          if (!isClosed) {
+            const bytes = textEncoder.encode(`data: ${JSON.stringify(delta)}\n\n`);
+            controller.enqueue(bytes);
+          }
+        }
+        if (!isClosed) {
+          controller.enqueue(textEncoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        }
+
+        if (fullResponseText.trim()) {
+          await db.insert(schema.nutritionChatMessages).values({
+            userId,
+            date,
+            role: 'assistant',
+            content: fullResponseText,
+            hasImage: false,
+            createdAt: new Date(),
+          });
+        }
+      } catch (err) {
+        if (!isClosed) {
+          controller.error(err);
+        }
+      }
+    },
+    cancel() {
+      isClosed = true;
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
+}
