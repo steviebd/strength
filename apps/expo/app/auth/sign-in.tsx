@@ -4,13 +4,7 @@ import { Link, router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
 import { authClient } from '@/lib/auth-client';
-
-const BG = '#0a0a0a';
-const BORDER = '#2a2a2a';
-const TEXT = '#f5f5f5';
-const MUTED = '#a0a0a0';
-const PINE = '#1f4d3c';
-const CORAL = '#ef6f4f';
+import { colors } from '@/theme';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -18,10 +12,10 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const searchParams = useLocalSearchParams();
-  const passwordRef = useRef<TextInput>(null);
+  const passwordRef = useRef<any>(null);
   const authShellRef = useRef<AuthShellHandle>(null);
-  const emailInputRef = useRef<View>(null);
-  const passwordInputRef = useRef<View>(null);
+  const emailInputRef = useRef<any>(null);
+  const passwordInputRef = useRef<any>(null);
   const redirectUrl = (searchParams.returnTo as string) || '/(app)/home';
 
   async function handleSubmit() {
@@ -53,8 +47,8 @@ export default function SignInScreen() {
     }
   }
 
-  function scrollToInput(ref: React.RefObject<View>) {
-    ref.current?.measure((_x, _y, _width, _height, _pageX, pageY) => {
+  function scrollToInput(ref: React.RefObject<any>) {
+    ref.current?.measure((_x: any, _y: any, _width: any, _height: any, _pageX: any, pageY: any) => {
       authShellRef.current?.scrollToInput(pageY);
     });
   }
@@ -68,22 +62,30 @@ export default function SignInScreen() {
     >
       <View style={{ gap: 20 }}>
         <View style={{ gap: 4 }}>
-          <Text style={{ fontSize: 12, fontWeight: '500', color: MUTED }}>Email</Text>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: colors.textMuted }}>Email</Text>
           <View ref={emailInputRef} style={{ position: 'relative' }}>
-            <Text style={{ position: 'absolute', left: 16, top: 16, fontSize: 16, color: MUTED }}>
-              ✉️
+            <Text
+              style={{
+                position: 'absolute',
+                left: 16,
+                top: 16,
+                fontSize: 16,
+                color: colors.textMuted,
+              }}
+            >
+              🔒
             </Text>
             <TextInput
               style={{
                 borderWidth: 1,
-                borderColor: BORDER,
-                backgroundColor: BG,
+                borderColor: colors.border,
+                backgroundColor: colors.background,
                 borderRadius: 12,
                 paddingVertical: 16,
                 paddingLeft: 48,
                 paddingRight: 16,
                 fontSize: 16,
-                color: TEXT,
+                color: colors.text,
               }}
               autoCapitalize="none"
               keyboardType="email-address"
@@ -100,22 +102,30 @@ export default function SignInScreen() {
         </View>
 
         <View style={{ gap: 4 }}>
-          <Text style={{ fontSize: 12, fontWeight: '500', color: MUTED }}>Password</Text>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: colors.textMuted }}>Password</Text>
           <View ref={passwordInputRef} style={{ position: 'relative' }}>
-            <Text style={{ position: 'absolute', left: 16, top: 16, fontSize: 16, color: MUTED }}>
+            <Text
+              style={{
+                position: 'absolute',
+                left: 16,
+                top: 16,
+                fontSize: 16,
+                color: colors.textMuted,
+              }}
+            >
               🔒
             </Text>
             <TextInput
               style={{
                 borderWidth: 1,
-                borderColor: BORDER,
-                backgroundColor: BG,
+                borderColor: colors.border,
+                backgroundColor: colors.background,
                 borderRadius: 12,
                 paddingVertical: 16,
                 paddingLeft: 48,
                 paddingRight: 16,
                 fontSize: 16,
-                color: TEXT,
+                color: colors.text,
               }}
               secureTextEntry
               placeholder="Enter your password"
@@ -141,7 +151,7 @@ export default function SignInScreen() {
               paddingVertical: 12,
             }}
           >
-            <Text style={{ fontSize: 14, color: '#ef4444' }}>{error}</Text>
+            <Text style={{ fontSize: 14, color: colors.error }}>{error}</Text>
           </View>
         ) : null}
 
@@ -151,7 +161,7 @@ export default function SignInScreen() {
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
-            backgroundColor: PINE,
+            backgroundColor: colors.accent,
             borderRadius: 12,
             paddingVertical: 16,
             marginTop: 8,
@@ -167,9 +177,11 @@ export default function SignInScreen() {
         </Pressable>
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 8 }}>
-          <Text style={{ fontSize: 14, color: MUTED }}>Don't have an account? </Text>
+          <Text style={{ fontSize: 14, color: colors.textMuted }}>Don't have an account? </Text>
           <Link href="/auth/sign-up">
-            <Text style={{ fontSize: 14, fontWeight: '600', color: CORAL }}>Create one</Text>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.accent }}>
+              Create one
+            </Text>
           </Link>
         </View>
       </View>

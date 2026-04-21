@@ -12,6 +12,7 @@ export default defineConfig({
       '.expo/**',
       '.wrangler/**',
       'apps/expo/node_modules/**',
+      '.agents/**',
     ],
   },
   fmt: {

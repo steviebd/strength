@@ -1,10 +1,12 @@
-import { Pressable, Text, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
+import { Screen, ScreenScrollView } from '@/components/ui/Screen';
 import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
 import * as WebBrowser from 'expo-web-browser';
+import { colors, radius, spacing, typography } from '@/theme';
 
 interface WhoopStatus {
   connected: boolean;
@@ -111,129 +113,143 @@ export default function Profile() {
     }
   };
 
+  useEffect(() => {
+    if (!session?.user) {
+      return;
+    }
+
+    void loadWhoopStatus();
+  }, [session?.user]);
+
   if (isPending) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg">
-        <Text className="text-darkMuted">Loading...</Text>
-      </View>
+      <Screen style={styles.loadingScreen}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </Screen>
     );
   }
 
   if (!session?.user) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg">
-        <Text className="text-darkMuted">Not signed in</Text>
-      </View>
+      <Screen style={styles.loadingScreen}>
+        <Text style={styles.loadingText}>Not signed in</Text>
+      </Screen>
     );
   }
 
   const { user } = session;
   const initial = user.name?.[0]?.toUpperCase() ?? '?';
 
-  useEffect(() => {
-    loadWhoopStatus();
-  }, []);
-
   return (
-    <View className="flex-1 bg-darkBg">
-      <View className="px-6 pt-16">
-        <Text className="text-darkMuted text-sm font-medium uppercase tracking-wider">Profile</Text>
-
-        <View className="mt-6 items-center">
-          <View className="mb-4 h-24 w-24 items-center justify-center rounded-full bg-pine">
-            <Text className="text-3xl font-semibold text-white">{initial}</Text>
-          </View>
-          <Text className="text-darkText text-2xl font-semibold">{user.name}</Text>
-          <Text className="text-darkMuted mt-1 text-sm">{user.email}</Text>
+    <Screen>
+      <ScreenScrollView bottomInset={120} showsVerticalScrollIndicator={false}>
+        <View style={styles.pageHeader}>
+          <Text style={styles.pageTitle}>Profile</Text>
         </View>
 
-        <View className="mt-8 rounded-3xl border border-darkBorder bg-darkCard p-6">
-          <Text className="text-darkText mb-4 text-sm font-semibold">Account</Text>
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarInitial}>{initial}</Text>
+          </View>
+          <Text style={styles.userName}>{user.name}</Text>
+          <Text style={styles.userEmail}>{user.email}</Text>
+        </View>
 
-          <View className="mb-4 flex-row items-center justify-between py-3 border-b border-darkBorder">
-            <Text className="text-darkMuted text-sm">Name</Text>
-            <Text className="text-darkText text-sm">{user.name}</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Account</Text>
+
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Name</Text>
+            <Text style={styles.rowValue}>{user.name}</Text>
           </View>
 
-          <View className="flex-row items-center justify-between py-3">
-            <Text className="text-darkMuted text-sm">Email</Text>
-            <Text className="text-darkText text-sm">{user.email}</Text>
+          <View style={[styles.row, styles.rowLast]}>
+            <Text style={styles.rowLabel}>Email</Text>
+            <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
+              {user.email}
+            </Text>
           </View>
         </View>
 
-        <View className="mt-6 rounded-3xl border border-darkBorder bg-darkCard p-6">
-          <Text className="text-darkText mb-4 text-sm font-semibold">WHOOP Integration</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>WHOOP Integration</Text>
 
           {whoopLoading && !whoopStatus ? (
-            <View className="items-center py-4">
-              <ActivityIndicator color="#F97066" />
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={colors.accent} />
             </View>
           ) : whoopStatus?.connected ? (
             <View>
-              <View className="mb-4 flex-row items-center justify-between py-3 border-b border-darkBorder">
-                <Text className="text-darkMuted text-sm">Status</Text>
-                <View className="flex-row items-center gap-2">
-                  <View className="h-2 w-2 rounded-full bg-green-500" />
-                  <Text className="text-green-500 text-sm">Connected</Text>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Status</Text>
+                <View style={styles.rowValueRight}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusConnectedText}>Connected</Text>
                 </View>
               </View>
 
               {whoopStatus.profile && (
-                <View className="mb-4 flex-row items-center justify-between py-3 border-b border-darkBorder">
-                  <Text className="text-darkMuted text-sm">WHOOP User</Text>
-                  <Text className="text-darkText text-sm">
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>WHOOP User</Text>
+                  <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
                     {whoopStatus.profile.firstName} {whoopStatus.profile.lastName}
                   </Text>
                 </View>
               )}
 
               {whoopStatus.profile?.email && (
-                <View className="mb-4 flex-row items-center justify-between py-3 border-b border-darkBorder">
-                  <Text className="text-darkMuted text-sm">WHOOP Email</Text>
-                  <Text className="text-darkText text-sm">{whoopStatus.profile.email}</Text>
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>WHOOP Email</Text>
+                  <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
+                    {whoopStatus.profile.email}
+                  </Text>
                 </View>
               )}
 
-              <View className="flex-row gap-3 mt-4">
+              <View style={styles.buttonGroup}>
                 <Pressable
                   onPress={handleSyncWhoop}
                   disabled={syncing}
-                  className="flex-1 rounded-xl bg-pine py-3"
+                  style={[styles.button, styles.buttonPrimary, syncing && styles.buttonDisabled]}
                 >
                   {syncing ? (
-                    <View className="items-center">
-                      <ActivityIndicator color="white" size="small" />
+                    <View style={styles.buttonSpinner}>
+                      <ActivityIndicator color="#ffffff" size="small" />
                     </View>
                   ) : (
-                    <Text className="text-center text-sm font-semibold text-white">Sync Data</Text>
+                    <Text style={styles.buttonPrimaryText}>Sync Data</Text>
                   )}
                 </Pressable>
 
                 <Pressable
                   onPress={() => router.push('/(app)/whoop')}
-                  className="flex-1 rounded-xl bg-darkBorder py-3"
+                  style={[styles.button, styles.buttonSecondary]}
                 >
-                  <Text className="text-center text-sm font-semibold text-darkText">View Data</Text>
+                  <Text style={styles.buttonSecondaryText}>View Data</Text>
                 </Pressable>
 
                 <Pressable
                   onPress={handleDisconnectWhoop}
                   disabled={whoopLoading}
-                  className="flex-1 rounded-xl border border-coral py-3"
+                  style={[
+                    styles.button,
+                    styles.buttonDanger,
+                    whoopLoading && styles.buttonDisabled,
+                  ]}
                 >
-                  <Text className="text-center text-sm font-semibold text-coral">Disconnect</Text>
+                  <Text style={styles.buttonDangerText}>Disconnect</Text>
                 </Pressable>
               </View>
 
               {syncResult && (
-                <View className="mt-3 rounded-lg bg-darkBorder p-3">
-                  <Text className="text-darkMuted text-xs">{syncResult}</Text>
+                <View style={styles.syncResultBox}>
+                  <Text style={styles.syncResultText}>{syncResult}</Text>
                 </View>
               )}
             </View>
           ) : (
             <View>
-              <Text className="text-darkMuted text-sm mb-4">
+              <Text style={styles.connectDescription}>
                 Connect your WHOOP account to automatically sync workouts, recovery data, sleep, and
                 more.
               </Text>
@@ -241,43 +257,47 @@ export default function Profile() {
               <Pressable
                 onPress={handleConnectWhoop}
                 disabled={whoopLoading}
-                className="rounded-xl bg-[#E41E3F] py-3"
+                style={[styles.button, styles.buttonWhoop, whoopLoading && styles.buttonDisabled]}
               >
                 {whoopLoading ? (
-                  <View className="items-center">
-                    <ActivityIndicator color="white" size="small" />
+                  <View style={styles.buttonSpinner}>
+                    <ActivityIndicator color="#ffffff" size="small" />
                   </View>
                 ) : (
-                  <Text className="text-center text-sm font-semibold text-white">
-                    Connect WHOOP
-                  </Text>
+                  <Text style={styles.buttonPrimaryText}>Connect WHOOP</Text>
                 )}
               </Pressable>
             </View>
           )}
 
           {error && (
-            <View className="mt-3 rounded-lg bg-red-500/20 p-3">
-              <Text className="text-red-400 text-xs">{error}</Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
         </View>
 
-        <View className="mt-6 rounded-3xl border border-darkBorder bg-darkCard p-6">
-          <Text className="text-darkText mb-4 text-sm font-semibold">Settings</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Settings</Text>
 
-          <View className="flex-row items-center justify-between py-3 border-b border-darkBorder">
-            <Text className="text-darkMuted text-sm">Weight Unit</Text>
-            <View className="flex-row gap-2">
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Weight Unit</Text>
+            <View style={styles.unitToggle}>
               <Pressable
                 onPress={() => setWeightUnit('kg')}
                 disabled={isLoading}
-                className={`rounded-lg px-3 py-1.5 ${
-                  weightUnit === 'kg' ? 'bg-coral text-white' : 'bg-darkBorder text-darkMuted'
-                }`}
+                style={[
+                  styles.unitButton,
+                  weightUnit === 'kg' ? styles.unitButtonActive : styles.unitButtonInactive,
+                ]}
               >
                 <Text
-                  className={`text-sm font-medium ${weightUnit === 'kg' ? 'text-white' : 'text-darkMuted'}`}
+                  style={[
+                    styles.unitButtonText,
+                    weightUnit === 'kg'
+                      ? styles.unitButtonTextActive
+                      : styles.unitButtonTextInactive,
+                  ]}
                 >
                   kg
                 </Text>
@@ -285,12 +305,18 @@ export default function Profile() {
               <Pressable
                 onPress={() => setWeightUnit('lbs')}
                 disabled={isLoading}
-                className={`rounded-lg px-3 py-1.5 ${
-                  weightUnit === 'lbs' ? 'bg-coral text-white' : 'bg-darkBorder text-darkMuted'
-                }`}
+                style={[
+                  styles.unitButton,
+                  weightUnit === 'lbs' ? styles.unitButtonActive : styles.unitButtonInactive,
+                ]}
               >
                 <Text
-                  className={`text-sm font-medium ${weightUnit === 'lbs' ? 'text-white' : 'text-darkMuted'}`}
+                  style={[
+                    styles.unitButtonText,
+                    weightUnit === 'lbs'
+                      ? styles.unitButtonTextActive
+                      : styles.unitButtonTextInactive,
+                  ]}
                 >
                   lbs
                 </Text>
@@ -298,30 +324,254 @@ export default function Profile() {
             </View>
           </View>
 
-          <Pressable className="flex-row items-center justify-between py-3 border-b border-darkBorder">
-            <Text className="text-darkMuted text-sm">Notifications</Text>
-            <Text className="text-darkMuted text-sm">›</Text>
+          <Pressable style={[styles.row, styles.rowLast]}>
+            <Text style={styles.rowLabel}>Notifications</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </Pressable>
 
-          <Pressable className="flex-row items-center justify-between py-3 border-b border-darkBorder">
-            <Text className="text-darkMuted text-sm">Privacy</Text>
-            <Text className="text-darkMuted text-sm">›</Text>
+          <Pressable style={[styles.row, styles.rowLast]}>
+            <Text style={styles.rowLabel}>Privacy</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </Pressable>
 
-          <Pressable className="flex-row items-center justify-between py-3">
-            <Text className="text-darkMuted text-sm">Help & Support</Text>
-            <Text className="text-darkMuted text-sm">›</Text>
+          <Pressable style={[styles.row, styles.rowLast]}>
+            <Text style={styles.rowLabel}>Help & Support</Text>
+            <Text style={styles.rowChevron}>›</Text>
           </Pressable>
         </View>
 
-        <Pressable onPress={handleSignOut} className="mt-8 rounded-2xl bg-coral py-4">
-          <Text className="text-center text-base font-semibold text-white">Sign Out</Text>
+        <Pressable onPress={handleSignOut} style={[styles.button, styles.buttonSignOut]}>
+          <Text style={styles.buttonSignOutText}>Sign Out</Text>
         </Pressable>
 
-        <View className="mt-8 items-center">
-          <Text className="text-darkMuted text-xs">Strength v1.0.0</Text>
+        <View style={styles.versionRow}>
+          <Text style={styles.versionText}>Strength v1.0.0</Text>
         </View>
-      </View>
-    </View>
+      </ScreenScrollView>
+    </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingScreen: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.base,
+  },
+  pageHeader: {
+    marginBottom: spacing.lg,
+  },
+  pageTitle: {
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  avatarCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  avatarInitial: {
+    fontSize: 36,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  userEmail: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    marginBottom: spacing.md,
+  },
+  cardTitle: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    marginBottom: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowLabel: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  rowValue: {
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+  },
+  rowValueFlex: {
+    flex: 1,
+    textAlign: 'right',
+  },
+  rowValueRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rowChevron: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  statusConnectedText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.success,
+  },
+  loadingRow: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  buttonGroup: {
+    marginTop: 16,
+    gap: 12,
+  },
+  button: {
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonPrimary: {
+    backgroundColor: colors.accent,
+  },
+  buttonPrimaryText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+  },
+  buttonSecondary: {
+    backgroundColor: colors.border,
+  },
+  buttonSecondaryText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  buttonDanger: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: 'transparent',
+  },
+  buttonDangerText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.accent,
+  },
+  buttonWhoop: {
+    backgroundColor: '#E41E3F',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonSpinner: {
+    alignItems: 'center',
+  },
+  syncResultBox: {
+    marginTop: 12,
+    borderRadius: radius.sm,
+    backgroundColor: colors.border,
+    padding: 12,
+  },
+  syncResultText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  connectDescription: {
+    fontSize: typography.fontSizes.base,
+    color: colors.textMuted,
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  errorBox: {
+    marginTop: 12,
+    borderRadius: radius.sm,
+    backgroundColor: `${colors.error}20`,
+    padding: 12,
+  },
+  errorText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  unitButton: {
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  unitButtonActive: {
+    backgroundColor: colors.accent,
+  },
+  unitButtonInactive: {
+    backgroundColor: colors.border,
+  },
+  unitButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  unitButtonTextActive: {
+    color: '#ffffff',
+  },
+  unitButtonTextInactive: {
+    color: colors.textMuted,
+  },
+  buttonSignOut: {
+    marginTop: spacing.xl,
+    backgroundColor: colors.accent,
+    paddingVertical: 16,
+  },
+  buttonSignOutText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  versionRow: {
+    alignItems: 'center',
+    marginTop: spacing.xl,
+  },
+  versionText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+});

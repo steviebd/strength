@@ -7,7 +7,9 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native';
+import { ScreenScrollView } from '@/components/ui/Screen';
 import {
   exerciseLibrary,
   type ExerciseLibraryItem,
@@ -18,11 +20,12 @@ import {
   listUserExercises,
   type UserExercise,
 } from '@/lib/exercises';
+import { colors, spacing, radius } from '@/theme';
 
 interface ExercisePickerProps {
   visible: boolean;
   onClose: () => void;
-  onSelect: (exercise: { id: string; name: string; muscleGroup: string | null }) => void;
+  onSelect: (exercises: Array<{ id: string; name: string; muscleGroup: string | null }>) => void;
   selectedIds?: string[];
 }
 
@@ -82,6 +85,7 @@ export function ExercisePicker({
   const [createError, setCreateError] = useState<string | null>(null);
   const [userExercises, setUserExercises] = useState<UserExercise[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pendingSelection, setPendingSelection] = useState<string[]>([]);
 
   useEffect(() => {
     if (!visible) {
@@ -109,6 +113,12 @@ export function ExercisePicker({
     };
   }, [searchQuery, visible]);
 
+  useEffect(() => {
+    if (!visible) {
+      setPendingSelection([]);
+    }
+  }, [visible]);
+
   const filteredUserExercises = useMemo(() => {
     return userExercises.filter((ex) => {
       const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -130,6 +140,11 @@ export function ExercisePicker({
     setCreateError(null);
     try {
       const newExercise = await createCustomExercise(createForm);
+      const exerciseObj = {
+        id: newExercise.id,
+        name: newExercise.name,
+        muscleGroup: newExercise.muscleGroup,
+      };
       setUserExercises((prev) => [
         ...prev,
         {
@@ -140,11 +155,7 @@ export function ExercisePicker({
           libraryId: newExercise.libraryId,
         },
       ]);
-      onSelect({
-        id: newExercise.id,
-        name: newExercise.name,
-        muscleGroup: newExercise.muscleGroup,
-      });
+      onSelect([exerciseObj]);
       onClose();
       setShowCreateForm(false);
       setCreateForm({ name: '', muscleGroup: '', description: '' });
@@ -175,48 +186,71 @@ export function ExercisePicker({
     });
   }, [searchQuery, selectedMuscleGroup, selectedIds, userExercises]);
 
-  const handleSelectLibrary = async (exercise: ExerciseLibraryItem) => {
+  const handleToggleUser = (exercise: UserExercise) => {
+    setPendingSelection((prev) => {
+      if (prev.includes(exercise.id)) {
+        return prev.filter((id) => id !== exercise.id);
+      }
+      return [...prev, exercise.id];
+    });
+  };
+
+  const handleToggleLibrary = async (exercise: ExerciseLibraryItem) => {
     if (selectedIds.includes(exercise.id)) {
-      onClose();
       return;
     }
 
     try {
       const persistedExercise = await ensurePersistedExercise(exercise);
 
-      if (selectedIds.includes(persistedExercise.id)) {
-        onClose();
-        return;
-      }
+      setPendingSelection((prev) => {
+        if (prev.includes(persistedExercise.id)) {
+          return prev.filter((id) => id !== persistedExercise.id);
+        }
+        return [...prev, persistedExercise.id];
+      });
 
       setUserExercises((prev) => {
         if (prev.some((userExercise) => userExercise.id === persistedExercise.id)) {
           return prev;
         }
-
         return [...prev, persistedExercise];
       });
-
-      onSelect({
-        id: persistedExercise.id,
-        name: persistedExercise.name,
-        muscleGroup: persistedExercise.muscleGroup,
-      });
-      onClose();
     } catch (e) {
       console.error('Failed to persist library exercise:', e);
       setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
     }
   };
 
-  const handleSelectUser = (exercise: UserExercise) => {
-    if (!selectedIds.includes(exercise.id)) {
-      onSelect({
-        id: exercise.id,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup,
-      });
-    }
+  const handleConfirm = () => {
+    const selectedUser = filteredUserExercises.filter((ex) => pendingSelection.includes(ex.id));
+    const selectedLibrary = filteredLibraryExercises.filter((ex) =>
+      pendingSelection.includes(ex.id),
+    );
+
+    const selectedExercises = [
+      ...selectedUser.map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        muscleGroup: ex.muscleGroup,
+      })),
+      ...selectedLibrary.map((ex) => {
+        const persisted = userExercises.find((u) => u.libraryId === ex.id);
+        return {
+          id: persisted?.id ?? ex.id,
+          name: ex.name,
+          muscleGroup: ex.muscleGroup,
+        };
+      }),
+    ];
+
+    onSelect(selectedExercises);
+    setPendingSelection([]);
+    onClose();
+  };
+
+  const handleClose = () => {
+    setPendingSelection([]);
     onClose();
   };
 
@@ -225,33 +259,30 @@ export function ExercisePicker({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View className="flex-1 bg-darkBg">
-        <View className="border-b border-darkBorder p-4">
-          <View className="flex-row items-center justify-between mb-4">
-            <Text className="text-darkText text-xl font-bold">
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerTitle}>
               {showCreateForm ? 'Create Exercise' : 'Add Exercise'}
             </Text>
-            <Pressable
-              onPress={onClose}
-              className="h-10 w-10 items-center justify-center rounded-full bg-darkBorder"
-            >
-              <Text className="text-darkText text-xl">×</Text>
+            <Pressable onPress={handleClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
             </Pressable>
           </View>
           {!showCreateForm && (
             <>
-              <View className="relative">
+              <View style={styles.searchContainer}>
                 <TextInput
-                  className="rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
+                  style={styles.searchInput}
                   placeholder="Search exercises..."
                   placeholderTextColor="#71717a"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                 />
                 {loading && (
-                  <View className="absolute right-3 top-3">
+                  <View style={styles.searchLoader}>
                     <ActivityIndicator size="small" color="#f97316" />
                   </View>
                 )}
@@ -259,17 +290,23 @@ export function ExercisePicker({
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                className="mt-3"
-                contentContainerStyle={{ gap: 8 }}
+                style={styles.filterScroll}
+                contentContainerStyle={styles.filterContent}
               >
                 {MUSCLE_GROUPS.map((group) => (
                   <Pressable
                     key={group}
                     onPress={() => setSelectedMuscleGroup(group)}
-                    className={`rounded-full px-4 py-2 ${selectedMuscleGroup === group ? 'bg-coral' : 'bg-darkBorder'}`}
+                    style={[
+                      styles.filterTab,
+                      selectedMuscleGroup === group && styles.filterTabActive,
+                    ]}
                   >
                     <Text
-                      className={`text-sm ${selectedMuscleGroup === group ? 'text-white font-medium' : 'text-darkMuted'}`}
+                      style={[
+                        styles.filterTabText,
+                        selectedMuscleGroup === group && styles.filterTabTextActive,
+                      ]}
                     >
                       {group}
                     </Text>
@@ -281,11 +318,11 @@ export function ExercisePicker({
         </View>
 
         {showCreateForm ? (
-          <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
-            <View className="mb-4">
-              <Text className="mb-2 text-darkText text-sm font-medium">Name *</Text>
+          <ScreenScrollView bottomInset={48} horizontalPadding={16}>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Name *</Text>
               <TextInput
-                className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
+                style={styles.formInput}
                 placeholder="e.g. Hammer Curls"
                 placeholderTextColor="#71717a"
                 value={createForm.name}
@@ -293,23 +330,23 @@ export function ExercisePicker({
               />
             </View>
 
-            <View className="mb-4">
-              <Text className="mb-2 text-darkText text-sm font-medium">Muscle Group *</Text>
-              <View className="flex-row flex-wrap gap-2">
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Muscle Group *</Text>
+              <View style={styles.muscleGroupGrid}>
                 {CREATE_MUSCLE_GROUPS.map((group) => (
                   <Pressable
                     key={group}
                     onPress={() => setCreateForm((f) => ({ ...f, muscleGroup: group }))}
-                    className={`rounded-full px-3 py-2 border ${
-                      createForm.muscleGroup === group
-                        ? 'bg-coral border-coral'
-                        : 'bg-darkCard border-darkBorder'
-                    }`}
+                    style={[
+                      styles.muscleGroupChip,
+                      createForm.muscleGroup === group && styles.muscleGroupChipActive,
+                    ]}
                   >
                     <Text
-                      className={`text-sm ${
-                        createForm.muscleGroup === group ? 'text-white' : 'text-darkText'
-                      }`}
+                      style={[
+                        styles.muscleGroupChipText,
+                        createForm.muscleGroup === group && styles.muscleGroupChipTextActive,
+                      ]}
                     >
                       {group}
                     </Text>
@@ -318,10 +355,10 @@ export function ExercisePicker({
               </View>
             </View>
 
-            <View className="mb-6">
-              <Text className="mb-2 text-darkText text-sm font-medium">Description (optional)</Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Description (optional)</Text>
               <TextInput
-                className="min-h-20 rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
+                style={[styles.formInput, styles.formInputMultiline]}
                 placeholder="Add notes about form, equipment, etc."
                 placeholderTextColor="#71717a"
                 value={createForm.description}
@@ -331,33 +368,31 @@ export function ExercisePicker({
             </View>
 
             {createError && (
-              <View className="mb-4 rounded-lg bg-red-500/20 p-3">
-                <Text className="text-red-400 text-sm">{createError}</Text>
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{createError}</Text>
               </View>
             )}
 
-            <View className="flex-row gap-3">
+            <View style={styles.formButtons}>
               <Pressable
                 onPress={() => {
                   setShowCreateForm(false);
                   setCreateForm({ name: '', muscleGroup: '', description: '' });
                   setCreateError(null);
                 }}
-                className="flex-1 rounded-xl border border-darkBorder bg-darkCard py-3"
+                style={styles.cancelButton}
               >
-                <Text className="text-darkText text-center font-semibold">Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={handleCreateExercise}
                 disabled={creating}
-                className="flex-1 rounded-xl bg-coral py-3 active:scale-95"
+                style={styles.createButton}
               >
-                <Text className="text-white text-center font-semibold">
-                  {creating ? 'Creating...' : 'Create'}
-                </Text>
+                <Text style={styles.createButtonText}>{creating ? 'Creating...' : 'Create'}</Text>
               </Pressable>
             </View>
-          </ScrollView>
+          </ScreenScrollView>
         ) : (
           <>
             <Pressable
@@ -366,74 +401,68 @@ export function ExercisePicker({
                 setSearchQuery('');
                 setSelectedMuscleGroup('All');
               }}
-              className="mx-4 mt-4 flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-coral bg-coral/10 py-3"
+              style={styles.createExercisePrompt}
             >
-              <Text className="text-coral text-sm font-semibold">+ Create Custom Exercise</Text>
+              <Text style={styles.createExercisePromptText}>+ Create Custom Exercise</Text>
             </Pressable>
 
-            <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
+            <ScreenScrollView bottomInset={132} horizontalPadding={16}>
               {filteredUserExercises.length === 0 && filteredLibraryExercises.length === 0 ? (
-                <View className="items-center justify-center py-12">
-                  <Text className="text-darkMuted">No exercises found</Text>
+                <View style={styles.noResults}>
+                  <Text style={styles.noResultsText}>No exercises found</Text>
                 </View>
               ) : (
                 <>
                   {filteredUserExercises.length > 0 && (
                     <>
-                      <Text className="text-darkMuted text-xs font-semibold uppercase tracking-wider mb-2">
-                        Your Exercises
-                      </Text>
-                      {filteredUserExercises.map((exercise) => (
-                        <Pressable
-                          key={exercise.id}
-                          onPress={() => handleSelectUser(exercise)}
-                          className="mb-2 rounded-xl border border-coral/30 bg-coral/10 p-4"
-                        >
-                          <View className="flex-row items-center justify-between">
-                            <View className="flex-1">
-                              <Text className="text-darkText text-base font-medium">
-                                {exercise.name}
-                              </Text>
-                              <Text className="text-darkMuted mt-1 text-xs">
+                      <Text style={styles.sectionLabel}>Your Exercises</Text>
+                      {filteredUserExercises.map((exercise) => {
+                        const isSelected = pendingSelection.includes(exercise.id);
+                        return (
+                          <Pressable
+                            key={exercise.id}
+                            onPress={() => handleToggleUser(exercise)}
+                            style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
+                          >
+                            <View style={styles.exerciseInfo}>
+                              <Text style={styles.exerciseName}>{exercise.name}</Text>
+                              <Text style={styles.exerciseMuscle}>
                                 {exercise.muscleGroup || 'No muscle group'}
                               </Text>
                             </View>
-                            <View className="ml-3 rounded-full bg-coral/20 px-3 py-1">
-                              <Text className="text-coral text-xs font-semibold">+ Add</Text>
-                            </View>
-                          </View>
-                        </Pressable>
-                      ))}
+                            {isSelected && (
+                              <View style={styles.selectedBadge}>
+                                <Text style={styles.selectedBadgeText}>✓</Text>
+                              </View>
+                            )}
+                          </Pressable>
+                        );
+                      })}
                     </>
                   )}
                   {filteredLibraryExercises.length > 0 && (
                     <>
-                      <Text className="text-darkMuted text-xs font-semibold uppercase tracking-wider mb-2 mt-4">
-                        Exercise Library
-                      </Text>
+                      <Text style={styles.sectionLabel}>Exercise Library</Text>
                       {filteredLibraryExercises.map((exercise) => {
+                        const isSelected = pendingSelection.includes(exercise.id);
                         return (
                           <Pressable
                             key={exercise.id}
-                            onPress={() => handleSelectLibrary(exercise)}
-                            className="mb-2 rounded-xl border border-darkBorder bg-darkCard p-4"
+                            onPress={() => handleToggleLibrary(exercise)}
+                            style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
                           >
-                            <View className="flex-row items-center justify-between">
-                              <View className="flex-1">
-                                <Text className="text-darkText text-base font-medium">
-                                  {exercise.name}
-                                </Text>
-                                <Text className="text-darkMuted mt-1 text-xs">
-                                  {exercise.muscleGroup}
-                                </Text>
-                                <Text className="text-darkMuted mt-1 text-xs" numberOfLines={2}>
-                                  {exercise.description}
-                                </Text>
-                              </View>
-                              <View className="ml-3 rounded-full bg-coral/20 px-3 py-1">
-                                <Text className="text-coral text-xs font-semibold">+ Add</Text>
-                              </View>
+                            <View style={styles.exerciseInfo}>
+                              <Text style={styles.exerciseName}>{exercise.name}</Text>
+                              <Text style={styles.exerciseMuscle}>{exercise.muscleGroup}</Text>
+                              <Text style={styles.exerciseDescription} numberOfLines={2}>
+                                {exercise.description}
+                              </Text>
                             </View>
+                            {isSelected && (
+                              <View style={styles.selectedBadge}>
+                                <Text style={styles.selectedBadgeText}>✓</Text>
+                              </View>
+                            )}
                           </Pressable>
                         );
                       })}
@@ -441,10 +470,293 @@ export function ExercisePicker({
                   )}
                 </>
               )}
-            </ScrollView>
+            </ScreenScrollView>
+
+            {pendingSelection.length > 0 && (
+              <View style={styles.selectionBar}>
+                <Text style={styles.selectionCount}>{pendingSelection.length} selected</Text>
+                <Pressable onPress={handleConfirm} style={styles.addSelectedButton}>
+                  <Text style={styles.addSelectedButtonText}>
+                    Add {pendingSelection.length} Exercise{pendingSelection.length > 1 ? 's' : ''}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </>
         )}
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  closeButton: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    backgroundColor: colors.surfaceAlt,
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: colors.text,
+  },
+  searchContainer: {
+    position: 'relative',
+  },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: colors.text,
+  },
+  searchLoader: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+  },
+  filterScroll: {
+    marginTop: spacing.md,
+  },
+  filterContent: {
+    gap: spacing.sm,
+  },
+  filterTab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 9999,
+    backgroundColor: colors.surfaceAlt,
+  },
+  filterTabActive: {
+    backgroundColor: colors.accent,
+  },
+  filterTabText: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  filterTabTextActive: {
+    color: '#ffffff',
+    fontWeight: '500',
+  },
+  createExercisePrompt: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(239,111,79,0.1)',
+    paddingVertical: spacing.md,
+  },
+  createExercisePromptText: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  noResults: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  noResultsText: {
+    color: colors.textMuted,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.6,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  exerciseItem: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  exerciseItemSelected: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(239,111,79,0.1)',
+  },
+  exerciseInfo: {
+    flex: 1,
+  },
+  exerciseName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  exerciseMuscle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  exerciseDescription: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  selectedBadge: {
+    marginLeft: spacing.sm,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(239,111,79,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  selectedBadgeText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  selectionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectionCount: {
+    color: colors.text,
+  },
+  addSelectedButton: {
+    borderRadius: 9999,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  addSelectedButtonText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  formGroup: {
+    marginBottom: spacing.md,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  formInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    height: 48,
+    fontSize: 15,
+    color: colors.text,
+  },
+  formInputMultiline: {
+    minHeight: 80,
+    height: 'auto',
+    paddingTop: 12,
+    textAlignVertical: 'top',
+  },
+  muscleGroupGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  muscleGroupChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  muscleGroupChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+  },
+  muscleGroupChipText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  muscleGroupChipTextActive: {
+    color: '#ffffff',
+  },
+  errorBox: {
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(239,68,68,0.2)',
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    color: '#ef4444',
+    fontSize: 14,
+  },
+  formButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  cancelButton: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  createButton: {
+    flex: 1,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  createButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+});

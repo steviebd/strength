@@ -1,5 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
-import { FlatList, Pressable, Text, TextInput, View, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  FlatList,
+  StyleSheet,
+  ActivityIndicator,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  LayoutChangeEvent,
+} from 'react-native';
 import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db';
 import {
   createCustomExercise,
@@ -8,9 +17,10 @@ import {
   type UserExercise,
 } from '@/lib/exercises';
 import type { ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
+import { colors, radius, spacing, typography } from '@/theme';
 
 interface ExerciseSearchProps {
-  onSelect: (exercise: ExerciseLibraryItem) => void;
+  onSelect: (exercises: ExerciseLibraryItem[]) => void;
   onClose: () => void;
   excludeIds?: string[];
   visible?: boolean;
@@ -60,6 +70,13 @@ export function ExerciseSearch({
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<string[]>([]);
+  const scrollViewportHeight = useRef(0);
+
+  const handleClose = () => {
+    setPendingSelection([]);
+    onClose();
+  };
 
   useEffect(() => {
     if (!visible) {
@@ -110,19 +127,49 @@ export function ExerciseSearch({
           libraryId: null,
         },
       ]);
-      onSelect({
-        id: newExercise.id,
-        name: newExercise.name,
-        muscleGroup: newExercise.muscleGroup,
-        description: newExercise.description,
-      });
-      onClose();
+      onSelect([
+        {
+          id: newExercise.id,
+          name: newExercise.name,
+          muscleGroup: newExercise.muscleGroup ?? '',
+          description: newExercise.description ?? '',
+        },
+      ]);
+      handleClose();
     } catch (e) {
       console.error('Create exercise error:', e);
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
       setCreating(false);
     }
+  }
+
+  function handleConfirm() {
+    const selectedExercises: ExerciseLibraryItem[] = [];
+    for (const id of pendingSelection) {
+      const userEx = filteredUserExercises.find((ex) => ex.id === id);
+      if (userEx) {
+        selectedExercises.push({
+          id: userEx.id,
+          name: userEx.name,
+          muscleGroup: userEx.muscleGroup ?? '',
+          description: userEx.description ?? '',
+        });
+      } else {
+        const libEx = filteredLibraryExercises.find((ex) => ex.id === id);
+        if (libEx) {
+          selectedExercises.push({
+            id: libEx.id,
+            name: libEx.name,
+            muscleGroup: libEx.muscleGroup,
+            description: libEx.description,
+          });
+        }
+      }
+    }
+    onSelect(selectedExercises);
+    setPendingSelection([]);
+    onClose();
   }
 
   const filteredUserExercises = useMemo(() => {
@@ -164,37 +211,39 @@ export function ExerciseSearch({
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'header') {
       return (
-        <View className="bg-darkBg px-4 py-2">
-          <Text className="text-darkMuted text-xs font-semibold uppercase tracking-wider">
-            {item.title}
-          </Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerText}>{item.title}</Text>
         </View>
       );
     }
     const ex = item.data;
     const isUser = item.isUser;
+    const isSelected = pendingSelection.includes(ex.id);
     return (
       <Pressable
-        className="flex flex-row items-center justify-between border-b border-darkBorder/50 p-4 active:bg-darkCard"
+        style={({ pressed }) => [
+          styles.exerciseRow,
+          styles.exerciseRowBorder,
+          isSelected ? styles.exerciseRowSelected : styles.exerciseRowDefault,
+          pressed && styles.exerciseRowPressed,
+        ]}
         onPress={async () => {
           if (isUser) {
-            onSelect(ex as ExerciseLibraryItem);
-            onClose();
+            setPendingSelection((prev) =>
+              prev.includes(ex.id) ? prev.filter((id) => id !== ex.id) : [...prev, ex.id],
+            );
             return;
           }
           const existingUserExercise = userExercises.find((ue) => ue.libraryId === ex.id);
           if (existingUserExercise) {
             if (excludeIds.includes(existingUserExercise.id)) {
-              onClose();
               return;
             }
-            onSelect({
-              id: existingUserExercise.id,
-              name: existingUserExercise.name,
-              muscleGroup: existingUserExercise.muscleGroup,
-              description: existingUserExercise.description,
-            });
-            onClose();
+            setPendingSelection((prev) =>
+              prev.includes(existingUserExercise.id)
+                ? prev.filter((id) => id !== existingUserExercise.id)
+                : [...prev, existingUserExercise.id],
+            );
             return;
           }
           try {
@@ -215,51 +264,57 @@ export function ExerciseSearch({
                 },
               ];
             });
-            onSelect({
-              id: newExercise.id,
-              name: newExercise.name,
-              muscleGroup: newExercise.muscleGroup,
-              description: newExercise.description,
-            });
-            onClose();
+            setPendingSelection((prev) =>
+              prev.includes(newExercise.id)
+                ? prev.filter((id) => id !== newExercise.id)
+                : [...prev, newExercise.id],
+            );
           } catch (e) {
             console.error('Failed to create exercise from library:', e);
           }
         }}
       >
-        <View className="flex-1 min-w-0">
-          <View className="flex flex-row items-center gap-2">
-            <Text className="text-darkText text-base font-medium truncate">{ex.name}</Text>
+        <View style={styles.exerciseInfo}>
+          <View style={styles.exerciseNameRow}>
+            <Text style={styles.exerciseName} numberOfLines={1}>
+              {ex.name}
+            </Text>
             {!isUser && (
-              <View className="rounded-full bg-darkBorder px-2 py-0.5">
-                <Text className="text-darkMuted text-xs">Library</Text>
+              <View style={styles.libraryBadge}>
+                <Text style={styles.libraryBadgeText}>Library</Text>
               </View>
             )}
           </View>
-          <Text className="text-darkMuted text-xs">{ex.muscleGroup}</Text>
+          <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
         </View>
-        <View className="ml-3 rounded-full bg-coral/20 px-3 py-1">
-          <Text className="text-coral text-xs font-semibold">+ Add</Text>
-        </View>
+        {isSelected ? (
+          <View style={styles.selectedBadge}>
+            <Text style={styles.selectedBadgeText}>✓</Text>
+          </View>
+        ) : (
+          <View style={styles.addBadge}>
+            <Text style={styles.addBadgeText}>+ Add</Text>
+          </View>
+        )}
       </Pressable>
     );
   };
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <View className="p-4 border-b border-darkBorder">
-        <View className="mb-4 flex flex-row items-center justify-between">
-          <Text className="text-darkText text-lg font-semibold">
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.headerTitle}>
             {showCreateForm ? 'Create Exercise' : 'Add Exercise'}
           </Text>
-          <Pressable onPress={onClose} className="p-2">
-            <Text className="text-darkMuted text-xl">✕</Text>
+          <Pressable onPress={handleClose} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>✕</Text>
           </Pressable>
         </View>
         {!showCreateForm && (
-          <View className="relative">
+          <View style={styles.searchContainer}>
             <TextInput
-              className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 pr-10 text-darkText"
+              style={styles.searchInput}
               placeholder="Search exercises..."
               placeholderTextColor="#71717a"
               value={searchQuery}
@@ -267,7 +322,7 @@ export function ExerciseSearch({
               autoFocus
             />
             {loading && (
-              <View className="absolute right-3 top-3">
+              <View style={styles.loadingIndicator}>
                 <ActivityIndicator size="small" color="#f97316" />
               </View>
             )}
@@ -276,11 +331,11 @@ export function ExerciseSearch({
       </View>
 
       {showCreateForm ? (
-        <View className="flex-1 p-4">
-          <View className="mb-4">
-            <Text className="mb-2 text-darkText text-sm font-medium">Name *</Text>
+        <View style={styles.createForm}>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Name *</Text>
             <TextInput
-              className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
+              style={styles.formInput}
               placeholder="e.g. Hammer Curls"
               placeholderTextColor="#71717a"
               value={createForm.name}
@@ -289,35 +344,40 @@ export function ExerciseSearch({
             />
           </View>
 
-          <View className="mb-4">
-            <Text className="mb-2 text-darkText text-sm font-medium">Muscle Group *</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {MUSCLE_GROUPS.map((group) => (
-                <Pressable
-                  key={group}
-                  onPress={() => setCreateForm((f) => ({ ...f, muscleGroup: group }))}
-                  className={`rounded-full px-3 py-2 ${
-                    createForm.muscleGroup === group
-                      ? 'bg-coral border-coral'
-                      : 'bg-darkCard border-darkBorder'
-                  } border`}
-                >
-                  <Text
-                    className={`text-sm ${
-                      createForm.muscleGroup === group ? 'text-white' : 'text-darkText'
-                    }`}
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Muscle Group *</Text>
+            <View style={styles.muscleGroupGrid}>
+              {MUSCLE_GROUPS.map((group) => {
+                const isSelected = createForm.muscleGroup === group;
+                return (
+                  <Pressable
+                    key={group}
+                    onPress={() => setCreateForm((f) => ({ ...f, muscleGroup: group }))}
+                    style={[
+                      styles.muscleGroupChip,
+                      isSelected ? styles.muscleGroupChipSelected : styles.muscleGroupChipDefault,
+                    ]}
                   >
-                    {group}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      style={[
+                        styles.muscleGroupChipText,
+                        isSelected
+                          ? styles.muscleGroupChipTextSelected
+                          : styles.muscleGroupChipTextDefault,
+                      ]}
+                    >
+                      {group}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
-          <View className="mb-6">
-            <Text className="mb-2 text-darkText text-sm font-medium">Description (optional)</Text>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Description (optional)</Text>
             <TextInput
-              className="min-h-20 rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
+              style={[styles.formInput, styles.formInputMultiline]}
               placeholder="Add notes about form, equipment, etc."
               placeholderTextColor="#71717a"
               value={createForm.description}
@@ -327,30 +387,28 @@ export function ExerciseSearch({
           </View>
 
           {createError && (
-            <View className="mb-4 rounded-lg bg-red-500/20 p-3">
-              <Text className="text-red-400 text-sm">{createError}</Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{createError}</Text>
             </View>
           )}
 
-          <View className="flex-row gap-3">
+          <View style={styles.formButtons}>
             <Pressable
               onPress={() => {
                 setShowCreateForm(false);
                 setCreateForm({ name: '', muscleGroup: '', description: '' });
                 setCreateError(null);
               }}
-              className="flex-1 rounded-xl border border-darkBorder bg-darkCard py-3"
+              style={({ pressed }) => [styles.cancelButton, pressed && styles.buttonPressed]}
             >
-              <Text className="text-darkText text-center font-semibold">Cancel</Text>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
             <Pressable
               onPress={handleCreateExercise}
               disabled={creating}
-              className="flex-1 rounded-xl bg-coral py-3 active:scale-95"
+              style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}
             >
-              <Text className="text-white text-center font-semibold">
-                {creating ? 'Creating...' : 'Create'}
-              </Text>
+              <Text style={styles.createButtonText}>{creating ? 'Creating...' : 'Create'}</Text>
             </Pressable>
           </View>
         </View>
@@ -361,9 +419,12 @@ export function ExerciseSearch({
               setShowCreateForm(true);
               setSearchQuery('');
             }}
-            className="mx-4 mt-4 flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-coral bg-coral/10 py-3"
+            style={({ pressed }) => [
+              styles.createExerciseButton,
+              pressed && styles.createExerciseButtonPressed,
+            ]}
           >
-            <Text className="text-coral text-sm font-semibold">+ Create Custom Exercise</Text>
+            <Text style={styles.createExerciseButtonText}>+ Create Custom Exercise</Text>
           </Pressable>
 
           <FlatList
@@ -374,13 +435,323 @@ export function ExerciseSearch({
             contentContainerStyle={{ paddingBottom: 100 }}
             renderItem={renderItem}
             ListEmptyComponent={
-              <View className="flex items-center justify-center p-8">
-                <Text className="text-darkMuted text-sm">No exercises found</Text>
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No exercises found</Text>
               </View>
             }
+            onLayout={(e: LayoutChangeEvent) => {
+              scrollViewportHeight.current = e.nativeEvent.layout.height;
+            }}
           />
+
+          {pendingSelection.length > 0 && (
+            <View style={styles.selectionBar}>
+              <Text style={styles.selectionText}>{pendingSelection.length} selected</Text>
+              <Pressable onPress={handleConfirm} style={styles.confirmButton}>
+                <Text style={styles.confirmButtonText}>
+                  Add {pendingSelection.length} Exercise{pendingSelection.length > 1 ? 's' : ''}
+                </Text>
+              </Pressable>
+            </View>
+          )}
         </>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  headerTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  closeButton: {
+    padding: spacing.sm,
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: colors.textMuted,
+  },
+  searchContainer: {
+    position: 'relative',
+  },
+  searchInput: {
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+  },
+  loadingIndicator: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+  },
+  headerRow: {
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  headerText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1.6,
+    color: colors.textMuted,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  exerciseRowBorder: {
+    borderBottomWidth: 1,
+  },
+  exerciseRowSelected: {
+    backgroundColor: 'rgba(239,111,79,0.1)',
+    borderBottomColor: 'rgba(239,111,79,0.5)',
+  },
+  exerciseRowDefault: {
+    backgroundColor: colors.surface,
+    borderBottomColor: 'rgba(63,63,70,0.5)',
+  },
+  exerciseRowPressed: {
+    opacity: 0.8,
+  },
+  exerciseInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  exerciseNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  exerciseName: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+  },
+  libraryBadge: {
+    borderRadius: 9999,
+    backgroundColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  libraryBadgeText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  muscleGroupText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  selectedBadge: {
+    marginLeft: spacing.md,
+    borderRadius: 9999,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  selectedBadgeText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+  },
+  addBadge: {
+    marginLeft: spacing.md,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(239,111,79,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  addBadgeText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.accent,
+  },
+  createForm: {
+    flex: 1,
+    padding: spacing.md,
+  },
+  formField: {
+    marginBottom: spacing.md,
+  },
+  formLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  formInput: {
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+  },
+  formInputMultiline: {
+    height: 80,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
+  },
+  muscleGroupGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  muscleGroupChip: {
+    borderRadius: 9999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  muscleGroupChipSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  muscleGroupChipDefault: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  muscleGroupChipText: {
+    fontSize: typography.fontSizes.sm,
+  },
+  muscleGroupChipTextSelected: {
+    color: '#ffffff',
+  },
+  muscleGroupChipTextDefault: {
+    color: colors.text,
+  },
+  errorBox: {
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(239,68,68,0.2)',
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    fontSize: typography.fontSizes.sm,
+    color: '#f87171',
+  },
+  formButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  cancelButton: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+  },
+  cancelButtonText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  createButton: {
+    flex: 1,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+  },
+  createButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.95 }],
+  },
+  createButtonText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  buttonPressed: {
+    opacity: 0.8,
+  },
+  createExerciseButton: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(239,111,79,0.1)',
+    paddingVertical: 12,
+  },
+  createExerciseButtonPressed: {
+    opacity: 0.8,
+  },
+  createExerciseButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.accent,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  emptyStateText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  selectionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectionText: {
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+  },
+  confirmButton: {
+    borderRadius: 9999,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  confirmButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+  },
+});

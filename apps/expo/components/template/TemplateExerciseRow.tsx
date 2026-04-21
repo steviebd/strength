@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { type TemplateExercise } from '@/hooks/useTemplateEditor';
+import { colors, spacing, radius } from '@/theme';
 
 type WeightUnit = 'kg' | 'lbs';
 
@@ -54,43 +55,38 @@ export function TemplateExerciseRow({
   }, [localWeight, weightUnit, displayWeight, onUpdate]);
 
   return (
-    <View className="mb-3 rounded-xl border border-darkBorder bg-darkCard p-4">
-      <View className="mb-3 flex-row items-center justify-between">
-        <View className="flex-1">
-          <Text className="text-darkText text-base font-semibold">{exercise.name}</Text>
-          {exercise.muscleGroup && (
-            <Text className="text-darkMuted text-xs">{exercise.muscleGroup}</Text>
-          )}
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.exerciseInfo}>
+          <Text style={styles.exerciseName}>{exercise.name}</Text>
+          {exercise.muscleGroup && <Text style={styles.muscleGroup}>{exercise.muscleGroup}</Text>}
         </View>
-        <View className="flex-row items-center gap-1">
+        <View style={styles.controls}>
           <Pressable
             onPress={onMoveUp}
             disabled={isFirst}
-            className={`h-8 w-8 items-center justify-center rounded-lg ${isFirst ? 'opacity-30' : 'bg-darkBorder'}`}
+            style={[styles.controlButton, isFirst && styles.controlButtonDisabled]}
           >
-            <Text className="text-darkText text-sm">↑</Text>
+            <Text style={styles.controlButtonText}>↑</Text>
           </Pressable>
           <Pressable
             onPress={onMoveDown}
             disabled={isLast}
-            className={`h-8 w-8 items-center justify-center rounded-lg ${isLast ? 'opacity-30' : 'bg-darkBorder'}`}
+            style={[styles.controlButton, isLast && styles.controlButtonDisabled]}
           >
-            <Text className="text-darkText text-sm">↓</Text>
+            <Text style={styles.controlButtonText}>↓</Text>
           </Pressable>
-          <Pressable
-            onPress={onRemove}
-            className="ml-2 h-8 w-8 items-center justify-center rounded-lg bg-red-500/20"
-          >
-            <Text className="text-red-400 text-sm">×</Text>
+          <Pressable onPress={onRemove} style={styles.removeButton}>
+            <Text style={styles.removeButtonText}>×</Text>
           </Pressable>
         </View>
       </View>
 
-      <View className="flex-row gap-3">
-        <View className="flex-1">
-          <Text className="text-darkMuted mb-1 text-xs">Sets</Text>
+      <View style={styles.inputRow}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Sets</Text>
           <TextInput
-            className="rounded-lg border border-darkBorder bg-darkBg px-3 py-2 text-darkText"
+            style={styles.input}
             value={exercise.sets.toString()}
             onChangeText={(text) => {
               const num = parseInt(text, 10);
@@ -102,10 +98,10 @@ export function TemplateExerciseRow({
             selectTextOnFocus
           />
         </View>
-        <View className="flex-1">
-          <Text className="text-darkMuted mb-1 text-xs">Reps</Text>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Reps</Text>
           <TextInput
-            className="rounded-lg border border-darkBorder bg-darkBg px-3 py-2 text-darkText"
+            style={styles.input}
             value={exercise.reps.toString()}
             onChangeText={(text) => {
               const num = parseInt(text, 10);
@@ -117,10 +113,10 @@ export function TemplateExerciseRow({
             selectTextOnFocus
           />
         </View>
-        <View className="flex-1">
-          <Text className="text-darkMuted mb-1 text-xs">Weight ({weightUnit})</Text>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Weight ({weightUnit})</Text>
           <TextInput
-            className="rounded-lg border border-darkBorder bg-darkBg px-3 py-2 text-darkText"
+            style={styles.input}
             value={localWeight}
             onChangeText={handleWeightChange}
             onBlur={handleWeightBlur}
@@ -132,37 +128,51 @@ export function TemplateExerciseRow({
         </View>
       </View>
 
-      <View className="mt-3 flex-row gap-4">
+      <View style={styles.toggleRow}>
         <Pressable
           onPress={() => onUpdate({ isAmrap: !exercise.isAmrap })}
-          className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${exercise.isAmrap ? 'bg-coral/20' : 'bg-darkBorder'}`}
+          style={[styles.toggle, exercise.isAmrap && styles.toggleActive]}
         >
-          <View
-            className={`h-4 w-4 rounded ${exercise.isAmrap ? 'bg-coral' : 'border border-darkMuted'}`}
-          />
-          <Text className={`text-xs ${exercise.isAmrap ? 'text-coral' : 'text-darkMuted'}`}>
+          <View style={[styles.toggleCheck, exercise.isAmrap && styles.toggleCheckActive]} />
+          <Text style={[styles.toggleLabel, exercise.isAmrap && styles.toggleLabelActive]}>
             AMRAP
           </Text>
         </Pressable>
         <Pressable
           onPress={() => onUpdate({ isAccessory: !exercise.isAccessory })}
-          className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${exercise.isAccessory ? 'bg-darkBorder' : 'bg-transparent'}`}
+          style={[styles.toggle, exercise.isAccessory && styles.toggleInactive]}
         >
           <View
-            className={`h-4 w-4 rounded border ${exercise.isAccessory ? 'bg-darkMuted border-darkMuted' : 'border-darkMuted'}`}
+            style={[
+              styles.toggleCheck,
+              exercise.isAccessory ? styles.toggleCheckInactive : styles.toggleCheckDefault,
+            ]}
           />
-          <Text className={`text-xs ${exercise.isAccessory ? 'text-darkText' : 'text-darkMuted'}`}>
+          <Text
+            style={[
+              styles.toggleLabel,
+              exercise.isAccessory ? styles.toggleLabelActive : styles.toggleLabelDefault,
+            ]}
+          >
             Accessory
           </Text>
         </Pressable>
         <Pressable
           onPress={() => onUpdate({ isRequired: !exercise.isRequired })}
-          className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${!exercise.isRequired ? 'bg-darkBorder' : 'bg-transparent'}`}
+          style={[styles.toggle, !exercise.isRequired && styles.toggleInactive]}
         >
           <View
-            className={`h-4 w-4 rounded ${!exercise.isRequired ? 'bg-darkMuted' : 'border border-darkMuted'}`}
+            style={[
+              styles.toggleCheck,
+              !exercise.isRequired ? styles.toggleCheckInactive : styles.toggleCheckDefault,
+            ]}
           />
-          <Text className={`text-xs ${!exercise.isRequired ? 'text-darkText' : 'text-darkMuted'}`}>
+          <Text
+            style={[
+              styles.toggleLabel,
+              !exercise.isRequired ? styles.toggleLabelActive : styles.toggleLabelDefault,
+            ]}
+          >
             Optional
           </Text>
         </Pressable>
@@ -170,3 +180,134 @@ export function TemplateExerciseRow({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  exerciseInfo: {
+    flex: 1,
+  },
+  exerciseName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  muscleGroup: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  controlButton: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  controlButtonDisabled: {
+    opacity: 0.3,
+  },
+  controlButtonText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  removeButton: {
+    marginLeft: spacing.sm,
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: spacing.sm,
+    backgroundColor: 'rgba(239,68,68,0.2)',
+  },
+  removeButtonText: {
+    fontSize: 14,
+    color: '#ef4444',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  inputGroup: {
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  input: {
+    backgroundColor: colors.background,
+    borderRadius: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: colors.text,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  toggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  toggleActive: {
+    backgroundColor: 'rgba(239,111,79,0.2)',
+  },
+  toggleInactive: {
+    backgroundColor: 'transparent',
+  },
+  toggleCheck: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+  },
+  toggleCheckActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  toggleCheckDefault: {
+    borderColor: colors.textMuted,
+  },
+  toggleCheckInactive: {
+    backgroundColor: colors.textMuted,
+    borderColor: colors.textMuted,
+  },
+  toggleLabel: {
+    fontSize: 12,
+  },
+  toggleLabelActive: {
+    color: colors.accent,
+  },
+  toggleLabelDefault: {
+    color: colors.textMuted,
+  },
+});

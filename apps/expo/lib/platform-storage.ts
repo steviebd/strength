@@ -35,7 +35,7 @@ export const platformStorage = isWeb
         SecureStore.setItem(key, value);
       },
       removeItem: (key: string): void => {
-        SecureStore.deleteItem(key);
+        SecureStore.deleteItemAsync(key);
       },
       getItemAsync: (key: string): Promise<string | null> => {
         return SecureStore.getItemAsync(key);

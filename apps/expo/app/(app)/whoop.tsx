@@ -1,10 +1,12 @@
-import { View, Text, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/Card';
+import { Screen, ScreenScrollView } from '@/components/ui/Screen';
 import { apiFetch } from '@/lib/api';
 import { transformWhoopData, WhoopData, WhoopRecovery, WhoopSleep } from '@/lib/whoop';
+import { colors, radius, typography } from '@/theme';
 
 async function fetchWhoopData(): Promise<WhoopData> {
   const raw = await apiFetch<WhoopData>('/api/whoop/data?days=30');
@@ -36,36 +38,36 @@ function formatWorkoutDuration(start: number, end: number): string {
 }
 
 function getRecoveryColor(score: number | null): string {
-  if (score == null) return 'text-darkMuted';
-  if (score < 40) return 'text-red-400';
-  if (score < 70) return 'text-yellow-400';
-  return 'text-green-400';
+  if (score == null) return colors.textMuted;
+  if (score < 40) return colors.error;
+  if (score < 70) return colors.warning;
+  return colors.success;
 }
 
 function getRecoveryBg(score: number | null): string {
-  if (score == null) return 'bg-darkBorder';
-  if (score < 40) return 'bg-red-500/20';
-  if (score < 70) return 'bg-yellow-500/20';
-  return 'bg-green-500/20';
+  if (score == null) return colors.border;
+  if (score < 40) return `${colors.error}20`;
+  if (score < 70) return `${colors.warning}20`;
+  return `${colors.success}20`;
 }
 
 function MiniBar({
   value,
   max,
-  color,
+  barColor,
   label,
 }: {
   value: number | null;
   max: number;
-  color: string;
+  barColor: string;
   label: string;
 }) {
   const pct = value != null ? Math.min((value / max) * 100, 100) : 0;
   return (
-    <View className="flex-1">
-      <Text className="text-darkMuted text-xs mb-1">{label}</Text>
-      <View className="h-2 rounded-full bg-darkBorder overflow-hidden">
-        <View className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+    <View style={styles.miniBarContainer}>
+      <Text style={styles.miniBarLabel}>{label}</Text>
+      <View style={styles.miniBarTrack}>
+        <View style={[styles.miniBarFill, { width: `${pct}%`, backgroundColor: barColor }]} />
       </View>
     </View>
   );
@@ -79,18 +81,23 @@ function RecoveryDayRow({ recovery }: { recovery: WhoopRecovery }) {
   const scoreColor = getRecoveryColor(score);
 
   return (
-    <View className="flex-row items-center py-2 border-b border-darkBorder last:border-0">
-      <Text className="text-darkMuted text-xs w-14">{formatDate(recovery.date)}</Text>
-      <View className="flex-1 flex-row gap-2 pr-3">
-        <View className="flex-1">
-          <MiniBar value={recovery.hrvRmssdMilli} max={hrvMax} color="bg-green-500" label="HRV" />
+    <View style={styles.dayRow}>
+      <Text style={styles.dayRowDate}>{formatDate(recovery.date)}</Text>
+      <View style={styles.dayRowBars}>
+        <View style={styles.miniBarFlex}>
+          <MiniBar
+            value={recovery.hrvRmssdMilli}
+            max={hrvMax}
+            barColor={colors.success}
+            label="HRV"
+          />
         </View>
-        <View className="flex-1">
-          <MiniBar value={recovery.restingHeartRate} max={rhrMax} color="bg-blue-500" label="RHR" />
+        <View style={styles.miniBarFlex}>
+          <MiniBar value={recovery.restingHeartRate} max={rhrMax} barColor="#3b82f6" label="RHR" />
         </View>
       </View>
-      <View className="items-center w-10">
-        <Text className={`text-sm font-bold ${scoreColor}`}>{score ?? '--'}</Text>
+      <View style={styles.dayRowScore}>
+        <Text style={[styles.dayRowScoreText, { color: scoreColor }]}>{score ?? '--'}</Text>
       </View>
     </View>
   );
@@ -107,23 +114,32 @@ function SleepDayBar({ sleep }: { sleep: WhoopSleep }) {
   const lightPct = total > 0 ? ((sleep.lightSleepTimeMilli ?? 0) / total) * 100 : 0;
 
   return (
-    <View className="flex-1 items-center">
-      <Text className="text-darkMuted text-xs mb-1">{formatDate(sleep.start).split(',')[0]}</Text>
-      <View className="w-full h-12 rounded-full flex-row overflow-hidden bg-darkBorder">
-        {deepPct > 0 && <View className="bg-purple-600 h-full" style={{ width: `${deepPct}%` }} />}
-        {remPct > 0 && <View className="bg-blue-500 h-full" style={{ width: `${remPct}%` }} />}
-        {lightPct > 0 && <View className="bg-gray-500 h-full" style={{ width: `${lightPct}%` }} />}
+    <View style={styles.sleepBarContainer}>
+      <Text style={styles.sleepBarDate}>{formatDate(sleep.start).split(',')[0]}</Text>
+      <View style={styles.sleepBarStack}>
+        {deepPct > 0 && (
+          <View
+            style={[styles.sleepBarSegment, { width: `${deepPct}%`, backgroundColor: '#9333ea' }]}
+          />
+        )}
+        {remPct > 0 && (
+          <View
+            style={[styles.sleepBarSegment, { width: `${remPct}%`, backgroundColor: '#3b82f6' }]}
+          />
+        )}
+        {lightPct > 0 && (
+          <View
+            style={[styles.sleepBarSegment, { width: `${lightPct}%`, backgroundColor: '#6b7280' }]}
+          />
+        )}
       </View>
-      <Text className="text-darkText text-xs mt-1 font-medium">
-        {formatDuration(sleep.totalSleepTimeMilli)}
-      </Text>
+      <Text style={styles.sleepBarDuration}>{formatDuration(sleep.totalSleepTimeMilli)}</Text>
     </View>
   );
 }
 
 export default function WhoopDataPage() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { data, isLoading, error } = useQuery({
     queryKey: ['whoopData'],
     queryFn: fetchWhoopData,
@@ -136,72 +152,76 @@ export default function WhoopDataPage() {
   const last7Sleep = data?.sleep.slice(0, 7) ?? [];
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <View
-        className="flex-row items-center justify-between px-6 pt-3 pb-4"
-        style={{ paddingTop: insets.top + 8 }}
-      >
-        <Pressable onPress={() => router.back()} className="mr-4">
-          <Text className="text-2xl text-darkText">&larr;</Text>
+    <Screen>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text className="text-xl font-semibold text-darkText flex-1">WHOOP Data</Text>
+        <Text style={styles.headerTitle}>WHOOP Data</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScreenScrollView horizontalPadding={24} bottomInset={140}>
         {isLoading && (
-          <View className="items-center py-20">
-            <ActivityIndicator color="#F97066" size="large" />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator color={colors.accent} size="large" />
           </View>
         )}
 
         {error && (
-          <Card className="mb-4">
-            <Text className="text-red-400 text-sm">Failed to load WHOOP data</Text>
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>Failed to load WHOOP data</Text>
           </Card>
         )}
 
         {!isLoading && !error && !data && (
-          <Card className="mb-4">
-            <Text className="text-darkMuted text-sm">No data available</Text>
+          <Card style={styles.errorCard}>
+            <Text style={styles.mutedText}>No data available</Text>
           </Card>
         )}
 
         {!isLoading && data && (
           <>
-            <Card className="mb-4">
-              <Text className="text-darkText mb-3 text-base font-semibold">Recovery</Text>
+            <Card style={styles.card}>
+              <Text style={styles.cardTitle}>Recovery</Text>
               {latestRecovery ? (
                 <View>
                   <View
-                    className={`rounded-xl p-4 mb-3 ${getRecoveryBg(latestRecovery.recoveryScore)}`}
+                    style={[
+                      styles.recoveryScoreBox,
+                      { backgroundColor: getRecoveryBg(latestRecovery.recoveryScore) },
+                    ]}
                   >
-                    <Text className="text-darkMuted text-xs mb-1">Recovery Score</Text>
+                    <Text style={styles.recoveryScoreLabel}>Recovery Score</Text>
                     <Text
-                      className={`text-4xl font-bold ${getRecoveryColor(latestRecovery.recoveryScore)}`}
+                      style={[
+                        styles.recoveryScoreValue,
+                        { color: getRecoveryColor(latestRecovery.recoveryScore) },
+                      ]}
                     >
                       {latestRecovery.recoveryScore ?? '--'}
                     </Text>
                   </View>
-                  <View className="flex-row gap-3">
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">HRV</Text>
-                      <Text className="text-darkText font-medium">
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>HRV</Text>
+                      <Text style={styles.metricValue}>
                         {latestRecovery.hrvRmssdMilli != null
                           ? `${latestRecovery.hrvRmssdMilli} ms`
                           : '--'}
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">RHR</Text>
-                      <Text className="text-darkText font-medium">
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>RHR</Text>
+                      <Text style={styles.metricValue}>
                         {latestRecovery.restingHeartRate != null
                           ? `${latestRecovery.restingHeartRate} bpm`
                           : '--'}
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">Resp Rate</Text>
-                      <Text className="text-darkText font-medium">
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>Resp Rate</Text>
+                      <Text style={styles.metricValue}>
                         {latestRecovery.respiratoryRate != null
                           ? `${latestRecovery.respiratoryRate} br/min`
                           : '--'}
@@ -210,82 +230,80 @@ export default function WhoopDataPage() {
                   </View>
                 </View>
               ) : (
-                <Text className="text-darkMuted text-sm">No recovery data</Text>
+                <Text style={styles.mutedText}>No recovery data</Text>
               )}
             </Card>
 
             {last7Recovery.length > 1 && (
-              <Card className="mb-4">
-                <Text className="text-darkText mb-3 text-base font-semibold">
-                  Recovery (7 days)
-                </Text>
+              <Card style={styles.card}>
+                <Text style={styles.cardTitle}>Recovery (7 days)</Text>
                 <View>
                   {last7Recovery.map((r) => (
                     <RecoveryDayRow key={r.id} recovery={r} />
                   ))}
                 </View>
-                <View className="flex-row mt-3 pt-2 border-t border-darkBorder gap-3">
-                  <View className="flex-row items-center gap-1">
-                    <View className="w-2 h-2 rounded-full bg-green-500" />
-                    <Text className="text-darkMuted text-xs">HRV</Text>
+                <View style={styles.legendRow}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                    <Text style={styles.legendText}>HRV</Text>
                   </View>
-                  <View className="flex-row items-center gap-1">
-                    <View className="w-2 h-2 rounded-full bg-blue-500" />
-                    <Text className="text-darkMuted text-xs">RHR</Text>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
+                    <Text style={styles.legendText}>RHR</Text>
                   </View>
-                  <View className="flex-row items-center gap-1">
-                    <Text className="text-darkMuted text-xs">Score: </Text>
-                    <View className="w-2 h-2 rounded-full bg-green-400" />
-                    <Text className="text-darkMuted text-xs">&ge;70</Text>
-                    <View className="w-2 h-2 rounded-full bg-yellow-400" />
-                    <Text className="text-darkMuted text-xs">40-69</Text>
-                    <View className="w-2 h-2 rounded-full bg-red-400" />
-                    <Text className="text-darkMuted text-xs">&lt;40</Text>
+                  <View style={styles.legendItem}>
+                    <Text style={styles.legendText}>Score: </Text>
+                    <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                    <Text style={styles.legendText}>&ge;70</Text>
+                    <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+                    <Text style={styles.legendText}>40-69</Text>
+                    <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
+                    <Text style={styles.legendText}>&lt;40</Text>
                   </View>
                 </View>
               </Card>
             )}
 
-            <Card className="mb-4">
-              <Text className="text-darkText mb-3 text-base font-semibold">Sleep</Text>
+            <Card style={styles.card}>
+              <Text style={styles.cardTitle}>Sleep</Text>
               {latestSleep ? (
                 <View>
-                  <View className="flex-row items-end gap-3 mb-3">
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">Sleep Performance</Text>
-                      <Text className="text-darkText text-2xl font-bold">
+                  <View style={styles.sleepHeaderRow}>
+                    <View style={styles.sleepStat}>
+                      <Text style={styles.metricLabel}>Sleep Performance</Text>
+                      <Text style={styles.sleepStatValue}>
                         {latestSleep.sleepPerformancePercentage ?? '--'}%
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">Total Sleep</Text>
-                      <Text className="text-darkText text-2xl font-bold">
+                    <View style={styles.sleepStat}>
+                      <Text style={styles.metricLabel}>Total Sleep</Text>
+                      <Text style={styles.sleepStatValue}>
                         {formatDuration(latestSleep.totalSleepTimeMilli)}
                       </Text>
                     </View>
                   </View>
-                  <View className="flex-row gap-3">
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">Deep</Text>
-                      <Text className="text-darkText font-medium">
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>Deep</Text>
+                      <Text style={styles.metricValue}>
                         {formatDuration(latestSleep.slowWaveSleepTimeMilli)}
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">REM</Text>
-                      <Text className="text-darkText font-medium">
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>REM</Text>
+                      <Text style={styles.metricValue}>
                         {formatDuration(latestSleep.remSleepTimeMilli)}
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">Light</Text>
-                      <Text className="text-darkText font-medium">
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>Light</Text>
+                      <Text style={styles.metricValue}>
                         {formatDuration(latestSleep.lightSleepTimeMilli)}
                       </Text>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted text-xs">Efficiency</Text>
-                      <Text className="text-darkText font-medium">
+                    <View style={styles.metricItem}>
+                      <Text style={styles.metricLabel}>Efficiency</Text>
+                      <Text style={styles.metricValue}>
                         {latestSleep.sleepEfficiencyPercentage != null
                           ? `${latestSleep.sleepEfficiencyPercentage}%`
                           : '--'}
@@ -294,61 +312,58 @@ export default function WhoopDataPage() {
                   </View>
                 </View>
               ) : (
-                <Text className="text-darkMuted text-sm">No sleep data</Text>
+                <Text style={styles.mutedText}>No sleep data</Text>
               )}
             </Card>
 
             {last7Sleep.length > 1 && (
-              <Card className="mb-4">
-                <Text className="text-darkText mb-3 text-base font-semibold">Sleep (7 days)</Text>
-                <View className="flex-row gap-1">
+              <Card style={styles.card}>
+                <Text style={styles.cardTitle}>Sleep (7 days)</Text>
+                <View style={styles.sleepChartRow}>
                   {last7Sleep.map((s) => (
                     <SleepDayBar key={s.id} sleep={s} />
                   ))}
                 </View>
-                <View className="flex-row justify-center mt-3 pt-2 border-t border-darkBorder gap-4">
-                  <View className="flex-row items-center gap-1">
-                    <View className="w-3 h-3 rounded-sm bg-purple-600" />
-                    <Text className="text-darkMuted text-xs">Deep</Text>
+                <View style={styles.sleepLegendRow}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendBox, { backgroundColor: '#9333ea' }]} />
+                    <Text style={styles.legendText}>Deep</Text>
                   </View>
-                  <View className="flex-row items-center gap-1">
-                    <View className="w-3 h-3 rounded-sm bg-blue-500" />
-                    <Text className="text-darkMuted text-xs">REM</Text>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendBox, { backgroundColor: '#3b82f6' }]} />
+                    <Text style={styles.legendText}>REM</Text>
                   </View>
-                  <View className="flex-row items-center gap-1">
-                    <View className="w-3 h-3 rounded-sm bg-gray-500" />
-                    <Text className="text-darkMuted text-xs">Light</Text>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendBox, { backgroundColor: '#6b7280' }]} />
+                    <Text style={styles.legendText}>Light</Text>
                   </View>
                 </View>
               </Card>
             )}
 
             {data.cycles.length > 0 && (
-              <Card className="mb-4">
-                <Text className="text-darkText mb-3 text-base font-semibold">Daily Cycles</Text>
-                <View className="gap-2">
+              <Card style={styles.card}>
+                <Text style={styles.cardTitle}>Daily Cycles</Text>
+                <View style={styles.cyclesList}>
                   {data.cycles.slice(0, 14).map((cycle) => (
-                    <View
-                      key={cycle.id}
-                      className="flex-row items-center justify-between py-2 border-b border-darkBorder last:border-0"
-                    >
-                      <Text className="text-darkMuted text-sm w-24">{formatDate(cycle.start)}</Text>
-                      <View className="flex-row gap-4 flex-1 justify-end">
-                        <View className="items-center">
-                          <Text className="text-darkMuted text-xs">Strain</Text>
-                          <Text className="text-darkText font-medium">
+                    <View key={cycle.id} style={styles.cycleRow}>
+                      <Text style={styles.cycleDate}>{formatDate(cycle.start)}</Text>
+                      <View style={styles.cycleStats}>
+                        <View style={styles.cycleStat}>
+                          <Text style={styles.metricLabel}>Strain</Text>
+                          <Text style={styles.cycleStatValue}>
                             {cycle.dayStrain != null ? cycle.dayStrain.toFixed(1) : '--'}
                           </Text>
                         </View>
-                        <View className="items-center">
-                          <Text className="text-darkMuted text-xs">Avg HR</Text>
-                          <Text className="text-darkText font-medium">
+                        <View style={styles.cycleStat}>
+                          <Text style={styles.metricLabel}>Avg HR</Text>
+                          <Text style={styles.cycleStatValue}>
                             {cycle.averageHeartRate ?? '--'}
                           </Text>
                         </View>
-                        <View className="items-center">
-                          <Text className="text-darkMuted text-xs">kJ</Text>
-                          <Text className="text-darkText font-medium">
+                        <View style={styles.cycleStat}>
+                          <Text style={styles.metricLabel}>kJ</Text>
+                          <Text style={styles.cycleStatValue}>
                             {cycle.kilojoule != null ? Math.round(cycle.kilojoule) : '--'}
                           </Text>
                         </View>
@@ -360,51 +375,44 @@ export default function WhoopDataPage() {
             )}
 
             {data.workouts.length > 0 && (
-              <Card className="mb-4">
-                <Text className="text-darkText mb-3 text-base font-semibold">Workouts</Text>
-                <View className="gap-2">
+              <Card style={styles.card}>
+                <Text style={styles.cardTitle}>Workouts</Text>
+                <View style={styles.workoutsList}>
                   {data.workouts.map((workout) => (
-                    <View
-                      key={workout.id}
-                      className="py-3 border-b border-darkBorder last:border-0"
-                    >
-                      <View className="flex-row items-center justify-between mb-2">
+                    <View key={workout.id} style={styles.workoutRow}>
+                      <View style={styles.workoutHeader}>
                         <View>
-                          <Text className="text-darkText font-medium">
-                            {workout.sportName ?? 'Workout'}
-                          </Text>
-                          <Text className="text-darkMuted text-xs">
-                            {formatDate(workout.start)}
-                          </Text>
+                          <Text style={styles.workoutName}>{workout.sportName ?? 'Workout'}</Text>
+                          <Text style={styles.workoutDate}>{formatDate(workout.start)}</Text>
                         </View>
-                        <Text className="text-darkMuted text-sm">
+                        <Text style={styles.workoutDuration}>
                           {formatWorkoutDuration(workout.start, workout.end)}
                         </Text>
                       </View>
-                      <View className="flex-row gap-4">
+                      <View style={styles.workoutStats}>
                         <View>
-                          <Text className="text-darkMuted text-xs">Strain</Text>
-                          <Text className="text-darkText font-medium">
+                          <Text style={styles.metricLabel}>Strain</Text>
+                          <Text style={styles.metricValue}>
                             {workout.strain != null ? workout.strain.toFixed(1) : '--'}
                           </Text>
                         </View>
                         <View>
-                          <Text className="text-darkMuted text-xs">Avg HR</Text>
-                          <Text className="text-darkText font-medium">
+                          <Text style={styles.metricLabel}>Avg HR</Text>
+                          <Text style={styles.metricValue}>
                             {workout.averageHeartRate != null
                               ? `${workout.averageHeartRate} bpm`
                               : '--'}
                           </Text>
                         </View>
                         <View>
-                          <Text className="text-darkMuted text-xs">Max HR</Text>
-                          <Text className="text-darkText font-medium">
+                          <Text style={styles.metricLabel}>Max HR</Text>
+                          <Text style={styles.metricValue}>
                             {workout.maxHeartRate != null ? `${workout.maxHeartRate} bpm` : '--'}
                           </Text>
                         </View>
                         <View>
-                          <Text className="text-darkMuted text-xs">kcal</Text>
-                          <Text className="text-darkText font-medium">
+                          <Text style={styles.metricLabel}>kcal</Text>
+                          <Text style={styles.metricValue}>
                             {workout.caloriesKcal != null ? workout.caloriesKcal : '--'}
                           </Text>
                         </View>
@@ -420,14 +428,285 @@ export default function WhoopDataPage() {
               data.cycles.length === 0 &&
               data.workouts.length === 0 && (
                 <Card>
-                  <Text className="text-darkMuted text-sm text-center">
+                  <Text style={[styles.mutedText, styles.centeredText]}>
                     No WHOOP data in the last 30 days. Sync your WHOOP to see data here.
                   </Text>
                 </Card>
               )}
           </>
         )}
-      </ScrollView>
-    </View>
+      </ScreenScrollView>
+    </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  headerSpacer: {
+    width: 32,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 80,
+  },
+  errorCard: {
+    marginBottom: 16,
+  },
+  errorText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
+  },
+  mutedText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  card: {
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    marginBottom: 12,
+  },
+  recoveryScoreBox: {
+    borderRadius: radius.md,
+    padding: 16,
+    marginBottom: 12,
+  },
+  recoveryScoreLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  recoveryScoreValue: {
+    fontSize: 48,
+    fontWeight: typography.fontWeights.bold,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  metricItem: {
+    flex: 1,
+  },
+  metricLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  metricValue: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+  },
+  dayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dayRowDate: {
+    width: 56,
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  dayRowBars: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 12,
+  },
+  miniBarFlex: {
+    flex: 1,
+  },
+  miniBarContainer: {
+    flex: 1,
+  },
+  miniBarLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  miniBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+    overflow: 'hidden',
+  },
+  miniBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  dayRowScore: {
+    width: 40,
+    alignItems: 'center',
+  },
+  dayRowScoreText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  sleepHeaderRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  sleepStat: {
+    flex: 1,
+  },
+  sleepStatValue: {
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+  },
+  sleepChartRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  sleepBarContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  sleepBarDate: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  sleepBarStack: {
+    width: '100%',
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.border,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  sleepBarSegment: {
+    height: '100%',
+  },
+  sleepBarDuration: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+    marginTop: 4,
+  },
+  sleepLegendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  legendBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  cyclesList: {
+    gap: 0,
+  },
+  cycleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  cycleDate: {
+    width: 96,
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  cycleStats: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'flex-end',
+  },
+  cycleStat: {
+    alignItems: 'center',
+  },
+  cycleStatValue: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+  },
+  workoutsList: {
+    gap: 0,
+  },
+  workoutRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  workoutHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  workoutName: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+  },
+  workoutDate: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  workoutDuration: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  workoutStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  centeredText: {
+    textAlign: 'center',
+  },
+});

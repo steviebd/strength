@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SetLogger } from './SetLogger';
+import { colors, radius, spacing, typography } from '@/theme';
 
 interface WorkoutSetData {
   id: string;
@@ -69,45 +70,49 @@ export function ExerciseLogger({
     }
   }, [exercise.id, onAddSet, onSetsUpdate, sets]);
 
+  const containerStyle = [
+    styles.container,
+    allCompleted ? styles.containerCompleted : styles.containerDefault,
+  ];
+
+  const numberBgStyle = [
+    styles.numberBg,
+    allCompleted ? styles.numberBgCompleted : styles.numberBgDefault,
+  ];
+
   return (
-    <View
-      className={`rounded-xl border overflow-hidden ${
-        allCompleted ? 'border-green-500/50' : 'border-darkBorder'
-      }`}
-    >
+    <View style={containerStyle}>
       <Pressable
-        className="flex flex-row items-center justify-between p-4 hover:bg-darkBorder/30 transition-colors"
+        style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         onPress={() => setIsExpanded(!isExpanded)}
       >
-        <View className="flex flex-row items-center gap-3 flex-1 min-w-0">
-          <View
-            className={`flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold ${
-              allCompleted ? 'bg-green-500/20 text-green-500' : 'bg-coral/20 text-coral'
-            }`}
-          >
-            <Text className="text-sm font-bold">
+        <View style={styles.headerLeft}>
+          <View style={numberBgStyle}>
+            <Text style={allCompleted ? styles.numberTextCompleted : styles.numberTextDefault}>
               {completedSets}/{totalSets}
             </Text>
           </View>
-          <View className="flex-1 min-w-0">
-            <View className="flex flex-row items-center gap-2">
-              <Text className="text-darkText text-base font-semibold truncate">
+          <View style={styles.headerInfo}>
+            <View style={styles.nameRow}>
+              <Text style={styles.exerciseName} numberOfLines={1}>
                 {exercise.name}
               </Text>
               {isAmrapSet && (
-                <View className="rounded bg-amber-500/20 px-1 py-0.5">
-                  <Text className="text-[10px] font-bold text-amber-500">AMRAP</Text>
+                <View style={styles.amrapBadge}>
+                  <Text style={styles.amrapText}>AMRAP</Text>
                 </View>
               )}
             </View>
-            <Text className="text-darkMuted text-xs truncate">{exercise.muscleGroup}</Text>
+            <Text style={styles.muscleGroupText} numberOfLines={1}>
+              {exercise.muscleGroup}
+            </Text>
           </View>
         </View>
-        <Text className="text-darkMuted text-xl">{isExpanded ? '▲' : '▼'}</Text>
+        <Text style={styles.expandIcon}>{isExpanded ? '▲' : '▼'}</Text>
       </Pressable>
 
       {isExpanded && (
-        <View className="space-y-2 px-3 pb-3">
+        <View style={styles.setsContainer}>
           {sets.map((set, index) => (
             <SetLogger
               key={set.id}
@@ -123,9 +128,9 @@ export function ExerciseLogger({
           {isEditMode && (
             <Pressable
               onPress={handleAddSet}
-              className="flex w-full flex-row items-center justify-center gap-1.5 rounded-lg border border-dashed border-darkBorder py-3"
+              style={({ pressed }) => [styles.addSetButton, pressed && styles.addSetButtonPressed]}
             >
-              <Text className="text-darkMuted text-sm">+ Add Set</Text>
+              <Text style={styles.addSetText}>+ Add Set</Text>
             </Pressable>
           )}
         </View>
@@ -133,3 +138,114 @@ export function ExerciseLogger({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  containerCompleted: {
+    borderColor: 'rgba(34,197,94,0.5)',
+  },
+  containerDefault: {
+    borderColor: colors.border,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  headerPressed: {
+    backgroundColor: 'rgba(63,63,70,0.3)',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
+  },
+  numberBg: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numberBgCompleted: {
+    backgroundColor: 'rgba(34,197,94,0.2)',
+  },
+  numberBgDefault: {
+    backgroundColor: 'rgba(239,111,79,0.2)',
+  },
+  numberTextCompleted: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.success,
+  },
+  numberTextDefault: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.accent,
+  },
+  headerInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  exerciseName: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  amrapBadge: {
+    borderRadius: 4,
+    backgroundColor: 'rgba(245,158,11,0.2)',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  amrapText: {
+    fontSize: 10,
+    fontWeight: typography.fontWeights.bold,
+    color: '#f59e0b',
+  },
+  muscleGroupText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  expandIcon: {
+    fontSize: 20,
+    color: colors.textMuted,
+  },
+  setsContainer: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  addSetButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    paddingVertical: 12,
+  },
+  addSetButtonPressed: {
+    opacity: 0.7,
+  },
+  addSetText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+});

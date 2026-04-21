@@ -1,23 +1,30 @@
+import { Platform } from 'react-native';
 import { env } from './env';
-import { authClient } from './auth-client';
+import { applyAuthRequestHeaders } from './auth-transport';
 
-export function apiFetch<T = unknown>(endpoint: string, options?: RequestInit): Promise<T> {
+type ApiFetchOptions = RequestInit & {
+  __stream?: boolean;
+};
+
+export function apiFetch<T = unknown>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
   const url = endpoint.startsWith('http')
     ? endpoint
     : `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const isNative = Platform.OS !== 'web';
 
-  const headers = new Headers(options?.headers);
-  if ('getCookie' in authClient) {
-    const cookie = authClient.getCookie();
-    if (cookie) {
-      headers.set('Cookie', cookie);
+  const headers = applyAuthRequestHeaders(new Headers(options?.headers));
+
+  if (!headers.has('Content-Type') && options?.body) {
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    if (!isFormData) {
+      headers.set('Content-Type', 'application/json');
     }
   }
 
   return fetch(url, {
     ...options,
     headers,
-    credentials: 'include',
+    credentials: isNative ? 'omit' : 'include',
   }).then((res) => {
     if (!res.ok) {
       return res
@@ -28,6 +35,9 @@ export function apiFetch<T = unknown>(endpoint: string, options?: RequestInit): 
         .catch(() => {
           throw new Error(`Request failed: ${res.status}`);
         });
+    }
+    if (options?.__stream) {
+      return res as unknown as Promise<T>;
     }
     return res.json() as Promise<T>;
   });

@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
-import { Pressable, Text, View, TextInput } from 'react-native';
+import { Pressable, StyleSheet, Text, View, TextInput } from 'react-native';
 import { useScrollToInput } from '@/context/ScrollContext';
+import { colors, radius, spacing, typography } from '@/theme';
 
 type WeightUnit = 'kg' | 'lbs';
 
@@ -48,8 +49,8 @@ export function SetLogger({
   const [editValue, setEditValue] = useState('');
   const [isRepsEditing, setIsRepsEditing] = useState(false);
   const [editRepsValue, setEditRepsValue] = useState('');
-  const weightInputRef = useRef<TextInput>(null);
-  const repsInputRef = useRef<TextInput>(null);
+  const weightInputRef = useRef<any>(null);
+  const repsInputRef = useRef<any>(null);
   const scrollToInput = useScrollToInput();
 
   const weightIncrement = weightUnit === 'kg' ? 1.0 : 2.5;
@@ -115,35 +116,51 @@ export function SetLogger({
     onUpdate({ ...set, completed: !set.completed });
   }, [onUpdate, set]);
 
+  const containerStyle = set.completed
+    ? [styles.container, styles.containerCompleted]
+    : [styles.container, styles.containerDefault];
+
+  const numberBgStyle = set.completed
+    ? [styles.numberBg, styles.numberBgCompleted]
+    : [styles.numberBg, styles.numberBgDefault];
+
+  const completeBtnStyle = set.completed
+    ? [styles.completeButton, styles.completeButtonDone]
+    : [styles.completeButton, styles.completeButtonDefault];
+
   return (
-    <View
-      className={`rounded-xl border p-3 ${
-        set.completed ? 'border-green-500/50 bg-green-500/10' : 'border-darkBorder bg-darkCard/40'
-      }`}
-    >
-      <View className="flex flex-row items-center gap-3">
-        <View className="flex h-12 w-12 items-center justify-center rounded-full bg-darkBorder text-sm font-bold">
-          <Text className="text-darkText text-base font-bold">{setNumber}</Text>
+    <View style={containerStyle}>
+      <View style={styles.row}>
+        <View style={numberBgStyle}>
+          <Text style={styles.numberText}>{setNumber}</Text>
         </View>
 
-        <View className="flex flex-1 flex-row items-center justify-center gap-2">
-          <View className="flex flex-row items-center gap-1">
+        <View style={styles.inputGroup}>
+          <View style={styles.stepperRow}>
             <Pressable
               onPress={handleWeightDecrease}
               disabled={!isEditing}
-              className={`flex h-12 w-12 items-center justify-center rounded-full border border-darkBorder bg-darkCard/70 active:scale-95 ${!isEditing ? 'opacity-50' : ''}`}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                isEditing ? null : styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
             >
-              <Text className="text-darkMuted text-xl">−</Text>
+              <Text style={styles.stepperText}>−</Text>
             </Pressable>
             <Pressable
               onPress={handleWeightEditStart}
               disabled={!isEditMode}
-              className={`flex h-12 min-w-24 items-center justify-center rounded-lg border border-darkBorder/70 bg-darkCard/70 px-2 ${!isEditMode ? 'opacity-50' : ''}`}
+              style={({ pressed }) => [
+                styles.inputButton,
+                !isEditMode && styles.inputButtonDisabled,
+                pressed && styles.stepperPressed,
+              ]}
             >
               {isEditing ? (
                 <TextInput
                   ref={weightInputRef}
-                  className="text-darkText text-base font-bold w-full text-center"
+                  style={styles.weightInput}
                   value={editValue}
                   onChangeText={setEditValue}
                   onBlur={handleWeightEditEnd}
@@ -153,37 +170,45 @@ export function SetLogger({
                 />
               ) : (
                 <>
-                  <Text className="text-darkText text-base font-bold">
+                  <Text style={[styles.inputText, !isEditMode && styles.textDisabled]}>
                     {localWeight.toFixed(1)}
                   </Text>
-                  <Text className="text-darkMuted text-xs ml-0.5">{weightUnit}</Text>
+                  <Text style={styles.unitLabel}>{weightUnit}</Text>
                 </>
               )}
             </Pressable>
             <Pressable
               onPress={handleWeightIncrease}
               disabled={!isEditMode}
-              className={`flex h-12 w-12 items-center justify-center rounded-full border border-darkBorder bg-darkCard/70 active:scale-95 ${!isEditMode ? 'opacity-50' : ''}`}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
             >
-              <Text className="text-darkMuted text-xl">+</Text>
+              <Text style={styles.stepperText}>+</Text>
             </Pressable>
           </View>
 
-          <Text className="text-darkMuted text-xl font-bold">×</Text>
+          <Text style={styles.multiplyText}>×</Text>
 
-          <View className="flex flex-row items-center gap-1">
+          <View style={styles.stepperRow}>
             <Pressable
               onPress={handleRepsDecrease}
               disabled={!isEditMode}
-              className={`flex h-12 w-12 items-center justify-center rounded-full border border-darkBorder bg-darkCard/70 active:scale-95 ${!isEditMode ? 'opacity-50' : ''}`}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
             >
-              <Text className="text-darkMuted text-xl">−</Text>
+              <Text style={styles.stepperText}>−</Text>
             </Pressable>
-            <View className="flex h-12 w-14 items-center justify-center rounded-lg border border-darkBorder/70 bg-darkCard/70 px-2">
+            <View style={styles.repsButton}>
               {isRepsEditing ? (
                 <TextInput
                   ref={repsInputRef}
-                  className="text-darkText text-base font-bold w-full text-center"
+                  style={styles.repsInput}
                   value={editRepsValue}
                   onChangeText={setEditRepsValue}
                   onBlur={handleRepsEditEnd}
@@ -193,9 +218,7 @@ export function SetLogger({
                 />
               ) : (
                 <Pressable onPress={handleRepsEditStart} disabled={!isEditMode}>
-                  <Text
-                    className={`text-darkText text-base font-bold ${!isEditMode ? 'opacity-50' : ''}`}
-                  >
+                  <Text style={[styles.inputText, !isEditMode && styles.textDisabled]}>
                     {localReps}
                   </Text>
                 </Pressable>
@@ -204,23 +227,29 @@ export function SetLogger({
             <Pressable
               onPress={handleRepsIncrease}
               disabled={!isEditMode}
-              className={`flex h-12 w-12 items-center justify-center rounded-full border border-darkBorder bg-darkCard/70 active:scale-95 ${!isEditMode ? 'opacity-50' : ''}`}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
             >
-              <Text className="text-darkMuted text-xl">+</Text>
+              <Text style={styles.stepperText}>+</Text>
             </Pressable>
           </View>
         </View>
       </View>
 
-      <View className="mt-3 flex flex-row items-center gap-2">
+      <View style={styles.footer}>
         <Pressable
           onPress={handleToggleComplete}
           disabled={!isEditMode}
-          className={`flex h-14 flex-1 items-center justify-center rounded-xl shadow-sm transition-all ${
-            set.completed ? 'bg-green-500 text-white' : 'border border-darkBorder bg-darkCard'
-          } ${!isEditMode ? 'opacity-50' : ''}`}
+          style={({ pressed }) => [
+            completeBtnStyle,
+            !isEditMode && styles.buttonDisabled,
+            pressed && styles.completePressed,
+          ]}
         >
-          <Text className={set.completed ? 'text-white font-semibold' : 'text-darkText'}>
+          <Text style={set.completed ? styles.completeTextDone : styles.completeTextDefault}>
             {set.completed ? '✓ Complete' : 'Mark Complete'}
           </Text>
         </Pressable>
@@ -228,12 +257,198 @@ export function SetLogger({
         {onDelete && isEditMode && (
           <Pressable
             onPress={onDelete}
-            className="flex h-9 items-center justify-center rounded-lg border border-darkBorder bg-darkCard shadow-sm"
+            style={({ pressed }) => [styles.deleteButton, pressed && styles.stepperPressed]}
           >
-            <Text className="text-darkMuted text-sm">🗑</Text>
+            <Text style={styles.deleteText}>🗑</Text>
           </Pressable>
         )}
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: 12,
+  },
+  containerCompleted: {
+    borderColor: 'rgba(34,197,94,0.5)',
+    backgroundColor: 'rgba(34,197,94,0.1)',
+  },
+  containerDefault: {
+    borderColor: colors.border,
+    backgroundColor: 'rgba(24,24,27,0.4)',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  numberBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numberBgCompleted: {
+    backgroundColor: 'rgba(34,197,94,0.2)',
+  },
+  numberBgDefault: {
+    backgroundColor: colors.border,
+  },
+  numberText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+  },
+  inputGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepperButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'rgba(24,24,27,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperDisabled: {
+    opacity: 0.5,
+  },
+  stepperPressed: {
+    transform: [{ scale: 0.95 }],
+    opacity: 0.8,
+  },
+  stepperText: {
+    fontSize: 20,
+    color: colors.textMuted,
+  },
+  inputButton: {
+    height: 48,
+    minWidth: 96,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(63,63,70,0.7)',
+    backgroundColor: 'rgba(24,24,27,0.7)',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  inputButtonDisabled: {
+    opacity: 0.5,
+  },
+  inputText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+  },
+  textDisabled: {
+    opacity: 0.5,
+  },
+  weightInput: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+    width: '100%',
+    textAlign: 'center',
+  },
+  unitLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginLeft: 2,
+  },
+  multiplyText: {
+    fontSize: 20,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.textMuted,
+  },
+  repsButton: {
+    height: 48,
+    width: 56,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(63,63,70,0.7)',
+    backgroundColor: 'rgba(24,24,27,0.7)',
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repsInput: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+    width: '100%',
+    textAlign: 'center',
+  },
+  footer: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  completeButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  completeButtonDone: {
+    backgroundColor: colors.success,
+  },
+  completeButtonDefault: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  completePressed: {
+    opacity: 0.8,
+  },
+  completeTextDone: {
+    color: '#ffffff',
+    fontWeight: typography.fontWeights.semibold,
+  },
+  completeTextDefault: {
+    color: colors.text,
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  deleteText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+});

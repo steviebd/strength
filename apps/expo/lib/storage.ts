@@ -23,6 +23,10 @@ interface PendingWorkout {
   programCycleId: string;
   cycleWorkoutId: string;
   exercises: any[];
+  exerciseCount: number;
+  durationMinutes: null;
+  totalVolume: null;
+  totalSets: null;
 }
 
 interface CachedProgramData {

@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { apiFetch } from '@/lib/api';
+import { ScreenScrollView } from '@/components/ui/Screen';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { colors, radius, spacing, typography } from '@/theme';
 
 type ProgramCycleResponse = {
   cycle: {
@@ -172,41 +167,92 @@ export default function ProgramOneRMTestScreen() {
 
   if (!cycleId) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg px-6">
-        <Text className="text-darkText text-lg font-semibold">Missing program cycle</Text>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background,
+          paddingHorizontal: spacing.lg,
+        }}
+      >
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: typography.fontSizes.lg,
+            fontWeight: typography.fontWeights.semibold,
+          }}
+        >
+          Missing program cycle
+        </Text>
       </View>
     );
   }
 
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg">
-        <ActivityIndicator size="large" color="#ef6f4f" />
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <ScrollView className="flex-1 bg-darkBg" contentContainerStyle={{ paddingBottom: 64 }}>
-      <View className="px-6 pt-16">
-        <View className="mb-6 flex-row items-center justify-between">
-          <Pressable
-            onPress={() => router.back()}
-            className="h-10 w-10 items-center justify-center rounded-full bg-darkBorder"
-          >
-            <Text className="text-darkText text-xl">←</Text>
-          </Pressable>
-          <Text className="text-darkText text-lg font-semibold">1RM Test</Text>
-          <View className="w-10" />
-        </View>
+    <ScreenScrollView bottomInset={120}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md }}>
+        <Pressable onPress={() => router.back()} style={{ padding: spacing.sm }}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </Pressable>
+        <Text
+          style={{
+            flex: 1,
+            textAlign: 'center',
+            color: colors.text,
+            fontSize: typography.fontSizes.lg,
+            fontWeight: typography.fontWeights.semibold,
+          }}
+        >
+          1RM Test
+        </Text>
+        <View style={{ width: 40 }} />
+      </View>
 
-        <Text className="text-darkMuted mb-1 text-sm">Program Cycle</Text>
-        <Text className="text-darkText mb-6 text-2xl font-semibold">
+      <View>
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: typography.fontSizes.sm,
+            marginBottom: spacing.xs,
+          }}
+        >
+          Program Cycle
+        </Text>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: typography.fontSizes.xxl,
+            fontWeight: typography.fontWeights.semibold,
+            marginBottom: spacing.lg,
+          }}
+        >
           {cycle?.name ?? 'Program'}
         </Text>
 
         <Pressable
-          className={`mb-6 rounded-xl bg-coral py-4 ${openingWorkout ? 'opacity-50' : ''}`}
+          style={{
+            marginBottom: spacing.lg,
+            borderRadius: radius.xl,
+            backgroundColor: colors.accent,
+            paddingVertical: spacing.md,
+            opacity: openingWorkout ? 0.5 : 1,
+          }}
           onPress={() => {
             void handleOpenWorkout();
           }}
@@ -215,7 +261,14 @@ export default function ProgramOneRMTestScreen() {
           {openingWorkout ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
-            <Text className="text-center text-base font-semibold text-white">
+            <Text
+              style={{
+                textAlign: 'center',
+                color: '#ffffff',
+                fontSize: typography.fontSizes.base,
+                fontWeight: typography.fontWeights.semibold,
+              }}
+            >
               {testWorkout?.completedAt
                 ? 'Start Another 1RM Test Workout'
                 : 'Open 1RM Test Workout'}
@@ -223,7 +276,13 @@ export default function ProgramOneRMTestScreen() {
           )}
         </Pressable>
 
-        <Text className="text-darkMuted mb-4 text-sm">
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: typography.fontSizes.sm,
+            marginBottom: spacing.md,
+          }}
+        >
           Complete the 1RM test workout, then record the final values here. These will update this
           program and be used as defaults when you start the next one.
         </Text>
@@ -252,14 +311,44 @@ export default function ProgramOneRMTestScreen() {
         ].map((field) => (
           <View
             key={field.key}
-            className="mb-4 rounded-xl border border-darkBorder bg-darkCard p-4"
+            style={{
+              marginBottom: spacing.md,
+              borderRadius: radius.xl,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              padding: spacing.md,
+            }}
           >
-            <Text className="text-darkText mb-1 font-medium">{field.label}</Text>
-            <Text className="text-darkMuted mb-3 text-xs">
+            <Text
+              style={{
+                color: colors.text,
+                fontSize: typography.fontSizes.base,
+                fontWeight: typography.fontWeights.medium,
+                marginBottom: spacing.xs,
+              }}
+            >
+              {field.label}
+            </Text>
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: typography.fontSizes.xs,
+                marginBottom: spacing.md,
+              }}
+            >
               Starting: {toDisplayWeight(field.start, weightUnit) || '0'} {weightUnit}
             </Text>
             <TextInput
-              className="rounded-lg bg-darkBg px-4 py-3 text-2xl font-bold text-darkText"
+              style={{
+                borderRadius: radius.md,
+                backgroundColor: colors.background,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                fontSize: typography.fontSizes.xxl,
+                fontWeight: typography.fontWeights.bold,
+                color: colors.text,
+              }}
               value={values[field.key as keyof typeof values]}
               onChangeText={(text) =>
                 setValues((prev) => ({
@@ -275,7 +364,12 @@ export default function ProgramOneRMTestScreen() {
         ))}
 
         <Pressable
-          className={`rounded-xl bg-pine py-4 ${saving ? 'opacity-50' : ''}`}
+          style={{
+            borderRadius: radius.xl,
+            backgroundColor: colors.success,
+            paddingVertical: spacing.md,
+            opacity: saving ? 0.5 : 1,
+          }}
           onPress={() => {
             void handleSave();
           }}
@@ -284,10 +378,19 @@ export default function ProgramOneRMTestScreen() {
           {saving ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
-            <Text className="text-center text-base font-semibold text-white">Save 1RMs</Text>
+            <Text
+              style={{
+                textAlign: 'center',
+                color: '#ffffff',
+                fontSize: typography.fontSizes.base,
+                fontWeight: typography.fontWeights.semibold,
+              }}
+            >
+              Save 1RMs
+            </Text>
           )}
         </Pressable>
       </View>
-    </ScrollView>
+    </ScreenScrollView>
   );
 }

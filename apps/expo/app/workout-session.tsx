@@ -3,24 +3,27 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
   ActivityIndicator,
   LayoutChangeEvent,
+  View,
+  Text,
+  Pressable,
+  TextInput,
+  StyleSheet,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { ScreenScrollView } from '@/components/ui/Screen';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
-import type { Workout } from '@/context/WorkoutSessionContext';
+import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
 import { ScrollProvider } from '@/context/ScrollContext';
+import { colors, spacing, radius, typography } from '@/theme';
 
 interface ExerciseLayout {
   id: string;
@@ -34,6 +37,7 @@ async function fetchWorkout(workoutId: string): Promise<Workout> {
 
 export default function WorkoutSessionScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { workoutId, source, cycleId } = useLocalSearchParams<{
     workoutId?: string;
     source?: string;
@@ -65,7 +69,7 @@ export default function WorkoutSessionScreen() {
   const [exerciseLayouts, setExerciseLayouts] = useState<ExerciseLayout[]>([]);
   const [showFloatingPill, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<any>(null);
   const { weightUnit: userWeightUnit } = useUserPreferences();
 
   const SET_HEIGHT = 120;
@@ -125,8 +129,10 @@ export default function WorkoutSessionScreen() {
   }, [startWorkout, workoutName]);
 
   const handleAddExercise = useCallback(
-    async (exercise: ExerciseLibraryItem) => {
-      await addExercise(exercise);
+    async (exercises: ExerciseLibraryItem[]) => {
+      for (const exercise of exercises) {
+        await addExercise(exercise);
+      }
     },
     [addExercise],
   );
@@ -249,25 +255,20 @@ export default function WorkoutSessionScreen() {
 
   if (workoutId && isLoadingWorkout) {
     return (
-      <View className="flex-1 bg-darkBg items-center justify-center">
-        <ActivityIndicator size="large" color="#F97066" />
-        <Text className="text-darkMuted mt-4">Loading workout...</Text>
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={styles.loadingText}>Loading workout...</Text>
       </View>
     );
   }
 
   if (workoutId && loadError) {
     return (
-      <View className="flex-1 bg-darkBg items-center justify-center px-6">
-        <Text className="text-darkText text-xl font-bold mb-2">Error Loading Workout</Text>
-        <Text className="text-darkMuted text-center mb-6">
-          {loadError?.message || 'Failed to load workout'}
-        </Text>
-        <Pressable
-          className="h-12 items-center justify-center rounded-xl bg-pine px-8"
-          onPress={() => router.push('/(app)/workouts')}
-        >
-          <Text className="text-white font-semibold">Go to Workouts</Text>
+      <View style={[styles.container, styles.centered, { paddingHorizontal: spacing.lg }]}>
+        <Text style={styles.errorTitle}>Error Loading Workout</Text>
+        <Text style={styles.errorMessage}>{loadError?.message || 'Failed to load workout'}</Text>
+        <Pressable style={styles.goToWorkoutsButton} onPress={() => router.push('/(app)/workouts')}>
+          <Text style={styles.goToWorkoutsButtonText}>Go to Workouts</Text>
         </Pressable>
       </View>
     );
@@ -275,13 +276,13 @@ export default function WorkoutSessionScreen() {
 
   if (!isActive && !workout && !workoutId) {
     return (
-      <View className="flex-1 bg-darkBg px-6 pt-16">
-        <Text className="text-darkText mb-6 text-2xl font-bold">Start Workout</Text>
+      <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+        <Text style={styles.startWorkoutTitle}>Start Workout</Text>
 
-        <View className="mb-4">
-          <Text className="text-darkMuted mb-2 text-sm">Workout Name</Text>
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Workout Name</Text>
           <TextInput
-            className="h-14 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText text-lg"
+            style={styles.textInput}
             placeholder="e.g., Upper Body Day"
             placeholderTextColor="#71717a"
             value={workoutName}
@@ -290,32 +291,82 @@ export default function WorkoutSessionScreen() {
         </View>
 
         {error && (
-          <View className="mb-4 rounded-xl border border-red-500/50 bg-red-500/10 p-4">
-            <Text className="text-red-500 text-sm">{error}</Text>
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{error}</Text>
           </View>
         )}
 
         <Pressable
-          className={`h-14 items-center justify-center rounded-2xl ${
-            isLoading ? 'bg-darkBorder' : 'bg-coral'
-          }`}
+          style={[styles.startButton, isLoading && styles.startButtonDisabled]}
           onPress={handleStartWorkout}
           disabled={isLoading}
         >
-          <Text className="text-white text-lg font-semibold">
-            {isLoading ? 'Starting...' : 'Start Workout'}
-          </Text>
+          <Text style={styles.startButtonText}>{isLoading ? 'Starting...' : 'Start Workout'}</Text>
         </Pressable>
 
-        <Pressable
-          className="mt-4 h-14 items-center justify-center rounded-2xl border border-darkBorder"
-          onPress={() => router.back()}
-        >
-          <Text className="text-darkMuted text-lg">Cancel</Text>
+        <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </Pressable>
       </View>
     );
   }
+
+  const renderActionButtons = () => {
+    const buttons = isViewingCompleted
+      ? [
+          {
+            label: isEditing ? 'Cancel Edit' : 'Edit',
+            variant: 'secondary' as const,
+            onPress: () => setIsEditing(!isEditing),
+          },
+          {
+            label: 'Close',
+            variant: 'primary' as const,
+            onPress: () => router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts'),
+          },
+        ]
+      : [
+          {
+            label: 'Discard',
+            variant: 'secondary' as const,
+            onPress: async () => {
+              await discardWorkout();
+              if (isProgramOneRMTest && typeof cycleId === 'string') {
+                router.push(`/program-1rm-test?cycleId=${cycleId}`);
+                return;
+              }
+              router.push('/(app)/workouts');
+            },
+          },
+          { label: 'Complete', variant: 'primary' as const, onPress: handleCompleteWorkout },
+        ];
+
+    return (
+      <View style={styles.actionButtonsRow}>
+        {buttons.map((btn, idx) => (
+          <Pressable
+            key={idx}
+            style={[
+              styles.actionButton,
+              btn.variant === 'primary' ? styles.actionButtonPrimary : styles.actionButtonSecondary,
+            ]}
+            onPress={btn.onPress}
+          >
+            <Text
+              style={[
+                styles.actionButtonText,
+                btn.variant === 'primary'
+                  ? styles.actionButtonTextPrimary
+                  : styles.actionButtonTextSecondary,
+              ]}
+            >
+              {btn.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -324,110 +375,63 @@ export default function WorkoutSessionScreen() {
       style={{ flex: 1 }}
     >
       <ScrollProvider scrollViewRef={scrollViewRef}>
-        <View className="flex-1 bg-darkBg">
-          <View className="border-b border-darkBorder px-6 py-4">
-            <View className="flex flex-row items-center justify-between">
-              <View className="flex-1 min-w-0">
-                <Text className="text-darkMuted text-xs uppercase tracking-wider">
+        <View style={styles.container}>
+          <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+            <View style={styles.headerTop}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.subtitle}>
                   {isViewingCompleted ? 'Completed Workout' : 'Active Workout'}
                 </Text>
-                <Text className="text-darkText text-xl font-bold truncate">
-                  {workout?.name || 'Workout'}
-                </Text>
+                <Text style={styles.title}>{workout?.name || 'Workout'}</Text>
               </View>
-              <View className="flex flex-col items-end">
-                <Text className="text-coral text-2xl font-bold">{formattedDuration}</Text>
+              <View style={styles.headerRight}>
+                <Text style={styles.durationPrimary}>{formattedDuration}</Text>
                 {isViewingCompleted && computedVolume > 0 && (
-                  <Text className="text-darkMuted text-sm">
+                  <Text style={styles.durationSecondary}>
                     {formatVolume(computedVolume)} {userWeightUnit}
                   </Text>
                 )}
               </View>
             </View>
-
-            <View className="mt-4 flex flex-row gap-2">
-              {isViewingCompleted ? (
-                <>
-                  <Pressable
-                    className="flex-1 h-12 items-center justify-center rounded-xl border border-darkBorder bg-darkCard"
-                    onPress={() => setIsEditing(!isEditing)}
-                  >
-                    <Text className="text-darkMuted font-semibold">
-                      {isEditing ? 'Cancel Edit' : 'Edit'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    className="flex-1 h-12 items-center justify-center rounded-xl bg-pine"
-                    onPress={() =>
-                      router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts')
-                    }
-                  >
-                    <Text className="text-white font-semibold">Close</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <Pressable
-                    className="flex-1 h-12 items-center justify-center rounded-xl border border-darkBorder bg-darkCard"
-                    onPress={async () => {
-                      await discardWorkout();
-                      if (isProgramOneRMTest && typeof cycleId === 'string') {
-                        router.push(`/program-1rm-test?cycleId=${cycleId}`);
-                        return;
-                      }
-                      router.push('/(app)/workouts');
-                    }}
-                  >
-                    <Text className="text-darkMuted font-semibold">Discard</Text>
-                  </Pressable>
-                  <Pressable
-                    className="flex-1 h-12 items-center justify-center rounded-xl bg-pine"
-                    onPress={handleCompleteWorkout}
-                  >
-                    <Text className="text-white font-semibold">Complete</Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
+            <View style={styles.headerBottom}>{renderActionButtons()}</View>
           </View>
 
           {showFloatingPill && exercises.length > 0 && (
             <Pressable
-              className="absolute bottom-24 left-4 right-4 rounded-2xl border border-coral/50 bg-darkCard/95 px-4 py-3 shadow-lg"
+              style={[styles.floatingPill, { bottom: insets.bottom + 92 }]}
               onPress={scrollToCurrentExercise}
-              style={{ bottom: 100 }}
             >
-              <View className="flex flex-row items-center justify-between">
-                <View className="flex flex-col">
-                  <Text className="text-darkMuted text-xs">
+              <View style={styles.floatingPillContent}>
+                <View style={styles.floatingPillLeft}>
+                  <Text style={styles.floatingPillLabel}>
                     {exercises[currentExerciseIndex]?.name} • Set {currentSetIndex + 1}
                   </Text>
-                  <Text className="text-darkText text-sm">
+                  <Text style={styles.floatingPillSubtitle}>
                     {currentExerciseIndex + 1} of {exercises.length} exercises
                   </Text>
                 </View>
-                <View className="flex flex-row items-center gap-2">
-                  <View className="rounded-full bg-coral/20 px-3 py-1">
-                    <Text className="text-coral text-sm font-bold">
+                <View style={styles.floatingPillRight}>
+                  <View style={styles.setCounterBadge}>
+                    <Text style={styles.setCounterText}>
                       {exercises[currentExerciseIndex]?.sets.filter((s) => s.isComplete).length}/
                       {exercises[currentExerciseIndex]?.sets.length}
                     </Text>
                   </View>
-                  <Text className="text-darkMuted">↓</Text>
+                  <Text style={styles.floatingPillArrow}>↓</Text>
                 </View>
               </View>
             </Pressable>
           )}
 
-          <ScrollView
+          <ScreenScrollView
             ref={scrollViewRef}
-            className="flex-1"
-            contentContainerStyle={{ paddingBottom: 600 }}
+            bottomInset={220}
+            horizontalPadding={spacing.md}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <View className="p-4 space-y-3">
-              {exercises.map((exercise, _index) => {
+            <View style={styles.exerciseList}>
+              {exercises.map((exercise) => {
                 const localSets = exercise.sets.map((s) => ({
                   id: s.id,
                   reps: s.reps ?? 0,
@@ -457,14 +461,14 @@ export default function WorkoutSessionScreen() {
 
               {(!isViewingCompleted || isEditing) && (
                 <Pressable
-                  className="flex flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-darkBorder py-6"
+                  style={styles.addExerciseButton}
                   onPress={() => setShowAddExercise(true)}
                 >
-                  <Text className="text-darkMuted text-lg">+ Add Exercise</Text>
+                  <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
                 </Pressable>
               )}
             </View>
-          </ScrollView>
+          </ScreenScrollView>
 
           <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
             <ExerciseSearch
@@ -479,3 +483,249 @@ export default function WorkoutSessionScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontSize: typography.fontSizes.base,
+  },
+  errorTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold,
+    marginBottom: spacing.sm,
+  },
+  errorMessage: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    fontSize: typography.fontSizes.base,
+  },
+  goToWorkoutsButton: {
+    backgroundColor: colors.accent,
+    height: 48,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goToWorkoutsButtonText: {
+    color: '#ffffff',
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  startWorkoutTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+    marginBottom: spacing.lg,
+  },
+  inputContainer: {
+    marginBottom: spacing.sm,
+  },
+  inputLabel: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    marginBottom: spacing.xs,
+  },
+  textInput: {
+    height: 56,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: typography.fontSizes.lg,
+  },
+  errorBanner: {
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${colors.error}50`,
+    backgroundColor: `${colors.error}10`,
+    padding: spacing.md,
+  },
+  errorBannerText: {
+    color: colors.error,
+    fontSize: typography.fontSizes.sm,
+  },
+  startButton: {
+    height: 56,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+  },
+  startButtonDisabled: {
+    backgroundColor: colors.border,
+  },
+  startButtonText: {
+    color: '#ffffff',
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  cancelButton: {
+    height: 56,
+    marginTop: spacing.sm,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.lg,
+  },
+  header: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+  title: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+  },
+  durationPrimary: {
+    color: colors.text,
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  durationSecondary: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+  },
+  headerBottom: {
+    marginTop: spacing.sm,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  actionButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonPrimary: {
+    backgroundColor: colors.accent,
+  },
+  actionButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionButtonText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  actionButtonTextPrimary: {
+    color: '#ffffff',
+  },
+  actionButtonTextSecondary: {
+    color: colors.text,
+  },
+  floatingPill: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    backgroundColor: `${colors.surface}95`,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: `${colors.accent}50`,
+    padding: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  floatingPillContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  floatingPillLeft: {
+    flex: 1,
+  },
+  floatingPillLabel: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+  },
+  floatingPillSubtitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+  },
+  floatingPillRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  setCounterBadge: {
+    backgroundColor: `${colors.accent}20`,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  setCounterText: {
+    color: colors.accent,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+  },
+  floatingPillArrow: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.lg,
+  },
+  exerciseList: {
+    gap: spacing.sm,
+  },
+  addExerciseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    paddingVertical: spacing.lg,
+  },
+  addExerciseButtonText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.lg,
+  },
+});

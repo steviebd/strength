@@ -70,17 +70,21 @@ app.options('/api/*', async (c) => {
   return c.text('', 200);
 });
 
-app.use('*', async (c, next) => {
-  if (!isDevAuthEnabled(c.env)) {
-    c.set('user', null);
-    c.set('session', null);
-    await next();
-    return;
+function getAuthHeaders(c: any) {
+  const headers = new Headers(c.req.raw.headers);
+  const expoOrigin = headers.get('expo-origin');
+
+  if (!headers.get('origin') && expoOrigin) {
+    headers.set('origin', expoOrigin);
   }
 
+  return headers;
+}
+
+app.use('*', async (c, next) => {
   const auth = createAuth(c.env);
   const session = await auth.api.getSession({
-    headers: c.req.raw.headers,
+    headers: getAuthHeaders(c),
   });
 
   c.set('user', session?.user ?? null);
@@ -92,7 +96,7 @@ app.use('*', async (c, next) => {
 app.get('/api/health', (c) => {
   return c.json({
     ok: true,
-    authMode: isDevAuthEnabled(c.env) ? 'development' : 'disabled',
+    authEnabled: true,
   });
 });
 
@@ -199,26 +203,26 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c, next) => {
     return;
   }
 
-  if (!isDevAuthEnabled(c.env)) {
-    return c.json(
-      { message: 'Authentication is intentionally disabled outside development right now.' },
-      403,
-    );
-  }
-
   const auth = createAuth(c.env);
   return auth.handler(c.req.raw);
 });
 
 async function requireAuth(c: any) {
-  if (!isDevAuthEnabled(c.env)) {
+  const user = c.get('user');
+  const session = c.get('session');
+
+  if (user && session) {
+    return { user, session };
+  }
+
+  const auth = createAuth(c.env);
+  const resolvedSession = await auth.api.getSession({ headers: getAuthHeaders(c) });
+
+  if (!resolvedSession) {
     return { user: null, session: null };
   }
-  const auth = createAuth(c.env);
-  const cookieHeader = c.req.raw.headers.get('cookie');
-  const authHeader = c.req.raw.headers.get('authorization');
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  return session;
+
+  return resolvedSession;
 }
 
 function getDb(c: any) {
@@ -2877,12 +2881,14 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const state = c.req.query('state');
   const error = c.req.query('error');
 
+  const deepLink = 'strength://whoop-callback';
+
   if (error) {
-    return c.redirect(`/connect-whoop?error=${encodeURIComponent(error)}`);
+    return c.redirect(`${deepLink}?error=${encodeURIComponent(error)}`);
   }
 
   if (!code) {
-    return c.redirect('/connect-whoop?error=no_code');
+    return c.redirect(`${deepLink}?error=no_code`);
   }
 
   // Get session from cookie (callback is accessed after auth)
@@ -2890,7 +2896,7 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
 
   if (!session?.user) {
-    return c.redirect('/connect-whoop?error=session_expired');
+    return c.redirect(`${deepLink}?error=session_expired`);
   }
 
   const userId = session.user.id;
@@ -2920,11 +2926,11 @@ app.get('/api/auth/whoop/callback', async (c) => {
     const syncResult = await syncAllWhoopData(db, resolvedEnv, userId);
     console.log('[WHOOP] Auto-sync result:', syncResult);
 
-    return c.redirect('/connect-whoop?success=true');
+    return c.redirect(`${deepLink}?success=true`);
   } catch (e) {
     console.error('[WHOOP] Callback error:', e);
     return c.redirect(
-      `/connect-whoop?error=${encodeURIComponent(e instanceof Error ? e.message : 'unknown')}`,
+      `${deepLink}?error=${encodeURIComponent(e instanceof Error ? e.message : 'unknown')}`,
     );
   }
 });
@@ -3063,9 +3069,11 @@ app.get('/api/whoop/data', async (c) => {
         row.slowWaveSleepTimeMilli ?? getNumber(stageSummary, 'total_slow_wave_sleep_time_milli');
       const remSleep =
         row.remSleepTimeMilli ?? getNumber(stageSummary, 'total_rem_sleep_time_milli');
-      const totalSleepTime =
-        row.totalSleepTimeMilli ??
-        [lightSleep, slowWaveSleep, remSleep].reduce((sum, value) => sum + (value ?? 0), 0);
+      const fallbackTotalSleepTime = [lightSleep, slowWaveSleep, remSleep].reduce<number>(
+        (sum, value) => sum + (value ?? 0),
+        0,
+      );
+      const totalSleepTime = row.totalSleepTimeMilli ?? fallbackTotalSleepTime;
 
       return withWhoopFallbacks(row, {
         sleepPerformancePercentage:

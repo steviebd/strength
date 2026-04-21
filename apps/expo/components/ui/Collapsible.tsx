@@ -1,25 +1,45 @@
 import React, { useState } from 'react';
-import { Pressable, Text, View, type ViewProps } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { colors, typography } from '../../theme';
 
-interface CollapsibleProps extends ViewProps {
+interface CollapsibleProps {
   label: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  style?: ViewStyle;
 }
 
-export function Collapsible({ label, children, defaultOpen = false, ...props }: CollapsibleProps) {
+export function Collapsible({ label, children, defaultOpen = false, style }: CollapsibleProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <View {...props}>
-      <Pressable
-        onPress={() => setIsOpen(!isOpen)}
-        className="flex-row items-center justify-between py-2"
-      >
-        <Text className="text-darkText font-semibold">{label}</Text>
-        <Text className="text-darkMuted text-sm">{isOpen ? '▲' : '▼'}</Text>
+    <View style={style}>
+      <Pressable onPress={() => setIsOpen(!isOpen)} style={styles.header}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.chevron}>{isOpen ? '▲' : '▼'}</Text>
       </Pressable>
-      {isOpen && <View className="mt-2">{children}</View>}
+      {isOpen && <View style={styles.content}>{children}</View>}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  label: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  chevron: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  content: {
+    marginTop: 8,
+  },
+});

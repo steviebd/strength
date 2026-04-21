@@ -1,16 +1,25 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
+  Modal,
+  ActivityIndicator,
+  Alert,
   View,
   Text,
   Pressable,
   TextInput,
-  Modal,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
+  StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Screen, ScreenScrollView } from '@/components/ui/Screen';
+import {
+  ActionButton,
+  Badge,
+  PageHeader,
+  SectionTitle,
+  SegmentedTabs,
+  Surface,
+} from '@/components/ui/app-primitives';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { TemplateList } from '@/components/template/TemplateList';
@@ -27,6 +36,7 @@ import {
   removePendingWorkout,
 } from '@/lib/storage';
 import type { Template } from '@/hooks/useTemplateEditor';
+import { colors, radius, spacing, typography } from '@/theme';
 
 interface WorkoutHistoryItem {
   id: string;
@@ -58,6 +68,9 @@ interface PendingWorkout {
   programCycleId: string;
   cycleWorkoutId: string;
   exerciseCount: number;
+  durationMinutes: null;
+  totalVolume: null;
+  totalSets: null;
 }
 
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
@@ -213,7 +226,11 @@ export default function WorkoutsIndex() {
         source: 'program',
         programCycleId: program.id,
         cycleWorkoutId: result.workoutId,
+        exercises: [],
         exerciseCount: 0,
+        durationMinutes: null,
+        totalVolume: null,
+        totalSets: null,
       });
       setPendingWorkouts((prev) => [
         ...prev,
@@ -226,6 +243,9 @@ export default function WorkoutsIndex() {
           programCycleId: program.id,
           cycleWorkoutId: result.workoutId,
           exerciseCount: 0,
+          durationMinutes: null,
+          totalVolume: null,
+          totalSets: null,
         },
       ]);
       router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
@@ -262,27 +282,11 @@ export default function WorkoutsIndex() {
     ]);
   };
 
-  const renderHistoryItem = ({ item, isPending }: { item: any; isPending?: boolean }) => (
-    <View className="mb-3">
-      <WorkoutCard
-        id={item.id}
-        name={item.name}
-        date={item.startedAt}
-        durationMinutes={item.durationMinutes ?? null}
-        totalVolume={item.totalVolume}
-        exerciseCount={item.exerciseCount ?? 0}
-        weightUnit={weightUnit}
-        isPending={isPending}
-        onDelete={isPending ? () => handleDeletePendingWorkout(item.id) : undefined}
-      />
-    </View>
-  );
-
   const renderActiveProgramsSection = () => {
     if (isLoadingActivePrograms) {
       return (
-        <View className="items-center justify-center py-8">
-          <ActivityIndicator size="small" color="#ef6f4f" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={colors.accentSecondary} />
         </View>
       );
     }
@@ -292,154 +296,190 @@ export default function WorkoutsIndex() {
     }
 
     return (
-      <View className="px-4 pt-4">
-        <Text className="mb-3 text-sm font-semibold text-darkText">Active Programs</Text>
-        <View className="gap-3">
-          {activePrograms.map((program) => {
-            const isOpening = openingProgramWorkoutId === program.id;
-            const isDeleting = deletingProgramId === program.id;
-            const currentSession = program.currentSession ?? 1;
-            const displaySessionNumber = getDisplaySessionNumber(program);
-            const progress = Math.min(
-              100,
-              (displaySessionNumber / program.totalSessionsPlanned) * 100,
-            );
+      <View style={styles.programsContainer}>
+        <SectionTitle title="Active programs" />
+        {activePrograms.map((program) => {
+          const isOpening = openingProgramWorkoutId === program.id;
+          const isDeleting = deletingProgramId === program.id;
+          const currentSession = program.currentSession ?? 1;
+          const displaySessionNumber = getDisplaySessionNumber(program);
+          const progress = Math.min(
+            100,
+            (displaySessionNumber / program.totalSessionsPlanned) * 100,
+          );
 
-            return (
-              <View key={program.id} className="rounded-2xl border border-coral/40 bg-coral/10 p-4">
-                <View className="mb-2 flex-row items-center justify-between">
-                  <Text className="text-base font-semibold text-darkText">{program.name}</Text>
-                  {program.currentWeek ? (
-                    <Text className="text-xs text-darkMuted">
-                      Week {program.currentWeek} · Session {currentSession}
-                    </Text>
-                  ) : null}
+          return (
+            <Surface key={program.id} style={styles.programSurface}>
+              <View style={styles.programContent}>
+                <View style={styles.programHeader}>
+                  <View style={styles.programInfo}>
+                    <Text style={styles.programName}>{program.name}</Text>
+                    <View style={styles.programBadges}>
+                      {program.currentWeek ? (
+                        <Badge label={`Week ${program.currentWeek}`} tone="sky" />
+                      ) : null}
+                      <Badge label={`Session ${currentSession}`} tone="orange" />
+                    </View>
+                  </View>
                 </View>
-                <Text className="mb-3 text-sm text-darkMuted">
-                  {displaySessionNumber} / {program.totalSessionsPlanned} sessions
+
+                <Text style={styles.programProgress}>
+                  {displaySessionNumber} / {program.totalSessionsPlanned} sessions completed
                 </Text>
-                <View className="h-2 overflow-hidden rounded-full bg-darkBorder">
-                  <View
-                    className="h-full rounded-full bg-coral"
-                    style={{ width: `${progress}%` }}
-                  />
+
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
                 </View>
-                <View className="mt-4 flex-row gap-3">
-                  <Pressable
-                    className={`flex-1 items-center justify-center rounded-xl bg-coral px-4 py-3 ${
-                      isOpening ? 'opacity-50' : ''
-                    }`}
+
+                <View style={styles.programActions}>
+                  <ActionButton
+                    label={isOpening ? 'Opening session...' : 'Start next session'}
+                    icon="play"
                     onPress={() => void handleOpenCurrentProgramWorkout(program)}
                     disabled={isOpening || isDeleting}
-                  >
-                    {isOpening ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <Text className="text-sm font-semibold text-white">Start Next Session</Text>
-                    )}
-                  </Pressable>
-                  <Pressable
-                    className="items-center justify-center rounded-xl border border-pine/40 px-4 py-3"
-                    onPress={() => router.push(`/program-1rm-test?cycleId=${program.id}`)}
-                    disabled={isOpening || isDeleting}
-                  >
-                    <Text className="text-sm font-medium text-pine">1RM Test</Text>
-                  </Pressable>
-                  <Pressable
-                    className={`items-center justify-center rounded-xl border border-red-500/40 px-4 py-3 ${
-                      isDeleting ? 'opacity-50' : ''
-                    }`}
-                    onPress={() => handleDeleteProgram(program)}
-                    disabled={isOpening || isDeleting}
-                  >
-                    {isDeleting ? (
-                      <ActivityIndicator size="small" color="#f87171" />
-                    ) : (
-                      <Text className="text-sm font-medium text-red-400">Delete</Text>
-                    )}
-                  </Pressable>
+                  />
+
+                  <View style={styles.programActionsRow}>
+                    <View style={styles.flex1}>
+                      <ActionButton
+                        label="1RM Test"
+                        icon="speedometer-outline"
+                        variant="secondary"
+                        onPress={() => router.push(`/program-1rm-test?cycleId=${program.id}`)}
+                        disabled={isOpening || isDeleting}
+                      />
+                    </View>
+                    <Pressable
+                      style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
+                      onPress={() => handleDeleteProgram(program)}
+                      disabled={isOpening || isDeleting}
+                    >
+                      {isDeleting ? (
+                        <ActivityIndicator size="small" color="#fda4af" />
+                      ) : (
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      )}
+                    </Pressable>
+                  </View>
                 </View>
               </View>
-            );
-          })}
-        </View>
+            </Surface>
+          );
+        })}
       </View>
     );
   };
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <View
-        className="border-b border-darkBorder px-4"
-        style={{ paddingTop: insets.top + 16, paddingBottom: 16 }}
-      >
-        <View className="flex-row items-center justify-between">
-          <Text className="text-darkText text-xl font-bold">Workouts</Text>
-        </View>
+    <Screen style={styles.screen}>
+      <ScreenScrollView bottomInset={96} topPadding={10} showsVerticalScrollIndicator={false}>
+        <PageHeader
+          eyebrow="Training"
+          title="Workouts"
+          description="Launch a session quickly, keep templates organized, and review your recent training."
+        />
 
-        <View className="mt-4 flex-row rounded-xl bg-darkCard p-1">
-          <Pressable
-            onPress={() => setView('templates')}
-            className={`flex-1 rounded-lg py-2 ${view === 'templates' ? 'bg-darkBorder' : ''}`}
-          >
-            <Text
-              className={`text-center text-sm ${view === 'templates' ? 'text-darkText font-medium' : 'text-darkMuted'}`}
-            >
-              Templates
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setView('history')}
-            className={`flex-1 rounded-lg py-2 ${view === 'history' ? 'bg-darkBorder' : ''}`}
-          >
-            <Text
-              className={`text-center text-sm ${view === 'history' ? 'text-darkText font-medium' : 'text-darkMuted'}`}
-            >
-              History
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+        <SegmentedTabs
+          options={[
+            {
+              label: 'Templates',
+              onPress: () => setView('templates'),
+              active: view === 'templates',
+            },
+            {
+              label: 'History',
+              onPress: () => setView('history'),
+              active: view === 'history',
+            },
+          ]}
+        />
 
-      {view === 'templates' ? (
-        <View className="flex-1">
-          {renderActiveProgramsSection()}
-          <View className="flex-1">
-            <TemplateList
-              onEditTemplate={handleEditTemplate}
-              onStartWorkout={handleStartFromTemplate}
-            />
+        {view === 'templates' ? (
+          <View style={styles.templatesView}>
+            <Surface style={styles.quickStartSurface}>
+              <View style={styles.quickStartContent}>
+                <View style={styles.quickStartHeader}>
+                  <Badge label="Quick start" tone="orange" />
+                  <Text style={styles.quickStartTitle}>Train without friction</Text>
+                  <Text style={styles.quickStartDescription}>
+                    Use an empty workout when you want to freestyle, or build templates for the
+                    sessions you repeat every week.
+                  </Text>
+                </View>
+                <View style={styles.quickStartActions}>
+                  <View style={styles.flex1}>
+                    <ActionButton
+                      label="Start custom workout"
+                      icon="play"
+                      onPress={() => setShowStartWorkout(true)}
+                    />
+                  </View>
+                  <View style={styles.flex1}>
+                    <ActionButton
+                      label="New template"
+                      icon="add"
+                      variant="secondary"
+                      onPress={handleNewTemplate}
+                    />
+                  </View>
+                </View>
+              </View>
+            </Surface>
+
+            {renderActiveProgramsSection()}
+
+            <View style={styles.templatesSection}>
+              <SectionTitle title="Templates" />
+              <TemplateList
+                onEditTemplate={handleEditTemplate}
+                onStartWorkout={handleStartFromTemplate}
+              />
+            </View>
           </View>
-        </View>
-      ) : isLoadingHistory && pendingWorkouts.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#ef6f4f" />
-        </View>
-      ) : workoutHistoryError ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="mb-2 text-xl font-bold text-darkText">Error Loading History</Text>
-          <Text className="text-center text-darkMuted">
-            {workoutHistoryError instanceof Error
-              ? workoutHistoryError.message
-              : 'Failed to load workout history'}
-          </Text>
-        </View>
-      ) : mergedHistory.length === 0 ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-darkText text-xl font-bold mb-2">No Workouts Yet</Text>
-          <Text className="text-darkMuted text-center">
-            Start a workout from a template or begin an empty workout.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
-          {mergedHistory.map((item, index) => {
-            const isPending =
-              index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id);
-            return <View key={item.id}>{renderHistoryItem({ item, isPending })}</View>;
-          })}
-        </ScrollView>
-      )}
+        ) : isLoadingHistory && pendingWorkouts.length === 0 ? (
+          <View style={styles.centerLoading}>
+            <ActivityIndicator size="large" color={colors.accentSecondary} />
+          </View>
+        ) : workoutHistoryError ? (
+          <View style={styles.errorState}>
+            <Text style={styles.errorTitle}>Error Loading History</Text>
+            <Text style={styles.errorMessage}>
+              {workoutHistoryError instanceof Error
+                ? workoutHistoryError.message
+                : 'Failed to load workout history'}
+            </Text>
+          </View>
+        ) : mergedHistory.length === 0 ? (
+          <Surface style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No workouts yet</Text>
+            <Text style={styles.emptyMessage}>
+              Start from a template or open an empty workout to begin tracking.
+            </Text>
+          </Surface>
+        ) : (
+          <View style={styles.historyList}>
+            <SectionTitle title="Recent workouts" />
+            {mergedHistory.map((item, index) => {
+              const isPending =
+                index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id);
+              return (
+                <WorkoutCard
+                  key={item.id}
+                  id={item.id}
+                  name={item.name}
+                  date={item.startedAt}
+                  durationMinutes={item.durationMinutes ?? null}
+                  totalVolume={item.totalVolume}
+                  exerciseCount={item.exerciseCount ?? 0}
+                  weightUnit={weightUnit}
+                  isPending={isPending}
+                  onDelete={isPending ? () => handleDeletePendingWorkout(item.id) : undefined}
+                />
+              );
+            })}
+          </View>
+        )}
+      </ScreenScrollView>
 
       <Modal
         visible={showStartWorkout}
@@ -447,34 +487,33 @@ export default function WorkoutsIndex() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowStartWorkout(false)}
       >
-        <View className="flex-1 bg-darkBg px-6" style={{ paddingTop: insets.top + 16 }}>
-          <View className="flex-row items-center justify-between mb-6">
-            <Text className="text-darkText text-2xl font-bold">Start Workout</Text>
-            <Pressable onPress={() => setShowStartWorkout(false)} className="p-2">
-              <Text className="text-darkMuted text-lg">✕</Text>
+        <View style={[styles.modalContent, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Start workout</Text>
+            <Pressable onPress={() => setShowStartWorkout(false)} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
             </Pressable>
           </View>
 
-          <View className="mb-4">
-            <Text className="text-darkMuted mb-2 text-sm">Workout Name</Text>
-            <TextInput
-              className="h-14 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText text-lg"
-              placeholder="e.g., Upper Body Day"
-              placeholderTextColor="#71717a"
-              value={workoutName}
-              onChangeText={setWorkoutName}
-            />
-          </View>
+          <Surface style={styles.modalSurface}>
+            <View style={styles.modalForm}>
+              <Text style={styles.inputLabel}>WORKOUT NAME</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g., Upper Body Day"
+                placeholderTextColor="#64748b"
+                value={workoutName}
+                onChangeText={setWorkoutName}
+              />
 
-          <Pressable
-            className={`h-14 items-center justify-center rounded-2xl ${isLoading ? 'bg-darkBorder' : 'bg-coral'}`}
-            onPress={handleStartWorkout}
-            disabled={isLoading}
-          >
-            <Text className="text-white text-lg font-semibold">
-              {isLoading ? 'Starting...' : 'Start Empty Workout'}
-            </Text>
-          </Pressable>
+              <ActionButton
+                label={isLoading ? 'Starting...' : 'Start Empty Workout'}
+                icon="play"
+                onPress={handleStartWorkout}
+                disabled={isLoading}
+              />
+            </View>
+          </Surface>
         </View>
       </Modal>
 
@@ -494,21 +533,207 @@ export default function WorkoutsIndex() {
           onSaved={handleTemplateSaved}
         />
       </Modal>
-
-      <View className="absolute bottom-8 left-6 right-6 flex-row gap-3">
-        <Pressable
-          onPress={() => setShowStartWorkout(true)}
-          className="flex-1 items-center justify-center rounded-full bg-pine py-4"
-        >
-          <Text className="text-white text-sm font-semibold">Start Custom Workout</Text>
-        </Pressable>
-        <Pressable
-          onPress={handleNewTemplate}
-          className="flex-1 items-center justify-center rounded-full bg-coral py-4"
-        >
-          <Text className="text-white text-sm font-semibold">+ New Template</Text>
-        </Pressable>
-      </View>
-    </View>
+    </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+  },
+  programsContainer: {
+    gap: spacing.sm,
+  },
+  programSurface: {
+    backgroundColor: 'rgba(30,41,59,0.7)',
+  },
+  programContent: {
+    gap: spacing.md,
+  },
+  programHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  programInfo: {
+    flex: 1,
+    gap: spacing.sm,
+  },
+  programName: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  programBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  programProgress: {
+    fontSize: typography.fontSizes.base,
+    color: '#94a3b8',
+  },
+  progressBarBg: {
+    height: 8,
+    overflow: 'hidden',
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSecondary,
+  },
+  programActions: {
+    gap: spacing.sm,
+  },
+  programActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  flex1: {
+    flex: 1,
+  },
+  deleteButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.2)',
+    backgroundColor: 'rgba(244,63,94,0.1)',
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  deleteButtonText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    color: '#fda4af',
+  },
+  templatesView: {
+    gap: spacing.lg,
+  },
+  quickStartSurface: {
+    backgroundColor: colors.surface,
+  },
+  quickStartContent: {
+    gap: spacing.md,
+  },
+  quickStartHeader: {
+    gap: spacing.xs,
+  },
+  quickStartTitle: {
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  quickStartDescription: {
+    fontSize: typography.fontSizes.base,
+    lineHeight: 24,
+    color: '#94a3b8',
+  },
+  quickStartActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  templatesSection: {
+    gap: spacing.sm,
+  },
+  centerLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  errorState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  errorTitle: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  errorMessage: {
+    fontSize: typography.fontSizes.base,
+    textAlign: 'center',
+    color: '#94a3b8',
+  },
+  emptyState: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    paddingVertical: spacing.lg,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  emptyMessage: {
+    fontSize: typography.fontSizes.base,
+    textAlign: 'center',
+    color: '#94a3b8',
+  },
+  historyList: {
+    gap: spacing.md,
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  modalTitle: {
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+  },
+  closeButton: {
+    padding: spacing.sm,
+  },
+  closeButtonText: {
+    fontSize: typography.fontSizes.lg,
+    color: '#64748b',
+  },
+  modalSurface: {
+    backgroundColor: colors.surface,
+  },
+  modalForm: {
+    gap: spacing.md,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: typography.fontWeights.semibold,
+    letterSpacing: 1.6,
+    color: '#64748b',
+  },
+  textInput: {
+    height: 56,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: spacing.md,
+    fontSize: typography.fontSizes.lg,
+    color: colors.text,
+  },
+});

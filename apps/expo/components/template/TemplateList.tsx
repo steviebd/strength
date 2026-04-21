@@ -1,5 +1,8 @@
-import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { useTemplates, type Template } from '@/hooks/useTemplates';
+import { Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
+import { ScreenScrollView } from '@/components/ui/Screen';
+import { colors, spacing } from '@/theme';
 
 interface TemplateListProps {
   onEditTemplate?: (template: Template) => void;
@@ -27,93 +30,196 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
 
   if (isLoading) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg">
-        <ActivityIndicator size="large" color="#ef6f4f" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   if (templates.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg px-6">
-        <Text className="text-darkText text-xl font-bold mb-2">No Templates Yet</Text>
-        <Text className="text-darkMuted text-center">
-          Tap "+ New" to create your first workout template.
-        </Text>
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyTitle}>No Templates Yet</Text>
+        <Text style={styles.emptyText}>Tap "+ New" to create your first workout template.</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView className="flex-1 bg-darkBg p-4" contentContainerStyle={{ paddingBottom: 100 }}>
+    <ScreenScrollView horizontalPadding={16} bottomInset={188}>
       {templates.map((template) => (
-        <View
-          key={template.id}
-          className="mb-4 rounded-2xl border border-darkBorder bg-darkCard p-5"
-        >
+        <Surface key={template.id} style={styles.templateCard}>
           <Pressable
             onPress={() => {
               if (onEditTemplate) {
                 onEditTemplate(template);
               }
             }}
-            className="mb-3"
+            style={styles.templateHeader}
           >
-            <View className="flex-row items-center justify-between">
-              <Text className="text-darkText text-lg font-semibold">{template.name}</Text>
-              <View className="rounded-full bg-coral/20 px-3 py-1">
-                <Text className="text-coral text-xs font-medium">
-                  {template.exercises?.length || 0} exercises
-                </Text>
-              </View>
+            <View style={styles.templateTitleRow}>
+              <Text style={styles.templateName} numberOfLines={1}>
+                {template.name}
+              </Text>
+              <Badge label={`${template.exercises?.length || 0} exercises`} tone="orange" />
             </View>
             {template.description && (
-              <Text className="text-darkMuted mt-2 text-sm">{template.description}</Text>
+              <Text style={styles.templateDescription} numberOfLines={2}>
+                {template.description}
+              </Text>
             )}
           </Pressable>
 
           {template.exercises && template.exercises.length > 0 && (
-            <View className="mb-3 border-t border-darkBorder pt-3">
-              <Text className="text-darkMuted mb-2 text-xs font-medium uppercase">Exercises</Text>
-              <View className="gap-1">
+            <View style={styles.exercisesSection}>
+              <SectionTitle title="Exercises" />
+              <View style={styles.exerciseList}>
                 {template.exercises.slice(0, 3).map((ex) => (
-                  <View key={ex.id} className="flex-row items-center justify-between">
-                    <Text className="text-darkText text-sm">{ex.name}</Text>
-                    <Text className="text-darkMuted text-xs">
+                  <View key={ex.id} style={styles.exerciseRow}>
+                    <Text style={styles.exerciseName} numberOfLines={1}>
+                      {ex.name}
+                    </Text>
+                    <Text style={styles.exerciseSets}>
                       {ex.sets} × {ex.reps}
                       {ex.isAmrap ? '+' : ''}
                     </Text>
                   </View>
                 ))}
                 {template.exercises.length > 3 && (
-                  <Text className="text-darkMuted text-xs mt-1">
-                    +{template.exercises.length - 3} more
-                  </Text>
+                  <Text style={styles.moreExercises}>+{template.exercises.length - 3} more</Text>
                 )}
               </View>
             </View>
           )}
 
-          <View className="flex-row gap-3">
+          <View style={styles.actionRow}>
             <Pressable
               onPress={() => {
                 if (onStartWorkout) {
                   onStartWorkout(template);
                 }
               }}
-              className="flex-1 items-center justify-center rounded-xl bg-coral py-3"
+              style={styles.startButton}
             >
-              <Text className="text-white text-sm font-semibold">Start Workout</Text>
+              <Text style={styles.startButtonText}>Start Workout</Text>
             </Pressable>
-            <Pressable
-              onPress={() => handleDelete(template)}
-              className="h-10 w-10 items-center justify-center rounded-xl bg-red-500/20"
-            >
-              <Text className="text-red-400">🗑</Text>
+            <Pressable onPress={() => handleDelete(template)} style={styles.deleteButton}>
+              <Text style={styles.deleteButtonText}>🗑</Text>
             </Pressable>
           </View>
-        </View>
+        </Surface>
       ))}
-    </ScrollView>
+    </ScreenScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  templateCard: {
+    marginBottom: spacing.md,
+    backgroundColor: 'rgba(24,24,27,0.7)',
+  },
+  templateHeader: {
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  templateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  templateName: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+    marginRight: spacing.sm,
+  },
+  templateDescription: {
+    fontSize: 13,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+  exercisesSection: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    paddingTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  exerciseList: {
+    gap: spacing.xs,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  exerciseName: {
+    flex: 1,
+    fontSize: 14,
+    color: '#e2e8f0',
+  },
+  exerciseSets: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  moreExercises: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  startButton: {
+    flex: 1,
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  startButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    height: 48,
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(251,113,133,0.2)',
+    backgroundColor: 'rgba(251,113,133,0.1)',
+  },
+  deleteButtonText: {
+    fontSize: 16,
+  },
+});

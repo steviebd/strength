@@ -1,98 +1,92 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '@/components/ui/Card';
+import { colors, typography, spacing } from '@/theme';
 
 interface WhoopNutritionCardProps {
-  recovery: {
-    score: number | null;
-    status: 'red' | 'yellow' | 'green' | null;
-    hrv: number | null;
-  } | null;
-  cycle: {
-    caloriesBurned: number | null;
-    totalStrain: number | null;
-  } | null;
+  recoveryScore?: number | null;
+  cycleScore?: number | null;
+  strainScore?: number | null;
 }
 
-const statusLabels = {
-  green: 'Optimal',
-  yellow: 'Fair',
-  red: 'Low',
-};
-
-const statusColors = {
-  green: 'text-pine',
-  yellow: 'text-yellow-500',
-  red: 'text-coral',
-};
-
-export function WhoopNutritionCard({ recovery, cycle }: WhoopNutritionCardProps) {
-  if (!recovery && !cycle) {
+export function WhoopNutritionCard({
+  recoveryScore,
+  cycleScore,
+  strainScore,
+}: WhoopNutritionCardProps) {
+  if (recoveryScore === null || recoveryScore === undefined) {
     return null;
   }
 
+  const getStatusColor = (
+    score: number | null | undefined,
+    type: 'high' | 'medium' | 'low',
+  ): string => {
+    if (score === null || score === undefined) return colors.textMuted;
+
+    if (type === 'high') {
+      return score >= 70 ? colors.success : score >= 40 ? colors.warning : colors.error;
+    }
+    if (type === 'medium') {
+      return score >= 60 ? colors.success : score >= 30 ? colors.warning : colors.error;
+    }
+    return score >= 50 ? colors.success : score >= 25 ? colors.warning : colors.error;
+  };
+
   return (
-    <Card className="mb-4">
-      <View className="p-4">
-        <View className="flex-row items-center gap-2 mb-3">
-          <Text className="text-coral text-lg">♥</Text>
-          <Text className="text-darkText font-medium">Whoop Recovery</Text>
+    <Card>
+      <Text style={styles.title}>WHOOP Recovery</Text>
+
+      <View style={styles.metricsRow}>
+        <View style={styles.metric}>
+          <Text style={styles.metricLabel}>Recovery</Text>
+          <Text style={[styles.metricValue, { color: getStatusColor(recoveryScore, 'high') }]}>
+            {recoveryScore !== null && recoveryScore !== undefined ? `${recoveryScore}%` : '--'}
+          </Text>
         </View>
-        <View className="flex-row gap-4">
-          {recovery !== null && (
-            <>
-              <View className="flex-1">
-                <Text className="text-darkMuted text-xs mb-1">Recovery</Text>
-                <View className="flex-row items-center gap-2">
-                  <Text
-                    className={`text-2xl font-bold ${statusColors[recovery.status ?? 'green']}`}
-                  >
-                    {recovery.score ?? '--'}
-                  </Text>
-                  {recovery.status !== null && (
-                    <View
-                      className={`rounded-full px-2 py-0.5 ${recovery.status === 'green' ? 'bg-pine/20' : recovery.status === 'yellow' ? 'bg-yellow-500/20' : 'bg-coral/20'}`}
-                    >
-                      <Text className={`text-xs ${statusColors[recovery.status]}`}>
-                        {statusLabels[recovery.status]}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-              <View className="flex-1">
-                <Text className="text-darkMuted text-xs mb-1">HRV</Text>
-                <View className="flex-row items-center gap-1">
-                  <Text className="text-lg font-semibold text-darkText">
-                    {recovery.hrv ?? '--'}
-                  </Text>
-                  <Text className="text-darkMuted text-xs">ms</Text>
-                </View>
-              </View>
-            </>
-          )}
-          {cycle !== null && (
-            <>
-              <View className="flex-1">
-                <Text className="text-darkMuted text-xs mb-1">Calories</Text>
-                <View className="flex-row items-center gap-1">
-                  <Text className="text-lg font-semibold text-darkText">
-                    {cycle.caloriesBurned ?? '--'}
-                  </Text>
-                </View>
-              </View>
-              <View className="flex-1">
-                <Text className="text-darkMuted text-xs mb-1">Strain</Text>
-                <View className="flex-row items-center gap-1">
-                  <Text className="text-lg font-semibold text-darkText">
-                    {cycle.totalStrain?.toFixed(1) ?? '--'}
-                  </Text>
-                </View>
-              </View>
-            </>
-          )}
+
+        <View style={styles.metric}>
+          <Text style={styles.metricLabel}>Cycle</Text>
+          <Text style={[styles.metricValue, { color: getStatusColor(cycleScore, 'medium') }]}>
+            {cycleScore !== null && cycleScore !== undefined ? `${cycleScore}%` : '--'}
+          </Text>
+        </View>
+
+        <View style={styles.metric}>
+          <Text style={styles.metricLabel}>Strain</Text>
+          <Text style={[styles.metricValue, { color: getStatusColor(strainScore, 'low') }]}>
+            {strainScore !== null && strainScore !== undefined ? `${strainScore}` : '--'}
+          </Text>
         </View>
       </View>
     </Card>
   );
 }
+
+const styles = StyleSheet.create({
+  title: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  metric: {
+    flex: 1,
+  },
+  metricLabel: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+  metricValue: {
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+  },
+});

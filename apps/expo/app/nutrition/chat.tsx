@@ -4,16 +4,20 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Text,
   TextInput,
+  StyleSheet,
   View,
+  Text,
   Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { env } from '@/lib/env';
+import { Ionicons } from '@expo/vector-icons';
+import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { SaveMealDialog } from '@/components/nutrition/SaveMealDialog';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors, radius, spacing } from '@/theme';
 
 interface ChatMessage {
   id: string;
@@ -51,14 +55,13 @@ function useChat({ date }: { date: string }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${env.apiUrl}/api/nutrition/chat`, {
+      const response = await apiFetch<globalThis.Response>('/api/nutrition/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: messages.concat(userMessage).map(({ role, content }) => ({ role, content })),
           date,
         }),
-        credentials: 'include',
+        __stream: true,
       });
 
       if (!response.ok) throw new Error('Failed to get response');
@@ -145,6 +148,7 @@ const quickActions = ['What should I eat?', 'Analyse my meal', 'Show remaining m
 
 export default function NutritionChat() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [pendingAnalysis, setPendingAnalysis] = useState<{
@@ -168,14 +172,11 @@ export default function NutritionChat() {
       carbsG: number;
       fatG: number;
     }) => {
-      const res = await fetch(`${env.apiUrl}/api/nutrition/entries`, {
+      const res = await apiFetch(`/api/nutrition/entries`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ ...data, date }),
       });
-      if (!res.ok) throw new Error('Failed to save entry');
-      return res.json();
+      return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary', date] });
@@ -205,40 +206,40 @@ export default function NutritionChat() {
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isUser = item.role === 'user';
     return (
-      <View className={`flex-row mb-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-        <View
-          className={`max-w-[80%] rounded-2xl px-4 py-3 ${isUser ? 'bg-coral' : 'bg-darkCard border border-darkBorder'}`}
-        >
-          <Text className={`text-base ${isUser ? 'text-white' : 'text-darkText'}`}>
+      <View style={[styles.messageRow, isUser ? styles.messageRowRight : styles.messageRowLeft]}>
+        <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+          <Text
+            style={[
+              styles.messageText,
+              isUser ? styles.userMessageText : styles.assistantMessageText,
+            ]}
+          >
             {item.content}
           </Text>
           {item.analysis && (
-            <View className="mt-3 rounded-xl border border-coral/20 bg-coral/10 p-4">
-              <View className="flex-row items-start justify-between gap-3">
-                <View className="flex-1 min-w-0">
-                  <View className="flex-row items-center gap-2 mb-2">
-                    <Text className="text-coral text-base">🍽</Text>
-                    <Text className="text-darkText font-semibold truncate" numberOfLines={1}>
-                      {item.analysis.name}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center gap-4 text-sm">
-                    <Text className="text-darkText font-medium">{item.analysis.calories} kcal</Text>
-                    <Text className="text-darkMuted">
-                      P:{' '}
-                      <Text className="text-darkText font-medium">{item.analysis.proteinG}g</Text>
-                    </Text>
-                    <Text className="text-darkMuted">
-                      C: <Text className="text-darkText font-medium">{item.analysis.carbsG}g</Text>
-                    </Text>
-                    <Text className="text-darkMuted">
-                      F: <Text className="text-darkText font-medium">{item.analysis.fatG}g</Text>
-                    </Text>
-                  </View>
+            <View style={styles.analysisCard}>
+              <View style={styles.analysisHeader}>
+                <View style={styles.analysisTitleRow}>
+                  <Text style={styles.analysisEmoji}>🍽</Text>
+                  <Text style={styles.analysisName} numberOfLines={1}>
+                    {item.analysis.name}
+                  </Text>
                 </View>
                 <Button size="sm" onPress={() => handleSaveClick(item.analysis!)}>
                   Save
                 </Button>
+              </View>
+              <View style={styles.analysisMacros}>
+                <Text style={styles.analysisMacroText}>{item.analysis.calories} kcal</Text>
+                <Text style={styles.analysisMacroMuted}>
+                  P: <Text style={styles.analysisMacroValue}>{item.analysis.proteinG}g</Text>
+                </Text>
+                <Text style={styles.analysisMacroMuted}>
+                  C: <Text style={styles.analysisMacroValue}>{item.analysis.carbsG}g</Text>
+                </Text>
+                <Text style={styles.analysisMacroMuted}>
+                  F: <Text style={styles.analysisMacroValue}>{item.analysis.fatG}g</Text>
+                </Text>
               </View>
             </View>
           )}
@@ -248,13 +249,13 @@ export default function NutritionChat() {
   };
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <View className="flex-row items-center justify-between border-b border-darkBorder px-4 py-4">
-        <Pressable onPress={() => router.back()} className="p-2">
-          <Text className="text-darkMuted text-lg">←</Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text className="text-darkText text-lg font-semibold">Log Meal</Text>
-        <View className="w-10" />
+        <Text style={styles.headerTitle}>Log Meal</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <FlatList
@@ -262,20 +263,18 @@ export default function NutritionChat() {
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
+        contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 132 }}
         ListEmptyComponent={
-          <View className="py-8 items-center">
-            <Text className="text-darkMuted text-center mb-4">
-              Ask me about your meals or get nutrition advice
-            </Text>
-            <View className="flex-row flex-wrap justify-center gap-2">
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Ask me about your meals or get nutrition advice</Text>
+            <View style={styles.quickActions}>
               {quickActions.map((action) => (
                 <Pressable
                   key={action}
                   onPress={() => setInput(action)}
-                  className="rounded-full border border-darkBorder px-4 py-2"
+                  style={styles.quickActionChip}
                 >
-                  <Text className="text-darkMuted text-sm">{action}</Text>
+                  <Text style={styles.quickActionText}>{action}</Text>
                 </Pressable>
               ))}
             </View>
@@ -283,8 +282,8 @@ export default function NutritionChat() {
         }
         ListFooterComponent={
           isLoading ? (
-            <View className="justify-start mb-3">
-              <View className="rounded-2xl bg-darkCard border border-darkBorder px-4 py-3">
+            <View style={styles.loadingRow}>
+              <View style={styles.loadingBubble}>
                 <ActivityIndicator size="small" color="#ef6f4f" />
               </View>
             </View>
@@ -294,26 +293,18 @@ export default function NutritionChat() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="border-t border-darkBorder p-4 bg-darkBg"
+        style={styles.inputContainer}
       >
-        <View className="flex-row gap-2">
+        <View style={styles.inputRow}>
           <TextInput
             value={input}
             onChangeText={setInput}
             placeholder="Ask about nutrition..."
             placeholderTextColor="#6B7280"
-            className="flex-1 h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
+            style={styles.textInput}
           />
-          <Button
-            onPress={handleSubmit}
-            disabled={isLoading || !input.trim()}
-            className="h-12 w-12 items-center justify-center rounded-xl"
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text className="text-darkText text-lg">↑</Text>
-            )}
+          <Button onPress={handleSubmit} disabled={isLoading || !input.trim()}>
+            {isLoading ? <ActivityIndicator size="small" color="#fff" /> : '↑'}
           </Button>
         </View>
       </KeyboardAvoidingView>
@@ -322,8 +313,193 @@ export default function NutritionChat() {
         visible={showSaveDialog}
         onClose={() => setShowSaveDialog(false)}
         analysis={pendingAnalysis}
-        onSave={(data) => saveMutation.mutate(data)}
+        onSave={(data) =>
+          saveMutation.mutate({
+            name: data.name,
+            mealType: data.mealType.toLowerCase() as 'breakfast' | 'lunch' | 'dinner' | 'snack',
+            calories: data.calories,
+            proteinG: data.protein,
+            carbsG: data.carbs,
+            fatG: data.fat,
+          })
+        }
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backButton: {
+    padding: spacing.sm,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.md,
+  },
+  messageRowLeft: {
+    justifyContent: 'flex-start',
+  },
+  messageRowRight: {
+    justifyContent: 'flex-end',
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  userBubble: {
+    backgroundColor: colors.accent,
+  },
+  assistantBubble: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  messageText: {
+    fontSize: 15,
+  },
+  userMessageText: {
+    color: '#ffffff',
+  },
+  assistantMessageText: {
+    color: colors.text,
+  },
+  analysisCard: {
+    marginTop: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239,111,79,0.2)',
+    backgroundColor: 'rgba(239,111,79,0.1)',
+    padding: spacing.md,
+  },
+  analysisHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  analysisTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  analysisEmoji: {
+    fontSize: 17,
+  },
+  analysisName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+  },
+  analysisMacros: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  analysisMacroText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  analysisMacroMuted: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  analysisMacroValue: {
+    fontWeight: '500',
+    color: colors.text,
+  },
+  emptyState: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  quickActionChip: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  quickActionText: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  loadingRow: {
+    justifyContent: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  loadingBubble: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  inputContainer: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+    padding: spacing.md,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  textInput: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: 15,
+  },
+  sendButton: {
+    height: 48,
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+  },
+  sendIcon: {
+    fontSize: 18,
+    color: colors.text,
+  },
+});

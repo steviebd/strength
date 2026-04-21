@@ -5,16 +5,10 @@ import {
   Platform,
   ScrollView,
   Text,
-  View,
   useWindowDimensions,
+  View,
 } from 'react-native';
-
-const BG = '#0a0a0a';
-const CARD = '#1a1a1a';
-const BORDER = '#2a2a2a';
-const TEXT = '#f5f5f5';
-const MUTED = '#a0a0a0';
-const PINE = '#1f4d3c';
+import { colors } from '@/theme';
 
 export interface AuthShellHandle {
   scrollToInput: (y: number) => void;
@@ -31,7 +25,7 @@ interface AuthShellProps {
 export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
   ({ eyebrow, title, subtitle, children, scrollPadding = 180 }, ref) => {
     const { height: windowHeight } = useWindowDimensions();
-    const scrollViewRef = useRef<ScrollView>(null);
+    const scrollViewRef = useRef<any>(null);
 
     useImperativeHandle(ref, () => ({
       scrollToInput: (y: number) => {
@@ -46,7 +40,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-        style={{ flex: 1, backgroundColor: BG }}
+        style={{ flex: 1, backgroundColor: colors.background }}
       >
         <ScrollView
           ref={scrollViewRef}
@@ -70,7 +64,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
                   width: 64,
                   height: 64,
                   borderRadius: 16,
-                  backgroundColor: PINE,
+                  backgroundColor: colors.accent,
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginBottom: 24,
@@ -88,7 +82,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
                   fontSize: 12,
                   fontWeight: '600',
                   letterSpacing: 3,
-                  color: MUTED,
+                  color: colors.textMuted,
                   textTransform: 'uppercase',
                 }}
               >
@@ -100,8 +94,8 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
               style={{
                 borderRadius: 24,
                 borderWidth: 1,
-                borderColor: BORDER,
-                backgroundColor: CARD,
+                borderColor: colors.border,
+                backgroundColor: colors.surface,
                 padding: 24,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 8 },
@@ -111,8 +105,10 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
               }}
             >
               <View style={{ marginBottom: 32 }}>
-                <Text style={{ fontSize: 28, fontWeight: '700', color: TEXT }}>{title}</Text>
-                <Text style={{ fontSize: 14, lineHeight: 20, color: MUTED, marginTop: 8 }}>
+                <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>{title}</Text>
+                <Text
+                  style={{ fontSize: 14, lineHeight: 20, color: colors.textMuted, marginTop: 8 }}
+                >
                   {subtitle}
                 </Text>
               </View>
@@ -124,7 +120,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
                 marginTop: 32,
                 textAlign: 'center',
                 fontSize: 12,
-                color: MUTED,
+                color: colors.textMuted,
                 opacity: 0.5,
               }}
             >

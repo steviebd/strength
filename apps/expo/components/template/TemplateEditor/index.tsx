@@ -1,13 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, Alert, Modal, StyleSheet } from 'react-native';
+import { colors, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Collapsible } from '@/components/ui/Collapsible';
-import { BottomSheet } from '@/components/ui/BottomSheet';
+import { ScreenScrollView } from '@/components/ui/Screen';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { useUndo } from '@/hooks/useUndo';
-import type { TemplateEditorProps, SelectedExercise, Template } from './types';
+import { apiFetch } from '@/lib/api';
+import type { SelectedExercise, Template, TemplateEditorProps } from './types';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -177,34 +179,22 @@ function useTemplateEditorApi({
       const method = isNew ? 'POST' : 'PUT';
       console.log('Fetch config:', { url, method });
 
-      const res = await fetch(url, {
+      const savedTemplate = await apiFetch<Template>(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           name: formData.name,
           description: formData.description || undefined,
           notes: formData.notes || undefined,
         }),
       });
-      console.log('Response status:', res.status);
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Failed to save template');
-      }
-
-      const savedTemplate: Template = await res.json();
 
       if (!isNew && templateId) {
         await syncExercises(templateId, savedTemplate.id);
-      } else {
+      } else if (isNew) {
         for (let i = 0; i < selectedExercises.length; i++) {
           const ex = selectedExercises[i];
-          await fetch(`/api/templates/${savedTemplate.id}/exercises`, {
+          await apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({
               exerciseId: ex.exerciseId,
               orderIndex: i,
@@ -233,36 +223,31 @@ function useTemplateEditorApi({
     }
   }, [mode, templateId, formData, selectedExercises, onSaved]);
 
-  const syncExercises = async (currentTemplateId: string, _newTemplateId: string) => {
+  const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
     const newExerciseIds = new Set(selectedExercises.map((e) => e.exerciseId));
 
-    const existingRes = await fetch(`/api/templates/${currentTemplateId}/exercises`, {
-      credentials: 'include',
-    });
-    const existingExercises: Array<{ exerciseId: string; orderIndex: number }> =
-      await existingRes.json();
+    const existingExercises = await apiFetch<Array<{ exerciseId: string; orderIndex: number }>>(
+      `/api/templates/${currentTemplateId}/exercises`,
+    );
 
     const deletePromises = existingExercises
       .filter((existing) => !newExerciseIds.has(existing.exerciseId))
       .map((existing) =>
-        fetch(`/api/templates/${currentTemplateId}/exercises/${existing.exerciseId}`, {
+        apiFetch(`/api/templates/${currentTemplateId}/exercises/${existing.exerciseId}`, {
           method: 'DELETE',
-          credentials: 'include',
         }),
       );
 
     await Promise.all(deletePromises);
 
-    const addPromises: Array<Promise<Response>> = [];
+    const addPromises: Array<Promise<unknown>> = [];
     for (let i = 0; i < selectedExercises.length; i++) {
       const ex = selectedExercises[i];
       const existing = existingExercises.find((ee) => ee.exerciseId === ex.exerciseId);
       if (!existing) {
         addPromises.push(
-          fetch(`/api/templates/${currentTemplateId}/exercises`, {
+          apiFetch(`/api/templates/${newTemplateId}/exercises`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify({
               exerciseId: ex.exerciseId,
               orderIndex: i,
@@ -336,22 +321,24 @@ export function TemplateEditor({
   });
 
   const handleAddExercise = useCallback(
-    (exercise: { id: string; name: string; muscleGroup: string | null }) => {
+    (exercises: Array<{ id: string; name: string; muscleGroup: string | null }>) => {
       pushUndo();
-      const newExercise: SelectedExercise = {
-        id: generateId(),
-        exerciseId: exercise.id,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup,
-        isAmrap: false,
-        isAccessory: false,
-        isRequired: true,
-        sets: 3,
-        reps: 10,
-        repsRaw: '10',
-        targetWeight: 0,
-      };
-      addExercise(newExercise);
+      for (const exercise of exercises) {
+        const newExercise: SelectedExercise = {
+          id: generateId(),
+          exerciseId: exercise.id,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          isAmrap: false,
+          isAccessory: false,
+          isRequired: true,
+          sets: 3,
+          reps: 10,
+          repsRaw: '10',
+          targetWeight: 0,
+        };
+        addExercise(newExercise);
+      }
     },
     [pushUndo, addExercise],
   );
@@ -422,62 +409,68 @@ export function TemplateEditor({
   const currentExercises = selectedExercises;
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <View className="flex-row items-center justify-between border-b border-darkBorder bg-darkCard px-4 py-3">
+    <View style={styles.container}>
+      <View style={styles.header}>
         <Pressable
           onPress={handleCancel}
-          className="h-10 w-10 items-center justify-center rounded-lg active:bg-darkBorder"
+          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
         >
-          <Text className="text-darkText text-xl">←</Text>
+          <Text style={styles.iconButtonText}>←</Text>
         </Pressable>
-        <Text className="text-darkText text-lg font-semibold">
+        <Text style={styles.headerTitle}>
           {mode === 'create' ? 'Create Template' : 'Edit Template'}
         </Text>
-        <View className="flex-row items-center gap-1">
+        <View style={styles.headerActions}>
           <Pressable
             onPress={handleUndo}
             disabled={!canUndo}
-            className={`h-10 w-10 items-center justify-center rounded-lg ${canUndo ? 'active:bg-darkBorder' : 'opacity-30'}`}
+            style={[
+              styles.iconButton,
+              !canUndo ? styles.iconButtonDisabled : styles.iconButtonActive,
+            ]}
           >
-            <Text className="text-darkText text-lg">↩</Text>
+            <Text style={styles.iconButtonText}>↩</Text>
           </Pressable>
           <Pressable
             onPress={handleRedo}
             disabled={!canRedo}
-            className={`h-10 w-10 items-center justify-center rounded-lg ${canRedo ? 'active:bg-darkBorder' : 'opacity-30'}`}
+            style={[
+              styles.iconButton,
+              !canRedo ? styles.iconButtonDisabled : styles.iconButtonActive,
+            ]}
           >
-            <Text className="text-darkText text-lg">↪</Text>
+            <Text style={styles.iconButtonText}>↪</Text>
           </Pressable>
         </View>
       </View>
 
       {mode === 'edit' && (
-        <View className="flex-row items-center justify-end px-4 py-2">
-          <View className="flex-row items-center gap-2">
+        <View style={styles.statusBar}>
+          <View style={styles.statusBarContent}>
             {autoSaveStatus === 'saving' && (
               <>
-                <ActivityIndicator size="small" color="#ef6f4f" />
-                <Text className="text-darkMuted text-xs">Saving...</Text>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={styles.statusBarText}>Saving...</Text>
               </>
             )}
-            {autoSaveStatus === 'saved' && <Text className="text-green-400 text-xs">Saved</Text>}
+            {autoSaveStatus === 'saved' && <Text style={styles.statusBarSaved}>Saved</Text>}
           </View>
         </View>
       )}
 
-      <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
-        <View className="mb-4">
-          <Text className="text-darkMuted mb-2 text-xs font-medium uppercase">Template Name *</Text>
+      <ScreenScrollView bottomInset={48} horizontalPadding={16}>
+        <View style={styles.section}>
+          <Text style={styles.label}>Template Name *</Text>
           <Input
             placeholder="Enter template name"
             value={formData.name}
             onChangeText={(text) => setFormData({ name: text })}
           />
-          {errors.name && <Text className="text-red-400 mt-1 text-xs">{errors.name}</Text>}
+          {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
         </View>
 
-        <View className="mb-4">
-          <Text className="text-darkMuted mb-2 text-xs font-medium uppercase">Description</Text>
+        <View style={styles.section}>
+          <Text style={styles.label}>Description</Text>
           <Input
             placeholder="Enter description (optional)"
             value={formData.description}
@@ -485,100 +478,106 @@ export function TemplateEditor({
           />
         </View>
 
-        <Collapsible label="Notes" className="mb-4">
+        <Collapsible label="Notes" style={styles.section}>
           <Input
             placeholder="Enter notes (optional)"
             value={formData.notes}
             onChangeText={(text) => setFormData({ notes: text })}
-            className="h-24"
+            style={styles.notesInput}
           />
         </Collapsible>
 
-        <View className="mb-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-darkMuted text-xs font-medium uppercase">
-              Exercises ({currentExercises.length})
-            </Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.label}>Exercises ({currentExercises.length})</Text>
             <Pressable
               onPress={() => setShowExerciseSearch(true)}
-              className="flex-row items-center gap-1 rounded-full bg-coral px-4 py-2 active:scale-95"
+              style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
             >
-              <Text className="text-white text-sm font-semibold">+ Add Exercise</Text>
+              <Text style={styles.addButtonText}>+ Add Exercise</Text>
             </Pressable>
           </View>
 
           {currentExercises.length === 0 ? (
-            <Card className="items-center justify-center py-8">
-              <Text className="text-darkMuted text-sm">No exercises added yet</Text>
-              <Text className="text-darkMuted mt-1 text-xs">
-                Tap "+ Add Exercise" to get started
-              </Text>
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No exercises added yet</Text>
+              <Text style={styles.emptySubtext}>Tap "+ Add Exercise" to get started</Text>
             </Card>
           ) : (
-            <View className="gap-3">
+            <View style={styles.exerciseList}>
               {currentExercises.map((exercise, index) => (
-                <Card key={exercise.id} className="p-4">
-                  <View className="mb-3 flex-row items-center justify-between">
-                    <View className="flex-1">
-                      <Text className="text-darkText text-base font-semibold">{exercise.name}</Text>
+                <Card key={exercise.id} style={styles.exerciseCard}>
+                  <View style={styles.exerciseHeader}>
+                    <View style={styles.exerciseInfo}>
+                      <Text style={styles.exerciseName}>{exercise.name}</Text>
                       {exercise.muscleGroup && (
-                        <Text className="text-darkMuted text-xs">{exercise.muscleGroup}</Text>
+                        <Text style={styles.exerciseMuscle}>{exercise.muscleGroup}</Text>
                       )}
                     </View>
-                    <View className="flex-row items-center gap-1">
+                    <View style={styles.exerciseActions}>
                       <Pressable
                         onPress={() => handleMoveUp(index)}
                         disabled={index === 0}
-                        className={`h-8 w-8 items-center justify-center rounded-lg ${index === 0 ? 'opacity-30' : 'bg-darkBorder'}`}
+                        style={[
+                          styles.smallIconButton,
+                          index === 0
+                            ? styles.smallIconButtonDisabled
+                            : styles.smallIconButtonActive,
+                        ]}
                       >
-                        <Text className="text-darkText text-sm">↑</Text>
+                        <Text style={styles.smallIconButtonText}>↑</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleMoveDown(index)}
                         disabled={index === currentExercises.length - 1}
-                        className={`h-8 w-8 items-center justify-center rounded-lg ${index === currentExercises.length - 1 ? 'opacity-30' : 'bg-darkBorder'}`}
+                        style={[
+                          styles.smallIconButton,
+                          index === currentExercises.length - 1
+                            ? styles.smallIconButtonDisabled
+                            : styles.smallIconButtonActive,
+                        ]}
                       >
-                        <Text className="text-darkText text-sm">↓</Text>
+                        <Text style={styles.smallIconButtonText}>↓</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleRemoveExercise(exercise.id)}
-                        className="ml-2 h-8 w-8 items-center justify-center rounded-lg bg-red-500/20"
+                        style={styles.deleteButton}
                       >
-                        <Text className="text-red-400 text-sm">×</Text>
+                        <Text style={styles.deleteButtonText}>×</Text>
                       </Pressable>
                     </View>
                   </View>
 
-                  <View className="flex-row gap-3">
-                    <View className="flex-1">
-                      <Text className="text-darkMuted mb-1 text-xs">Sets</Text>
-                      <View className="rounded-lg border border-darkBorder bg-darkBg px-3 py-2">
+                  <View style={styles.exerciseRow}>
+                    <View style={styles.exerciseField}>
+                      <Text style={styles.fieldLabel}>Sets</Text>
+                      <View style={styles.counterContainer}>
                         <Pressable
                           onPress={() => {
                             const currentSets = exercise.sets ?? 3;
                             const newSets = currentSets > 1 ? currentSets - 1 : 1;
                             handleUpdateExercise(exercise.id, { sets: newSets });
                           }}
-                          className="absolute left-1 top-0 bottom-0 w-8 items-center justify-center"
+                          style={styles.counterButton}
                         >
-                          <Text className="text-darkMuted text-lg">-</Text>
+                          <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text className="text-center text-darkText">{exercise.sets ?? 3}</Text>
+                        <Text style={styles.counterValue}>{exercise.sets ?? 3}</Text>
                         <Pressable
                           onPress={() => {
                             const currentSets = exercise.sets ?? 3;
                             const newSets = currentSets + 1;
                             handleUpdateExercise(exercise.id, { sets: newSets });
                           }}
-                          className="absolute right-1 top-0 bottom-0 w-8 items-center justify-center"
+                          style={styles.counterButton}
                         >
-                          <Text className="text-darkMuted text-lg">+</Text>
+                          <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted mb-1 text-xs">Reps</Text>
-                      <View className="rounded-lg border border-darkBorder bg-darkBg px-3 py-2">
+                    <View style={styles.exerciseField}>
+                      <Text style={styles.fieldLabel}>Reps</Text>
+                      <View style={styles.counterContainer}>
                         <Pressable
                           onPress={() => {
                             const currentReps = exercise.reps ?? 10;
@@ -588,11 +587,11 @@ export function TemplateEditor({
                               repsRaw: newReps.toString(),
                             });
                           }}
-                          className="absolute left-1 top-0 bottom-0 w-8 items-center justify-center"
+                          style={styles.counterButton}
                         >
-                          <Text className="text-darkMuted text-lg">-</Text>
+                          <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text className="text-center text-darkText">
+                        <Text style={styles.counterValue}>
                           {exercise.repsRaw || (exercise.reps ?? 10).toString()}
                         </Text>
                         <Pressable
@@ -604,26 +603,26 @@ export function TemplateEditor({
                               repsRaw: newReps.toString(),
                             });
                           }}
-                          className="absolute right-1 top-0 bottom-0 w-8 items-center justify-center"
+                          style={styles.counterButton}
                         >
-                          <Text className="text-darkMuted text-lg">+</Text>
+                          <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-darkMuted mb-1 text-xs">Weight</Text>
-                      <View className="rounded-lg border border-darkBorder bg-darkBg px-3 py-2">
+                    <View style={styles.exerciseField}>
+                      <Text style={styles.fieldLabel}>Weight</Text>
+                      <View style={styles.counterContainer}>
                         <Pressable
                           onPress={() => {
                             const currentWeight = exercise.targetWeight ?? 0;
                             const newWeight = Math.max(0, currentWeight - 5);
                             handleUpdateExercise(exercise.id, { targetWeight: newWeight });
                           }}
-                          className="absolute left-1 top-0 bottom-0 w-8 items-center justify-center"
+                          style={styles.counterButton}
                         >
-                          <Text className="text-darkMuted text-lg">-</Text>
+                          <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text className="text-center text-darkText">
+                        <Text style={styles.counterValue}>
                           {exercise.targetWeight && exercise.targetWeight > 0
                             ? exercise.targetWeight
                             : '0'}
@@ -634,26 +633,37 @@ export function TemplateEditor({
                             const newWeight = currentWeight + 5;
                             handleUpdateExercise(exercise.id, { targetWeight: newWeight });
                           }}
-                          className="absolute right-1 top-0 bottom-0 w-8 items-center justify-center"
+                          style={styles.counterButton}
                         >
-                          <Text className="text-darkMuted text-lg">+</Text>
+                          <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
                   </View>
 
-                  <View className="mt-3 flex-row gap-4">
+                  <View style={styles.toggleRow}>
                     <Pressable
                       onPress={() =>
                         handleUpdateExercise(exercise.id, { isAmrap: !exercise.isAmrap })
                       }
-                      className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${exercise.isAmrap ? 'bg-coral/20' : 'bg-darkBorder'}`}
+                      style={[
+                        styles.toggleButton,
+                        exercise.isAmrap ? styles.toggleButtonActive : styles.toggleButtonDefault,
+                      ]}
                     >
                       <View
-                        className={`h-4 w-4 rounded ${exercise.isAmrap ? 'bg-coral' : 'border border-darkMuted'}`}
+                        style={[
+                          styles.toggleCheckbox,
+                          exercise.isAmrap
+                            ? styles.toggleCheckboxActive
+                            : styles.toggleCheckboxDefault,
+                        ]}
                       />
                       <Text
-                        className={`text-xs ${exercise.isAmrap ? 'text-coral' : 'text-darkMuted'}`}
+                        style={[
+                          styles.toggleText,
+                          exercise.isAmrap ? styles.toggleTextActive : styles.toggleTextDefault,
+                        ]}
                       >
                         AMRAP
                       </Text>
@@ -662,13 +672,26 @@ export function TemplateEditor({
                       onPress={() =>
                         handleUpdateExercise(exercise.id, { isAccessory: !exercise.isAccessory })
                       }
-                      className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${exercise.isAccessory ? 'bg-darkBorder' : 'bg-transparent'}`}
+                      style={[
+                        styles.toggleButton,
+                        exercise.isAccessory
+                          ? styles.toggleButtonActive
+                          : styles.toggleButtonDefault,
+                      ]}
                     >
                       <View
-                        className={`h-4 w-4 rounded border ${exercise.isAccessory ? 'bg-darkMuted border-darkMuted' : 'border-darkMuted'}`}
+                        style={[
+                          styles.toggleCheckbox,
+                          exercise.isAccessory
+                            ? styles.toggleCheckboxActive
+                            : styles.toggleCheckboxDefault,
+                        ]}
                       />
                       <Text
-                        className={`text-xs ${exercise.isAccessory ? 'text-darkText' : 'text-darkMuted'}`}
+                        style={[
+                          styles.toggleText,
+                          exercise.isAccessory ? styles.toggleTextActive : styles.toggleTextDefault,
+                        ]}
                       >
                         Accessory
                       </Text>
@@ -677,13 +700,26 @@ export function TemplateEditor({
                       onPress={() =>
                         handleUpdateExercise(exercise.id, { isRequired: !exercise.isRequired })
                       }
-                      className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${!exercise.isRequired ? 'bg-darkBorder' : 'bg-transparent'}`}
+                      style={[
+                        styles.toggleButton,
+                        !exercise.isRequired
+                          ? styles.toggleButtonActive
+                          : styles.toggleButtonDefault,
+                      ]}
                     >
                       <View
-                        className={`h-4 w-4 rounded ${!exercise.isRequired ? 'bg-darkMuted' : 'border border-darkMuted'}`}
+                        style={[
+                          styles.toggleCheckbox,
+                          !exercise.isRequired
+                            ? styles.toggleCheckboxActive
+                            : styles.toggleCheckboxDefault,
+                        ]}
                       />
                       <Text
-                        className={`text-xs ${!exercise.isRequired ? 'text-darkText' : 'text-darkMuted'}`}
+                        style={[
+                          styles.toggleText,
+                          !exercise.isRequired ? styles.toggleTextActive : styles.toggleTextDefault,
+                        ]}
                       >
                         Optional
                       </Text>
@@ -694,25 +730,26 @@ export function TemplateEditor({
             </View>
           )}
         </View>
-      </ScrollView>
+      </ScreenScrollView>
 
-      <View className="flex-row gap-3 border-t border-darkBorder bg-darkCard p-4">
-        <Button variant="outline" onPress={handleCancel} className="flex-1">
-          <Text className="text-darkText font-semibold">Cancel</Text>
+      <View style={styles.footer}>
+        <Button variant="outline" onPress={handleCancel} style={styles.footerButton}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </Button>
-        <Button onPress={handleSave} disabled={isSaving} className="flex-1">
+        <Button onPress={handleSave} disabled={isSaving} style={styles.footerButton}>
           {isSaving ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
-            <Text className="text-white font-semibold">Save Template</Text>
+            <Text style={styles.saveButtonText}>Save Template</Text>
           )}
         </Button>
       </View>
 
-      <BottomSheet
+      <Modal
         visible={showExerciseSearch}
-        onClose={() => setShowExerciseSearch(false)}
-        title="Add Exercise"
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowExerciseSearch(false)}
       >
         <ExerciseSearch
           visible={showExerciseSearch}
@@ -720,7 +757,299 @@ export function TemplateEditor({
           onClose={() => setShowExerciseSearch(false)}
           excludeIds={currentExercises.map((e) => e.exerciseId)}
         />
-      </BottomSheet>
+      </Modal>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  iconButton: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  iconButtonActive: {
+    backgroundColor: colors.border,
+  },
+  iconButtonPressed: {
+    opacity: 0.7,
+  },
+  iconButtonDisabled: {
+    opacity: 0.3,
+  },
+  iconButtonText: {
+    fontSize: 20,
+    color: colors.text,
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  statusBarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusBarText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  statusBarSaved: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.success,
+  },
+  section: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.6,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.error,
+    marginTop: 4,
+  },
+  notesInput: {
+    height: 96,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 9999,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  addButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.95 }],
+  },
+  addButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+  },
+  emptyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+  },
+  emptyText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  emptySubtext: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  exerciseList: {
+    gap: 12,
+  },
+  exerciseCard: {
+    padding: 16,
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  exerciseInfo: {
+    flex: 1,
+  },
+  exerciseName: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  exerciseMuscle: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  exerciseActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  smallIconButton: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  smallIconButtonActive: {
+    backgroundColor: colors.border,
+  },
+  smallIconButtonDisabled: {
+    opacity: 0.3,
+  },
+  smallIconButtonText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text,
+  },
+  deleteButton: {
+    marginLeft: 8,
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  deleteButtonText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  exerciseField: {
+    flex: 1,
+  },
+  fieldLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  counterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  counterButton: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  counterButtonText: {
+    fontSize: typography.fontSizes.lg,
+    color: colors.textMuted,
+  },
+  counterValue: {
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 12,
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.border,
+  },
+  toggleButtonDefault: {
+    backgroundColor: 'transparent',
+  },
+  toggleCheckbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+  },
+  toggleCheckboxActive: {
+    backgroundColor: colors.textMuted,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+  },
+  toggleCheckboxDefault: {
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    backgroundColor: 'transparent',
+  },
+  toggleText: {
+    fontSize: typography.fontSizes.xs,
+  },
+  toggleTextActive: {
+    color: colors.text,
+  },
+  toggleTextDefault: {
+    color: colors.textMuted,
+  },
+  footer: {
+    flexDirection: 'row',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 16,
+  },
+  footerButton: {
+    flex: 1,
+  },
+  cancelButtonText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  saveButtonText: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+});

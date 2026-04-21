@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, radius, spacing, typography } from '@/theme';
 
 interface ActiveWorkoutBannerProps {
   workoutId: string;
@@ -21,28 +22,98 @@ export function ActiveWorkoutBanner({
   };
 
   return (
-    <View className="mx-6 rounded-2xl border border-coral/50 bg-coral/10 p-4">
-      <View className="mb-3 flex-row items-center justify-between">
-        <View className="flex-1">
-          <Text className="text-coral text-xs font-semibold uppercase tracking-wider">
-            Active Workout
-          </Text>
-          <Text className="text-darkText text-lg font-semibold mt-1" numberOfLines={1}>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <Text style={styles.eyebrow}>Active Workout</Text>
+          <Text style={styles.workoutName} numberOfLines={1}>
             {workoutName}
           </Text>
-          <Text className="text-darkMuted text-xs mt-1">
-            Started at {formatStartedAt(startedAt)}
-          </Text>
+          <Text style={styles.startedAtText}>Started at {formatStartedAt(startedAt)}</Text>
         </View>
       </View>
-      <View className="flex-row gap-3">
-        <Pressable className="flex-1 rounded-lg bg-coral py-3" onPress={onContinue}>
-          <Text className="text-center text-sm font-semibold text-white">Continue</Text>
+      <View style={styles.buttonsRow}>
+        <Pressable
+          onPress={onContinue}
+          style={({ pressed }) => [styles.continueButton, pressed && styles.buttonPressed]}
+        >
+          <Text style={styles.continueButtonText}>Continue</Text>
         </Pressable>
-        <Pressable className="flex-1 rounded-lg border border-darkBorder py-3" onPress={onDiscard}>
-          <Text className="text-center text-sm font-semibold text-darkMuted">Discard</Text>
+        <Pressable
+          onPress={onDiscard}
+          style={({ pressed }) => [styles.discardButton, pressed && styles.buttonPressed]}
+        >
+          <Text style={styles.discardButtonText}>Discard</Text>
         </Pressable>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    marginHorizontal: 24,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(239,111,79,0.5)',
+    backgroundColor: 'rgba(239,111,79,0.1)',
+    padding: spacing.md,
+  },
+  header: {
+    marginBottom: spacing.md,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  eyebrow: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 1.6,
+    color: colors.accent,
+  },
+  workoutName: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    marginTop: 4,
+  },
+  startedAtText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  buttonsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  continueButton: {
+    flex: 1,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+  },
+  continueButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  discardButton: {
+    flex: 1,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
+  },
+  discardButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  buttonPressed: {
+    opacity: 0.8,
+  },
+});

@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Modal, Pressable, ScrollView, Text, View, TextInput } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, Modal, StyleSheet, Pressable } from 'react-native';
 import { Button } from '@/components/ui/Button';
+import { ScreenScrollView } from '@/components/ui/Screen';
+import { colors, typography, spacing, radius } from '@/theme';
+
+type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
 
 interface SaveMealDialogProps {
   visible: boolean;
   onClose: () => void;
-  analysis: {
+  analysis?: {
     name: string;
     calories: number;
     proteinG: number;
@@ -14,155 +18,260 @@ interface SaveMealDialogProps {
   } | null;
   onSave: (data: {
     name: string;
-    mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    mealType: MealType;
     calories: number;
-    proteinG: number;
-    carbsG: number;
-    fatG: number;
+    protein: number;
+    carbs: number;
+    fat: number;
   }) => void;
 }
 
-function inferMealTypeFromTime(): 'breakfast' | 'lunch' | 'dinner' | 'snack' {
-  const hour = new Date().getHours();
-  if (hour < 10) return 'breakfast';
-  if (hour < 15) return 'lunch';
-  if (hour < 19) return 'dinner';
-  return 'snack';
-}
-
-const mealTypes = [
-  { value: 'breakfast', label: 'Breakfast' },
-  { value: 'lunch', label: 'Lunch' },
-  { value: 'dinner', label: 'Dinner' },
-  { value: 'snack', label: 'Snack' },
-] as const;
+const MEAL_TYPES: MealType[] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
 export function SaveMealDialog({ visible, onClose, analysis, onSave }: SaveMealDialogProps) {
-  const [name, setName] = useState('');
-  const [mealType, setMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('snack');
-  const [calories, setCalories] = useState(0);
-  const [proteinG, setProteinG] = useState(0);
-  const [carbsG, setCarbsG] = useState(0);
-  const [fatG, setFatG] = useState(0);
+  const [name, setName] = useState(analysis?.name ?? '');
+  const [mealType, setMealType] = useState<MealType>('Breakfast');
+  const [calories, setCalories] = useState(analysis ? String(analysis.calories) : '');
+  const [protein, setProtein] = useState(analysis ? String(analysis.proteinG) : '');
+  const [carbs, setCarbs] = useState(analysis ? String(analysis.carbsG) : '');
+  const [fat, setFat] = useState(analysis ? String(analysis.fatG) : '');
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (analysis) {
       setName(analysis.name);
-      setCalories(analysis.calories);
-      setProteinG(analysis.proteinG);
-      setCarbsG(analysis.carbsG);
-      setFatG(analysis.fatG);
-      setMealType(inferMealTypeFromTime());
+      setCalories(String(analysis.calories));
+      setProtein(String(analysis.proteinG));
+      setCarbs(String(analysis.carbsG));
+      setFat(String(analysis.fatG));
     }
   }, [analysis]);
 
   const handleSave = () => {
-    onSave({ name, mealType, calories, proteinG, carbsG, fatG });
+    onSave({
+      name,
+      mealType,
+      calories: parseInt(calories, 10) || 0,
+      protein: parseFloat(protein) || 0,
+      carbs: parseFloat(carbs) || 0,
+      fat: parseFloat(fat) || 0,
+    });
+    setName('');
+    setMealType('Breakfast');
+    setCalories('');
+    setProtein('');
+    setCarbs('');
+    setFat('');
+  };
+
+  const handleClose = () => {
+    setName('');
+    setMealType('Breakfast');
+    setCalories('');
+    setProtein('');
+    setCarbs('');
+    setFat('');
+    onClose();
   };
 
   return (
-    <Modal
-      visible={visible}
-      onRequestClose={onClose}
-      presentationStyle="pageSheet"
-      animationType="slide"
-    >
-      <View className="flex-1 bg-darkBg">
-        <View className="flex-row items-center justify-between border-b border-darkBorder p-4">
-          <Text className="text-darkText text-lg font-semibold">Save Meal</Text>
-          <Pressable onPress={onClose} className="p-2">
-            <Text className="text-coral text-lg">✕</Text>
-          </Pressable>
-        </View>
-        <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 40 }}>
-          <View className="mb-4">
-            <Text className="text-darkMuted text-sm mb-2">Meal Name</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g., Grilled Chicken Salad"
-              placeholderTextColor="#6B7280"
-              className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
-            />
-          </View>
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.overlay}>
+        <View style={styles.dialog}>
+          <ScreenScrollView
+            bottomInset={0}
+            horizontalPadding={0}
+            topPadding={0}
+            contentContainerStyle={styles.scrollContent}
+          >
+            <View style={styles.header}>
+              <Text style={styles.title}>Save Meal</Text>
+              <Pressable onPress={handleClose}>
+                <Text style={styles.closeButton}>✕</Text>
+              </Pressable>
+            </View>
 
-          <View className="mb-4">
-            <Text className="text-darkMuted text-sm mb-2">Meal Type</Text>
-            <View className="flex-row gap-2">
-              {mealTypes.map((type) => (
-                <Pressable
-                  key={type.value}
-                  onPress={() => setMealType(type.value)}
-                  className={`flex-1 rounded-xl border py-2 px-3 ${mealType === type.value ? 'border-coral bg-coral/10' : 'border-darkBorder'}`}
-                >
-                  <Text
-                    className={`text-center text-sm ${mealType === type.value ? 'text-coral' : 'text-darkMuted'}`}
+            <View style={styles.field}>
+              <Text style={styles.label}>Meal Name</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g., Grilled Chicken Salad"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Meal Type</Text>
+              <View style={styles.mealTypeSelector}>
+                {MEAL_TYPES.map((type) => (
+                  <Pressable
+                    key={type}
+                    onPress={() => setMealType(type)}
+                    style={[
+                      styles.mealTypeOption,
+                      mealType === type && styles.mealTypeOptionSelected,
+                    ]}
                   >
-                    {type.label}
-                  </Text>
-                </Pressable>
-              ))}
+                    <Text
+                      style={[
+                        styles.mealTypeText,
+                        mealType === type && styles.mealTypeTextSelected,
+                      ]}
+                    >
+                      {type}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View className="mb-4">
-            <Text className="text-darkMuted text-sm mb-2">Calories</Text>
-            <TextInput
-              value={calories.toString()}
-              onChangeText={(v) => setCalories(Number(v) || 0)}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor="#6B7280"
-              className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
-            />
-          </View>
-
-          <View className="grid grid-cols-3 gap-3">
-            <View className="mb-4">
-              <Text className="text-darkMuted text-sm mb-2">Protein (g)</Text>
+            <View style={styles.field}>
+              <Text style={styles.label}>Calories</Text>
               <TextInput
-                value={proteinG.toString()}
-                onChangeText={(v) => setProteinG(Number(v) || 0)}
-                keyboardType="numeric"
+                style={styles.input}
+                value={calories}
+                onChangeText={setCalories}
                 placeholder="0"
-                placeholderTextColor="#6B7280"
-                className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
               />
             </View>
-            <View className="mb-4">
-              <Text className="text-darkMuted text-sm mb-2">Carbs (g)</Text>
-              <TextInput
-                value={carbsG.toString()}
-                onChangeText={(v) => setCarbsG(Number(v) || 0)}
-                keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor="#6B7280"
-                className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
-              />
-            </View>
-            <View className="mb-4">
-              <Text className="text-darkMuted text-sm mb-2">Fat (g)</Text>
-              <TextInput
-                value={fatG.toString()}
-                onChangeText={(v) => setFatG(Number(v) || 0)}
-                keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor="#6B7280"
-                className="h-12 rounded-xl border border-darkBorder bg-darkCard px-4 text-darkText"
-              />
-            </View>
-          </View>
 
-          <View className="mt-4 flex-row gap-3">
-            <Button variant="outline" onPress={onClose} className="flex-1">
-              Cancel
-            </Button>
-            <Button onPress={handleSave} className="flex-1">
-              Save
-            </Button>
-          </View>
-        </ScrollView>
+            <View style={styles.row}>
+              <View style={[styles.field, styles.flex]}>
+                <Text style={styles.label}>Protein (g)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={protein}
+                  onChangeText={setProtein}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={[styles.field, styles.flex]}>
+                <Text style={styles.label}>Carbs (g)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={carbs}
+                  onChangeText={setCarbs}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={[styles.field, styles.flex]}>
+                <Text style={styles.label}>Fat (g)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fat}
+                  onChangeText={setFat}
+                  placeholder="0"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            <View style={styles.actions}>
+              <Button variant="ghost" onPress={handleClose}>
+                Cancel
+              </Button>
+              <Button onPress={handleSave}>Save Meal</Button>
+            </View>
+          </ScreenScrollView>
+        </View>
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end',
+  },
+  dialog: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    maxHeight: '85%',
+  },
+  scrollContent: {
+    padding: spacing.lg,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  title: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  closeButton: {
+    fontSize: typography.fontSizes.xl,
+    color: colors.textMuted,
+    padding: spacing.xs,
+  },
+  field: {
+    marginBottom: spacing.md,
+  },
+  label: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+  },
+  mealTypeSelector: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  mealTypeOption: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  mealTypeOptionSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  mealTypeText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
+  },
+  mealTypeTextSelected: {
+    color: '#ffffff',
+  },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  flex: {
+    flex: 1,
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+});

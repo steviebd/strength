@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { colors, typography } from '@/theme';
 
 interface MacroProgressBarProps {
   label: string;
@@ -10,22 +11,51 @@ interface MacroProgressBarProps {
 }
 
 export function MacroProgressBar({ label, consumed, target, unit, color }: MacroProgressBarProps) {
-  const percentage = target > 0 ? Math.min((consumed / target) * 100, 100) : 0;
-  const isOver = consumed > target;
+  const progress = target > 0 ? Math.min(consumed / target, 1) : 0;
 
   return (
-    <View className="mb-3">
-      <View className="flex-row items-center justify-between mb-1">
-        <Text className="text-darkText text-sm font-medium">{label}</Text>
-        <Text className={`text-darkMuted text-xs ${isOver ? 'text-coral' : ''}`}>
-          {consumed.toFixed(0)}
-          {unit} / {target}
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.value}>
+          {consumed}/{target}
           {unit}
         </Text>
       </View>
-      <View className="h-2 w-full overflow-hidden rounded-full bg-darkBorder">
-        <View className={`h-full rounded-full ${color}`} style={{ width: `${percentage}%` }} />
+      <View style={styles.track}>
+        <View style={[styles.fill, { width: `${progress * 100}%`, backgroundColor: color }]} />
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    gap: 6,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  label: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
+  },
+  value: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text,
+  },
+  track: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceAlt,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+});

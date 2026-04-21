@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { UserPreferencesProvider } from '@/context/UserPreferencesContext';
 import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
-import '@/global.css';
+import { colors } from '@/theme';
 
 export default function RootLayout() {
   return (
@@ -14,7 +14,7 @@ export default function RootLayout() {
             screenOptions={{
               headerShown: false,
               contentStyle: {
-                backgroundColor: '#0a0a0a',
+                backgroundColor: colors.background,
               },
             }}
           >

@@ -1,12 +1,18 @@
-import React from 'react';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
-import { MacroProgressBar } from '@/components/nutrition/MacroProgressBar';
+import { Screen, ScreenScrollView } from '@/components/ui/Screen';
+import {
+  ActionButton,
+  Badge,
+  MetricTile,
+  PageHeader,
+  SectionTitle,
+  Surface,
+} from '@/components/ui/app-primitives';
 import { MealCard } from '@/components/nutrition/MealCard';
-import { WhoopNutritionCard } from '@/components/nutrition/WhoopNutritionCard';
+import { colors, radius, spacing } from '@/theme';
 
 interface DailySummary {
   entries: Array<{
@@ -46,42 +52,9 @@ function getTodayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-function CalorieRing({ consumed, target }: { consumed: number; target: number }) {
-  const percentage = target > 0 ? Math.min((consumed / target) * 100, 100) : 0;
-  const remaining = Math.max(target - consumed, 0);
-  const isOver = consumed > target;
-
-  return (
-    <Card className="mb-4">
-      <View className="items-center p-4">
-        <View className="h-40 w-40 items-center justify-center">
-          <View className="absolute inset-0 rounded-full border-[12] border-darkBorder" />
-          <View
-            className="absolute inset-0 rounded-full"
-            style={{
-              borderTopColor: percentage > 0 ? '#ef6f4f' : 'transparent',
-              borderRightColor: percentage > 25 ? '#ef6f4f' : 'transparent',
-              borderBottomColor: percentage > 50 ? '#ef6f4f' : 'transparent',
-              borderLeftColor: percentage > 75 ? '#ef6f4f' : 'transparent',
-              transform: [{ rotate: '-90deg' }],
-            }}
-          />
-          <View className="items-center justify-center">
-            <Text className={`text-3xl font-bold ${isOver ? 'text-coral' : 'text-darkText'}`}>
-              {consumed}
-            </Text>
-            <Text className="text-darkMuted text-xs">{isOver ? 'over' : 'remaining'}</Text>
-          </View>
-        </View>
-        <View className="mt-2 text-center">
-          <Text className="text-sm text-darkMuted">
-            {remaining > 0 ? `${remaining} left` : `${Math.abs(remaining)} over`}
-          </Text>
-          <Text className="text-xs text-darkMuted">of {target} kcal</Text>
-        </View>
-      </View>
-    </Card>
-  );
+function clampPercent(consumed: number, target: number) {
+  if (target <= 0) return 0;
+  return Math.min((consumed / target) * 100, 100);
 }
 
 export default function NutritionScreen() {
@@ -94,91 +67,315 @@ export default function NutritionScreen() {
     error,
   } = useQuery<DailySummary>({
     queryKey: ['nutrition-daily-summary', today],
-    queryFn: async () => {
-      return apiFetch<DailySummary>(`/api/nutrition/daily-summary?date=${today}`);
-    },
+    queryFn: async () => apiFetch<DailySummary>(`/api/nutrition/daily-summary?date=${today}`),
   });
 
   if (isLoading) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg">
-        <ActivityIndicator size="large" color="#ef6f4f" />
-      </View>
+      <Screen style={styles.screen}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#fb923c" />
+        </View>
+      </Screen>
     );
   }
 
   if (error || !summary) {
     return (
-      <View className="flex-1 items-center justify-center bg-darkBg">
-        <Text className="text-darkMuted">Failed to load nutrition data</Text>
-      </View>
+      <Screen style={styles.screen}>
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>Failed to load nutrition data.</Text>
+        </View>
+      </Screen>
     );
   }
 
   const { entries, totals, targets, whoopRecovery, whoopCycle } = summary;
+  const remainingCalories = Math.max(targets.calories - totals.calories, 0);
+  const caloriePercent = clampPercent(totals.calories, targets.calories);
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-        <View className="px-6 pt-16">
-          <Text className="text-darkText text-2xl font-semibold mb-6">Nutrition</Text>
+    <Screen style={styles.screen}>
+      <ScreenScrollView topPadding={10} bottomInset={96}>
+        <PageHeader
+          eyebrow="Daily nutrition"
+          title="Eat for performance"
+          description="Track calories, monitor macros, and keep recovery-supported fueling on pace."
+        />
 
-          <CalorieRing consumed={totals.calories} target={targets.calories} />
+        <Surface style={styles.calorieCard}>
+          <View style={styles.calorieContent}>
+            <View style={styles.calorieMain}>
+              <Badge label={`${remainingCalories} kcal left`} tone="orange" />
+              <Text style={styles.calorieValue}>{totals.calories}</Text>
+              <Text style={styles.calorieTarget}>of {targets.calories} kcal target today</Text>
+            </View>
+            {whoopRecovery?.score ? (
+              <View style={styles.recoveryScore}>
+                <Text style={styles.recoveryLabel}>Recovery</Text>
+                <Text style={styles.recoveryValue}>{whoopRecovery.score}%</Text>
+              </View>
+            ) : null}
+          </View>
 
-          <Card className="mb-4">
-            <View className="p-4">
-              <MacroProgressBar
-                label="Protein"
-                consumed={totals.proteinG}
-                target={targets.proteinG}
-                unit="g"
-                color="bg-blue-500"
-              />
-              <MacroProgressBar
-                label="Carbs"
-                consumed={totals.carbsG}
-                target={targets.carbsG}
-                unit="g"
-                color="bg-orange-500"
-              />
-              <MacroProgressBar
-                label="Fat"
-                consumed={totals.fatG}
-                target={targets.fatG}
-                unit="g"
-                color="bg-red-500"
+          <View style={styles.progressSection}>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${caloriePercent}%` }]} />
+            </View>
+            <View style={styles.progressLabels}>
+              <Text style={styles.progressLabel}>{totals.calories} consumed</Text>
+              <Text style={styles.progressLabel}>{targets.calories} target</Text>
+            </View>
+          </View>
+
+          <View style={styles.actionRow}>
+            <ActionButton
+              label="Log Meal"
+              icon="add"
+              onPress={() => router.push('/nutrition/chat')}
+            />
+            <ActionButton
+              label="Meal Chat"
+              icon="sparkles-outline"
+              variant="secondary"
+              onPress={() => router.push('/nutrition/chat')}
+            />
+          </View>
+        </Surface>
+
+        <SectionTitle title="Macros" />
+        <View style={styles.macroRow}>
+          <MetricTile
+            label="Protein"
+            value={`${totals.proteinG.toFixed(0)}g`}
+            hint={`Target ${targets.proteinG}g`}
+            tone="emerald"
+          />
+          <MetricTile
+            label="Carbs"
+            value={`${totals.carbsG.toFixed(0)}g`}
+            hint={`Target ${targets.carbsG}g`}
+            tone="sky"
+          />
+          <MetricTile
+            label="Fat"
+            value={`${totals.fatG.toFixed(0)}g`}
+            hint={`Target ${targets.fatG}g`}
+            tone="orange"
+          />
+        </View>
+
+        {(whoopRecovery || whoopCycle) && (
+          <>
+            <SectionTitle title="Recovery context" />
+            <Surface style={styles.recoveryCard}>
+              <View style={styles.recoveryContent}>
+                <View style={styles.badgeRow}>
+                  {whoopRecovery?.status ? (
+                    <Badge
+                      label={`Recovery ${whoopRecovery.status}`}
+                      tone={
+                        whoopRecovery.status === 'green'
+                          ? 'emerald'
+                          : whoopRecovery.status === 'yellow'
+                            ? 'orange'
+                            : 'rose'
+                      }
+                    />
+                  ) : null}
+                  {whoopCycle?.totalStrain != null ? (
+                    <Badge label={`Strain ${whoopCycle.totalStrain.toFixed(1)}`} tone="sky" />
+                  ) : null}
+                </View>
+                <View style={styles.metricRow}>
+                  <MetricTile
+                    label="HRV"
+                    value={whoopRecovery?.hrv != null ? `${whoopRecovery.hrv}` : '--'}
+                    hint="ms"
+                  />
+                  <MetricTile
+                    label="Burned"
+                    value={
+                      whoopCycle?.caloriesBurned != null ? `${whoopCycle.caloriesBurned}` : '--'
+                    }
+                    hint="kcal"
+                  />
+                </View>
+              </View>
+            </Surface>
+          </>
+        )}
+
+        <SectionTitle
+          title="Meals"
+          actionLabel="Log another"
+          onActionPress={() => router.push('/nutrition/chat')}
+        />
+        {entries.length === 0 ? (
+          <Surface style={styles.emptyState}>
+            <View style={styles.emptyContent}>
+              <Text style={styles.emptyTitle}>No meals logged yet</Text>
+              <Text style={styles.emptyDescription}>
+                Start with a quick message and the meal chat can turn it into a tracked entry.
+              </Text>
+              <ActionButton
+                label="Start logging"
+                icon="chatbubble-ellipses-outline"
+                onPress={() => router.push('/nutrition/chat')}
               />
             </View>
-          </Card>
-
-          {(whoopRecovery !== null || whoopCycle !== null) && (
-            <WhoopNutritionCard recovery={whoopRecovery} cycle={whoopCycle} />
-          )}
-
-          <View className="mb-4">
-            <Text className="text-darkText text-lg font-semibold mb-3">Today&apos;s Meals</Text>
-            {entries.length === 0 ? (
-              <Card>
-                <View className="p-6 text-center">
-                  <Text className="text-darkMuted">No meals logged yet</Text>
-                  <Text className="text-darkMuted text-sm mt-1">Tap + to log your first meal</Text>
-                </View>
-              </Card>
-            ) : (
-              entries.map((entry) => <MealCard key={entry.id} entry={entry} />)
-            )}
+          </Surface>
+        ) : (
+          <View style={styles.mealList}>
+            {entries.map((entry) => {
+              const time = entry.loggedAt
+                ? new Date(entry.loggedAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '';
+              return (
+                <MealCard
+                  key={entry.id}
+                  mealType={entry.mealType ?? 'snack'}
+                  time={time}
+                  name={entry.name ?? 'Unnamed meal'}
+                  calories={entry.calories ?? 0}
+                  protein={entry.proteinG ?? 0}
+                  carbs={entry.carbsG ?? 0}
+                  fat={entry.fatG ?? 0}
+                />
+              );
+            })}
           </View>
-        </View>
-      </ScrollView>
-
-      <View className="absolute bottom-24 right-6">
-        <Pressable
-          className="h-14 w-14 items-center justify-center rounded-full bg-coral shadow-lg shadow-coral/30"
-          onPress={() => router.push('/nutrition/chat')}
-        >
-          <Text className="text-2xl text-white">+</Text>
-        </Pressable>
-      </View>
-    </View>
+        )}
+      </ScreenScrollView>
+    </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    color: colors.textMuted,
+    fontSize: 15,
+  },
+  calorieCard: {
+    marginBottom: spacing.lg,
+    backgroundColor: '#18181b',
+  },
+  calorieContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  calorieMain: {
+    flex: 1,
+    gap: spacing.sm,
+  },
+  calorieValue: {
+    fontSize: 34,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  calorieTarget: {
+    fontSize: 15,
+    color: '#64748b',
+  },
+  recoveryScore: {
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  recoveryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.8,
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  recoveryValue: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#6ee7b7',
+  },
+  progressSection: {
+    marginBottom: spacing.lg,
+  },
+  progressBar: {
+    height: 12,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: radius.full,
+    backgroundColor: '#fb923c',
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  progressLabel: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  recoveryCard: {
+    marginBottom: spacing.lg,
+    backgroundColor: 'rgba(24,24,27,0.7)',
+  },
+  recoveryContent: {
+    gap: spacing.md,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  emptyState: {
+    backgroundColor: 'rgba(24,24,27,0.7)',
+  },
+  emptyContent: {
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.lg,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  emptyDescription: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  mealList: {
+    gap: spacing.md,
+  },
+});

@@ -7,7 +7,14 @@ export default function HomeScreen() {
 
   if (session.isPending) {
     return (
-      <View className="flex-1 items-center justify-center bg-sand">
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#0a0a0a',
+        }}
+      >
         <ActivityIndicator size="large" color="#1f4d3c" />
       </View>
     );

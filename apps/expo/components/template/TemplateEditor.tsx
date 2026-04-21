@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTemplateEditor, type Template } from '@/hooks/useTemplateEditor';
 import { TemplateExerciseRow } from './TemplateExerciseRow';
 import { ExercisePicker } from './ExercisePicker';
+import { ScreenScrollView } from '@/components/ui/Screen';
+import { colors, spacing, radius } from '@/theme';
 
 interface TemplateEditorProps {
   templateId?: string | null;
@@ -65,12 +67,16 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
     }
   };
 
-  const handleAddExercise = async (exercise: {
-    id: string;
-    name: string;
-    muscleGroup: string | null;
-  }) => {
-    await addExercise(exercise);
+  const handleAddExercise = async (
+    exercises: Array<{
+      id: string;
+      name: string;
+      muscleGroup: string | null;
+    }>,
+  ) => {
+    for (const exercise of exercises) {
+      await addExercise(exercise);
+    }
     setShowExercisePicker(false);
   };
 
@@ -88,43 +94,43 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
 
   if (isLoading) {
     return (
-      <View className="flex-1 bg-darkBg items-center justify-center">
-        <ActivityIndicator size="large" color="#ef6f4f" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-darkBg">
-      <View className="border-b border-darkBorder p-4" style={{ paddingTop: insets.top }}>
-        <View className="flex-row items-center justify-between">
-          <Pressable
-            onPress={onClose}
-            className="h-10 w-10 items-center justify-center rounded-full bg-darkBorder"
-          >
-            <Text className="text-darkText text-xl">←</Text>
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={styles.headerRow}>
+          <Pressable onPress={onClose} style={styles.backButton}>
+            <Text style={styles.backButtonText}>←</Text>
           </Pressable>
-          <View className="flex-row items-center gap-2">
-            {autoSaveStatus === 'saving' && <ActivityIndicator size="small" color="#ef6f4f" />}
-            {autoSaveStatus === 'saved' && <Text className="text-darkMuted text-xs">Saved</Text>}
+          <View style={styles.headerRight}>
+            {autoSaveStatus === 'saving' && (
+              <ActivityIndicator size="small" color={colors.accent} />
+            )}
+            {autoSaveStatus === 'saved' && <Text style={styles.savedText}>Saved</Text>}
             <Pressable
               onPress={handleSave}
               disabled={isSaving || !localName.trim()}
-              className={`rounded-full px-4 py-2 ${isSaving || !localName.trim() ? 'bg-darkBorder' : 'bg-coral'}`}
+              style={[
+                styles.saveButton,
+                (isSaving || !localName.trim()) && styles.saveButtonDisabled,
+              ]}
             >
-              <Text className="text-white text-sm font-semibold">
-                {isSaving ? 'Saving...' : 'Save'}
-              </Text>
+              <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save'}</Text>
             </Pressable>
           </View>
         </View>
       </View>
 
-      <ScrollView className="flex-1 p-4" contentContainerStyle={{ paddingBottom: 100 }}>
-        <View className="mb-6">
-          <Text className="text-darkMuted mb-2 text-sm">Template Name</Text>
+      <ScreenScrollView bottomInset={48} horizontalPadding={16}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Template Name</Text>
           <TextInput
-            className="rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText text-lg"
+            style={styles.textInput}
             placeholder="e.g., Push Day"
             placeholderTextColor="#71717a"
             value={localName}
@@ -132,10 +138,10 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
           />
         </View>
 
-        <View className="mb-6">
-          <Text className="text-darkMuted mb-2 text-sm">Description (optional)</Text>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Description (optional)</Text>
           <TextInput
-            className="rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
+            style={[styles.textInput, styles.multilineInput]}
             placeholder="Brief description of this workout"
             placeholderTextColor="#71717a"
             value={localDescription}
@@ -144,10 +150,10 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
           />
         </View>
 
-        <View className="mb-6">
-          <Text className="text-darkMuted mb-2 text-sm">Notes (optional)</Text>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Notes (optional)</Text>
           <TextInput
-            className="rounded-xl border border-darkBorder bg-darkCard px-4 py-3 text-darkText"
+            style={[styles.textInput, styles.multilineInput]}
             placeholder="Any additional notes"
             placeholderTextColor="#71717a"
             value={localNotes}
@@ -156,19 +162,16 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
           />
         </View>
 
-        <View className="mb-4 flex-row items-center justify-between">
-          <Text className="text-darkText text-lg font-semibold">Exercises</Text>
-          <Pressable
-            onPress={() => setShowExercisePicker(true)}
-            className="rounded-full bg-coral px-4 py-2"
-          >
-            <Text className="text-white text-sm font-semibold">+ Add</Text>
+        <View style={styles.exerciseHeader}>
+          <Text style={styles.exerciseHeaderTitle}>Exercises</Text>
+          <Pressable onPress={() => setShowExercisePicker(true)} style={styles.addButton}>
+            <Text style={styles.addButtonText}>+ Add</Text>
           </Pressable>
         </View>
 
         {exercises.length === 0 ? (
-          <View className="rounded-xl border border-darkBorder border-dashed bg-darkCard/50 p-8 items-center">
-            <Text className="text-darkMuted text-center">
+          <View style={styles.emptyExercises}>
+            <Text style={styles.emptyExercisesText}>
               No exercises added yet. Tap "+ Add" to add exercises to this template.
             </Text>
           </View>
@@ -187,7 +190,7 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
             />
           ))
         )}
-      </ScrollView>
+      </ScreenScrollView>
 
       <ExercisePicker
         visible={showExercisePicker}
@@ -198,3 +201,121 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    backgroundColor: colors.surfaceAlt,
+  },
+  backButtonText: {
+    fontSize: 20,
+    color: colors.text,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  savedText: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  saveButton: {
+    borderRadius: 9999,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.accent,
+  },
+  saveButtonDisabled: {
+    backgroundColor: colors.surfaceAlt,
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  inputGroup: {
+    marginBottom: spacing.lg,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+  },
+  textInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    fontSize: 17,
+    color: colors.text,
+  },
+  multilineInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  exerciseHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  addButton: {
+    borderRadius: 9999,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.accent,
+  },
+  addButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyExercises: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(24,24,27,0.5)',
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  emptyExercisesText: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+});

@@ -1,19 +1,27 @@
 import React from 'react';
-import { View, type ViewProps } from 'react-native';
+import { View, StyleSheet, type ViewProps } from 'react-native';
+import { colors, radius, layout } from '@/theme';
 
 interface CardProps extends ViewProps {
-  className?: string;
   children: React.ReactNode;
   interactive?: boolean;
 }
 
-export function Card({ className = '', children, interactive = false, ...props }: CardProps) {
+export function Card({ children, interactive: _interactive = false, style, ...props }: CardProps) {
   return (
-    <View
-      className={`rounded-2xl border border-darkBorder bg-darkCard p-4 ${interactive ? 'active:opacity-80' : ''} ${className}`}
-      {...props}
-    >
+    <View style={[styles.card, style]} {...props}>
       {children}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: layout.cardPadding,
+    overflow: 'hidden',
+  },
+});

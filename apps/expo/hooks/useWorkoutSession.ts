@@ -34,7 +34,7 @@ interface UseWorkoutSessionReturn {
   isActive: boolean;
   weightUnit: 'kg' | 'lbs';
   startWorkout: (name: string) => Promise<void>;
-  loadWorkout: (workoutId: string) => Promise<void>;
+  loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => Promise<void>;
   addExercise: (exercise: Exercise) => Promise<void>;
@@ -120,13 +120,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           workoutData = workoutOrId;
         }
         setWorkout(workoutData);
-        setExercises(
-          (workoutData.exercises || []).map((ex) => ({
-            ...ex,
-            name: ex.exercise?.name ?? '',
-            muscleGroup: ex.exercise?.muscleGroup ?? null,
-          })),
-        );
+        setExercises(workoutData.exercises || []);
         if (workoutData.startedAt && !workoutData.completedAt) {
           startTimeRef.current = new Date(workoutData.startedAt);
           timerRef.current = setInterval(() => {

@@ -1,11 +1,42 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { QueryProvider } from '@/providers/QueryProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors } from '@/theme';
+
+const TAB_ICONS = {
+  home: {
+    active: 'home',
+    inactive: 'home-outline',
+    title: 'Home',
+  },
+  workouts: {
+    active: 'barbell',
+    inactive: 'barbell-outline',
+    title: 'Workouts',
+  },
+  programs: {
+    active: 'flash',
+    inactive: 'flash-outline',
+    title: 'Programs',
+  },
+  nutrition: {
+    active: 'restaurant',
+    inactive: 'restaurant-outline',
+    title: 'Nutrition',
+  },
+  profile: {
+    active: 'person',
+    inactive: 'person-outline',
+    title: 'Profile',
+  },
+} as const;
 
 export default function AppLayout() {
   const session = authClient.useSession();
+  const insets = useSafeAreaInsets();
 
   if (session.isPending) {
     return null;
@@ -20,47 +51,94 @@ export default function AppLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#ef6f4f',
-          tabBarInactiveTintColor: '#71717a',
+          sceneStyle: {
+            backgroundColor: colors.background,
+          },
+          tabBarHideOnKeyboard: true,
+          tabBarActiveTintColor: colors.accentSecondary,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '600',
+            marginTop: 2,
+          },
+          tabBarItemStyle: {
+            paddingTop: 4,
+          },
           tabBarStyle: {
-            backgroundColor: '#0a0a0a',
-            borderTopColor: '#27272a',
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            height: insets.bottom + 72,
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 10),
+            paddingHorizontal: 10,
           },
         }}
       >
         <Tabs.Screen
           name="home"
           options={{
-            title: 'Home',
-            tabBarIcon: () => <Text style={{ fontSize: 24 }}>🏠</Text>,
+            title: TAB_ICONS.home.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.home.active : TAB_ICONS.home.inactive}
+                size={22}
+              />
+            ),
           }}
         />
         <Tabs.Screen
           name="workouts"
           options={{
-            title: 'Workouts',
-            tabBarIcon: () => <Text style={{ fontSize: 24 }}>💪</Text>,
+            title: TAB_ICONS.workouts.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.workouts.active : TAB_ICONS.workouts.inactive}
+                size={22}
+              />
+            ),
           }}
         />
         <Tabs.Screen
           name="programs"
           options={{
-            title: 'Programs',
-            tabBarIcon: () => <Text style={{ fontSize: 24 }}>🔥</Text>,
+            title: TAB_ICONS.programs.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.programs.active : TAB_ICONS.programs.inactive}
+                size={22}
+              />
+            ),
           }}
         />
         <Tabs.Screen
           name="nutrition"
           options={{
-            title: 'Nutrition',
-            tabBarIcon: () => <Text style={{ fontSize: 24 }}>🥗</Text>,
+            title: TAB_ICONS.nutrition.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.nutrition.active : TAB_ICONS.nutrition.inactive}
+                size={22}
+              />
+            ),
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
-            title: 'Profile',
-            tabBarIcon: () => <Text style={{ fontSize: 24 }}>👤</Text>,
+            title: TAB_ICONS.profile.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.profile.active : TAB_ICONS.profile.inactive}
+                size={22}
+              />
+            ),
           }}
         />
         <Tabs.Screen

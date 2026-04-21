@@ -1,5 +1,7 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Badge, Surface } from '@/components/ui/app-primitives';
+import { colors, spacing, typography } from '@/theme';
 
 type WeightUnit = 'kg' | 'lbs';
 
@@ -52,53 +54,127 @@ export function WorkoutCard({
 
   return (
     <Pressable
-      className={`rounded-xl border bg-darkCard p-4 ${isPending ? 'border-amber-500/50 border-dashed' : 'border-darkBorder'}`}
       onPress={() => router.push({ pathname: '/workout-session', params: { workoutId: id } })}
     >
-      <View className="mb-3 flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2 flex-1">
-          <Text className="text-darkText text-lg font-semibold" numberOfLines={1}>
-            {name}
-          </Text>
-          {isPending && (
-            <View className="rounded-full bg-amber-500/20 px-2 py-0.5">
-              <Text className="text-amber-400 text-xs font-medium">Pending</Text>
-            </View>
-          )}
+      <Surface style={{ ...styles.surface, ...(isPending ? styles.surfacePending : {}) }}>
+        <View style={styles.header}>
+          <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={1}>
+              {name}
+            </Text>
+            {isPending ? <Badge label="Pending" tone="orange" /> : null}
+          </View>
+          <View style={styles.metaRow}>
+            <Text style={styles.dateText}>{formatDate(date)}</Text>
+            {onDelete ? (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                style={styles.deleteButton}
+              >
+                <Text style={styles.deleteText}>Delete</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-        <View className="flex-row items-center gap-2">
-          <Text className="text-darkMuted text-xs">{formatDate(date)}</Text>
-          {onDelete && (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="p-1"
-            >
-              <Text className="text-red-400 text-sm">Delete</Text>
-            </Pressable>
-          )}
+
+        <View style={styles.metricsRow}>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Duration</Text>
+            <Text style={styles.metricValue}>{formatDuration(durationMinutes)}</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Volume</Text>
+            <Text style={styles.metricValue}>
+              {formatVolume(totalVolume)} {weightUnit}
+            </Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Exercises</Text>
+            <Text style={styles.metricValue}>{exerciseCount}</Text>
+          </View>
         </View>
-      </View>
-      <View className="flex-row gap-4">
-        <View className="flex-1">
-          <Text className="text-darkMuted text-xs">Duration</Text>
-          <Text className="text-darkText text-sm font-medium">
-            {formatDuration(durationMinutes)}
-          </Text>
-        </View>
-        <View className="flex-1">
-          <Text className="text-darkMuted text-xs">Volume</Text>
-          <Text className="text-darkText text-sm font-medium">
-            {formatVolume(totalVolume)} {weightUnit}
-          </Text>
-        </View>
-        <View className="flex-1">
-          <Text className="text-darkMuted text-xs">Exercises</Text>
-          <Text className="text-darkText text-sm font-medium">{exerciseCount}</Text>
-        </View>
-      </View>
+      </Surface>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  surface: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 20,
+    gap: spacing.md,
+  },
+  surfacePending: {
+    borderColor: 'rgba(251,146,60,0.4)',
+    borderStyle: 'dashed',
+  },
+  header: {
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  title: {
+    flex: 1,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  dateText: {
+    fontSize: typography.fontSizes.xs,
+    color: '#64748b',
+  },
+  deleteButton: {
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(251,113,133,0.2)',
+    backgroundColor: 'rgba(251,113,133,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  deleteText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: '#fda4af',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  metricCard: {
+    minWidth: 96,
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  metricLabel: {
+    fontSize: typography.fontSizes.sm,
+    color: '#64748b',
+  },
+  metricValue: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    marginTop: 4,
+  },
+});
