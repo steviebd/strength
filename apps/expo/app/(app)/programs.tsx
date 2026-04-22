@@ -738,7 +738,7 @@ export default function ProgramsScreen() {
             <View style={styles.activeSection}>
               <Text style={styles.sectionTitle}>Active Programs</Text>
               {activePrograms.map((program) => (
-                <View key={program.id} style={styles.activeCard}>
+                <View key={`program:${program.id}`} style={styles.activeCard}>
                   <View style={styles.activeCardHeader}>
                     <View>
                       <Text style={styles.activeCardTitle}>{program.name}</Text>
@@ -783,7 +783,7 @@ export default function ProgramsScreen() {
               const dc = diffColor(program.difficulty);
               return (
                 <Pressable
-                  key={program.slug}
+                  key={`program-option:${program.slug}`}
                   style={styles.programCard}
                   onPress={() => openProgramDetail(program)}
                 >
@@ -952,7 +952,7 @@ export default function ProgramsScreen() {
                   { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
                   { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
                 ].map(({ key, label, icon }) => (
-                  <View key={key} style={styles.inputCard}>
+                  <View key={`program-1rm:${key}`} style={styles.inputCard}>
                     <View style={styles.inputHeaderRow}>
                       <View style={styles.inputLabelRow}>
                         <Text style={styles.inputIcon}>{icon}</Text>

@@ -157,9 +157,9 @@ export function SegmentedTabs({
   return (
     <View style={styles.segmentedTabs}>
       <View style={styles.segmentedTabsInner}>
-        {options.map((option) => (
+        {options.map((option, index) => (
           <Pressable
-            key={option.label}
+            key={`segment:${option.label}:${index}`}
             onPress={option.onPress}
             style={[styles.segmentTab, option.active ? styles.segmentTabActive : undefined]}
           >

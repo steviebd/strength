@@ -774,7 +774,7 @@ export default function NutritionScreen() {
 
           <View style={styles.quickActions}>
             {quickPrompts.map((prompt) => (
-              <View key={prompt} style={styles.quickActionSlot}>
+              <View key={`quick-prompt:${prompt}`} style={styles.quickActionSlot}>
                 <ActionButton
                   label={prompt}
                   icon="sparkles-outline"
@@ -829,7 +829,7 @@ export default function NutritionScreen() {
 
                   return (
                     <ChatMessage
-                      key={exchange.id}
+                      key={`chat-exchange:${exchange.id}`}
                       exchange={exchange}
                       expanded={isExpanded}
                       onToggleExpanded={() =>

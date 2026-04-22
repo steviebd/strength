@@ -231,7 +231,7 @@ export function NutritionDashboard({
           <View style={styles.mealList}>
             {entries.map((entry) => (
               <MealCard
-                key={entry.id}
+                key={`nutrition-entry:${entry.id}`}
                 id={entry.id}
                 mealType={entry.mealType ?? 'snack'}
                 time={formatTime(entry.loggedAt)}

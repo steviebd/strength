@@ -12,11 +12,12 @@
     "db:generate": "bun --filter @strength/db db:generate",
     "db:push:dev": "cd apps/worker && wrangler d1 migrations apply strength-db --local",
     "db:reset": "rm -rf apps/worker/.wrangler/ && bun run db:push:dev",
+    "lint:keys": "bun scripts/lint-react-keys.mjs",
     "typecheck": "bun --filter '*' typecheck",
     "setup": "bun install",
     "check": "source ~/.vite-plus/env && vp check && bun run typecheck",
     "test": "source ~/.vite-plus/env && vp test run",
-    "lint": "source ~/.vite-plus/env && vp lint",
+    "lint": "source ~/.vite-plus/env && vp lint && bun run lint:keys",
     "fmt": "source ~/.vite-plus/env && vp fmt"
   },
   "dependencies": {

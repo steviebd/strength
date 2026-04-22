@@ -175,7 +175,7 @@ export function SaveMealDialog({
                 <View style={styles.mealTypeSelector}>
                   {MEAL_TYPES.map((type) => (
                     <Pressable
-                      key={type}
+                      key={`meal-type:${type}`}
                       onPress={() => setMealType(type)}
                       disabled={isSaving}
                       style={[

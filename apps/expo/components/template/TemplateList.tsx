@@ -47,7 +47,7 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
   return (
     <View style={styles.listContainer}>
       {templates.map((template) => (
-        <Surface key={template.id} style={styles.templateCard}>
+        <Surface key={`template:${template.id}`} style={styles.templateCard}>
           <Pressable
             onPress={() => {
               if (onEditTemplate) {
@@ -74,7 +74,7 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
               <SectionTitle title="Exercises" />
               <View style={styles.exerciseList}>
                 {template.exercises.slice(0, 3).map((ex) => (
-                  <View key={ex.id} style={styles.exerciseRow}>
+                  <View key={`template-exercise:${ex.id}`} style={styles.exerciseRow}>
                     <Text style={styles.exerciseName} numberOfLines={1}>
                       {ex.name}
                     </Text>

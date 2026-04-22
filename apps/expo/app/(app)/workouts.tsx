@@ -324,7 +324,7 @@ export default function WorkoutsIndex() {
 
           return (
             <Surface
-              key={program.id}
+              key={`active-program:${program.id}`}
               style={{
                 ...styles.programSurface,
                 ...(isFocused ? styles.programSurfaceFocused : {}),
@@ -499,7 +499,7 @@ export default function WorkoutsIndex() {
                 index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id);
               return (
                 <WorkoutCard
-                  key={item.id}
+                  key={`workout-history:${item.id}`}
                   id={item.id}
                   name={item.name}
                   date={item.startedAt}

@@ -317,7 +317,7 @@ export default function ProgramOneRMTestScreen() {
             start: cycle?.startingOhp1rm ?? cycle?.ohp1rm ?? null,
           },
         ].map((field) => (
-          <View key={field.key} style={styles.inputCard}>
+          <View key={`program-test:${field.key}`} style={styles.inputCard}>
             <Text style={styles.inputLabel}>{field.label}</Text>
             <Text style={styles.startingValueText}>
               Starting: {toDisplayWeight(field.start, weightUnit) || '0'} {weightUnit}

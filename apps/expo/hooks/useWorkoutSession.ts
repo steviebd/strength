@@ -45,6 +45,42 @@ interface UseWorkoutSessionReturn {
   availableExercises: Exercise[];
 }
 
+function logDuplicateWorkoutIds(exercises: WorkoutExercise[]) {
+  if (!__DEV__) {
+    return;
+  }
+
+  const exerciseIds = new Set<string>();
+  const duplicateExerciseIds = new Set<string>();
+  const setIds = new Set<string>();
+  const duplicateSetIds = new Set<string>();
+
+  for (const exercise of exercises) {
+    if (exerciseIds.has(exercise.id)) {
+      duplicateExerciseIds.add(exercise.id);
+    } else {
+      exerciseIds.add(exercise.id);
+    }
+
+    for (const set of exercise.sets) {
+      if (setIds.has(set.id)) {
+        duplicateSetIds.add(set.id);
+      } else {
+        setIds.add(set.id);
+      }
+    }
+  }
+
+  if (duplicateExerciseIds.size === 0 && duplicateSetIds.size === 0) {
+    return;
+  }
+
+  console.error('[workout-session] Duplicate ids detected in workout state', {
+    duplicateExerciseIds: [...duplicateExerciseIds],
+    duplicateSetIds: [...duplicateSetIds],
+  });
+}
+
 export function useWorkoutSession(): UseWorkoutSessionReturn {
   const session = authClient.useSession();
   const { activeTimezone, weightUnit } = useUserPreferences();
@@ -76,6 +112,10 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       }
     };
   }, [workout?.id]);
+
+  useEffect(() => {
+    logDuplicateWorkoutIds(exercises);
+  }, [exercises]);
 
   const startWorkout = useCallback(
     async (name: string) => {

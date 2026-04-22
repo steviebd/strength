@@ -316,7 +316,7 @@ export function ExercisePicker({
               >
                 {MUSCLE_GROUPS.map((group) => (
                   <Pressable
-                    key={group}
+                    key={`muscle-filter:${group}`}
                     onPress={() => setSelectedMuscleGroup(group)}
                     style={[
                       styles.filterTab,
@@ -356,7 +356,7 @@ export function ExercisePicker({
               <View style={styles.muscleGroupGrid}>
                 {CREATE_MUSCLE_GROUPS.map((group) => (
                   <Pressable
-                    key={group}
+                    key={`create-muscle-group:${group}`}
                     onPress={() => setCreateForm((f) => ({ ...f, muscleGroup: group }))}
                     style={[
                       styles.muscleGroupChip,
@@ -443,7 +443,7 @@ export function ExercisePicker({
                         );
                         return (
                           <Pressable
-                            key={exercise.id}
+                            key={`user:${exercise.id}`}
                             onPress={() => handleToggleUser(exercise)}
                             style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
                           >
@@ -472,7 +472,7 @@ export function ExercisePicker({
                         );
                         return (
                           <Pressable
-                            key={exercise.id}
+                            key={`library:${exercise.id}`}
                             onPress={() => handleToggleLibrary(exercise)}
                             style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
                           >

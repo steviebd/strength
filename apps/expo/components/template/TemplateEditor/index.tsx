@@ -506,7 +506,7 @@ export function TemplateEditor({
           ) : (
             <View style={styles.exerciseList}>
               {currentExercises.map((exercise, index) => (
-                <Card key={exercise.id} style={styles.exerciseCard}>
+                <Card key={`template-editor-card:${exercise.id}`} style={styles.exerciseCard}>
                   <View style={styles.exerciseHeader}>
                     <View style={styles.exerciseInfo}>
                       <Text style={styles.exerciseName}>{exercise.name}</Text>

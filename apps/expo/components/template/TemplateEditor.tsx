@@ -179,7 +179,7 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
         ) : (
           exercises.map((exercise, index) => (
             <TemplateExerciseRow
-              key={exercise.id}
+              key={`template-editor-exercise:${exercise.id}`}
               exercise={exercise}
               onUpdate={(updates) => updateExercise(exercise.id, updates)}
               onRemove={() => removeExercise(exercise.id)}

@@ -61,6 +61,12 @@ function getLibrarySelectionKey(id: string) {
   return `library:${id}`;
 }
 
+function getListItemKey(item: ListItem) {
+  return item.type === 'header'
+    ? `header:${item.title}`
+    : `${item.isUser ? 'user' : 'library'}:${item.data.id}`;
+}
+
 export function ExerciseSearch({
   onSelect,
   onClose,
@@ -346,7 +352,7 @@ export function ExerciseSearch({
                 const isSelected = createForm.muscleGroup === group;
                 return (
                   <Pressable
-                    key={group}
+                    key={`muscle-group:${group}`}
                     onPress={() => setCreateForm((f) => ({ ...f, muscleGroup: group }))}
                     style={[
                       styles.muscleGroupChip,
@@ -424,9 +430,7 @@ export function ExerciseSearch({
 
           <FlatList
             data={listData}
-            keyExtractor={(item, _index) =>
-              item.type === 'header' ? `header-${item.title}` : item.data.id
-            }
+            keyExtractor={(item) => getListItemKey(item)}
             contentContainerStyle={{ paddingBottom: 100 }}
             renderItem={renderItem}
             ListEmptyComponent={

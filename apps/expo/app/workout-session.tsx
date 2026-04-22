@@ -351,7 +351,7 @@ export default function WorkoutSessionScreen() {
       <View style={styles.actionButtonsRow}>
         {buttons.map((btn, idx) => (
           <Pressable
-            key={idx}
+            key={`workout-action:${btn.label}:${idx}`}
             style={[
               styles.actionButton,
               btn.variant === 'primary' ? styles.actionButtonPrimary : styles.actionButtonSecondary,
@@ -427,7 +427,7 @@ export default function WorkoutSessionScreen() {
               );
               return (
                 <View
-                  key={exercise.id ?? `exercise-${idx}`}
+                  key={`workout-exercise:${exercise.id ?? idx}`}
                   onLayout={(e) => handleExerciseLayout(exercise.id, e)}
                 >
                   <ExerciseLogger

@@ -162,7 +162,7 @@ export function TimezonePickerModal({
 
               return (
                 <Pressable
-                  key={timeZone}
+                  key={`timezone:${timeZone}`}
                   onPress={() => setDraftTimezone(timeZone)}
                   style={[styles.option, isSelected && styles.optionSelected]}
                 >

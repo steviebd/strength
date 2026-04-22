@@ -72,7 +72,7 @@ export default function HomeScreen() {
 
           <View style={styles.exerciseList}>
             {nextWorkout.exercises.map((exercise, index) => (
-              <View key={exercise} style={styles.exerciseRow}>
+              <View key={`${exercise}-${index}`} style={styles.exerciseRow}>
                 <View style={styles.exerciseNumber}>
                   <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                 </View>

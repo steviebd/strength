@@ -232,7 +232,7 @@ export default function WhoopDataPage() {
               <Text style={styles.cardTitle}>Recovery (7 days)</Text>
               <View>
                 {last7Recovery.map((r, idx) => (
-                  <RecoveryDayRow key={r.id ?? `recovery-${idx}`} recovery={r} />
+                  <RecoveryDayRow key={`recovery:${r.id ?? idx}`} recovery={r} />
                 ))}
               </View>
               <View style={styles.legendRow}>
@@ -314,7 +314,7 @@ export default function WhoopDataPage() {
               <Text style={styles.cardTitle}>Sleep (7 days)</Text>
               <View style={styles.sleepChartRow}>
                 {last7Sleep.map((s, idx) => (
-                  <SleepDayBar key={s.id ?? `sleep-${idx}`} sleep={s} />
+                  <SleepDayBar key={`sleep:${s.id ?? idx}`} sleep={s} />
                 ))}
               </View>
               <View style={styles.sleepLegendRow}>
@@ -339,7 +339,7 @@ export default function WhoopDataPage() {
               <Text style={styles.cardTitle}>Daily Cycles</Text>
               <View style={styles.cyclesList}>
                 {data.cycles.slice(0, 14).map((cycle, idx) => (
-                  <View key={cycle.id ?? `cycle-${idx}`} style={styles.cycleRow}>
+                  <View key={`cycle:${cycle.id ?? idx}`} style={styles.cycleRow}>
                     <Text style={styles.cycleDate}>{formatDate(cycle.start)}</Text>
                     <View style={styles.cycleStats}>
                       <View style={styles.cycleStat}>
@@ -370,7 +370,7 @@ export default function WhoopDataPage() {
               <Text style={styles.cardTitle}>Workouts</Text>
               <View style={styles.workoutsList}>
                 {data.workouts.map((workout) => (
-                  <View key={workout.id} style={styles.workoutRow}>
+                  <View key={`whoop-workout:${workout.id}`} style={styles.workoutRow}>
                     <View style={styles.workoutHeader}>
                       <View>
                         <Text style={styles.workoutName}>{workout.sportName ?? 'Workout'}</Text>
