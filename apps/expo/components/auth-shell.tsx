@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
 
 export interface AuthShellHandle {
@@ -26,6 +27,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
   ({ eyebrow, title, subtitle, children, scrollPadding = 180 }, ref) => {
     const { height: windowHeight } = useWindowDimensions();
     const scrollViewRef = useRef<any>(null);
+    const insets = useSafeAreaInsets();
 
     useImperativeHandle(ref, () => ({
       scrollToInput: (y: number) => {
@@ -55,7 +57,8 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
             style={{
               flex: 1,
               paddingHorizontal: 20,
-              paddingVertical: 48,
+              paddingTop: Math.max(insets.top, 48),
+              paddingBottom: 48,
             }}
           >
             <View style={{ alignItems: 'center', marginBottom: 40 }}>

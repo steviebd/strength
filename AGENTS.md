@@ -22,12 +22,8 @@ All dev commands inject secrets via Infisical. Never run the underlying commands
 bun run dev:worker   # starts Hono/Cloudflare Worker on 0.0.0.0:8787
 bun run dev:expo    # starts Expo dev server
 
-bun run db:generate          # generate Drizzle migrations
-bun run db:push:dev          # apply migrations to local D1
-bun run db:apply:local        # alias for db:push:dev (from worker package)
-
-bun --filter @strength/worker db:apply:local   # apply migrations from root
-bun --filter @strength/db db:generate          # generate migrations from root
+bun run db:generate   # generate Drizzle migrations (runs @strength/db)
+bun run db:apply:local # apply migrations to local D1 (runs @strength/worker)
 ```
 
 ## Architecture

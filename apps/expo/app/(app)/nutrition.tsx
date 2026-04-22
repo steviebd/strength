@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { Screen, ScreenScrollView } from '@/components/ui/Screen';
+import { PageLayout } from '@/components/ui/PageLayout';
 import {
   ActionButton,
   Badge,
@@ -72,21 +72,21 @@ export default function NutritionScreen() {
 
   if (isLoading) {
     return (
-      <Screen style={styles.screen}>
+      <PageLayout>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#fb923c" />
         </View>
-      </Screen>
+      </PageLayout>
     );
   }
 
   if (error || !summary) {
     return (
-      <Screen style={styles.screen}>
+      <PageLayout>
         <View style={styles.centered}>
           <Text style={styles.errorText}>Failed to load nutrition data.</Text>
         </View>
-      </Screen>
+      </PageLayout>
     );
   }
 
@@ -95,170 +95,164 @@ export default function NutritionScreen() {
   const caloriePercent = clampPercent(totals.calories, targets.calories);
 
   return (
-    <Screen style={styles.screen}>
-      <ScreenScrollView topPadding={10} bottomInset={96}>
+    <PageLayout
+      header={
         <PageHeader
           eyebrow="Daily nutrition"
           title="Eat for performance"
           description="Track calories, monitor macros, and keep recovery-supported fueling on pace."
         />
-
-        <Surface style={styles.calorieCard}>
-          <View style={styles.calorieContent}>
-            <View style={styles.calorieMain}>
-              <Badge label={`${remainingCalories} kcal left`} tone="orange" />
-              <Text style={styles.calorieValue}>{totals.calories}</Text>
-              <Text style={styles.calorieTarget}>of {targets.calories} kcal target today</Text>
+      }
+    >
+      <Surface style={styles.calorieCard}>
+        <View style={styles.calorieContent}>
+          <View style={styles.calorieMain}>
+            <Badge label={`${remainingCalories} kcal left`} tone="orange" />
+            <Text style={styles.calorieValue}>{totals.calories}</Text>
+            <Text style={styles.calorieTarget}>of {targets.calories} kcal target today</Text>
+          </View>
+          {whoopRecovery?.score ? (
+            <View style={styles.recoveryScore}>
+              <Text style={styles.recoveryLabel}>Recovery</Text>
+              <Text style={styles.recoveryValue}>{whoopRecovery.score}%</Text>
             </View>
-            {whoopRecovery?.score ? (
-              <View style={styles.recoveryScore}>
-                <Text style={styles.recoveryLabel}>Recovery</Text>
-                <Text style={styles.recoveryValue}>{whoopRecovery.score}%</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.progressSection}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${caloriePercent}%` }]} />
+          </View>
+          <View style={styles.progressLabels}>
+            <Text style={styles.progressLabel}>{totals.calories} consumed</Text>
+            <Text style={styles.progressLabel}>{targets.calories} target</Text>
+          </View>
+        </View>
+
+        <View style={styles.actionRow}>
+          <ActionButton
+            label="Log Meal"
+            icon="add"
+            onPress={() => router.push('/nutrition/chat')}
+          />
+          <ActionButton
+            label="Meal Chat"
+            icon="sparkles-outline"
+            variant="secondary"
+            onPress={() => router.push('/nutrition/chat')}
+          />
+        </View>
+      </Surface>
+
+      <SectionTitle title="Macros" />
+      <View style={styles.macroRow}>
+        <MetricTile
+          label="Protein"
+          value={`${totals.proteinG.toFixed(0)}g`}
+          hint={`Target ${targets.proteinG}g`}
+          tone="emerald"
+        />
+        <MetricTile
+          label="Carbs"
+          value={`${totals.carbsG.toFixed(0)}g`}
+          hint={`Target ${targets.carbsG}g`}
+          tone="sky"
+        />
+        <MetricTile
+          label="Fat"
+          value={`${totals.fatG.toFixed(0)}g`}
+          hint={`Target ${targets.fatG}g`}
+          tone="orange"
+        />
+      </View>
+
+      {(whoopRecovery || whoopCycle) && (
+        <>
+          <SectionTitle title="Recovery context" />
+          <Surface style={styles.recoveryCard}>
+            <View style={styles.recoveryContent}>
+              <View style={styles.badgeRow}>
+                {whoopRecovery?.status ? (
+                  <Badge
+                    label={`Recovery ${whoopRecovery.status}`}
+                    tone={
+                      whoopRecovery.status === 'green'
+                        ? 'emerald'
+                        : whoopRecovery.status === 'yellow'
+                          ? 'orange'
+                          : 'rose'
+                    }
+                  />
+                ) : null}
+                {whoopCycle?.totalStrain != null ? (
+                  <Badge label={`Strain ${whoopCycle.totalStrain.toFixed(1)}`} tone="sky" />
+                ) : null}
               </View>
-            ) : null}
-          </View>
-
-          <View style={styles.progressSection}>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${caloriePercent}%` }]} />
+              <View style={styles.metricRow}>
+                <MetricTile
+                  label="HRV"
+                  value={whoopRecovery?.hrv != null ? `${whoopRecovery.hrv}` : '--'}
+                  hint="ms"
+                />
+                <MetricTile
+                  label="Burned"
+                  value={whoopCycle?.caloriesBurned != null ? `${whoopCycle.caloriesBurned}` : '--'}
+                  hint="kcal"
+                />
+              </View>
             </View>
-            <View style={styles.progressLabels}>
-              <Text style={styles.progressLabel}>{totals.calories} consumed</Text>
-              <Text style={styles.progressLabel}>{targets.calories} target</Text>
-            </View>
-          </View>
+          </Surface>
+        </>
+      )}
 
-          <View style={styles.actionRow}>
+      <SectionTitle
+        title="Meals"
+        actionLabel="Log another"
+        onActionPress={() => router.push('/nutrition/chat')}
+      />
+      {entries.length === 0 ? (
+        <Surface style={styles.emptyState}>
+          <View style={styles.emptyContent}>
+            <Text style={styles.emptyTitle}>No meals logged yet</Text>
+            <Text style={styles.emptyDescription}>
+              Start with a quick message and the meal chat can turn it into a tracked entry.
+            </Text>
             <ActionButton
-              label="Log Meal"
-              icon="add"
-              onPress={() => router.push('/nutrition/chat')}
-            />
-            <ActionButton
-              label="Meal Chat"
-              icon="sparkles-outline"
-              variant="secondary"
+              label="Start logging"
+              icon="chatbubble-ellipses-outline"
               onPress={() => router.push('/nutrition/chat')}
             />
           </View>
         </Surface>
-
-        <SectionTitle title="Macros" />
-        <View style={styles.macroRow}>
-          <MetricTile
-            label="Protein"
-            value={`${totals.proteinG.toFixed(0)}g`}
-            hint={`Target ${targets.proteinG}g`}
-            tone="emerald"
-          />
-          <MetricTile
-            label="Carbs"
-            value={`${totals.carbsG.toFixed(0)}g`}
-            hint={`Target ${targets.carbsG}g`}
-            tone="sky"
-          />
-          <MetricTile
-            label="Fat"
-            value={`${totals.fatG.toFixed(0)}g`}
-            hint={`Target ${targets.fatG}g`}
-            tone="orange"
-          />
-        </View>
-
-        {(whoopRecovery || whoopCycle) && (
-          <>
-            <SectionTitle title="Recovery context" />
-            <Surface style={styles.recoveryCard}>
-              <View style={styles.recoveryContent}>
-                <View style={styles.badgeRow}>
-                  {whoopRecovery?.status ? (
-                    <Badge
-                      label={`Recovery ${whoopRecovery.status}`}
-                      tone={
-                        whoopRecovery.status === 'green'
-                          ? 'emerald'
-                          : whoopRecovery.status === 'yellow'
-                            ? 'orange'
-                            : 'rose'
-                      }
-                    />
-                  ) : null}
-                  {whoopCycle?.totalStrain != null ? (
-                    <Badge label={`Strain ${whoopCycle.totalStrain.toFixed(1)}`} tone="sky" />
-                  ) : null}
-                </View>
-                <View style={styles.metricRow}>
-                  <MetricTile
-                    label="HRV"
-                    value={whoopRecovery?.hrv != null ? `${whoopRecovery.hrv}` : '--'}
-                    hint="ms"
-                  />
-                  <MetricTile
-                    label="Burned"
-                    value={
-                      whoopCycle?.caloriesBurned != null ? `${whoopCycle.caloriesBurned}` : '--'
-                    }
-                    hint="kcal"
-                  />
-                </View>
-              </View>
-            </Surface>
-          </>
-        )}
-
-        <SectionTitle
-          title="Meals"
-          actionLabel="Log another"
-          onActionPress={() => router.push('/nutrition/chat')}
-        />
-        {entries.length === 0 ? (
-          <Surface style={styles.emptyState}>
-            <View style={styles.emptyContent}>
-              <Text style={styles.emptyTitle}>No meals logged yet</Text>
-              <Text style={styles.emptyDescription}>
-                Start with a quick message and the meal chat can turn it into a tracked entry.
-              </Text>
-              <ActionButton
-                label="Start logging"
-                icon="chatbubble-ellipses-outline"
-                onPress={() => router.push('/nutrition/chat')}
+      ) : (
+        <View style={styles.mealList}>
+          {entries.map((entry) => {
+            const time = entry.loggedAt
+              ? new Date(entry.loggedAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : '';
+            return (
+              <MealCard
+                key={entry.id}
+                mealType={entry.mealType ?? 'snack'}
+                time={time}
+                name={entry.name ?? 'Unnamed meal'}
+                calories={entry.calories ?? 0}
+                protein={entry.proteinG ?? 0}
+                carbs={entry.carbsG ?? 0}
+                fat={entry.fatG ?? 0}
               />
-            </View>
-          </Surface>
-        ) : (
-          <View style={styles.mealList}>
-            {entries.map((entry) => {
-              const time = entry.loggedAt
-                ? new Date(entry.loggedAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : '';
-              return (
-                <MealCard
-                  key={entry.id}
-                  mealType={entry.mealType ?? 'snack'}
-                  time={time}
-                  name={entry.name ?? 'Unnamed meal'}
-                  calories={entry.calories ?? 0}
-                  protein={entry.proteinG ?? 0}
-                  carbs={entry.carbsG ?? 0}
-                  fat={entry.fatG ?? 0}
-                />
-              );
-            })}
-          </View>
-        )}
-      </ScreenScrollView>
-    </Screen>
+            );
+          })}
+        </View>
+      )}
+    </PageLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   centered: {
     flex: 1,
     alignItems: 'center',

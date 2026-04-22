@@ -20,6 +20,7 @@ These are locked and no longer open questions.
 ## 13. Implementation Tasks
 
 ### Phase 1 — Config & Dependency Cleanup
+
 - [x] **T1**: Remove `import '@/global.css'` from `apps/expo/app/_layout.tsx`
 - [x] **T2**: Remove `withReactNativeCSS(...)` from `apps/expo/metro.config.js`
 - [x] **T3**: Remove `nativewind-env.d.ts` from `apps/expo/tsconfig.json` include
@@ -29,6 +30,7 @@ These are locked and no longer open questions.
 - [x] **T7**: Delete Tailwind/NativeWind files (§5.1)
 
 ### Phase 2 — Theme & Primitives
+
 - [x] **T8**: Create `apps/expo/theme.ts` with colors, spacing, radius, typography, layout tokens
 - [x] **T9**: Rebuild `apps/expo/components/ui/Screen.tsx`
 - [x] **T10**: Rebuild `apps/expo/components/ui/Button.tsx`
@@ -40,15 +42,18 @@ These are locked and no longer open questions.
 - [x] **T16**: Delete `apps/expo/components/ui/Header.tsx`, `apps/expo/components/ui/ModalHeader.tsx`, `apps/expo/components/ui/BottomSheet.tsx`
 
 ### Phase 3 — Auth
+
 - [x] **T17**: Rebuild `apps/expo/components/auth-shell.tsx` (layout-only, no internal state)
 - [x] **T18**: Rebuild `apps/expo/app/auth/sign-in.tsx`
 - [x] **T19**: Rebuild `apps/expo/app/auth/sign-up.tsx`
 
 ### Phase 4 — Navigation Layout
+
 - [x] **T20**: Rebuild `apps/expo/app/(app)/_layout.tsx` (tab bar with Ionicons, whoop hidden)
 - [x] **T21**: Rebuild `apps/expo/app/_layout.tsx` (wrap with theme providers if needed)
 
 ### Phase 5 — App Screens
+
 - [x] **T22**: Rebuild `apps/expo/app/(app)/home.tsx`
 - [x] **T23**: Rebuild `apps/expo/app/(app)/workouts.tsx`
 - [x] **T24**: Rebuild `apps/expo/app/(app)/programs.tsx`
@@ -60,6 +65,7 @@ These are locked and no longer open questions.
 - [x] **T30**: Rebuild `apps/expo/app/whoop-callback.tsx`
 
 ### Phase 6 — Workout & Template Components
+
 - [x] **T31**: Rebuild `apps/expo/components/workout/WorkoutCard.tsx`
 - [x] **T32**: Rebuild `apps/expo/components/workout/SetLogger.tsx`
 - [x] **T33**: Rebuild `apps/expo/components/workout/ExerciseLogger.tsx`
@@ -74,6 +80,7 @@ These are locked and no longer open questions.
 - [x] **T42**: Rebuild `apps/expo/app/workout-session.tsx`
 
 ### Phase 7 — Nutrition Components
+
 - [x] **T43**: Rebuild `apps/expo/components/nutrition/MacroProgressBar.tsx`
 - [x] **T44**: Rebuild `apps/expo/components/nutrition/MealCard.tsx`
 - [x] **T45**: Rebuild `apps/expo/components/nutrition/SaveMealDialog.tsx`
@@ -81,6 +88,7 @@ These are locked and no longer open questions.
 - [x] **T47**: Rebuild `apps/expo/app/nutrition/chat.tsx`
 
 ### Phase 8 — Final Cleanup & Verification
+
 - [x] **T48**: Verify no `@/tw` imports or `className` props remain
 - [x] **T49**: Run `bun run check` and fix all errors/warnings
 - [x] **T50**: Final code review for errors and incomplete items

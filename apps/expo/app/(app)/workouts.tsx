@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Screen, ScreenScrollView } from '@/components/ui/Screen';
 import {
   ActionButton,
   Badge,
@@ -20,6 +19,7 @@ import {
   SegmentedTabs,
   Surface,
 } from '@/components/ui/app-primitives';
+import { PageLayout } from '@/components/ui/PageLayout';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { TemplateList } from '@/components/template/TemplateList';
@@ -371,14 +371,16 @@ export default function WorkoutsIndex() {
   };
 
   return (
-    <Screen style={styles.screen}>
-      <ScreenScrollView bottomInset={96} topPadding={10} showsVerticalScrollIndicator={false}>
-        <PageHeader
-          eyebrow="Training"
-          title="Workouts"
-          description="Launch a session quickly, keep templates organized, and review your recent training."
-        />
-
+    <>
+      <PageLayout
+        header={
+          <PageHeader
+            eyebrow="Training"
+            title="Workouts"
+            description="Launch a session quickly, keep templates organized, and review your recent training."
+          />
+        }
+      >
         <SegmentedTabs
           options={[
             {
@@ -479,7 +481,7 @@ export default function WorkoutsIndex() {
             })}
           </View>
         )}
-      </ScreenScrollView>
+      </PageLayout>
 
       <Modal
         visible={showStartWorkout}
@@ -533,7 +535,7 @@ export default function WorkoutsIndex() {
           onSaved={handleTemplateSaved}
         />
       </Modal>
-    </Screen>
+    </>
   );
 }
 

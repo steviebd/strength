@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { apiFetch } from '@/lib/api';
-import { ScreenScrollView } from '@/components/ui/Screen';
+import { PageLayout } from '@/components/ui/PageLayout';
+import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -61,6 +69,12 @@ export default function ProgramOneRMTestScreen() {
     deadlift: '',
     ohp: '',
   });
+  const [initialValues, setInitialValues] = useState({
+    squat: '',
+    bench: '',
+    deadlift: '',
+    ohp: '',
+  });
 
   const load = useCallback(async () => {
     if (!cycleId) return;
@@ -75,7 +89,7 @@ export default function ProgramOneRMTestScreen() {
           `/api/programs/cycles/${cycleId}/1rm-test-workout`,
         );
         setTestWorkout(workout);
-        setValues({
+        const nextValues = {
           squat: toDisplayWeight(workout.squat1rm ?? cycleResponse.cycle.squat1rm, weightUnit),
           bench: toDisplayWeight(workout.bench1rm ?? cycleResponse.cycle.bench1rm, weightUnit),
           deadlift: toDisplayWeight(
@@ -83,15 +97,19 @@ export default function ProgramOneRMTestScreen() {
             weightUnit,
           ),
           ohp: toDisplayWeight(workout.ohp1rm ?? cycleResponse.cycle.ohp1rm, weightUnit),
-        });
+        };
+        setValues(nextValues);
+        setInitialValues(nextValues);
       } catch {
         setTestWorkout(null);
-        setValues({
+        const nextValues = {
           squat: toDisplayWeight(cycleResponse.cycle.squat1rm, weightUnit),
           bench: toDisplayWeight(cycleResponse.cycle.bench1rm, weightUnit),
           deadlift: toDisplayWeight(cycleResponse.cycle.deadlift1rm, weightUnit),
           ohp: toDisplayWeight(cycleResponse.cycle.ohp1rm, weightUnit),
-        });
+        };
+        setValues(nextValues);
+        setInitialValues(nextValues);
       }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to load 1RM test');
@@ -165,6 +183,33 @@ export default function ProgramOneRMTestScreen() {
     }
   }, [cycle, cycleId, router, values, weightUnit]);
 
+  const hasUnsavedChanges = useMemo(
+    () =>
+      values.squat !== initialValues.squat ||
+      values.bench !== initialValues.bench ||
+      values.deadlift !== initialValues.deadlift ||
+      values.ohp !== initialValues.ohp,
+    [initialValues, values],
+  );
+
+  const handleExit = useCallback(() => {
+    const goToPrograms = () => router.replace('/(app)/programs');
+
+    if (!hasUnsavedChanges) {
+      goToPrograms();
+      return;
+    }
+
+    Alert.alert('Discard 1RM changes?', 'Your unsaved 1RM values will be lost.', [
+      { text: 'Keep Editing', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: goToPrograms,
+      },
+    ]);
+  }, [hasUnsavedChanges, router]);
+
   if (!cycleId) {
     return (
       <View
@@ -205,54 +250,26 @@ export default function ProgramOneRMTestScreen() {
   }
 
   return (
-    <ScreenScrollView bottomInset={120}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md }}>
-        <Pressable onPress={() => router.back()} style={{ padding: spacing.sm }}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text
-          style={{
-            flex: 1,
-            textAlign: 'center',
-            color: colors.text,
-            fontSize: typography.fontSizes.lg,
-            fontWeight: typography.fontWeights.semibold,
-          }}
-        >
-          1RM Test
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
-
+    <PageLayout
+      headerType="custom"
+      header={
+        <CustomPageHeader
+          title="1RM Test"
+          onBack={handleExit}
+          rightSlot={
+            <Pressable onPress={handleExit} style={styles.headerAction}>
+              <Text style={styles.headerActionText}>Discard</Text>
+            </Pressable>
+          }
+        />
+      }
+    >
       <View>
-        <Text
-          style={{
-            color: colors.textMuted,
-            fontSize: typography.fontSizes.sm,
-            marginBottom: spacing.xs,
-          }}
-        >
-          Program Cycle
-        </Text>
-        <Text
-          style={{
-            color: colors.text,
-            fontSize: typography.fontSizes.xxl,
-            fontWeight: typography.fontWeights.semibold,
-            marginBottom: spacing.lg,
-          }}
-        >
-          {cycle?.name ?? 'Program'}
-        </Text>
+        <Text style={styles.sectionLabel}>Program Cycle</Text>
+        <Text style={styles.programTitle}>{cycle?.name ?? 'Program'}</Text>
 
         <Pressable
-          style={{
-            marginBottom: spacing.lg,
-            borderRadius: radius.xl,
-            backgroundColor: colors.accent,
-            paddingVertical: spacing.md,
-            opacity: openingWorkout ? 0.5 : 1,
-          }}
+          style={[styles.primaryButton, openingWorkout && styles.buttonDisabled]}
           onPress={() => {
             void handleOpenWorkout();
           }}
@@ -261,14 +278,7 @@ export default function ProgramOneRMTestScreen() {
           {openingWorkout ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
-            <Text
-              style={{
-                textAlign: 'center',
-                color: '#ffffff',
-                fontSize: typography.fontSizes.base,
-                fontWeight: typography.fontWeights.semibold,
-              }}
-            >
+            <Text style={styles.primaryButtonText}>
               {testWorkout?.completedAt
                 ? 'Start Another 1RM Test Workout'
                 : 'Open 1RM Test Workout'}
@@ -276,13 +286,7 @@ export default function ProgramOneRMTestScreen() {
           )}
         </Pressable>
 
-        <Text
-          style={{
-            color: colors.textMuted,
-            fontSize: typography.fontSizes.sm,
-            marginBottom: spacing.md,
-          }}
-        >
+        <Text style={styles.instructionsText}>
           Complete the 1RM test workout, then record the final values here. These will update this
           program and be used as defaults when you start the next one.
         </Text>
@@ -309,46 +313,13 @@ export default function ProgramOneRMTestScreen() {
             start: cycle?.startingOhp1rm ?? cycle?.ohp1rm ?? null,
           },
         ].map((field) => (
-          <View
-            key={field.key}
-            style={{
-              marginBottom: spacing.md,
-              borderRadius: radius.xl,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.surface,
-              padding: spacing.md,
-            }}
-          >
-            <Text
-              style={{
-                color: colors.text,
-                fontSize: typography.fontSizes.base,
-                fontWeight: typography.fontWeights.medium,
-                marginBottom: spacing.xs,
-              }}
-            >
-              {field.label}
-            </Text>
-            <Text
-              style={{
-                color: colors.textMuted,
-                fontSize: typography.fontSizes.xs,
-                marginBottom: spacing.md,
-              }}
-            >
+          <View key={field.key} style={styles.inputCard}>
+            <Text style={styles.inputLabel}>{field.label}</Text>
+            <Text style={styles.startingValueText}>
               Starting: {toDisplayWeight(field.start, weightUnit) || '0'} {weightUnit}
             </Text>
             <TextInput
-              style={{
-                borderRadius: radius.md,
-                backgroundColor: colors.background,
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm,
-                fontSize: typography.fontSizes.xxl,
-                fontWeight: typography.fontWeights.bold,
-                color: colors.text,
-              }}
+              style={styles.textInput}
               value={values[field.key as keyof typeof values]}
               onChangeText={(text) =>
                 setValues((prev) => ({
@@ -364,12 +335,7 @@ export default function ProgramOneRMTestScreen() {
         ))}
 
         <Pressable
-          style={{
-            borderRadius: radius.xl,
-            backgroundColor: colors.success,
-            paddingVertical: spacing.md,
-            opacity: saving ? 0.5 : 1,
-          }}
+          style={[styles.successButton, saving && styles.buttonDisabled]}
           onPress={() => {
             void handleSave();
           }}
@@ -378,19 +344,88 @@ export default function ProgramOneRMTestScreen() {
           {saving ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : (
-            <Text
-              style={{
-                textAlign: 'center',
-                color: '#ffffff',
-                fontSize: typography.fontSizes.base,
-                fontWeight: typography.fontWeights.semibold,
-              }}
-            >
-              Save 1RMs
-            </Text>
+            <Text style={styles.primaryButtonText}>Save 1RMs</Text>
           )}
         </Pressable>
       </View>
-    </ScreenScrollView>
+    </PageLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  headerAction: {
+    minWidth: 64,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
+  },
+  headerActionText: {
+    color: colors.error,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    marginBottom: spacing.xs,
+  },
+  programTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.semibold,
+    marginBottom: spacing.lg,
+  },
+  primaryButton: {
+    marginBottom: spacing.lg,
+    borderRadius: radius.xl,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+  },
+  successButton: {
+    borderRadius: radius.xl,
+    backgroundColor: colors.success,
+    paddingVertical: spacing.md,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
+    textAlign: 'center',
+    color: '#ffffff',
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  instructionsText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    marginBottom: spacing.md,
+  },
+  inputCard: {
+    marginBottom: spacing.md,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+  },
+  inputLabel: {
+    color: colors.text,
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    marginBottom: spacing.xs,
+  },
+  startingValueText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginBottom: spacing.md,
+  },
+  textInput: {
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+  },
+});

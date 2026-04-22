@@ -18,7 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '@/lib/api';
 import { addPendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { Screen } from '@/components/ui/Screen';
+import { PageLayout } from '@/components/ui/PageLayout';
+import { PageHeader } from '@/components/ui/app-primitives';
 import { colors, spacing, radius, typography, layout } from '@/theme';
 
 const LBS_TO_KG = 0.453592;
@@ -144,27 +145,6 @@ function getDisplaySessionNumber(program: ActiveProgram) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: typography.fontSizes.xxxl,
-    fontWeight: typography.fontWeights.bold,
-  },
-  headerSubtitle: {
-    color: colors.textMuted,
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.normal,
-    marginTop: spacing.xs,
-  },
-  headerRow: {
-    marginBottom: spacing.lg,
-  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -733,105 +713,94 @@ export default function ProgramsScreen() {
   const diffColor = (difficulty: string) => getDifficultyColor(difficulty);
 
   return (
-    <Screen style={styles.screen}>
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Programs</Text>
-          <Text style={styles.headerSubtitle}>Training Programs</Text>
+    <PageLayout header={<PageHeader eyebrow="Training Programs" title="Programs" />}>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
-
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.accent} />
-          </View>
-        ) : (
-          <>
-            {activePrograms.length > 0 && (
-              <View style={styles.activeSection}>
-                <Text style={styles.sectionTitle}>Active Programs</Text>
-                {activePrograms.map((program) => (
-                  <View key={program.id} style={styles.activeCard}>
-                    <View style={styles.activeCardHeader}>
-                      <View>
-                        <Text style={styles.activeCardTitle}>{program.name}</Text>
-                        <Text style={styles.activeCardMeta}>
-                          Week {program.currentWeek ?? '—'} · Session{' '}
-                          {getDisplaySessionNumber(program)} of {program.totalSessionsPlanned}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.activeCardButtons}>
-                      <Pressable
-                        style={styles.activeOpenButton}
-                        onPress={() => handleOpenCurrentProgramWorkout(program)}
-                        disabled={openingProgramWorkoutId === program.id}
-                      >
-                        {openingProgramWorkoutId === program.id ? (
-                          <ActivityIndicator size="small" color={colors.text} />
-                        ) : (
-                          <Text style={styles.activeOpenButtonText}>Continue Workout</Text>
-                        )}
-                      </Pressable>
-                      <Pressable
-                        style={styles.activeDeleteButton}
-                        onPress={() => handleDeleteProgram(program)}
-                        disabled={deletingProgramId === program.id}
-                      >
-                        {deletingProgramId === program.id ? (
-                          <ActivityIndicator size="small" color={colors.error} />
-                        ) : (
-                          <Text style={styles.activeDeleteButtonText}>Delete</Text>
-                        )}
-                      </Pressable>
+      ) : (
+        <>
+          {activePrograms.length > 0 && (
+            <View style={styles.activeSection}>
+              <Text style={styles.sectionTitle}>Active Programs</Text>
+              {activePrograms.map((program) => (
+                <View key={program.id} style={styles.activeCard}>
+                  <View style={styles.activeCardHeader}>
+                    <View>
+                      <Text style={styles.activeCardTitle}>{program.name}</Text>
+                      <Text style={styles.activeCardMeta}>
+                        Week {program.currentWeek ?? '—'} · Session{' '}
+                        {getDisplaySessionNumber(program)} of {program.totalSessionsPlanned}
+                      </Text>
                     </View>
                   </View>
-                ))}
-              </View>
-            )}
-
-            <Text style={styles.sectionTitle}>Available Programs</Text>
-            <View style={styles.programsList}>
-              {availablePrograms.map((program) => {
-                const dc = diffColor(program.difficulty);
-                return (
-                  <Pressable
-                    key={program.slug}
-                    style={styles.programCard}
-                    onPress={() => openProgramDetail(program)}
-                  >
-                    <View style={styles.cardTopRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.cardTitle}>{program.name}</Text>
-                        <Text style={styles.cardDescription}>{program.description}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.badgeRow}>
-                      <View style={[styles.difficultyBadge, { backgroundColor: dc.bg }]}>
-                        <Text style={[styles.difficultyText, { color: dc.text }]}>
-                          {program.difficulty}
-                        </Text>
-                      </View>
-                      <Text style={styles.separator}>·</Text>
-                      <Text style={styles.metaText}>{program.daysPerWeek} days/week</Text>
-                      <Text style={styles.separator}>·</Text>
-                      <Text style={styles.metaText}>{program.estimatedWeeks} weeks</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
+                  <View style={styles.activeCardButtons}>
+                    <Pressable
+                      style={styles.activeOpenButton}
+                      onPress={() => handleOpenCurrentProgramWorkout(program)}
+                      disabled={openingProgramWorkoutId === program.id}
+                    >
+                      {openingProgramWorkoutId === program.id ? (
+                        <ActivityIndicator size="small" color={colors.text} />
+                      ) : (
+                        <Text style={styles.activeOpenButtonText}>Continue Workout</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={styles.activeDeleteButton}
+                      onPress={() => handleDeleteProgram(program)}
+                      disabled={deletingProgramId === program.id}
+                    >
+                      {deletingProgramId === program.id ? (
+                        <ActivityIndicator size="small" color={colors.error} />
+                      ) : (
+                        <Text style={styles.activeDeleteButtonText}>Delete</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
             </View>
-          </>
-        )}
-      </ScrollView>
+          )}
+
+          <Text style={styles.sectionTitle}>Available Programs</Text>
+          <View style={styles.programsList}>
+            {availablePrograms.map((program) => {
+              const dc = diffColor(program.difficulty);
+              return (
+                <Pressable
+                  key={program.slug}
+                  style={styles.programCard}
+                  onPress={() => openProgramDetail(program)}
+                >
+                  <View style={styles.cardTopRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>{program.name}</Text>
+                      <Text style={styles.cardDescription}>{program.description}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.difficultyBadge, { backgroundColor: dc.bg }]}>
+                      <Text style={[styles.difficultyText, { color: dc.text }]}>
+                        {program.difficulty}
+                      </Text>
+                    </View>
+                    <Text style={styles.separator}>·</Text>
+                    <Text style={styles.metaText}>{program.daysPerWeek} days/week</Text>
+                    <Text style={styles.separator}>·</Text>
+                    <Text style={styles.metaText}>{program.estimatedWeeks} weeks</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
 
       {selectedProgram && showDetailModal && (
         <View style={styles.modalOverlay}>
           <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
               <Pressable style={styles.backButton} onPress={() => setShowDetailModal(false)}>
                 <Ionicons name="chevron-back" size={24} color={colors.text} />
               </Pressable>
@@ -876,7 +845,7 @@ export default function ProgramsScreen() {
             }}
             scrollEventThrottle={16}
           >
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
               <Pressable style={styles.backButton} onPress={() => setShowStartModal(false)}>
                 <Ionicons name="chevron-back" size={24} color={colors.text} />
               </Pressable>
@@ -964,6 +933,6 @@ export default function ProgramsScreen() {
           </ScrollView>
         </View>
       )}
-    </Screen>
+    </PageLayout>
   );
 }

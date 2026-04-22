@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { colors, radius, spacing, typography } from '@/theme';
-import { Screen, ScreenScrollView } from '@/components/ui/Screen';
 import {
   ActionButton,
   Badge,
@@ -12,6 +11,7 @@ import {
   SectionTitle,
   Surface,
 } from '@/components/ui/app-primitives';
+import { PageLayout } from '@/components/ui/PageLayout';
 
 const today = new Date();
 const formattedDate = today.toLocaleDateString('en-US', {
@@ -41,8 +41,8 @@ export default function HomeScreen() {
   };
 
   return (
-    <Screen>
-      <ScreenScrollView topPadding={10} bottomInset={96}>
+    <PageLayout
+      header={
         <PageHeader
           eyebrow={formattedDate}
           title={`Welcome back, ${displayName}`}
@@ -53,121 +53,121 @@ export default function HomeScreen() {
             </Pressable>
           }
         />
-
-        <Surface style={styles.workoutCard}>
-          <View style={styles.workoutContent}>
-            <View style={styles.workoutHeader}>
-              <View style={styles.workoutHeaderLeft}>
-                <Badge label="Today" tone="orange" />
-                <View style={styles.workoutTitleGroup}>
-                  <Text style={styles.workoutTitle}>{nextWorkout.title}</Text>
-                  <Text style={styles.workoutFocus}>{nextWorkout.focus}</Text>
-                </View>
-              </View>
-              <View style={styles.workoutIcon}>
-                <Ionicons name="barbell-outline" size={24} color="#fdba74" />
+      }
+    >
+      <Surface style={styles.workoutCard}>
+        <View style={styles.workoutContent}>
+          <View style={styles.workoutHeader}>
+            <View style={styles.workoutHeaderLeft}>
+              <Badge label="Today" tone="orange" />
+              <View style={styles.workoutTitleGroup}>
+                <Text style={styles.workoutTitle}>{nextWorkout.title}</Text>
+                <Text style={styles.workoutFocus}>{nextWorkout.focus}</Text>
               </View>
             </View>
-
-            <View style={styles.exerciseList}>
-              {nextWorkout.exercises.map((exercise, index) => (
-                <View key={exercise} style={styles.exerciseRow}>
-                  <View style={styles.exerciseNumber}>
-                    <Text style={styles.exerciseNumberText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.exerciseText}>{exercise}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.workoutActions}>
-              <View style={{ flex: 1 }}>
-                <ActionButton
-                  label="Start Workout"
-                  icon="play"
-                  onPress={() => router.push('/(app)/workouts')}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <ActionButton
-                  label="Programs"
-                  icon="layers-outline"
-                  variant="secondary"
-                  onPress={() => router.push('/(app)/programs')}
-                />
-              </View>
+            <View style={styles.workoutIcon}>
+              <Ionicons name="barbell-outline" size={24} color="#fdba74" />
             </View>
           </View>
-        </Surface>
 
-        <View style={styles.metricsRow}>
-          <MetricTile
-            label="Workouts"
-            value={`${weeklyProgress.workoutsCompleted}/${weeklyProgress.workoutsTarget}`}
-            hint="This week"
-            tone="orange"
-          />
-          <MetricTile
-            label="Streak"
-            value={`${weeklyProgress.streakDays}d`}
-            hint="Consistency"
-            tone="emerald"
-          />
-          <MetricTile label="Volume" value={weeklyProgress.totalVolume} hint="Lifted" tone="sky" />
-        </View>
-
-        <SectionTitle title="Quick Access" />
-        <View style={styles.quickAccessSection}>
-          <Surface style={styles.quickAccessCard}>
-            <View style={styles.quickAccessRow}>
-              <View style={styles.quickAccessContent}>
-                <Text style={styles.quickAccessTitle}>Nutrition</Text>
-                <Text style={styles.quickAccessDesc}>
-                  Log meals, track macros, and compare intake against recovery.
-                </Text>
+          <View style={styles.exerciseList}>
+            {nextWorkout.exercises.map((exercise, index) => (
+              <View key={exercise} style={styles.exerciseRow}>
+                <View style={styles.exerciseNumber}>
+                  <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.exerciseText}>{exercise}</Text>
               </View>
-              <ActionButton
-                label="Open"
-                icon="restaurant-outline"
-                variant="secondary"
-                onPress={() => router.push('/(app)/nutrition')}
-              />
-            </View>
-          </Surface>
+            ))}
+          </View>
 
-          <Surface style={styles.quickAccessCard}>
-            <View style={styles.quickAccessRow}>
-              <View style={styles.quickAccessContent}>
-                <Text style={styles.quickAccessTitle}>Templates</Text>
-                <Text style={styles.quickAccessDesc}>
-                  Launch saved sessions fast or build a new training template.
-                </Text>
-              </View>
+          <View style={styles.workoutActions}>
+            <View style={{ flex: 1 }}>
               <ActionButton
-                label="Manage"
-                icon="albums-outline"
-                variant="secondary"
+                label="Start Workout"
+                icon="play"
                 onPress={() => router.push('/(app)/workouts')}
               />
             </View>
-          </Surface>
-        </View>
-
-        <SectionTitle title="Recovery Snapshot" />
-        <Surface style={styles.recoveryCard}>
-          <View style={styles.recoveryContent}>
-            <View style={styles.recoveryHeader}>
-              <Text style={styles.recoveryStatusText}>Current status</Text>
-              <Badge label="Ready to train" tone="emerald" />
-            </View>
-            <View style={styles.recoveryMetrics}>
-              <MetricTile label="Sleep" value="7h 48m" hint="Last night" />
-              <MetricTile label="Recovery" value="78%" hint="WHOOP synced" tone="emerald" />
+            <View style={{ flex: 1 }}>
+              <ActionButton
+                label="Programs"
+                icon="layers-outline"
+                variant="secondary"
+                onPress={() => router.push('/(app)/programs')}
+              />
             </View>
           </View>
+        </View>
+      </Surface>
+
+      <View style={styles.metricsRow}>
+        <MetricTile
+          label="Workouts"
+          value={`${weeklyProgress.workoutsCompleted}/${weeklyProgress.workoutsTarget}`}
+          hint="This week"
+          tone="orange"
+        />
+        <MetricTile
+          label="Streak"
+          value={`${weeklyProgress.streakDays}d`}
+          hint="Consistency"
+          tone="emerald"
+        />
+        <MetricTile label="Volume" value={weeklyProgress.totalVolume} hint="Lifted" tone="sky" />
+      </View>
+
+      <SectionTitle title="Quick Access" />
+      <View style={styles.quickAccessSection}>
+        <Surface style={styles.quickAccessCard}>
+          <View style={styles.quickAccessRow}>
+            <View style={styles.quickAccessContent}>
+              <Text style={styles.quickAccessTitle}>Nutrition</Text>
+              <Text style={styles.quickAccessDesc}>
+                Log meals, track macros, and compare intake against recovery.
+              </Text>
+            </View>
+            <ActionButton
+              label="Open"
+              icon="restaurant-outline"
+              variant="secondary"
+              onPress={() => router.push('/(app)/nutrition')}
+            />
+          </View>
         </Surface>
-      </ScreenScrollView>
-    </Screen>
+
+        <Surface style={styles.quickAccessCard}>
+          <View style={styles.quickAccessRow}>
+            <View style={styles.quickAccessContent}>
+              <Text style={styles.quickAccessTitle}>Templates</Text>
+              <Text style={styles.quickAccessDesc}>
+                Launch saved sessions fast or build a new training template.
+              </Text>
+            </View>
+            <ActionButton
+              label="Manage"
+              icon="albums-outline"
+              variant="secondary"
+              onPress={() => router.push('/(app)/workouts')}
+            />
+          </View>
+        </Surface>
+      </View>
+
+      <SectionTitle title="Recovery Snapshot" />
+      <Surface style={styles.recoveryCard}>
+        <View style={styles.recoveryContent}>
+          <View style={styles.recoveryHeader}>
+            <Text style={styles.recoveryStatusText}>Current status</Text>
+            <Badge label="Ready to train" tone="emerald" />
+          </View>
+          <View style={styles.recoveryMetrics}>
+            <MetricTile label="Sleep" value="7h 48m" hint="Last night" />
+            <MetricTile label="Recovery" value="78%" hint="WHOOP synced" tone="emerald" />
+          </View>
+        </View>
+      </Surface>
+    </PageLayout>
   );
 }
 

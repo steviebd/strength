@@ -10,9 +10,9 @@ import {
   Text,
   Pressable,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
+import { Screen } from '@/components/ui/Screen';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { SaveMealDialog } from '@/components/nutrition/SaveMealDialog';
@@ -147,7 +147,6 @@ function useChat({ date }: { date: string }) {
 const quickActions = ['What should I eat?', 'Analyse my meal', 'Show remaining macros'];
 
 export default function NutritionChat() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -249,47 +248,42 @@ export default function NutritionChat() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Log Meal</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 132 }}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Ask me about your meals or get nutrition advice</Text>
-            <View style={styles.quickActions}>
-              {quickActions.map((action) => (
-                <Pressable
-                  key={action}
-                  onPress={() => setInput(action)}
-                  style={styles.quickActionChip}
-                >
-                  <Text style={styles.quickActionText}>{action}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        }
-        ListFooterComponent={
-          isLoading ? (
-            <View style={styles.loadingRow}>
-              <View style={styles.loadingBubble}>
-                <ActivityIndicator size="small" color="#ef6f4f" />
+    <Screen>
+      <CustomPageHeader title="Log Meal" />
+      <View style={styles.container}>
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ padding: spacing.md, paddingBottom: insets.bottom + 132 }}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Ask me about your meals or get nutrition advice</Text>
+              <View style={styles.quickActions}>
+                {quickActions.map((action) => (
+                  <Pressable
+                    key={action}
+                    onPress={() => setInput(action)}
+                    style={styles.quickActionChip}
+                  >
+                    <Text style={styles.quickActionText}>{action}</Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
-          ) : null
-        }
-      />
+          }
+          ListFooterComponent={
+            isLoading ? (
+              <View style={styles.loadingRow}>
+                <View style={styles.loadingBubble}>
+                  <ActivityIndicator size="small" color="#ef6f4f" />
+                </View>
+              </View>
+            ) : null
+          }
+        />
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -324,7 +318,7 @@ export default function NutritionChat() {
           })
         }
       />
-    </View>
+    </Screen>
   );
 }
 
@@ -332,24 +326,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    padding: spacing.sm,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
   },
   messageRow: {
     flexDirection: 'row',

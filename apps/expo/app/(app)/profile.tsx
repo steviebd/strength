@@ -1,7 +1,8 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { Screen, ScreenScrollView } from '@/components/ui/Screen';
+import { PageLayout } from '@/components/ui/PageLayout';
+import { PageHeader } from '@/components/ui/app-primitives';
 import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
@@ -123,17 +124,21 @@ export default function Profile() {
 
   if (isPending) {
     return (
-      <Screen style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </Screen>
+      <PageLayout header={<PageHeader title="Profile" />}>
+        <View style={styles.loadingCentered}>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </PageLayout>
     );
   }
 
   if (!session?.user) {
     return (
-      <Screen style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>Not signed in</Text>
-      </Screen>
+      <PageLayout header={<PageHeader title="Profile" />}>
+        <View style={styles.loadingCentered}>
+          <Text style={styles.loadingText}>Not signed in</Text>
+        </View>
+      </PageLayout>
     );
   }
 
@@ -141,233 +146,216 @@ export default function Profile() {
   const initial = user.name?.[0]?.toUpperCase() ?? '?';
 
   return (
-    <Screen>
-      <ScreenScrollView bottomInset={120} showsVerticalScrollIndicator={false}>
-        <View style={styles.pageHeader}>
-          <Text style={styles.pageTitle}>Profile</Text>
+    <PageLayout
+      screenScrollViewProps={{ bottomInset: 120 }}
+      header={<PageHeader title="Profile" description={user.email} />}
+    >
+      <View style={styles.avatarSection}>
+        <View style={styles.avatarCircle}>
+          <Text style={styles.avatarInitial}>{initial}</Text>
+        </View>
+        <Text style={styles.userName}>{user.name}</Text>
+        <Text style={styles.userEmail}>{user.email}</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Account</Text>
+
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Name</Text>
+          <Text style={styles.rowValue}>{user.name}</Text>
         </View>
 
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarInitial}>{initial}</Text>
-          </View>
-          <Text style={styles.userName}>{user.name}</Text>
-          <Text style={styles.userEmail}>{user.email}</Text>
+        <View style={[styles.row, styles.rowLast]}>
+          <Text style={styles.rowLabel}>Email</Text>
+          <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
+            {user.email}
+          </Text>
         </View>
+      </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Account</Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>WHOOP Integration</Text>
 
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Name</Text>
-            <Text style={styles.rowValue}>{user.name}</Text>
+        {whoopLoading && !whoopStatus ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.accent} />
           </View>
-
-          <View style={[styles.row, styles.rowLast]}>
-            <Text style={styles.rowLabel}>Email</Text>
-            <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
-              {user.email}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>WHOOP Integration</Text>
-
-          {whoopLoading && !whoopStatus ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={colors.accent} />
+        ) : whoopStatus?.connected ? (
+          <View>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Status</Text>
+              <View style={styles.rowValueRight}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusConnectedText}>Connected</Text>
+              </View>
             </View>
-          ) : whoopStatus?.connected ? (
-            <View>
+
+            {whoopStatus.profile && (
               <View style={styles.row}>
-                <Text style={styles.rowLabel}>Status</Text>
-                <View style={styles.rowValueRight}>
-                  <View style={styles.statusDot} />
-                  <Text style={styles.statusConnectedText}>Connected</Text>
-                </View>
+                <Text style={styles.rowLabel}>WHOOP User</Text>
+                <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
+                  {whoopStatus.profile.firstName} {whoopStatus.profile.lastName}
+                </Text>
               </View>
+            )}
 
-              {whoopStatus.profile && (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>WHOOP User</Text>
-                  <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
-                    {whoopStatus.profile.firstName} {whoopStatus.profile.lastName}
-                  </Text>
-                </View>
-              )}
-
-              {whoopStatus.profile?.email && (
-                <View style={styles.row}>
-                  <Text style={styles.rowLabel}>WHOOP Email</Text>
-                  <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
-                    {whoopStatus.profile.email}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.buttonGroup}>
-                <Pressable
-                  onPress={handleSyncWhoop}
-                  disabled={syncing}
-                  style={[styles.button, styles.buttonPrimary, syncing && styles.buttonDisabled]}
-                >
-                  {syncing ? (
-                    <View style={styles.buttonSpinner}>
-                      <ActivityIndicator color="#ffffff" size="small" />
-                    </View>
-                  ) : (
-                    <Text style={styles.buttonPrimaryText}>Sync Data</Text>
-                  )}
-                </Pressable>
-
-                <Pressable
-                  onPress={() => router.push('/(app)/whoop')}
-                  style={[styles.button, styles.buttonSecondary]}
-                >
-                  <Text style={styles.buttonSecondaryText}>View Data</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleDisconnectWhoop}
-                  disabled={whoopLoading}
-                  style={[
-                    styles.button,
-                    styles.buttonDanger,
-                    whoopLoading && styles.buttonDisabled,
-                  ]}
-                >
-                  <Text style={styles.buttonDangerText}>Disconnect</Text>
-                </Pressable>
+            {whoopStatus.profile?.email && (
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>WHOOP Email</Text>
+                <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
+                  {whoopStatus.profile.email}
+                </Text>
               </View>
+            )}
 
-              {syncResult && (
-                <View style={styles.syncResultBox}>
-                  <Text style={styles.syncResultText}>{syncResult}</Text>
-                </View>
-              )}
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.connectDescription}>
-                Connect your WHOOP account to automatically sync workouts, recovery data, sleep, and
-                more.
-              </Text>
-
+            <View style={styles.buttonGroup}>
               <Pressable
-                onPress={handleConnectWhoop}
-                disabled={whoopLoading}
-                style={[styles.button, styles.buttonWhoop, whoopLoading && styles.buttonDisabled]}
+                onPress={handleSyncWhoop}
+                disabled={syncing}
+                style={[styles.button, styles.buttonPrimary, syncing && styles.buttonDisabled]}
               >
-                {whoopLoading ? (
+                {syncing ? (
                   <View style={styles.buttonSpinner}>
                     <ActivityIndicator color="#ffffff" size="small" />
                   </View>
                 ) : (
-                  <Text style={styles.buttonPrimaryText}>Connect WHOOP</Text>
+                  <Text style={styles.buttonPrimaryText}>Sync Data</Text>
                 )}
               </Pressable>
-            </View>
-          )}
 
-          {error && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Settings</Text>
-
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Weight Unit</Text>
-            <View style={styles.unitToggle}>
               <Pressable
-                onPress={() => setWeightUnit('kg')}
-                disabled={isLoading}
-                style={[
-                  styles.unitButton,
-                  weightUnit === 'kg' ? styles.unitButtonActive : styles.unitButtonInactive,
-                ]}
+                onPress={() => router.push('/(app)/whoop')}
+                style={[styles.button, styles.buttonSecondary]}
               >
-                <Text
-                  style={[
-                    styles.unitButtonText,
-                    weightUnit === 'kg'
-                      ? styles.unitButtonTextActive
-                      : styles.unitButtonTextInactive,
-                  ]}
-                >
-                  kg
-                </Text>
+                <Text style={styles.buttonSecondaryText}>View Data</Text>
               </Pressable>
+
               <Pressable
-                onPress={() => setWeightUnit('lbs')}
-                disabled={isLoading}
-                style={[
-                  styles.unitButton,
-                  weightUnit === 'lbs' ? styles.unitButtonActive : styles.unitButtonInactive,
-                ]}
+                onPress={handleDisconnectWhoop}
+                disabled={whoopLoading}
+                style={[styles.button, styles.buttonDanger, whoopLoading && styles.buttonDisabled]}
               >
-                <Text
-                  style={[
-                    styles.unitButtonText,
-                    weightUnit === 'lbs'
-                      ? styles.unitButtonTextActive
-                      : styles.unitButtonTextInactive,
-                  ]}
-                >
-                  lbs
-                </Text>
+                <Text style={styles.buttonDangerText}>Disconnect</Text>
               </Pressable>
             </View>
+
+            {syncResult && (
+              <View style={styles.syncResultBox}>
+                <Text style={styles.syncResultText}>{syncResult}</Text>
+              </View>
+            )}
           </View>
+        ) : (
+          <View>
+            <Text style={styles.connectDescription}>
+              Connect your WHOOP account to automatically sync workouts, recovery data, sleep, and
+              more.
+            </Text>
 
-          <Pressable style={[styles.row, styles.rowLast]}>
-            <Text style={styles.rowLabel}>Notifications</Text>
-            <Text style={styles.rowChevron}>›</Text>
-          </Pressable>
+            <Pressable
+              onPress={handleConnectWhoop}
+              disabled={whoopLoading}
+              style={[styles.button, styles.buttonWhoop, whoopLoading && styles.buttonDisabled]}
+            >
+              {whoopLoading ? (
+                <View style={styles.buttonSpinner}>
+                  <ActivityIndicator color="#ffffff" size="small" />
+                </View>
+              ) : (
+                <Text style={styles.buttonPrimaryText}>Connect WHOOP</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
 
-          <Pressable style={[styles.row, styles.rowLast]}>
-            <Text style={styles.rowLabel}>Privacy</Text>
-            <Text style={styles.rowChevron}>›</Text>
-          </Pressable>
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+      </View>
 
-          <Pressable style={[styles.row, styles.rowLast]}>
-            <Text style={styles.rowLabel}>Help & Support</Text>
-            <Text style={styles.rowChevron}>›</Text>
-          </Pressable>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Settings</Text>
+
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Weight Unit</Text>
+          <View style={styles.unitToggle}>
+            <Pressable
+              onPress={() => setWeightUnit('kg')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                weightUnit === 'kg' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  weightUnit === 'kg' ? styles.unitButtonTextActive : styles.unitButtonTextInactive,
+                ]}
+              >
+                kg
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setWeightUnit('lbs')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                weightUnit === 'lbs' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  weightUnit === 'lbs'
+                    ? styles.unitButtonTextActive
+                    : styles.unitButtonTextInactive,
+                ]}
+              >
+                lbs
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
-        <Pressable onPress={handleSignOut} style={[styles.button, styles.buttonSignOut]}>
-          <Text style={styles.buttonSignOutText}>Sign Out</Text>
+        <Pressable style={[styles.row, styles.rowLast]}>
+          <Text style={styles.rowLabel}>Notifications</Text>
+          <Text style={styles.rowChevron}>›</Text>
         </Pressable>
 
-        <View style={styles.versionRow}>
-          <Text style={styles.versionText}>Strength v1.0.0</Text>
-        </View>
-      </ScreenScrollView>
-    </Screen>
+        <Pressable style={[styles.row, styles.rowLast]}>
+          <Text style={styles.rowLabel}>Privacy</Text>
+          <Text style={styles.rowChevron}>›</Text>
+        </Pressable>
+
+        <Pressable style={[styles.row, styles.rowLast]}>
+          <Text style={styles.rowLabel}>Help & Support</Text>
+          <Text style={styles.rowChevron}>›</Text>
+        </Pressable>
+      </View>
+
+      <Pressable onPress={handleSignOut} style={[styles.button, styles.buttonSignOut]}>
+        <Text style={styles.buttonSignOutText}>Sign Out</Text>
+      </Pressable>
+
+      <View style={styles.versionRow}>
+        <Text style={styles.versionText}>Strength v1.0.0</Text>
+      </View>
+    </PageLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  loadingScreen: {
+  loadingCentered: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.base,
-  },
-  pageHeader: {
-    marginBottom: spacing.lg,
-  },
-  pageTitle: {
-    fontSize: typography.fontSizes.xxl,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text,
   },
   avatarSection: {
     alignItems: 'center',

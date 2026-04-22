@@ -1,9 +1,8 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/Card';
-import { Screen, ScreenScrollView } from '@/components/ui/Screen';
+import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
+import { PageLayout } from '@/components/ui/PageLayout';
 import { apiFetch } from '@/lib/api';
 import { transformWhoopData, WhoopData, WhoopRecovery, WhoopSleep } from '@/lib/whoop';
 import { colors, radius, typography } from '@/theme';
@@ -139,7 +138,6 @@ function SleepDayBar({ sleep }: { sleep: WhoopSleep }) {
 }
 
 export default function WhoopDataPage() {
-  const router = useRouter();
   const { data, isLoading, error } = useQuery({
     queryKey: ['whoopData'],
     queryFn: fetchWhoopData,
@@ -152,316 +150,287 @@ export default function WhoopDataPage() {
   const last7Sleep = data?.sleep.slice(0, 7) ?? [];
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>WHOOP Data</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <PageLayout
+      headerType="custom"
+      header={<CustomPageHeader title="WHOOP Data" />}
+      screenScrollViewProps={{ horizontalPadding: 24, bottomInset: 140 }}
+    >
+      {isLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={colors.accent} size="large" />
+        </View>
+      )}
 
-      <ScreenScrollView horizontalPadding={24} bottomInset={140}>
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color={colors.accent} size="large" />
-          </View>
-        )}
+      {error && (
+        <Card style={styles.errorCard}>
+          <Text style={styles.errorText}>Failed to load WHOOP data</Text>
+        </Card>
+      )}
 
-        {error && (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorText}>Failed to load WHOOP data</Text>
-          </Card>
-        )}
+      {!isLoading && !error && !data && (
+        <Card style={styles.errorCard}>
+          <Text style={styles.mutedText}>No data available</Text>
+        </Card>
+      )}
 
-        {!isLoading && !error && !data && (
-          <Card style={styles.errorCard}>
-            <Text style={styles.mutedText}>No data available</Text>
-          </Card>
-        )}
-
-        {!isLoading && data && (
-          <>
-            <Card style={styles.card}>
-              <Text style={styles.cardTitle}>Recovery</Text>
-              {latestRecovery ? (
-                <View>
-                  <View
+      {!isLoading && data && (
+        <>
+          <Card style={styles.card}>
+            <Text style={styles.cardTitle}>Recovery</Text>
+            {latestRecovery ? (
+              <View>
+                <View
+                  style={[
+                    styles.recoveryScoreBox,
+                    { backgroundColor: getRecoveryBg(latestRecovery.recoveryScore) },
+                  ]}
+                >
+                  <Text style={styles.recoveryScoreLabel}>Recovery Score</Text>
+                  <Text
                     style={[
-                      styles.recoveryScoreBox,
-                      { backgroundColor: getRecoveryBg(latestRecovery.recoveryScore) },
+                      styles.recoveryScoreValue,
+                      { color: getRecoveryColor(latestRecovery.recoveryScore) },
                     ]}
                   >
-                    <Text style={styles.recoveryScoreLabel}>Recovery Score</Text>
-                    <Text
-                      style={[
-                        styles.recoveryScoreValue,
-                        { color: getRecoveryColor(latestRecovery.recoveryScore) },
-                      ]}
-                    >
-                      {latestRecovery.recoveryScore ?? '--'}
+                    {latestRecovery.recoveryScore ?? '--'}
+                  </Text>
+                </View>
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>HRV</Text>
+                    <Text style={styles.metricValue}>
+                      {latestRecovery.hrvRmssdMilli != null
+                        ? `${latestRecovery.hrvRmssdMilli} ms`
+                        : '--'}
                     </Text>
                   </View>
-                  <View style={styles.metricsRow}>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>HRV</Text>
-                      <Text style={styles.metricValue}>
-                        {latestRecovery.hrvRmssdMilli != null
-                          ? `${latestRecovery.hrvRmssdMilli} ms`
-                          : '--'}
-                      </Text>
-                    </View>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>RHR</Text>
-                      <Text style={styles.metricValue}>
-                        {latestRecovery.restingHeartRate != null
-                          ? `${latestRecovery.restingHeartRate} bpm`
-                          : '--'}
-                      </Text>
-                    </View>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>Resp Rate</Text>
-                      <Text style={styles.metricValue}>
-                        {latestRecovery.respiratoryRate != null
-                          ? `${latestRecovery.respiratoryRate} br/min`
-                          : '--'}
-                      </Text>
-                    </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>RHR</Text>
+                    <Text style={styles.metricValue}>
+                      {latestRecovery.restingHeartRate != null
+                        ? `${latestRecovery.restingHeartRate} bpm`
+                        : '--'}
+                    </Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Resp Rate</Text>
+                    <Text style={styles.metricValue}>
+                      {latestRecovery.respiratoryRate != null
+                        ? `${latestRecovery.respiratoryRate} br/min`
+                        : '--'}
+                    </Text>
                   </View>
                 </View>
-              ) : (
-                <Text style={styles.mutedText}>No recovery data</Text>
-              )}
-            </Card>
-
-            {last7Recovery.length > 1 && (
-              <Card style={styles.card}>
-                <Text style={styles.cardTitle}>Recovery (7 days)</Text>
-                <View>
-                  {last7Recovery.map((r) => (
-                    <RecoveryDayRow key={r.id} recovery={r} />
-                  ))}
-                </View>
-                <View style={styles.legendRow}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                    <Text style={styles.legendText}>HRV</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
-                    <Text style={styles.legendText}>RHR</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <Text style={styles.legendText}>Score: </Text>
-                    <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                    <Text style={styles.legendText}>&ge;70</Text>
-                    <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
-                    <Text style={styles.legendText}>40-69</Text>
-                    <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
-                    <Text style={styles.legendText}>&lt;40</Text>
-                  </View>
-                </View>
-              </Card>
+              </View>
+            ) : (
+              <Text style={styles.mutedText}>No recovery data</Text>
             )}
+          </Card>
 
+          {last7Recovery.length > 1 && (
             <Card style={styles.card}>
-              <Text style={styles.cardTitle}>Sleep</Text>
-              {latestSleep ? (
-                <View>
-                  <View style={styles.sleepHeaderRow}>
-                    <View style={styles.sleepStat}>
-                      <Text style={styles.metricLabel}>Sleep Performance</Text>
-                      <Text style={styles.sleepStatValue}>
-                        {latestSleep.sleepPerformancePercentage ?? '--'}%
-                      </Text>
-                    </View>
-                    <View style={styles.sleepStat}>
-                      <Text style={styles.metricLabel}>Total Sleep</Text>
-                      <Text style={styles.sleepStatValue}>
-                        {formatDuration(latestSleep.totalSleepTimeMilli)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.metricsRow}>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>Deep</Text>
-                      <Text style={styles.metricValue}>
-                        {formatDuration(latestSleep.slowWaveSleepTimeMilli)}
-                      </Text>
-                    </View>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>REM</Text>
-                      <Text style={styles.metricValue}>
-                        {formatDuration(latestSleep.remSleepTimeMilli)}
-                      </Text>
-                    </View>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>Light</Text>
-                      <Text style={styles.metricValue}>
-                        {formatDuration(latestSleep.lightSleepTimeMilli)}
-                      </Text>
-                    </View>
-                    <View style={styles.metricItem}>
-                      <Text style={styles.metricLabel}>Efficiency</Text>
-                      <Text style={styles.metricValue}>
-                        {latestSleep.sleepEfficiencyPercentage != null
-                          ? `${latestSleep.sleepEfficiencyPercentage}%`
-                          : '--'}
-                      </Text>
-                    </View>
-                  </View>
+              <Text style={styles.cardTitle}>Recovery (7 days)</Text>
+              <View>
+                {last7Recovery.map((r) => (
+                  <RecoveryDayRow key={r.id} recovery={r} />
+                ))}
+              </View>
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                  <Text style={styles.legendText}>HRV</Text>
                 </View>
-              ) : (
-                <Text style={styles.mutedText}>No sleep data</Text>
-              )}
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
+                  <Text style={styles.legendText}>RHR</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <Text style={styles.legendText}>Score: </Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                  <Text style={styles.legendText}>&ge;70</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.warning }]} />
+                  <Text style={styles.legendText}>40-69</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
+                  <Text style={styles.legendText}>&lt;40</Text>
+                </View>
+              </View>
             </Card>
+          )}
 
-            {last7Sleep.length > 1 && (
-              <Card style={styles.card}>
-                <Text style={styles.cardTitle}>Sleep (7 days)</Text>
-                <View style={styles.sleepChartRow}>
-                  {last7Sleep.map((s) => (
-                    <SleepDayBar key={s.id} sleep={s} />
-                  ))}
-                </View>
-                <View style={styles.sleepLegendRow}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendBox, { backgroundColor: '#9333ea' }]} />
-                    <Text style={styles.legendText}>Deep</Text>
+          <Card style={styles.card}>
+            <Text style={styles.cardTitle}>Sleep</Text>
+            {latestSleep ? (
+              <View>
+                <View style={styles.sleepHeaderRow}>
+                  <View style={styles.sleepStat}>
+                    <Text style={styles.metricLabel}>Sleep Performance</Text>
+                    <Text style={styles.sleepStatValue}>
+                      {latestSleep.sleepPerformancePercentage ?? '--'}%
+                    </Text>
                   </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendBox, { backgroundColor: '#3b82f6' }]} />
-                    <Text style={styles.legendText}>REM</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendBox, { backgroundColor: '#6b7280' }]} />
-                    <Text style={styles.legendText}>Light</Text>
+                  <View style={styles.sleepStat}>
+                    <Text style={styles.metricLabel}>Total Sleep</Text>
+                    <Text style={styles.sleepStatValue}>
+                      {formatDuration(latestSleep.totalSleepTimeMilli)}
+                    </Text>
                   </View>
                 </View>
-              </Card>
+                <View style={styles.metricsRow}>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Deep</Text>
+                    <Text style={styles.metricValue}>
+                      {formatDuration(latestSleep.slowWaveSleepTimeMilli)}
+                    </Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>REM</Text>
+                    <Text style={styles.metricValue}>
+                      {formatDuration(latestSleep.remSleepTimeMilli)}
+                    </Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Light</Text>
+                    <Text style={styles.metricValue}>
+                      {formatDuration(latestSleep.lightSleepTimeMilli)}
+                    </Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>Efficiency</Text>
+                    <Text style={styles.metricValue}>
+                      {latestSleep.sleepEfficiencyPercentage != null
+                        ? `${latestSleep.sleepEfficiencyPercentage}%`
+                        : '--'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.mutedText}>No sleep data</Text>
             )}
+          </Card>
 
-            {data.cycles.length > 0 && (
-              <Card style={styles.card}>
-                <Text style={styles.cardTitle}>Daily Cycles</Text>
-                <View style={styles.cyclesList}>
-                  {data.cycles.slice(0, 14).map((cycle) => (
-                    <View key={cycle.id} style={styles.cycleRow}>
-                      <Text style={styles.cycleDate}>{formatDate(cycle.start)}</Text>
-                      <View style={styles.cycleStats}>
-                        <View style={styles.cycleStat}>
-                          <Text style={styles.metricLabel}>Strain</Text>
-                          <Text style={styles.cycleStatValue}>
-                            {cycle.dayStrain != null ? cycle.dayStrain.toFixed(1) : '--'}
-                          </Text>
-                        </View>
-                        <View style={styles.cycleStat}>
-                          <Text style={styles.metricLabel}>Avg HR</Text>
-                          <Text style={styles.cycleStatValue}>
-                            {cycle.averageHeartRate ?? '--'}
-                          </Text>
-                        </View>
-                        <View style={styles.cycleStat}>
-                          <Text style={styles.metricLabel}>kJ</Text>
-                          <Text style={styles.cycleStatValue}>
-                            {cycle.kilojoule != null ? Math.round(cycle.kilojoule) : '--'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
+          {last7Sleep.length > 1 && (
+            <Card style={styles.card}>
+              <Text style={styles.cardTitle}>Sleep (7 days)</Text>
+              <View style={styles.sleepChartRow}>
+                {last7Sleep.map((s) => (
+                  <SleepDayBar key={s.id} sleep={s} />
+                ))}
+              </View>
+              <View style={styles.sleepLegendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendBox, { backgroundColor: '#9333ea' }]} />
+                  <Text style={styles.legendText}>Deep</Text>
                 </View>
-              </Card>
-            )}
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendBox, { backgroundColor: '#3b82f6' }]} />
+                  <Text style={styles.legendText}>REM</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendBox, { backgroundColor: '#6b7280' }]} />
+                  <Text style={styles.legendText}>Light</Text>
+                </View>
+              </View>
+            </Card>
+          )}
 
-            {data.workouts.length > 0 && (
-              <Card style={styles.card}>
-                <Text style={styles.cardTitle}>Workouts</Text>
-                <View style={styles.workoutsList}>
-                  {data.workouts.map((workout) => (
-                    <View key={workout.id} style={styles.workoutRow}>
-                      <View style={styles.workoutHeader}>
-                        <View>
-                          <Text style={styles.workoutName}>{workout.sportName ?? 'Workout'}</Text>
-                          <Text style={styles.workoutDate}>{formatDate(workout.start)}</Text>
-                        </View>
-                        <Text style={styles.workoutDuration}>
-                          {formatWorkoutDuration(workout.start, workout.end)}
+          {data.cycles.length > 0 && (
+            <Card style={styles.card}>
+              <Text style={styles.cardTitle}>Daily Cycles</Text>
+              <View style={styles.cyclesList}>
+                {data.cycles.slice(0, 14).map((cycle) => (
+                  <View key={cycle.id} style={styles.cycleRow}>
+                    <Text style={styles.cycleDate}>{formatDate(cycle.start)}</Text>
+                    <View style={styles.cycleStats}>
+                      <View style={styles.cycleStat}>
+                        <Text style={styles.metricLabel}>Strain</Text>
+                        <Text style={styles.cycleStatValue}>
+                          {cycle.dayStrain != null ? cycle.dayStrain.toFixed(1) : '--'}
                         </Text>
                       </View>
-                      <View style={styles.workoutStats}>
-                        <View>
-                          <Text style={styles.metricLabel}>Strain</Text>
-                          <Text style={styles.metricValue}>
-                            {workout.strain != null ? workout.strain.toFixed(1) : '--'}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text style={styles.metricLabel}>Avg HR</Text>
-                          <Text style={styles.metricValue}>
-                            {workout.averageHeartRate != null
-                              ? `${workout.averageHeartRate} bpm`
-                              : '--'}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text style={styles.metricLabel}>Max HR</Text>
-                          <Text style={styles.metricValue}>
-                            {workout.maxHeartRate != null ? `${workout.maxHeartRate} bpm` : '--'}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text style={styles.metricLabel}>kcal</Text>
-                          <Text style={styles.metricValue}>
-                            {workout.caloriesKcal != null ? workout.caloriesKcal : '--'}
-                          </Text>
-                        </View>
+                      <View style={styles.cycleStat}>
+                        <Text style={styles.metricLabel}>Avg HR</Text>
+                        <Text style={styles.cycleStatValue}>{cycle.averageHeartRate ?? '--'}</Text>
+                      </View>
+                      <View style={styles.cycleStat}>
+                        <Text style={styles.metricLabel}>kJ</Text>
+                        <Text style={styles.cycleStatValue}>
+                          {cycle.kilojoule != null ? Math.round(cycle.kilojoule) : '--'}
+                        </Text>
                       </View>
                     </View>
-                  ))}
-                </View>
+                  </View>
+                ))}
+              </View>
+            </Card>
+          )}
+
+          {data.workouts.length > 0 && (
+            <Card style={styles.card}>
+              <Text style={styles.cardTitle}>Workouts</Text>
+              <View style={styles.workoutsList}>
+                {data.workouts.map((workout) => (
+                  <View key={workout.id} style={styles.workoutRow}>
+                    <View style={styles.workoutHeader}>
+                      <View>
+                        <Text style={styles.workoutName}>{workout.sportName ?? 'Workout'}</Text>
+                        <Text style={styles.workoutDate}>{formatDate(workout.start)}</Text>
+                      </View>
+                      <Text style={styles.workoutDuration}>
+                        {formatWorkoutDuration(workout.start, workout.end)}
+                      </Text>
+                    </View>
+                    <View style={styles.workoutStats}>
+                      <View>
+                        <Text style={styles.metricLabel}>Strain</Text>
+                        <Text style={styles.metricValue}>
+                          {workout.strain != null ? workout.strain.toFixed(1) : '--'}
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={styles.metricLabel}>Avg HR</Text>
+                        <Text style={styles.metricValue}>
+                          {workout.averageHeartRate != null
+                            ? `${workout.averageHeartRate} bpm`
+                            : '--'}
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={styles.metricLabel}>Max HR</Text>
+                        <Text style={styles.metricValue}>
+                          {workout.maxHeartRate != null ? `${workout.maxHeartRate} bpm` : '--'}
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={styles.metricLabel}>kcal</Text>
+                        <Text style={styles.metricValue}>
+                          {workout.caloriesKcal != null ? workout.caloriesKcal : '--'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </Card>
+          )}
+
+          {data.recovery.length === 0 &&
+            data.sleep.length === 0 &&
+            data.cycles.length === 0 &&
+            data.workouts.length === 0 && (
+              <Card>
+                <Text style={[styles.mutedText, styles.centeredText]}>
+                  No WHOOP data in the last 30 days. Sync your WHOOP to see data here.
+                </Text>
               </Card>
             )}
-
-            {data.recovery.length === 0 &&
-              data.sleep.length === 0 &&
-              data.cycles.length === 0 &&
-              data.workouts.length === 0 && (
-                <Card>
-                  <Text style={[styles.mutedText, styles.centeredText]}>
-                    No WHOOP data in the last 30 days. Sync your WHOOP to see data here.
-                  </Text>
-                </Card>
-              )}
-          </>
-        )}
-      </ScreenScrollView>
-    </Screen>
+        </>
+      )}
+    </PageLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text,
-  },
-  headerSpacer: {
-    width: 32,
-  },
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: 80,

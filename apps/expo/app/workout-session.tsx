@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { ScreenScrollView } from '@/components/ui/Screen';
+import { PageLayout } from '@/components/ui/PageLayout';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
@@ -375,27 +375,38 @@ export default function WorkoutSessionScreen() {
       style={{ flex: 1 }}
     >
       <ScrollProvider scrollViewRef={scrollViewRef}>
-        <View style={styles.container}>
-          <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-            <View style={styles.headerTop}>
-              <View style={styles.headerLeft}>
-                <Text style={styles.subtitle}>
-                  {isViewingCompleted ? 'Completed Workout' : 'Active Workout'}
-                </Text>
-                <Text style={styles.title}>{workout?.name || 'Workout'}</Text>
-              </View>
-              <View style={styles.headerRight}>
-                <Text style={styles.durationPrimary}>{formattedDuration}</Text>
-                {isViewingCompleted && computedVolume > 0 && (
-                  <Text style={styles.durationSecondary}>
-                    {formatVolume(computedVolume)} {userWeightUnit}
+        <PageLayout
+          headerType="custom"
+          headerSafeArea="header"
+          header={
+            <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+              <View style={styles.headerTop}>
+                <View style={styles.headerLeft}>
+                  <Text style={styles.subtitle}>
+                    {isViewingCompleted ? 'Completed Workout' : 'Active Workout'}
                   </Text>
-                )}
+                  <Text style={styles.title}>{workout?.name || 'Workout'}</Text>
+                </View>
+                <View style={styles.headerRight}>
+                  <Text style={styles.durationPrimary}>{formattedDuration}</Text>
+                  {isViewingCompleted && computedVolume > 0 && (
+                    <Text style={styles.durationSecondary}>
+                      {formatVolume(computedVolume)} {userWeightUnit}
+                    </Text>
+                  )}
+                </View>
               </View>
+              <View style={styles.headerBottom}>{renderActionButtons()}</View>
             </View>
-            <View style={styles.headerBottom}>{renderActionButtons()}</View>
-          </View>
-
+          }
+          scrollViewRef={scrollViewRef}
+          screenScrollViewProps={{
+            bottomInset: 220,
+            horizontalPadding: spacing.md,
+            showsVerticalScrollIndicator: false,
+            keyboardShouldPersistTaps: 'handled',
+          }}
+        >
           {showFloatingPill && exercises.length > 0 && (
             <Pressable
               style={[styles.floatingPill, { bottom: insets.bottom + 92 }]}
@@ -423,52 +434,41 @@ export default function WorkoutSessionScreen() {
             </Pressable>
           )}
 
-          <ScreenScrollView
-            ref={scrollViewRef}
-            bottomInset={220}
-            horizontalPadding={spacing.md}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.exerciseList}>
-              {exercises.map((exercise) => {
-                const localSets = exercise.sets.map((s) => ({
-                  id: s.id,
-                  reps: s.reps ?? 0,
-                  weight: s.weight ?? 0,
-                  completed: s.isComplete,
-                }));
-                return (
-                  <View key={exercise.id} onLayout={(e) => handleExerciseLayout(exercise.id, e)}>
-                    <ExerciseLogger
-                      exercise={{
-                        id: exercise.id,
-                        exerciseId: exercise.exerciseId,
-                        name: exercise.name,
-                        muscleGroup: exercise.muscleGroup,
-                        isAmrap: exercise.isAmrap,
-                      }}
-                      sets={localSets}
-                      onSetsUpdate={(sets) => handleExerciseSetsUpdate(exercise.id, sets)}
-                      onAddSet={() => addSet(exercise.id)}
-                      onDeleteSet={handleDeleteSet}
-                      weightUnit={weightUnit}
-                      isEditMode={isViewingCompleted ? isEditing : true}
-                    />
-                  </View>
-                );
-              })}
+          <View style={styles.exerciseList}>
+            {exercises.map((exercise) => {
+              const localSets = exercise.sets.map((s) => ({
+                id: s.id,
+                reps: s.reps ?? 0,
+                weight: s.weight ?? 0,
+                completed: s.isComplete,
+              }));
+              return (
+                <View key={exercise.id} onLayout={(e) => handleExerciseLayout(exercise.id, e)}>
+                  <ExerciseLogger
+                    exercise={{
+                      id: exercise.id,
+                      exerciseId: exercise.exerciseId,
+                      name: exercise.name,
+                      muscleGroup: exercise.muscleGroup,
+                      isAmrap: exercise.isAmrap,
+                    }}
+                    sets={localSets}
+                    onSetsUpdate={(sets) => handleExerciseSetsUpdate(exercise.id, sets)}
+                    onAddSet={() => addSet(exercise.id)}
+                    onDeleteSet={handleDeleteSet}
+                    weightUnit={weightUnit}
+                    isEditMode={isViewingCompleted ? isEditing : true}
+                  />
+                </View>
+              );
+            })}
 
-              {(!isViewingCompleted || isEditing) && (
-                <Pressable
-                  style={styles.addExerciseButton}
-                  onPress={() => setShowAddExercise(true)}
-                >
-                  <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
-                </Pressable>
-              )}
-            </View>
-          </ScreenScrollView>
+            {(!isViewingCompleted || isEditing) && (
+              <Pressable style={styles.addExerciseButton} onPress={() => setShowAddExercise(true)}>
+                <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
+              </Pressable>
+            )}
+          </View>
 
           <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
             <ExerciseSearch
@@ -478,7 +478,7 @@ export default function WorkoutSessionScreen() {
               excludeIds={exercises.map((e) => e.exerciseId)}
             />
           </Modal>
-        </View>
+        </PageLayout>
       </ScrollProvider>
     </KeyboardAvoidingView>
   );
