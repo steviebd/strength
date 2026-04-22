@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   TextInput,
@@ -15,27 +15,45 @@ interface ChatInputProps {
   onSend: (text: string) => void;
   onImageCapture: (base64: string, uri: string) => void;
   isLoading: boolean;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  variant?: 'embedded' | 'footer';
+  captureRequestKey?: number;
 }
 
-export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps) {
-  const [text, setText] = useState('');
-
+export function ChatInput({
+  onSend,
+  onImageCapture,
+  isLoading,
+  value,
+  onChangeText,
+  placeholder = 'Describe a meal, ask a question, or request a meal idea...',
+  variant = 'footer',
+  captureRequestKey,
+}: ChatInputProps) {
   const handleSend = () => {
-    const trimmed = text.trim();
+    const trimmed = value.trim();
     if (!trimmed) return;
     onSend(trimmed);
-    setText('');
+    onChangeText('');
   };
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View style={styles.container}>
-        <MealImageCapture onImageCapture={onImageCapture} disabled={isLoading} />
+      <View
+        style={[styles.container, variant === 'embedded' ? styles.containerEmbedded : undefined]}
+      >
+        <MealImageCapture
+          onImageCapture={onImageCapture}
+          disabled={isLoading}
+          captureRequestKey={captureRequestKey}
+        />
         <TextInput
           style={styles.input}
-          value={text}
-          onChangeText={setText}
-          placeholder="Ask about nutrition..."
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
           editable={!isLoading}
           returnKeyType="send"
@@ -43,7 +61,7 @@ export function ChatInput({ onSend, onImageCapture, isLoading }: ChatInputProps)
         />
         <Button
           onPress={handleSend}
-          disabled={!text.trim() || isLoading}
+          disabled={!value.trim() || isLoading}
           style={styles.sendButton}
           size="sm"
           variant="default"
@@ -64,6 +82,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     padding: spacing.md,
+  },
+  containerEmbedded: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
   },
   input: {
     flex: 1,

@@ -4,6 +4,7 @@ import { Link, router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
 import { authClient } from '@/lib/auth-client';
+import { waitForSessionReady } from '@/lib/auth-session';
 import { colors } from '@/theme';
 
 export default function SignInScreen() {
@@ -33,6 +34,7 @@ export default function SignInScreen() {
         return;
       }
 
+      await waitForSessionReady();
       router.replace(redirectUrl as any);
     } catch (error) {
       setError(

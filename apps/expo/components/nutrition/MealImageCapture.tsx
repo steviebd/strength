@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -13,13 +13,19 @@ import { colors, radius } from '@/theme';
 interface MealImageCaptureProps {
   onImageCapture: (base64: string, uri: string) => void;
   disabled?: boolean;
+  captureRequestKey?: number;
 }
 
-export function MealImageCapture({ onImageCapture, disabled }: MealImageCaptureProps) {
+export function MealImageCapture({
+  onImageCapture,
+  disabled,
+  captureRequestKey,
+}: MealImageCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false);
+  const lastCaptureRequestKey = useRef<number | undefined>(captureRequestKey);
 
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [mediaLibraryPermission, requestMediaLibraryPermission] = useMediaLibraryPermissions();
+  const [_cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [_mediaLibraryPermission, requestMediaLibraryPermission] = useMediaLibraryPermissions();
 
   const showPermissionDeniedAlert = () => {
     Alert.alert(
@@ -87,33 +93,35 @@ export function MealImageCapture({ onImageCapture, disabled }: MealImageCaptureP
 
   const processImage = async (uri: string) => {
     const manipulated = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1200 } }], {
-      compress: 0.7,
+      base64: true,
+      compress: 0.6,
       format: ImageManipulator.SaveFormat.JPEG,
     });
 
-    const response = await fetch(manipulated.uri);
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let base64 = '';
-    for (let i = 0; i < bytes.length; i++) {
-      base64 += String.fromCharCode(bytes[i]);
+    if (!manipulated.base64) {
+      throw new Error('Unable to prepare the photo for upload.');
     }
-    base64 = btoa(base64);
 
-    onImageCapture(base64, uri);
+    onImageCapture(manipulated.base64, manipulated.uri);
   };
 
   const handlePress = () => {
-    if (cameraPermission?.granted || mediaLibraryPermission?.granted) {
-      captureImage();
-    } else {
-      pickImage();
-    }
+    captureImage();
   };
+
+  useEffect(() => {
+    if (captureRequestKey == null || captureRequestKey === lastCaptureRequestKey.current) {
+      return;
+    }
+
+    lastCaptureRequestKey.current = captureRequestKey;
+    void captureImage();
+  }, [captureRequestKey]);
 
   return (
     <Pressable
       onPress={handlePress}
+      onLongPress={pickImage}
       disabled={disabled || isCapturing}
       style={({ pressed }) => [
         styles.button,

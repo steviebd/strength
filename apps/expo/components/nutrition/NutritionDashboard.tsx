@@ -1,9 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
-import { Surface, SegmentedTabs, MetricTile, Badge } from '@/components/ui/app-primitives';
-import { CalorieRing } from './CalorieRing';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import {
+  Badge,
+  MetricTile,
+  SectionTitle,
+  SegmentedTabs,
+  Surface,
+} from '@/components/ui/app-primitives';
 import { MealCard } from './MealCard';
-import { colors, spacing, typography } from '@/theme';
+import { colors, radius, spacing, typography } from '@/theme';
+
+type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
 interface MealEntry {
   id: string;
@@ -14,6 +21,12 @@ interface MealEntry {
   carbsG: number | null;
   fatG: number | null;
   loggedAt: string | null;
+}
+
+interface TargetMeta {
+  strategy: 'manual' | 'bodyweight' | 'default';
+  explanation: string;
+  calorieMultiplier: number;
 }
 
 interface WhoopData {
@@ -28,29 +41,64 @@ interface NutritionDashboardProps {
   entries: MealEntry[];
   totals: { calories: number; proteinG: number; carbsG: number; fatG: number };
   targets: { calories: number; proteinG: number; carbsG: number; fatG: number };
-  trainingType: 'rest_day' | 'cardio' | 'powerlifting' | null;
-  onTrainingTypeChange: (type: 'rest_day' | 'cardio' | 'powerlifting') => void;
+  targetMeta: TargetMeta;
+  bodyweightKg: number | null;
+  trainingType: TrainingType;
+  onTrainingTypeChange: (type: TrainingType) => void;
   whoopData?: WhoopData | null;
   onMealEdit: (entry: MealEntry) => void;
   onMealDelete: (entryId: string) => void;
 }
 
 const trainingTypeOptions = [
-  { label: 'Rest Day', value: 'rest_day' as const },
+  { label: 'Rest', value: 'rest_day' as const },
   { label: 'Cardio', value: 'cardio' as const },
-  { label: 'Powerlifting', value: 'powerlifting' as const },
+  { label: 'Lift', value: 'powerlifting' as const },
 ];
+
+const recoveryToneMap = {
+  green: 'emerald',
+  yellow: 'orange',
+  red: 'rose',
+} as const;
+
+function formatTime(loggedAt: string | null): string {
+  if (!loggedAt) return '';
+  const date = new Date(loggedAt);
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatTrainingSummary(trainingType: TrainingType): string {
+  if (trainingType === 'powerlifting')
+    return 'Lift day selected. Calories are biased upward for heavier training.';
+  if (trainingType === 'cardio')
+    return 'Cardio day selected. Calories are adjusted slightly upward.';
+  return 'Rest day selected. Calories are held a little lower than a training day.';
+}
 
 export function NutritionDashboard({
   entries,
   totals,
   targets,
+  targetMeta,
+  bodyweightKg,
   trainingType,
   onTrainingTypeChange,
   whoopData,
   onMealEdit,
   onMealDelete,
 }: NutritionDashboardProps) {
+  const remainingCalories = Math.round(targets.calories - totals.calories);
+  const progress = targets.calories > 0 ? Math.min(totals.calories / targets.calories, 1) : 0;
+  const progressWidth = `${progress > 0 ? progress * 100 : 0}%` as `${number}%`;
+  const isOverTarget = remainingCalories < 0;
+  const summaryTone =
+    targetMeta.strategy === 'manual'
+      ? 'sky'
+      : targetMeta.strategy === 'bodyweight'
+        ? 'orange'
+        : 'neutral';
+
   const handleDeletePress = (entryId: string) => {
     Alert.alert('Delete Meal', 'Are you sure you want to delete this meal?', [
       { text: 'Cancel', style: 'cancel' },
@@ -58,95 +106,126 @@ export function NutritionDashboard({
     ]);
   };
 
-  const formatTime = (loggedAt: string | null): string => {
-    if (!loggedAt) return '';
-    const date = new Date(loggedAt);
-    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  };
-
   return (
     <View style={styles.container}>
-      <Surface style={styles.section}>
-        <SegmentedTabs
-          options={trainingTypeOptions.map((opt) => ({
-            label: opt.label,
-            active: trainingType === opt.value,
-            onPress: () => onTrainingTypeChange(opt.value),
-          }))}
-        />
-      </Surface>
-
-      <Surface style={styles.section}>
-        <View style={styles.calorieRingContainer}>
-          <CalorieRing consumed={totals.calories} target={targets.calories} />
+      <Surface>
+        <View style={styles.summaryHeader}>
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryLabel}>Today&apos;s intake</Text>
+            <Text style={styles.summaryValue}>
+              {Math.round(totals.calories)} / {targets.calories}
+            </Text>
+            <Text style={[styles.summaryDelta, isOverTarget && styles.summaryDeltaOver]}>
+              {isOverTarget
+                ? `${Math.abs(remainingCalories)} over`
+                : `${remainingCalories} remaining`}
+            </Text>
+          </View>
+          <Badge
+            label={
+              targetMeta.strategy === 'manual'
+                ? 'Manual targets'
+                : targetMeta.strategy === 'bodyweight'
+                  ? 'Bodyweight based'
+                  : 'Default targets'
+            }
+            tone={summaryTone}
+          />
         </View>
+
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: progressWidth },
+              isOverTarget ? styles.progressFillOver : undefined,
+            ]}
+          />
+        </View>
+
+        <Text style={styles.summaryExplanation}>{targetMeta.explanation}</Text>
       </Surface>
 
       <View style={styles.macroRow}>
         <MetricTile
           label="Protein"
-          value={`${totals.proteinG.toFixed(0)}g / ${targets.proteinG}g`}
+          value={`${Math.round(totals.proteinG)}g`}
+          hint={`of ${targets.proteinG}g`}
           tone="emerald"
         />
         <MetricTile
           label="Carbs"
-          value={`${totals.carbsG.toFixed(0)}g / ${targets.carbsG}g`}
+          value={`${Math.round(totals.carbsG)}g`}
+          hint={`of ${targets.carbsG}g`}
           tone="sky"
         />
         <MetricTile
           label="Fat"
-          value={`${totals.fatG.toFixed(0)}g / ${targets.fatG}g`}
+          value={`${Math.round(totals.fatG)}g`}
+          hint={`of ${targets.fatG}g`}
           tone="orange"
         />
       </View>
 
-      {whoopData && (
-        <Surface style={styles.section}>
-          <Text style={styles.whoopTitle}>WHOOP</Text>
-          <View style={styles.whoopMetricsRow}>
-            {whoopData.recoveryScore !== null && whoopData.recoveryScore !== undefined && (
-              <View style={styles.whoopMetric}>
-                <Badge
-                  label={whoopData.recoveryStatus?.toUpperCase() ?? 'N/A'}
-                  tone={
-                    whoopData.recoveryStatus === 'green'
-                      ? 'emerald'
-                      : whoopData.recoveryStatus === 'yellow'
-                        ? 'orange'
-                        : 'rose'
-                  }
-                />
-                <Text style={styles.whoopMetricLabel}>Recovery</Text>
-                <Text style={styles.whoopMetricValue}>{whoopData.recoveryScore}%</Text>
-              </View>
-            )}
-            {whoopData.hrv !== null && whoopData.hrv !== undefined && (
-              <View style={styles.whoopMetric}>
-                <Text style={styles.whoopMetricLabel}>HRV</Text>
-                <Text style={styles.whoopMetricValue}>{whoopData.hrv}ms</Text>
-              </View>
-            )}
-            {whoopData.totalStrain !== null && whoopData.totalStrain !== undefined && (
-              <View style={styles.whoopMetric}>
-                <Text style={styles.whoopMetricLabel}>Strain</Text>
-                <Text style={styles.whoopMetricValue}>{whoopData.totalStrain}</Text>
-              </View>
-            )}
-            {whoopData.caloriesBurned !== null && whoopData.caloriesBurned !== undefined && (
-              <View style={styles.whoopMetric}>
-                <Text style={styles.whoopMetricLabel}>Burned</Text>
-                <Text style={styles.whoopMetricValue}>{whoopData.caloriesBurned}</Text>
-              </View>
-            )}
-          </View>
-        </Surface>
-      )}
+      <Surface>
+        <SectionTitle title="Training Context" />
+        <SegmentedTabs
+          options={trainingTypeOptions.map((option) => ({
+            label: option.label,
+            active: trainingType === option.value,
+            onPress: () => onTrainingTypeChange(option.value),
+          }))}
+        />
 
-      <Surface style={styles.section}>
-        <Text style={styles.sectionTitle}>Today's Meals</Text>
+        <View style={styles.contextDetails}>
+          {bodyweightKg ? (
+            <View style={styles.contextRow}>
+              <Text style={styles.contextLabel}>Target basis</Text>
+              <Text style={styles.contextValue}>
+                {bodyweightKg} kg bodyweight
+                {targetMeta.strategy === 'manual' ? ' with manual profile overrides' : ''}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.contextRow}>
+              <Text style={styles.contextLabel}>Target basis</Text>
+              <Text style={styles.contextValue}>Using app defaults until bodyweight is saved</Text>
+            </View>
+          )}
+
+          <View style={styles.contextRow}>
+            <Text style={styles.contextLabel}>Day adjustment</Text>
+            <Text style={styles.contextValue}>{formatTrainingSummary(trainingType)}</Text>
+          </View>
+
+          {whoopData?.recoveryStatus ? (
+            <View style={styles.contextWhoopRow}>
+              <Badge
+                label={`Recovery ${whoopData.recoveryStatus.toUpperCase()}`}
+                tone={recoveryToneMap[whoopData.recoveryStatus]}
+              />
+              {whoopData.recoveryScore !== null ? (
+                <Text style={styles.contextMeta}>{whoopData.recoveryScore}%</Text>
+              ) : null}
+              {whoopData.totalStrain !== null ? (
+                <Text style={styles.contextMeta}>Strain {whoopData.totalStrain}</Text>
+              ) : null}
+              {whoopData.caloriesBurned !== null ? (
+                <Text style={styles.contextMeta}>{whoopData.caloriesBurned} burned</Text>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      </Surface>
+
+      <Surface>
+        <SectionTitle title="Meals Today" />
         {entries.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No meals logged yet</Text>
+            <Text style={styles.emptyStateTitle}>No meals logged yet</Text>
+            <Text style={styles.emptyStateText}>
+              Capture a meal photo, describe what you ate, or add a meal manually.
+            </Text>
           </View>
         ) : (
           <View style={styles.mealList}>
@@ -176,59 +255,108 @@ const styles = StyleSheet.create({
   container: {
     gap: spacing.lg,
   },
-  section: {
-    marginBottom: spacing.lg,
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  summaryText: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  summaryLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    letterSpacing: 1.2,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  summaryValue: {
+    fontSize: typography.fontSizes.xxxl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    lineHeight: 38,
+  },
+  summaryDelta: {
+    fontSize: typography.fontSizes.base,
+    color: colors.textMuted,
+  },
+  summaryDeltaOver: {
+    color: colors.error,
+  },
+  progressTrack: {
+    height: 10,
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+  },
+  progressFillOver: {
+    backgroundColor: colors.error,
+  },
+  summaryExplanation: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+    lineHeight: 20,
   },
   macroRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg,
   },
-  calorieRingContainer: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  whoopTitle: {
-    fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  whoopMetricsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  contextDetails: {
+    marginTop: spacing.md,
     gap: spacing.md,
   },
-  whoopMetric: {
-    minWidth: 70,
+  contextRow: {
+    gap: spacing.xs,
   },
-  whoopMetricLabel: {
+  contextLabel: {
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.medium,
+    letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: spacing.xs,
   },
-  whoopMetricValue: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold,
+  contextValue: {
+    fontSize: typography.fontSizes.base,
     color: colors.text,
+    lineHeight: 22,
+  },
+  contextWhoopRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginTop: spacing.xs,
   },
-  sectionTitle: {
+  contextMeta: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  emptyState: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  emptyStateTitle: {
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    marginBottom: spacing.md,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: spacing.xl,
   },
   emptyStateText: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
+    lineHeight: 22,
   },
   mealList: {
     gap: spacing.md,

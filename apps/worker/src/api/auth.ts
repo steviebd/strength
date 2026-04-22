@@ -1,6 +1,6 @@
 import { createAuth, type WorkerEnv } from '../auth';
 
-function getAuthHeaders(c: any) {
+export function getAuthHeaders(c: any) {
   const headers = new Headers(c.req.raw.headers);
   const expoOrigin = headers.get('expo-origin');
 
@@ -11,16 +11,35 @@ function getAuthHeaders(c: any) {
   return headers;
 }
 
+export function getAuth(c: any) {
+  return createAuth(c.env as WorkerEnv, c.req.url, getAuthHeaders(c).get('origin') ?? undefined);
+}
+
+export async function loadAuthSession(c: any) {
+  const auth = getAuth(c);
+  return await auth.api.getSession({ headers: getAuthHeaders(c) });
+}
+
+export async function populateAuthContext(c: any) {
+  const resolvedSession = await loadAuthSession(c);
+  const session = resolvedSession?.session ?? null;
+  const user = resolvedSession?.user ?? null;
+
+  c.set('user', user);
+  c.set('session', session);
+
+  return { user, session };
+}
+
 export async function requireAuth(c: any) {
   const user = c.get('user');
   const session = c.get('session');
 
-  if (user && session) {
-    return { user, session };
+  if (user !== undefined && session !== undefined) {
+    return { user: user ?? null, session: session ?? null };
   }
 
-  const auth = createAuth(c.env as WorkerEnv);
-  const resolvedSession = await auth.api.getSession({ headers: getAuthHeaders(c) });
+  const resolvedSession = await loadAuthSession(c);
 
   if (!resolvedSession) {
     return { user: null, session: null };

@@ -1,7 +1,14 @@
 /* oxlint-disable no-unused-vars */
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
-import { createAuth, isDevAuthEnabled, resolveWorkerEnv, type WorkerEnv } from './auth';
+import {
+  createAuth,
+  isDevAuthEnabled,
+  resolveBaseURL,
+  resolveWorkerEnv,
+  type WorkerEnv,
+} from './auth';
+import { getAuth, loadAuthSession, populateAuthContext, requireAuth } from './api/auth';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gt, like, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
@@ -9,6 +16,7 @@ import {
   exerciseLibrary,
   chunkedQuery,
   chunkedInsert,
+  isValidTimeZone,
   whoopRecovery,
   whoopSleep,
   whoopCycle,
@@ -70,26 +78,8 @@ app.options('/api/*', async (c) => {
   return c.text('', 200);
 });
 
-function getAuthHeaders(c: any) {
-  const headers = new Headers(c.req.raw.headers);
-  const expoOrigin = headers.get('expo-origin');
-
-  if (!headers.get('origin') && expoOrigin) {
-    headers.set('origin', expoOrigin);
-  }
-
-  return headers;
-}
-
 app.use('*', async (c, next) => {
-  const auth = createAuth(c.env);
-  const session = await auth.api.getSession({
-    headers: getAuthHeaders(c),
-  });
-
-  c.set('user', session?.user ?? null);
-  c.set('session', session?.session ?? null);
-
+  await populateAuthContext(c);
   await next();
 });
 
@@ -132,6 +122,7 @@ app.get('/api/profile/preferences', async (c) => {
         .values({
           userId,
           weightUnit: 'kg',
+          timezone: null,
           createdAt: now,
           updatedAt: now,
         })
@@ -140,7 +131,10 @@ app.get('/api/profile/preferences', async (c) => {
       prefs = result;
     }
 
-    return c.json({ weightUnit: prefs.weightUnit });
+    return c.json({
+      weightUnit: prefs.weightUnit ?? 'kg',
+      timezone: prefs.timezone ?? null,
+    });
   } catch (e) {
     console.log('DEBUG getPreferences error:', e);
     return c.json({ message: 'Failed to fetch preferences' }, 500);
@@ -156,10 +150,18 @@ app.put('/api/profile/preferences', async (c) => {
   const db = getDb(c);
   try {
     const body = await c.req.json();
-    const { weightUnit } = body;
+    const { weightUnit, timezone } = body as { weightUnit?: string; timezone?: string | null };
 
-    if (!weightUnit || !['kg', 'lbs'].includes(weightUnit)) {
+    if (weightUnit !== undefined && !['kg', 'lbs'].includes(weightUnit)) {
       return c.json({ message: 'Invalid weight unit' }, 400);
+    }
+
+    if (timezone !== undefined && timezone !== null && !isValidTimeZone(timezone)) {
+      return c.json({ message: 'Invalid timezone' }, 400);
+    }
+
+    if (weightUnit === undefined && timezone === undefined) {
+      return c.json({ message: 'No preferences provided' }, 400);
     }
 
     const existing = await db
@@ -168,11 +170,18 @@ app.put('/api/profile/preferences', async (c) => {
       .where(eq(schema.userPreferences.userId, userId))
       .get();
 
+    const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
+    const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
+
     let result;
     if (existing) {
       result = await db
         .update(schema.userPreferences)
-        .set({ weightUnit, updatedAt: new Date() })
+        .set({
+          weightUnit: nextWeightUnit,
+          timezone: nextTimezone,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.userPreferences.userId, userId))
         .returning()
         .get();
@@ -182,7 +191,8 @@ app.put('/api/profile/preferences', async (c) => {
         .insert(schema.userPreferences)
         .values({
           userId,
-          weightUnit,
+          weightUnit: nextWeightUnit,
+          timezone: nextTimezone,
           createdAt: now,
           updatedAt: now,
         })
@@ -190,7 +200,10 @@ app.put('/api/profile/preferences', async (c) => {
         .get();
     }
 
-    return c.json({ weightUnit: result.weightUnit });
+    return c.json({
+      weightUnit: result.weightUnit ?? 'kg',
+      timezone: result.timezone ?? null,
+    });
   } catch (e) {
     console.log('DEBUG updatePreferences error:', e);
     return c.json({ message: 'Failed to update preferences' }, 500);
@@ -203,27 +216,9 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c, next) => {
     return;
   }
 
-  const auth = createAuth(c.env);
+  const auth = getAuth(c);
   return auth.handler(c.req.raw);
 });
-
-async function requireAuth(c: any) {
-  const user = c.get('user');
-  const session = c.get('session');
-
-  if (user && session) {
-    return { user, session };
-  }
-
-  const auth = createAuth(c.env);
-  const resolvedSession = await auth.api.getSession({ headers: getAuthHeaders(c) });
-
-  if (!resolvedSession) {
-    return { user: null, session: null };
-  }
-
-  return resolvedSession;
-}
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
@@ -2878,8 +2873,26 @@ app.post('/api/whoop/auth', async (c) => {
   }
 
   // Build OAuth URL
-  const redirectUri = `${resolvedEnv.BETTER_AUTH_URL}/api/auth/whoop/callback`;
-  const state = crypto.randomUUID();
+  let returnTo: string | undefined;
+  try {
+    const body = await c.req.json<{ returnTo?: string }>();
+    if (typeof body.returnTo === 'string' && body.returnTo.trim().length > 0) {
+      returnTo = body.returnTo.trim();
+    }
+  } catch {}
+
+  const baseURL = resolveBaseURL(resolvedEnv, c.req.url);
+  if (!baseURL) {
+    return c.json(
+      { error: 'BETTER_AUTH_URL is not configured and no request base URL was available' },
+      500,
+    );
+  }
+  const redirectUri = `${baseURL}/api/auth/whoop/callback`;
+  const state = encodeWhoopOAuthState({
+    nonce: crypto.randomUUID(),
+    ...(returnTo ? { returnTo } : {}),
+  });
 
   // Store state in cookie for verification
   const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri);
@@ -2893,8 +2906,7 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');
-
-  const deepLink = 'strength://whoop-callback';
+  const deepLink = decodeWhoopOAuthState(state).returnTo ?? 'strength://whoop-callback';
 
   if (error) {
     return c.redirect(`${deepLink}?error=${encodeURIComponent(error)}`);
@@ -2905,8 +2917,7 @@ app.get('/api/auth/whoop/callback', async (c) => {
   }
 
   // Get session from cookie (callback is accessed after auth)
-  const auth = createAuth(c.env);
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  const session = await loadAuthSession(c);
 
   if (!session?.user) {
     return c.redirect(`${deepLink}?error=session_expired`);
@@ -2914,7 +2925,11 @@ app.get('/api/auth/whoop/callback', async (c) => {
 
   const userId = session.user.id;
   const db = getDb(c);
-  const redirectUri = `${resolvedEnv.BETTER_AUTH_URL}/api/auth/whoop/callback`;
+  const baseURL = resolveBaseURL(resolvedEnv, c.req.url);
+  if (!baseURL) {
+    return c.redirect(`${deepLink}?error=missing_base_url`);
+  }
+  const redirectUri = `${baseURL}/api/auth/whoop/callback`;
 
   try {
     // Exchange code for tokens
@@ -2947,6 +2962,41 @@ app.get('/api/auth/whoop/callback', async (c) => {
     );
   }
 });
+
+function encodeWhoopOAuthState(payload: { nonce: string; returnTo?: string }) {
+  const json = JSON.stringify(payload);
+  return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function decodeWhoopOAuthState(state: string | undefined): { nonce?: string; returnTo?: string } {
+  if (!state) {
+    return {};
+  }
+
+  const normalized = state.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+
+  try {
+    const parsed = JSON.parse(atob(padded)) as { nonce?: string; returnTo?: string };
+    return {
+      ...(typeof parsed.nonce === 'string' ? { nonce: parsed.nonce } : {}),
+      ...(typeof parsed.returnTo === 'string' && isAllowedWhoopReturnTo(parsed.returnTo)
+        ? { returnTo: parsed.returnTo }
+        : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function isAllowedWhoopReturnTo(value: string) {
+  try {
+    const url = new URL(value);
+    return ['strength:', 'exp:', 'exps:', 'http:', 'https:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
 
 // POST /api/whoop/sync-all - Sync all WHOOP data
 app.post('/api/whoop/sync-all', async (c) => {
@@ -3225,7 +3275,7 @@ app.get('/api/webhooks/whoop', async (c) => {
 });
 
 // Nutrition API Routes
-import { chatHandler } from './api/nutrition/chat';
+import { chatHandler, getChatHistoryHandler } from './api/nutrition/chat';
 import { dailySummaryHandler } from './api/nutrition/daily-summary';
 import { getEntriesHandler, createEntryHandler } from './api/nutrition/entries';
 import {
@@ -3237,6 +3287,7 @@ import { getBodyStatsHandler, upsertBodyStatsHandler } from './api/nutrition/bod
 import { upsertTrainingContextHandler } from './api/nutrition/training-context';
 
 app.post('/api/nutrition/chat', chatHandler);
+app.get('/api/nutrition/chat/history', getChatHistoryHandler);
 
 app.get('/api/nutrition/daily-summary', dailySummaryHandler);
 

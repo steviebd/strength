@@ -1,16 +1,35 @@
 import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { View, Text } from 'react-native';
 import { colors, typography } from '@/theme';
 
 export default function WhoopCallback() {
   const router = useRouter();
+  const { success, error } = useLocalSearchParams<{
+    success?: string;
+    error?: string;
+  }>();
 
   useEffect(() => {
-    WebBrowser.dismissBrowser().catch(() => {});
-    router.replace('/(app)/profile');
-  }, [router]);
+    const dismissResult = WebBrowser.dismissBrowser();
+    if (dismissResult && typeof dismissResult.then === 'function') {
+      dismissResult.catch(() => {});
+    }
+
+    if (success === 'true') {
+      router.replace({
+        pathname: '/(app)/profile',
+        params: { whoop: 'connected', focus: 'whoop' },
+      });
+      return;
+    }
+
+    router.replace({
+      pathname: '/(app)/profile',
+      params: { ...(typeof error === 'string' ? { error } : { error: 'whoop_auth_failed' }) },
+    });
+  }, [error, router, success]);
 
   return (
     <View

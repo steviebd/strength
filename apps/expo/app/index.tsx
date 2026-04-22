@@ -5,7 +5,7 @@ import { authClient } from '@/lib/auth-client';
 export default function HomeScreen() {
   const session = authClient.useSession();
 
-  if (session.isPending) {
+  if (session.isPending || session.isRefetching) {
     return (
       <View
         style={{

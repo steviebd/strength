@@ -1,5 +1,5 @@
 import { streamText } from 'ai';
-import { eq, and, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lt, lte, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { getModel } from '../../lib/ai';
 import {
@@ -24,6 +24,12 @@ interface ChatRequest {
   date: string;
   hasImage: boolean;
   imageBase64?: string;
+}
+
+interface ChatHistoryQuery {
+  date: string;
+  limit?: string;
+  before?: string;
 }
 
 async function getWhoopDataForDay(
@@ -361,5 +367,64 @@ export async function chatHandler(c: any) {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     },
+  });
+}
+
+export async function getChatHistoryHandler(c: any) {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  const userId = session.user.id;
+  const db = getDb(c);
+  const { date, limit: limitParam, before } = c.req.query() as ChatHistoryQuery;
+
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
+  }
+
+  const parsedLimit = Number.parseInt(limitParam ?? '5', 10);
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 20) : 5;
+  const beforeTimestamp = before ? Number.parseInt(before, 10) : Number.NaN;
+
+  const filters = [
+    eq(schema.nutritionChatMessages.userId, userId),
+    eq(schema.nutritionChatMessages.date, date),
+  ];
+
+  if (Number.isFinite(beforeTimestamp)) {
+    filters.push(lt(schema.nutritionChatMessages.createdAt, new Date(beforeTimestamp)));
+  }
+
+  const rows = await db
+    .select({
+      id: schema.nutritionChatMessages.id,
+      role: schema.nutritionChatMessages.role,
+      content: schema.nutritionChatMessages.content,
+      hasImage: schema.nutritionChatMessages.hasImage,
+      createdAt: schema.nutritionChatMessages.createdAt,
+    })
+    .from(schema.nutritionChatMessages)
+    .where(and(...filters))
+    .orderBy(desc(schema.nutritionChatMessages.createdAt))
+    .limit(limit)
+    .all();
+
+  const messages = rows.reverse().map((row) => ({
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    hasImage: row.hasImage,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : null,
+  }));
+
+  const nextCursor =
+    rows.length === limit ? (rows[rows.length - 1]?.createdAt?.getTime() ?? null) : null;
+
+  return c.json({
+    messages,
+    nextCursor,
+    hasMore: rows.length === limit,
   });
 }

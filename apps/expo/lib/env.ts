@@ -1,5 +1,6 @@
 /* oxlint-disable no-unused-vars */
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 function getExpoHost() {
   const hostUri = Constants.expoConfig?.hostUri;
@@ -13,6 +14,13 @@ function getExpoHost() {
 
 function resolveApiUrl() {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787';
+
+  if (Platform.OS === 'web') {
+    const resolved = configuredUrl.replace(/\/$/, '');
+    console.log('API URL (web):', resolved);
+    return resolved;
+  }
+
   const expoHost = getExpoHost();
 
   if (!expoHost) {

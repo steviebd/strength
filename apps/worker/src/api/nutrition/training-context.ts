@@ -15,18 +15,9 @@ export async function upsertTrainingContextHandler(c: any) {
   const userId = session.user.id;
   const db = getDb(c);
 
-  const date = c.req.query('date');
-
-  if (!date) {
-    return c.json({ error: 'date query parameter is required' }, 400);
-  }
-
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(date)) {
-    return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
-  }
-
   let body: {
+    date?: string;
+    type?: string;
     trainingType?: string;
     customLabel?: string;
   };
@@ -37,7 +28,19 @@ export async function upsertTrainingContextHandler(c: any) {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const { trainingType, customLabel } = body;
+  const date = body.date ?? c.req.query('date');
+
+  if (!date) {
+    return c.json({ error: 'date is required' }, 400);
+  }
+
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(date)) {
+    return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
+  }
+
+  const trainingType = body.trainingType ?? body.type;
+  const { customLabel } = body;
 
   if (!trainingType) {
     return c.json({ error: 'trainingType is required' }, 400);

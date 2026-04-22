@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Modal, StyleSheet, Pressable, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Modal,
+  StyleSheet,
+  Pressable,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { ScreenScrollView } from '@/components/ui/Screen';
@@ -31,8 +41,9 @@ interface SaveMealDialogProps {
     protein: number;
     carbs: number;
     fat: number;
-  }) => void;
+  }) => Promise<void> | void;
   onDelete?: () => void;
+  isSaving?: boolean;
 }
 
 const MEAL_TYPES: MealType[] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -43,6 +54,7 @@ export function SaveMealDialog({
   analysis,
   onSave,
   onDelete,
+  isSaving = false,
 }: SaveMealDialogProps) {
   const [name, setName] = useState(analysis?.name ?? '');
   const [mealType, setMealType] = useState<MealType>('Breakfast');
@@ -77,16 +89,26 @@ export function SaveMealDialog({
     setFat('');
   };
 
-  const handleSave = () => {
-    onSave({
-      name,
-      mealType,
-      calories: parseInt(calories, 10) || 0,
-      protein: parseFloat(protein) || 0,
-      carbs: parseFloat(carbs) || 0,
-      fat: parseFloat(fat) || 0,
-    });
-    resetState();
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Meal name required', 'Enter a name before saving this meal.');
+      return;
+    }
+
+    try {
+      await onSave({
+        name: name.trim(),
+        mealType,
+        calories: parseInt(calories, 10) || 0,
+        protein: parseFloat(protein) || 0,
+        carbs: parseFloat(carbs) || 0,
+        fat: parseFloat(fat) || 0,
+      });
+      resetState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save meal.';
+      Alert.alert('Save failed', message);
+    }
   };
 
   const handleClose = () => {
@@ -109,121 +131,139 @@ export function SaveMealDialog({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View style={styles.overlay}>
-        <View style={styles.dialog}>
-          <ScreenScrollView
-            bottomInset={0}
-            horizontalPadding={0}
-            topPadding={0}
-            contentContainerStyle={styles.scrollContent}
-          >
-            <View style={styles.header}>
-              <Text style={styles.title}>Save Meal</Text>
-              <View style={styles.headerButtons}>
-                {onDelete && (
-                  <Pressable onPress={handleDelete}>
-                    <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={spacing.lg}
+        >
+          <View style={styles.dialog}>
+            <ScreenScrollView
+              bottomInset={0}
+              horizontalPadding={0}
+              topPadding={0}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.header}>
+                <Text style={styles.title}>Save Meal</Text>
+                <View style={styles.headerButtons}>
+                  {onDelete && (
+                    <Pressable onPress={handleDelete} disabled={isSaving}>
+                      <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+                    </Pressable>
+                  )}
+                  <Pressable onPress={handleClose} disabled={isSaving}>
+                    <Text style={styles.closeButton}>✕</Text>
                   </Pressable>
-                )}
-                <Pressable onPress={handleClose}>
-                  <Text style={styles.closeButton}>✕</Text>
-                </Pressable>
+                </View>
               </View>
-            </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Meal Name</Text>
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g., Grilled Chicken Salad"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>Meal Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g., Grilled Chicken Salad"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Meal Type</Text>
-              <View style={styles.mealTypeSelector}>
-                {MEAL_TYPES.map((type) => (
-                  <Pressable
-                    key={type}
-                    onPress={() => setMealType(type)}
-                    style={[
-                      styles.mealTypeOption,
-                      mealType === type && styles.mealTypeOptionSelected,
-                    ]}
-                  >
-                    <Text
+              <View style={styles.field}>
+                <Text style={styles.label}>Meal Type</Text>
+                <View style={styles.mealTypeSelector}>
+                  {MEAL_TYPES.map((type) => (
+                    <Pressable
+                      key={type}
+                      onPress={() => setMealType(type)}
+                      disabled={isSaving}
                       style={[
-                        styles.mealTypeText,
-                        mealType === type && styles.mealTypeTextSelected,
+                        styles.mealTypeOption,
+                        mealType === type && styles.mealTypeOptionSelected,
                       ]}
                     >
-                      {type}
-                    </Text>
-                  </Pressable>
-                ))}
+                      <Text
+                        style={[
+                          styles.mealTypeText,
+                          mealType === type && styles.mealTypeTextSelected,
+                        ]}
+                      >
+                        {type}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
-            </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Calories</Text>
-              <TextInput
-                style={styles.input}
-                value={calories}
-                onChangeText={setCalories}
-                placeholder="0"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="numeric"
-              />
-            </View>
-
-            <View style={styles.row}>
-              <View style={[styles.field, styles.flex]}>
-                <Text style={styles.label}>Protein (g)</Text>
+              <View style={styles.field}>
+                <Text style={styles.label}>Calories</Text>
                 <TextInput
                   style={styles.input}
-                  value={protein}
-                  onChangeText={setProtein}
+                  value={calories}
+                  onChangeText={setCalories}
                   placeholder="0"
                   placeholderTextColor={colors.textMuted}
-                  keyboardType="decimal-pad"
+                  keyboardType="numeric"
                 />
               </View>
-              <View style={[styles.field, styles.flex]}>
-                <Text style={styles.label}>Carbs (g)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={carbs}
-                  onChangeText={setCarbs}
-                  placeholder="0"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-              <View style={[styles.field, styles.flex]}>
-                <Text style={styles.label}>Fat (g)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={fat}
-                  onChangeText={setFat}
-                  placeholder="0"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-            </View>
 
-            <View style={styles.actions}>
-              <Button variant="ghost" onPress={handleClose}>
-                Cancel
-              </Button>
-              <Button onPress={handleSave}>Save Meal</Button>
-            </View>
-          </ScreenScrollView>
-        </View>
+              <View style={styles.row}>
+                <View style={[styles.field, styles.macroField]}>
+                  <Text style={styles.label}>Protein (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={protein}
+                    onChangeText={setProtein}
+                    placeholder="0"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={[styles.field, styles.macroField]}>
+                  <Text style={styles.label}>Carbs (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={carbs}
+                    onChangeText={setCarbs}
+                    placeholder="0"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={[styles.field, styles.macroField]}>
+                  <Text style={styles.label}>Fat (g)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={fat}
+                    onChangeText={setFat}
+                    placeholder="0"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.actions}>
+                <Button
+                  variant="ghost"
+                  onPress={handleClose}
+                  disabled={isSaving}
+                  style={styles.actionButton}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onPress={() => void handleSave()}
+                  disabled={isSaving}
+                  style={styles.actionButton}
+                >
+                  {isSaving ? 'Saving...' : 'Save Meal'}
+                </Button>
+              </View>
+            </ScreenScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -254,6 +294,8 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    flex: 1,
+    paddingRight: spacing.md,
   },
   headerButtons: {
     flexDirection: 'row',
@@ -282,13 +324,16 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     fontSize: typography.fontSizes.base,
     color: colors.text,
+    minWidth: 0,
   },
   mealTypeSelector: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   mealTypeOption: {
-    flex: 1,
+    minWidth: '47%',
+    flexGrow: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
@@ -304,21 +349,31 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
     color: colors.textMuted,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   mealTypeTextSelected: {
     color: colors.text,
   },
   row: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  flex: {
-    flex: 1,
+  macroField: {
+    minWidth: '30%',
+    flexGrow: 1,
+    flexBasis: 0,
   },
   actions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.lg,
+  },
+  actionButton: {
+    minWidth: 140,
+    flexGrow: 1,
   },
 });

@@ -26,6 +26,7 @@ export const userPreferences = sqliteTable('user_preferences', {
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
   weightUnit: text('weight_unit').default('kg'),
+  timezone: text('timezone'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });

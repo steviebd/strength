@@ -8,6 +8,8 @@ function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
 }
 
+type TargetStrategy = 'manual' | 'bodyweight' | 'default';
+
 export async function dailySummaryHandler(c: any) {
   try {
     const session = await requireAuth(c);
@@ -123,38 +125,61 @@ export async function dailySummaryHandler(c: any) {
     const totalCarbsG = entries.reduce((sum, e) => sum + (e.carbsG ?? 0), 0);
     const totalFatG = entries.reduce((sum, e) => sum + (e.fatG ?? 0), 0);
 
-    let targets: MacroTargets = {
-      calories: bodyStats?.targetCalories ?? 2500,
-      proteinG: bodyStats?.targetProteinG ?? 150,
-      carbsG: bodyStats?.targetCarbsG ?? 250,
-      fatG: bodyStats?.targetFatG ?? 80,
-    };
+    const manualTargetsProvided = [
+      bodyStats?.targetCalories,
+      bodyStats?.targetProteinG,
+      bodyStats?.targetCarbsG,
+      bodyStats?.targetFatG,
+    ].some((value) => value !== null && value !== undefined);
 
-    if (bodyStats?.bodyweightKg) {
+    let calorieMultiplier = 1;
+    if (trainingContext?.type === 'powerlifting') {
+      calorieMultiplier = 1.1;
+    } else if (trainingContext?.type === 'cardio') {
+      calorieMultiplier = 1.05;
+    } else if (trainingContext?.type === 'rest_day') {
+      calorieMultiplier = 0.95;
+    }
+
+    let targets: MacroTargets;
+    let targetStrategy: TargetStrategy;
+    let targetExplanation: string;
+
+    if (manualTargetsProvided) {
+      targets = {
+        calories: bodyStats?.targetCalories ?? 2500,
+        proteinG: bodyStats?.targetProteinG ?? 150,
+        carbsG: bodyStats?.targetCarbsG ?? 250,
+        fatG: bodyStats?.targetFatG ?? 80,
+      };
+      targetStrategy = 'manual';
+      targetExplanation = 'Targets are using the manual nutrition values saved in your profile.';
+    } else if (bodyStats?.bodyweightKg) {
+      const estimatedCalories = Math.round(2500 * calorieMultiplier);
       const proteinG = Math.round(bodyStats.bodyweightKg * 2);
       const fatG = Math.round(bodyStats.bodyweightKg * 0.8);
       const proteinCals = proteinG * 4;
       const fatCals = fatG * 9;
-      const remainingCals = (bodyStats?.targetCalories ?? 2500) - proteinCals - fatCals;
-      const carbsG = Math.round(remainingCals / 4);
+      const carbsG = Math.max(0, Math.round((estimatedCalories - proteinCals - fatCals) / 4));
 
-      let multiplier = 1;
-      if (trainingContext?.type === 'powerlifting') {
-        multiplier = 1.1;
-      } else if (trainingContext?.type === 'cardio') {
-        multiplier = 1.05;
-      } else if (trainingContext?.type === 'rest_day') {
-        multiplier = 0.95;
-      }
-
-      if (!bodyStats?.targetCalories) {
-        targets = {
-          calories: Math.round(2500 * multiplier),
-          proteinG,
-          carbsG,
-          fatG,
-        };
-      }
+      targets = {
+        calories: estimatedCalories,
+        proteinG,
+        carbsG,
+        fatG,
+      };
+      targetStrategy = 'bodyweight';
+      targetExplanation = `Targets are estimated from ${bodyStats.bodyweightKg} kg bodyweight, with protein at 2.0 g/kg, fat at 0.8 g/kg, and carbs using the remaining calories.`;
+    } else {
+      targets = {
+        calories: Math.round(2500 * calorieMultiplier),
+        proteinG: 150,
+        carbsG: 250,
+        fatG: 80,
+      };
+      targetStrategy = 'default';
+      targetExplanation =
+        'Targets are using the app defaults until bodyweight or manual targets are set.';
     }
 
     return c.json({
@@ -175,6 +200,11 @@ export async function dailySummaryHandler(c: any) {
         fatG: totalFatG,
       },
       targets,
+      targetMeta: {
+        strategy: targetStrategy,
+        explanation: targetExplanation,
+        calorieMultiplier,
+      },
       bodyweightKg: bodyStats?.bodyweightKg ?? null,
       trainingContext,
       whoopRecovery,
