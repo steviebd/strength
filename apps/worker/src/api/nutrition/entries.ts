@@ -1,7 +1,9 @@
 import { eq, and } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
+import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
 import { requireAuth } from '../auth';
+import { resolveUserTimezone } from '../../lib/timezone';
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
@@ -14,6 +16,12 @@ export async function getEntriesHandler(c: any) {
   }
   const userId = session.user.id;
   const db = getDb(c);
+
+  const requestedTimezone = c.req.query('timezone');
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
+  if (timezoneResult.error || !timezoneResult.timezone) {
+    return c.json({ error: timezoneResult.error }, 400);
+  }
 
   const date = c.req.query('date');
 
@@ -57,7 +65,8 @@ export async function createEntryHandler(c: any) {
     proteinG?: number;
     carbsG?: number;
     fatG?: number;
-    date?: string;
+    timezone?: string;
+    loggedAt?: string;
   };
 
   try {
@@ -66,17 +75,33 @@ export async function createEntryHandler(c: any) {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const { name, mealType, calories, proteinG, carbsG, fatG, date } = body;
-
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
-  }
+  const {
+    name,
+    mealType,
+    calories,
+    proteinG,
+    carbsG,
+    fatG,
+    timezone: requestedTimezone,
+    loggedAt,
+  } = body;
 
   if (!name) {
     return c.json({ error: 'name is required' }, 400);
   }
 
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
+  if (timezoneResult.error || !timezoneResult.timezone) {
+    return c.json({ error: timezoneResult.error }, 400);
+  }
+
   const now = new Date();
+  const loggedAtUtc = loggedAt ? new Date(loggedAt) : now;
+  if (Number.isNaN(loggedAtUtc.getTime())) {
+    return c.json({ error: 'Invalid loggedAt value' }, 400);
+  }
+
+  const localDate = formatLocalDate(loggedAtUtc, timezoneResult.timezone);
   const entry = await db
     .insert(schema.nutritionEntries)
     .values({
@@ -87,8 +112,10 @@ export async function createEntryHandler(c: any) {
       proteinG: proteinG ?? null,
       carbsG: carbsG ?? null,
       fatG: fatG ?? null,
-      date,
-      loggedAt: now.toISOString(),
+      date: localDate,
+      loggedAt: loggedAtUtc.toISOString(),
+      loggedAtUtc,
+      loggedTimezone: timezoneResult.timezone,
       createdAt: now,
       updatedAt: now,
     })

@@ -57,7 +57,7 @@ function toStorageWeight(value: string, unit: 'kg' | 'lbs') {
 export default function ProgramOneRMTestScreen() {
   const router = useRouter();
   const { cycleId } = useLocalSearchParams<{ cycleId?: string }>();
-  const { weightUnit } = useUserPreferences();
+  const { activeTimezone, weightUnit } = useUserPreferences();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [openingWorkout, setOpeningWorkout] = useState(false);
@@ -129,7 +129,11 @@ export default function ProgramOneRMTestScreen() {
     try {
       const result = await apiFetch<{ workoutId: string }>(
         `/api/programs/cycles/${cycleId}/create-1rm-test-workout`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timezone: activeTimezone }),
+        },
       );
       router.push(
         `/workout-session?workoutId=${result.workoutId}&source=program-1rm-test&cycleId=${cycleId}`,
@@ -139,7 +143,7 @@ export default function ProgramOneRMTestScreen() {
     } finally {
       setOpeningWorkout(false);
     }
-  }, [cycleId, router]);
+  }, [activeTimezone, cycleId, router]);
 
   const handleSave = useCallback(async () => {
     if (!cycleId || !cycle) return;

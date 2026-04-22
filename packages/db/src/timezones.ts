@@ -435,3 +435,144 @@ export function normalizeTimeZoneSearchValue(value: string) {
 export function formatTimeZoneLabel(timeZone: string) {
   return timeZone.replaceAll('_', ' ');
 }
+
+interface TimeZoneDateParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+function getTimeZoneFormatter(timeZone: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function getTimeZoneDateParts(date: Date, timeZone: string): TimeZoneDateParts {
+  const parts = getTimeZoneFormatter(timeZone).formatToParts(date);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+
+  return {
+    year: Number.parseInt(values.get('year') ?? '0', 10),
+    month: Number.parseInt(values.get('month') ?? '0', 10),
+    day: Number.parseInt(values.get('day') ?? '0', 10),
+    hour: Number.parseInt(values.get('hour') ?? '0', 10),
+    minute: Number.parseInt(values.get('minute') ?? '0', 10),
+    second: Number.parseInt(values.get('second') ?? '0', 10),
+  };
+}
+
+function toUtcTimestamp(parts: TimeZoneDateParts) {
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = getTimeZoneDateParts(date, timeZone);
+  return toUtcTimestamp(parts) - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+function parseLocalDate(localDate: string) {
+  const match = localDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error(`Invalid local date: ${localDate}`);
+  }
+
+  return {
+    year: Number.parseInt(match[1], 10),
+    month: Number.parseInt(match[2], 10),
+    day: Number.parseInt(match[3], 10),
+  };
+}
+
+function formatDateParts(year: number, month: number, day: number) {
+  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day
+    .toString()
+    .padStart(2, '0')}`;
+}
+
+export function resolveEffectiveTimezone(
+  deviceTimezone: string | null | undefined,
+  profileTimezone: string | null | undefined,
+) {
+  if (deviceTimezone && isValidTimeZone(deviceTimezone)) {
+    return deviceTimezone;
+  }
+
+  if (profileTimezone && isValidTimeZone(profileTimezone)) {
+    return profileTimezone;
+  }
+
+  return null;
+}
+
+export function formatLocalDate(input: Date | string | number, timeZone: string) {
+  const date = input instanceof Date ? input : new Date(input);
+  const parts = getTimeZoneDateParts(date, timeZone);
+  return formatDateParts(parts.year, parts.month, parts.day);
+}
+
+export function addDaysToLocalDate(localDate: string, days: number) {
+  const { year, month, day } = parseLocalDate(localDate);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDateParts(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+}
+
+export function zonedDateTimeToUtc(localDate: string, timeZone: string, time = '00:00:00') {
+  const { year, month, day } = parseLocalDate(localDate);
+  const [hoursRaw, minutesRaw = '0', secondsRaw = '0'] = time.split(':');
+  const target = {
+    year,
+    month,
+    day,
+    hour: Number.parseInt(hoursRaw ?? '0', 10),
+    minute: Number.parseInt(minutesRaw, 10),
+    second: Number.parseInt(secondsRaw, 10),
+  };
+
+  let utcTimestamp = Date.UTC(
+    target.year,
+    target.month - 1,
+    target.day,
+    target.hour,
+    target.minute,
+    target.second,
+  );
+
+  for (let index = 0; index < 4; index += 1) {
+    const offset = getTimeZoneOffsetMs(new Date(utcTimestamp), timeZone);
+    const nextTimestamp =
+      Date.UTC(
+        target.year,
+        target.month - 1,
+        target.day,
+        target.hour,
+        target.minute,
+        target.second,
+      ) - offset;
+
+    if (nextTimestamp === utcTimestamp) {
+      break;
+    }
+
+    utcTimestamp = nextTimestamp;
+  }
+
+  return new Date(utcTimestamp);
+}
+
+export function getUtcRangeForLocalDate(localDate: string, timeZone: string) {
+  const start = zonedDateTimeToUtc(localDate, timeZone, '00:00:00');
+  const end = zonedDateTimeToUtc(addDaysToLocalDate(localDate, 1), timeZone, '00:00:00');
+  return { start, end };
+}

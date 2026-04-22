@@ -49,6 +49,7 @@ export interface ProgramCycleWorkoutRow {
   updatedAt?: Date | null;
   scheduledDate?: string | null;
   scheduledTime?: string | null;
+  scheduledTimezone?: string | null;
 }
 
 export interface ProgramCycleWithWorkouts {
@@ -103,6 +104,7 @@ export async function createProgramCycle(
       workoutId: null,
       scheduledDate: w.scheduledDate ?? null,
       scheduledTime: w.scheduledTime ?? null,
+      scheduledTimezone: w.scheduledTimezone ?? null,
     }));
 
     await chunkedInsert(db, {

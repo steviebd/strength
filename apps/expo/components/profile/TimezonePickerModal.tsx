@@ -22,6 +22,8 @@ interface TimezonePickerModalProps {
   onConfirm: (timezone: string) => Promise<void> | void;
   isSaving?: boolean;
   dismissLocked?: boolean;
+  acceptFirst?: boolean;
+  alternateActionLabel?: string;
 }
 
 function getSearchScore(timeZone: string, query: string) {
@@ -61,9 +63,12 @@ export function TimezonePickerModal({
   onConfirm,
   isSaving = false,
   dismissLocked = false,
+  acceptFirst = false,
+  alternateActionLabel = 'Choose different timezone',
 }: TimezonePickerModalProps) {
   const [query, setQuery] = useState('');
   const [draftTimezone, setDraftTimezone] = useState<string | null>(selectedTimezone);
+  const [showSearch, setShowSearch] = useState(!acceptFirst || !selectedTimezone);
 
   useEffect(() => {
     if (!visible) {
@@ -72,7 +77,8 @@ export function TimezonePickerModal({
 
     setDraftTimezone(selectedTimezone);
     setQuery('');
-  }, [selectedTimezone, visible]);
+    setShowSearch(!acceptFirst || !selectedTimezone);
+  }, [acceptFirst, selectedTimezone, visible]);
 
   const normalizedQuery = normalizeTimeZoneSearchValue(query.trim());
 
@@ -130,50 +136,72 @@ export function TimezonePickerModal({
             )}
           </View>
 
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search timezones"
-              placeholderTextColor={colors.placeholderText}
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={query}
-              onChangeText={setQuery}
-            />
-          </View>
+          {showSearch ? (
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search timezones"
+                placeholderTextColor={colors.placeholderText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={query}
+                onChangeText={setQuery}
+              />
+            </View>
+          ) : null}
         </View>
 
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {filteredTimeZones.map((timeZone) => {
-            const isSelected = draftTimezone === timeZone;
+        {showSearch ? (
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {filteredTimeZones.map((timeZone) => {
+              const isSelected = draftTimezone === timeZone;
 
-            return (
-              <Pressable
-                key={timeZone}
-                onPress={() => setDraftTimezone(timeZone)}
-                style={[styles.option, isSelected && styles.optionSelected]}
-              >
-                <View style={styles.optionContent}>
-                  <Text style={styles.optionTitle}>{timeZone}</Text>
-                  <Text style={styles.optionSubtitle}>{formatTimeZoneLabel(timeZone)}</Text>
-                </View>
-                <View style={[styles.radio, isSelected && styles.radioSelected]}>
-                  {isSelected && <View style={styles.radioInner} />}
-                </View>
-              </Pressable>
-            );
-          })}
+              return (
+                <Pressable
+                  key={timeZone}
+                  onPress={() => setDraftTimezone(timeZone)}
+                  style={[styles.option, isSelected && styles.optionSelected]}
+                >
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionTitle}>{timeZone}</Text>
+                    <Text style={styles.optionSubtitle}>{formatTimeZoneLabel(timeZone)}</Text>
+                  </View>
+                  <View style={[styles.radio, isSelected && styles.radioSelected]}>
+                    {isSelected && <View style={styles.radioInner} />}
+                  </View>
+                </Pressable>
+              );
+            })}
 
-          {filteredTimeZones.length === 0 && (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>No matching timezones found.</Text>
+            {filteredTimeZones.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No matching timezones found.</Text>
+              </View>
+            )}
+          </ScrollView>
+        ) : (
+          <View style={styles.acceptContainer}>
+            <View style={styles.acceptCard}>
+              <Text style={styles.acceptEyebrow}>Detected timezone</Text>
+              <Text style={styles.acceptTitle}>{draftTimezone}</Text>
+              <Text style={styles.acceptSubtitle}>
+                This timezone will be used for workouts, nutrition days, and reporting.
+              </Text>
             </View>
-          )}
-        </ScrollView>
+
+            <Pressable
+              onPress={() => setShowSearch(true)}
+              disabled={isSaving}
+              style={styles.secondaryActionButton}
+            >
+              <Text style={styles.secondaryActionText}>{alternateActionLabel}</Text>
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.footer}>
           <Pressable
@@ -263,6 +291,49 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
+  },
+  acceptContainer: {
+    flex: 1,
+    padding: spacing.md,
+    justifyContent: 'center',
+    gap: spacing.lg,
+  },
+  acceptCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  acceptEyebrow: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    textTransform: 'uppercase',
+  },
+  acceptTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  acceptSubtitle: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.base,
+    lineHeight: 21,
+  },
+  secondaryActionButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  secondaryActionText: {
+    color: colors.text,
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
   },
   option: {
     flexDirection: 'row',

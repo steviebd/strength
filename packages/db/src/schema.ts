@@ -136,7 +136,11 @@ export const workouts = sqliteTable('workouts', {
   programCycleId: text('program_cycle_id'),
   name: text('name').notNull(),
   startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+  startedTimezone: text('started_timezone'),
+  startedLocalDate: text('started_local_date'),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+  completedTimezone: text('completed_timezone'),
+  completedLocalDate: text('completed_local_date'),
   completedDate: text('completed_date'),
   notes: text('notes'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
@@ -186,6 +190,8 @@ export const workoutSets = sqliteTable('workout_sets', {
   rpe: real('rpe'),
   isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+  completedTimezone: text('completed_timezone'),
+  completedLocalDate: text('completed_local_date'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -242,6 +248,7 @@ export const programCycleWorkouts = sqliteTable('program_cycle_workouts', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
   scheduledDate: text('scheduled_date'),
   scheduledTime: text('scheduled_time'),
+  scheduledTimezone: text('scheduled_timezone'),
 });
 
 export const _exercisesUserIdUpdatedAtIdx = index('idx_exercises_user_id_updated_at').on(
@@ -560,6 +567,8 @@ export const nutritionEntries = sqliteTable('nutrition_entries', {
   fatG: real('fat_g'),
   aiAnalysis: text('ai_analysis'),
   loggedAt: text('logged_at').notNull(),
+  loggedAtUtc: integer('logged_at_utc', { mode: 'timestamp_ms' }),
+  loggedTimezone: text('logged_timezone'),
   date: text('date').notNull(),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
@@ -574,6 +583,7 @@ export const nutritionChatMessages = sqliteTable('nutrition_chat_messages', {
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
   date: text('date').notNull(),
+  eventTimezone: text('event_timezone'),
   role: text('role').notNull(),
   content: text('content').notNull(),
   hasImage: integer('has_image', { mode: 'boolean' }).default(false),
@@ -607,6 +617,7 @@ export const nutritionTrainingContext = sqliteTable('nutrition_training_context'
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
   date: text('date').notNull(),
+  eventTimezone: text('event_timezone'),
   trainingType: text('training_type').notNull(),
   customLabel: text('custom_label'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),

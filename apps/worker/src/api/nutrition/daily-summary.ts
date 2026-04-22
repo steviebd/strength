@@ -1,8 +1,9 @@
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq, and, gte, lt } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { TrainingContext, WhoopData, MacroTargets } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
 import { requireAuth } from '../auth';
+import { getDateRangeForTimezone, resolveUserTimezone } from '../../lib/timezone';
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
@@ -30,7 +31,10 @@ export async function dailySummaryHandler(c: any) {
       return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
     }
 
-    const _timezone = 'UTC';
+    const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
+    if (timezoneResult.error || !timezoneResult.timezone) {
+      return c.json({ error: timezoneResult.error }, 400);
+    }
 
     const entries = await db
       .select()
@@ -69,10 +73,10 @@ export async function dailySummaryHandler(c: any) {
         }
       : null;
 
-    const targetDate = new Date(date + 'T00:00:00Z');
-    const startOfDay = new Date(targetDate);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setDate(endOfDay.getDate() + 1);
+    const { start: startOfDay, end: endOfDay } = getDateRangeForTimezone(
+      date,
+      timezoneResult.timezone,
+    );
 
     const recovery = await db
       .select()
@@ -81,7 +85,7 @@ export async function dailySummaryHandler(c: any) {
         and(
           eq(schema.whoopRecovery.userId, userId),
           gte(schema.whoopRecovery.date, startOfDay),
-          lte(schema.whoopRecovery.date, endOfDay),
+          lt(schema.whoopRecovery.date, endOfDay),
         ),
       )
       .get();
@@ -93,7 +97,7 @@ export async function dailySummaryHandler(c: any) {
         and(
           eq(schema.whoopCycle.userId, userId),
           gte(schema.whoopCycle.start, startOfDay),
-          lte(schema.whoopCycle.start, endOfDay),
+          lt(schema.whoopCycle.start, endOfDay),
         ),
       )
       .get();

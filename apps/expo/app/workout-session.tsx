@@ -411,33 +411,6 @@ export default function WorkoutSessionScreen() {
             keyboardShouldPersistTaps: 'handled',
           }}
         >
-          {showFloatingPill && exercises.length > 0 && (
-            <Pressable
-              style={[styles.floatingPill, { bottom: insets.bottom + 92 }]}
-              onPress={scrollToCurrentExercise}
-            >
-              <View style={styles.floatingPillContent}>
-                <View style={styles.floatingPillLeft}>
-                  <Text style={styles.floatingPillLabel}>
-                    {exercises[currentExerciseIndex]?.name} • Set {currentSetIndex + 1}
-                  </Text>
-                  <Text style={styles.floatingPillSubtitle}>
-                    {currentExerciseIndex + 1} of {exercises.length} exercises
-                  </Text>
-                </View>
-                <View style={styles.floatingPillRight}>
-                  <View style={styles.setCounterBadge}>
-                    <Text style={styles.setCounterText}>
-                      {exercises[currentExerciseIndex]?.sets.filter((s) => s.isComplete).length}/
-                      {exercises[currentExerciseIndex]?.sets.length}
-                    </Text>
-                  </View>
-                  <Text style={styles.floatingPillArrow}>↓</Text>
-                </View>
-              </View>
-            </Pressable>
-          )}
-
           <View style={styles.exerciseList}>
             {exercises.map((exercise, idx) => {
               const localSets = exercise.sets.map((s) => ({
@@ -483,7 +456,10 @@ export default function WorkoutSessionScreen() {
             )}
 
             {exercises.length > 0 && (
-              <View style={styles.exerciseProgressBar}>
+              <Pressable
+                style={styles.exerciseProgressBar}
+                onPress={scrollToCurrentExercise}
+              >
                 <View style={styles.exerciseProgressInfo}>
                   <Text style={styles.exerciseProgressText}>
                     {exercises[currentExerciseIndex]?.name}
@@ -497,7 +473,7 @@ export default function WorkoutSessionScreen() {
                     Set {currentSetIndex + 1} of {exercises[currentExerciseIndex]?.sets.length}
                   </Text>
                 </View>
-              </View>
+              </Pressable>
             )}
           </View>
 

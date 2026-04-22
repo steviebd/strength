@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '@/lib/api';
+import { getTodayLocalDate } from '@/lib/timezone';
 
 interface WhoopRecovery {
   score: number | null;
@@ -28,23 +29,18 @@ export interface UseWhoopDataResult {
 
 const STALENESS_MS = 15 * 60 * 1000;
 
-function getCacheKey(date: string): string {
-  return `whoop_cache_${date}`;
+function getCacheKey(date: string, timezone: string): string {
+  return `whoop_cache_${timezone}_${date}`;
 }
 
 function isStale(timestamp: number): boolean {
   return Date.now() - timestamp > STALENESS_MS;
 }
 
-function getTodayDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-export function useWhoopData(date: string = getTodayDate()): UseWhoopDataResult {
+export function useWhoopData(
+  date: string = getTodayLocalDate(),
+  timezone: string = 'UTC',
+): UseWhoopDataResult {
   const [data, setData] = useState<WhoopCache | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -52,16 +48,16 @@ export function useWhoopData(date: string = getTodayDate()): UseWhoopDataResult 
   const saveToCache = useCallback(
     async (cacheData: WhoopCache) => {
       try {
-        const key = getCacheKey(date);
+        const key = getCacheKey(date, timezone);
         await AsyncStorage.setItem(key, JSON.stringify(cacheData));
       } catch {}
     },
-    [date],
+    [date, timezone],
   );
 
   const loadFromCache = useCallback(async (): Promise<WhoopCache | null> => {
     try {
-      const key = getCacheKey(date);
+      const key = getCacheKey(date, timezone);
       const cached = await AsyncStorage.getItem(key);
       if (cached) {
         return JSON.parse(cached) as WhoopCache;
@@ -70,18 +66,18 @@ export function useWhoopData(date: string = getTodayDate()): UseWhoopDataResult 
     } catch {
       return null;
     }
-  }, [date]);
+  }, [date, timezone]);
 
   const fetchFreshData = useCallback(async (): Promise<WhoopCache> => {
     const response = await apiFetch<{ whoopRecovery: WhoopRecovery; whoopCycle: WhoopCycle }>(
-      `/api/nutrition/daily-summary?date=${date}`,
+      `/api/nutrition/daily-summary?date=${date}&timezone=${encodeURIComponent(timezone)}`,
     );
     return {
       recovery: response.whoopRecovery,
       cycle: response.whoopCycle,
       timestamp: Date.now(),
     };
-  }, [date]);
+  }, [date, timezone]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);

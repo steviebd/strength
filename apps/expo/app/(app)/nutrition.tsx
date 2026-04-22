@@ -17,6 +17,8 @@ import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
 import { SaveMealDialog } from '@/components/nutrition/SaveMealDialog';
 import { useWhoopData } from '@/hooks/useWhoopData';
+import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { getTodayLocalDate } from '@/lib/timezone';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -85,14 +87,6 @@ interface DailySummary {
     hrv: number | null;
   } | null;
   whoopCycle: { caloriesBurned: number | null; totalStrain: number | null } | null;
-}
-
-function getTodayDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 function getDefaultMealTypeForNow(): 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack' {
@@ -230,7 +224,9 @@ function buildChatExchanges(messages: ChatMessageData[]): ChatExchangeData[] {
 }
 
 export default function NutritionScreen() {
-  const date = getTodayDate();
+  const { activeTimezone } = useUserPreferences();
+  const timezone = activeTimezone ?? 'UTC';
+  const date = getTodayLocalDate(timezone);
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [draftText, setDraftText] = useState('');
@@ -249,11 +245,14 @@ export default function NutritionScreen() {
   const [savingAnalysisMessageId, setSavingAnalysisMessageId] = useState<string | null>(null);
   const hasAppliedServerHistory = useRef(false);
 
-  const { data: whoopData } = useWhoopData(date);
+  const { data: whoopData } = useWhoopData(date, timezone);
 
   const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
-    queryKey: ['nutrition-daily-summary', date],
-    queryFn: () => apiFetch(`/api/nutrition/daily-summary?date=${date}`),
+    queryKey: ['nutrition-daily-summary', date, timezone],
+    queryFn: () =>
+      apiFetch(
+        `/api/nutrition/daily-summary?date=${date}&timezone=${encodeURIComponent(timezone)}`,
+      ),
   });
 
   useEffect(() => {
@@ -267,8 +266,8 @@ export default function NutritionScreen() {
 
     async function restoreLocalState() {
       const [cachedMessages, cachedDraft] = await Promise.all([
-        getNutritionChatMessages<ChatMessageData>(date),
-        getNutritionChatDraft(date),
+        getNutritionChatMessages<ChatMessageData>(date, timezone),
+        getNutritionChatDraft(date, timezone),
       ]);
 
       if (isCancelled) return;
@@ -289,17 +288,17 @@ export default function NutritionScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [date]);
+  }, [date, timezone]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
-    void setNutritionChatMessages(date, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
-  }, [date, hasRestoredLocalState, messages]);
+    void setNutritionChatMessages(date, timezone, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
+  }, [date, hasRestoredLocalState, messages, timezone]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
-    void setNutritionChatDraft(date, draftText);
-  }, [date, draftText, hasRestoredLocalState]);
+    void setNutritionChatDraft(date, timezone, draftText);
+  }, [date, draftText, hasRestoredLocalState, timezone]);
 
   useEffect(() => {
     if (!summary) return;
@@ -328,10 +327,12 @@ export default function NutritionScreen() {
   const exchanges = useMemo(() => buildChatExchanges(messages), [messages]);
 
   const historyQuery = useQuery<ChatHistoryResponse>({
-    queryKey: ['nutrition-chat-history-initial', date],
+    queryKey: ['nutrition-chat-history-initial', date, timezone],
     enabled: hasRestoredLocalState,
     queryFn: () =>
-      apiFetch(`/api/nutrition/chat/history?date=${date}&limit=${CHAT_HISTORY_PAGE_SIZE}`),
+      apiFetch(
+        `/api/nutrition/chat/history?date=${date}&timezone=${encodeURIComponent(timezone)}&limit=${CHAT_HISTORY_PAGE_SIZE}`,
+      ),
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     staleTime: 0,
@@ -375,7 +376,7 @@ export default function NutritionScreen() {
         proteinG: data.protein,
         carbsG: data.carbs,
         fatG: data.fat,
-        date,
+        timezone,
       };
 
       if (data.id) {
@@ -406,7 +407,7 @@ export default function NutritionScreen() {
     mutationFn: (type: TrainingType) =>
       apiFetch('/api/nutrition/training-context', {
         method: 'POST',
-        body: JSON.stringify({ trainingType: type, date }),
+        body: JSON.stringify({ trainingType: type, date, timezone }),
       }),
     onSuccess: () => {
       refetchSummary();
@@ -480,6 +481,7 @@ export default function NutritionScreen() {
             content: message.content,
           })),
           date,
+          timezone,
         };
 
         if (attachedImage) {
@@ -572,7 +574,7 @@ export default function NutritionScreen() {
         }
       }
     },
-    [date, messages, pendingImage],
+    [date, messages, pendingImage, timezone],
   );
 
   const loadOlderHistory = useCallback(async () => {

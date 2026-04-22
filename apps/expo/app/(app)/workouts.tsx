@@ -75,7 +75,7 @@ export default function WorkoutsIndex() {
   const [showStartWorkout, setShowStartWorkout] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const { startWorkout, isLoading } = useWorkoutSessionContext();
-  const { weightUnit } = useUserPreferences();
+  const { activeTimezone, weightUnit } = useUserPreferences();
 
   const [workoutName, setWorkoutName] = useState('');
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
@@ -178,7 +178,11 @@ export default function WorkoutsIndex() {
       const workout = await apiFetch<{ id: string }>('/api/workouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: template.name, templateId: template.id }),
+        body: JSON.stringify({
+          name: template.name,
+          templateId: template.id,
+          timezone: activeTimezone,
+        }),
       });
       if (workout?.id) {
         router.push(`/workout-session?workoutId=${workout.id}`);
@@ -214,6 +218,8 @@ export default function WorkoutsIndex() {
         completed: boolean;
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: activeTimezone }),
       });
 
       if (result.completed) {

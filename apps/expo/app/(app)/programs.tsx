@@ -423,7 +423,7 @@ export default function ProgramsScreen() {
   const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
-  const { weightUnit } = useUserPreferences();
+  const { activeTimezone, weightUnit } = useUserPreferences();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
@@ -596,6 +596,7 @@ export default function ProgramsScreen() {
           ohp1rm: convertToKg(parseFloat(values.ohp)),
           totalSessionsPlanned: getTotalSessions(selectedProgram.slug),
           estimatedWeeks: selectedProgram.estimatedWeeks,
+          timezone: activeTimezone,
         }),
       });
 
@@ -632,6 +633,8 @@ export default function ProgramsScreen() {
         completed: boolean;
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: activeTimezone }),
       });
 
       if (result.completed) {

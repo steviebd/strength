@@ -158,11 +158,12 @@ export default function AppLayout() {
           visible={!isLoading && needsTimezoneSelection}
           title="Set your timezone"
           description="Choose the timezone your workouts, meals, and daily summaries should follow."
-          confirmLabel="Continue"
-          selectedTimezone={timezone ?? deviceTimezone}
+          confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
+          selectedTimezone={deviceTimezone ?? timezone}
           onClose={() => {}}
           onConfirm={setTimezone}
           dismissLocked
+          acceptFirst={Boolean(deviceTimezone)}
         />
       </>
     </QueryProvider>

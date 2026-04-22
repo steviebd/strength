@@ -2,23 +2,16 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { isValidTimeZone } from '@strength/db';
+import { getActiveTimezone, getCurrentDeviceTimezone } from '@/lib/timezone';
 
 type WeightUnit = 'kg' | 'lbs';
 type UserTimezone = string | null;
-
-function detectDeviceTimeZone(): UserTimezone {
-  try {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return typeof timeZone === 'string' && isValidTimeZone(timeZone) ? timeZone : null;
-  } catch {
-    return null;
-  }
-}
 
 interface UserPreferencesContextValue {
   weightUnit: WeightUnit;
   timezone: UserTimezone;
   deviceTimezone: UserTimezone;
+  activeTimezone: UserTimezone;
   needsTimezoneSelection: boolean;
   setWeightUnit: (unit: WeightUnit) => Promise<void>;
   setTimezone: (timezone: string) => Promise<void>;
@@ -31,7 +24,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const session = authClient.useSession();
   const [weightUnit, setWeightUnitState] = useState<WeightUnit>('kg');
   const [timezone, setTimezoneState] = useState<UserTimezone>(null);
-  const [deviceTimezone] = useState<UserTimezone>(() => detectDeviceTimeZone());
+  const [deviceTimezone] = useState<UserTimezone>(() => getCurrentDeviceTimezone());
   const [hasPersistedTimezone, setHasPersistedTimezone] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -117,6 +110,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   );
 
   const needsTimezoneSelection = Boolean(session.data?.user) && !isLoading && !hasPersistedTimezone;
+  const activeTimezone = getActiveTimezone(timezone, deviceTimezone);
 
   return (
     <UserPreferencesContext.Provider
@@ -124,6 +118,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
         weightUnit,
         timezone,
         deviceTimezone,
+        activeTimezone,
         needsTimezoneSelection,
         setWeightUnit,
         setTimezone,

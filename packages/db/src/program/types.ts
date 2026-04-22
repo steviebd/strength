@@ -17,6 +17,7 @@ export interface CreateProgramCycleData {
     sessionName: string;
     scheduledDate?: string;
     scheduledTime?: string;
+    scheduledTimezone?: string;
     targetLifts?: string;
   }>;
 }

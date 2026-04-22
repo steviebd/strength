@@ -1,5 +1,5 @@
 import { streamText } from 'ai';
-import { eq, and, desc, gte, lt, lte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { getModel } from '../../lib/ai';
 import {
@@ -14,6 +14,8 @@ import {
 } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
 import { requireAuth } from '../auth';
+import { formatLocalDate } from '@strength/db';
+import { getDateRangeForTimezone, resolveUserTimezone } from '../../lib/timezone';
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
@@ -21,9 +23,10 @@ function getDb(c: any) {
 
 interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
-  date: string;
+  date?: string;
   hasImage: boolean;
   imageBase64?: string;
+  timezone?: string;
 }
 
 interface ChatHistoryQuery {
@@ -36,12 +39,9 @@ async function getWhoopDataForDay(
   db: any,
   userId: string,
   date: string,
-  _timezone: string,
+  timezone: string,
 ): Promise<WhoopData> {
-  const targetDate = new Date(date + 'T00:00:00Z');
-  const startOfDay = new Date(targetDate);
-  const endOfDay = new Date(targetDate);
-  endOfDay.setDate(endOfDay.getDate() + 1);
+  const { start: startOfDay, end: endOfDay } = getDateRangeForTimezone(date, timezone);
 
   const recovery = await db
     .select()
@@ -50,7 +50,7 @@ async function getWhoopDataForDay(
       and(
         eq(schema.whoopRecovery.userId, userId),
         gte(schema.whoopRecovery.date, startOfDay),
-        lte(schema.whoopRecovery.date, endOfDay),
+        lt(schema.whoopRecovery.date, endOfDay),
       ),
     )
     .get();
@@ -62,7 +62,7 @@ async function getWhoopDataForDay(
       and(
         eq(schema.whoopCycle.userId, userId),
         gte(schema.whoopCycle.start, startOfDay),
-        lte(schema.whoopCycle.start, endOfDay),
+        lt(schema.whoopCycle.start, endOfDay),
       ),
     )
     .get();
@@ -144,14 +144,16 @@ export async function chatHandler(c: any) {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const { messages, date, hasImage, imageBase64 } = body;
+  const {
+    messages,
+    date: requestedDate,
+    hasImage,
+    imageBase64,
+    timezone: requestedTimezone,
+  } = body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return c.json({ error: 'Messages are required' }, 400);
-  }
-
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
   }
 
   const imageCount = await db
@@ -195,7 +197,20 @@ export async function chatHandler(c: any) {
 
   const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
   const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
-  const timezone = 'UTC';
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
+  if (timezoneResult.error || !timezoneResult.timezone) {
+    return c.json({ error: timezoneResult.error }, 400);
+  }
+  const timezone = timezoneResult.timezone;
+  const date =
+    requestedDate === undefined
+      ? formatLocalDate(new Date(), timezone)
+      : /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+        ? requestedDate
+        : null;
+  if (!date) {
+    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
+  }
   const bodyweightKg = bodyStats?.bodyweightKg ?? null;
   const hasProgram = !!activeProgram;
 
@@ -281,6 +296,7 @@ export async function chatHandler(c: any) {
   await db.insert(schema.nutritionChatMessages).values({
     userId,
     date,
+    eventTimezone: timezone,
     role: 'user',
     content: userMessageContent,
     hasImage: hasImageFlag,
@@ -343,6 +359,7 @@ export async function chatHandler(c: any) {
           await db.insert(schema.nutritionChatMessages).values({
             userId,
             date,
+            eventTimezone: timezone,
             role: 'assistant',
             content: fullResponseText,
             hasImage: false,
@@ -379,6 +396,10 @@ export async function getChatHistoryHandler(c: any) {
   const userId = session.user.id;
   const db = getDb(c);
   const { date, limit: limitParam, before } = c.req.query() as ChatHistoryQuery;
+  const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
+  if (timezoneResult.error || !timezoneResult.timezone) {
+    return c.json({ error: timezoneResult.error }, 400);
+  }
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);

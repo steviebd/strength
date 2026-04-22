@@ -1,7 +1,9 @@
 import { eq, and } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
+import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
 import { requireAuth } from '../auth';
+import { resolveUserTimezone } from '../../lib/timezone';
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
@@ -20,6 +22,7 @@ export async function upsertTrainingContextHandler(c: any) {
     type?: string;
     trainingType?: string;
     customLabel?: string;
+    timezone?: string;
   };
 
   try {
@@ -28,16 +31,21 @@ export async function upsertTrainingContextHandler(c: any) {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const date = body.date ?? c.req.query('date');
-
-  if (!date) {
-    return c.json({ error: 'date is required' }, 400);
+  const timezoneResult = await resolveUserTimezone(
+    db,
+    userId,
+    body.timezone ?? c.req.query('timezone'),
+  );
+  if (timezoneResult.error || !timezoneResult.timezone) {
+    return c.json({ error: timezoneResult.error }, 400);
   }
 
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(date)) {
-    return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
+  const requestedDate = body.date ?? c.req.query('date');
+  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
   }
+
+  const date = requestedDate ?? formatLocalDate(new Date(), timezoneResult.timezone);
 
   const trainingType = body.trainingType ?? body.type;
   const { customLabel } = body;
@@ -71,6 +79,7 @@ export async function upsertTrainingContextHandler(c: any) {
       .set({
         trainingType,
         customLabel: customLabel ?? null,
+        eventTimezone: timezoneResult.timezone,
         updatedAt: now,
       })
       .where(
@@ -87,6 +96,7 @@ export async function upsertTrainingContextHandler(c: any) {
       .values({
         userId,
         date,
+        eventTimezone: timezoneResult.timezone,
         trainingType,
         customLabel: customLabel ?? null,
         createdAt: now,

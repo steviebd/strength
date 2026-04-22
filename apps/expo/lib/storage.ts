@@ -5,8 +5,10 @@ const STORAGE_KEYS = {
   CACHED_PROGRAMS: 'cached_programs',
   PENDING_WORKOUTS: 'pending_workouts',
   ACTIVE_WORKOUT_SESSION: 'active_workout_session',
-  NUTRITION_CHAT_MESSAGES: (date: string) => `nutrition_chat_messages_${date}`,
-  NUTRITION_CHAT_DRAFT: (date: string) => `nutrition_chat_draft_${date}`,
+  NUTRITION_CHAT_MESSAGES: (date: string, timezone: string) =>
+    `nutrition_chat_messages_${timezone}_${date}`,
+  NUTRITION_CHAT_DRAFT: (date: string, timezone: string) =>
+    `nutrition_chat_draft_${timezone}_${date}`,
 } as const;
 
 interface LastWorkoutData {
@@ -124,8 +126,8 @@ async function clearActiveWorkoutSession(): Promise<void> {
   platformStorage.setItem(STORAGE_KEYS.ACTIVE_WORKOUT_SESSION, '');
 }
 
-async function getNutritionChatMessages<T>(date: string): Promise<T[]> {
-  const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date));
+async function getNutritionChatMessages<T>(date: string, timezone: string): Promise<T[]> {
+  const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date, timezone));
   if (!data) return [];
   try {
     const parsed = JSON.parse(data) as NutritionChatCache;
@@ -135,25 +137,32 @@ async function getNutritionChatMessages<T>(date: string): Promise<T[]> {
   }
 }
 
-async function setNutritionChatMessages<T>(date: string, messages: T[]): Promise<void> {
+async function setNutritionChatMessages<T>(
+  date: string,
+  timezone: string,
+  messages: T[],
+): Promise<void> {
   const data: NutritionChatCache = {
     messages,
     cachedAt: new Date().toISOString(),
   };
-  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date), JSON.stringify(data));
+  platformStorage.setItem(
+    STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date, timezone),
+    JSON.stringify(data),
+  );
 }
 
-async function getNutritionChatDraft(date: string): Promise<string> {
-  return platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date)) ?? '';
+async function getNutritionChatDraft(date: string, timezone: string): Promise<string> {
+  return platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone)) ?? '';
 }
 
-async function setNutritionChatDraft(date: string, draft: string): Promise<void> {
+async function setNutritionChatDraft(date: string, timezone: string, draft: string): Promise<void> {
   if (!draft) {
-    platformStorage.removeItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date));
+    platformStorage.removeItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone));
     return;
   }
 
-  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date), draft);
+  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone), draft);
 }
 
 export {
