@@ -6,9 +6,9 @@ const STORAGE_KEYS = {
   PENDING_WORKOUTS: 'pending_workouts',
   ACTIVE_WORKOUT_SESSION: 'active_workout_session',
   NUTRITION_CHAT_MESSAGES: (date: string, timezone: string) =>
-    `nutrition_chat_messages_${timezone}_${date}`,
+    `nutrition_chat_messages_${timezone.replace(/\//g, '---')}_${date}`,
   NUTRITION_CHAT_DRAFT: (date: string, timezone: string) =>
-    `nutrition_chat_draft_${timezone}_${date}`,
+    `nutrition_chat_draft_${timezone.replace(/\//g, '---')}_${date}`,
 } as const;
 
 interface LastWorkoutData {

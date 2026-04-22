@@ -2,30 +2,9 @@ import { useState, useCallback, useRef } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-
-export interface TemplateExercise {
-  id: string;
-  exerciseId: string;
-  name: string;
-  muscleGroup: string | null;
-  sets: number;
-  reps: number;
-  targetWeight: number;
-  isAmrap: boolean;
-  isAccessory: boolean;
-  isRequired: boolean;
-  orderIndex: number;
-}
-
-export interface Template {
-  id?: string;
-  name: string;
-  description: string | null;
-  notes: string | null;
-  exercises: TemplateExercise[];
-  createdAt: string;
-  updatedAt: string;
-}
+import { generateId } from '@strength/db';
+import type { Template, TemplateExercise } from '@/components/template/TemplateEditor/types';
+export type { Template, TemplateExercise };
 
 interface UseTemplateEditorReturn {
   template: Template | null;
@@ -51,10 +30,6 @@ interface UseTemplateEditorReturn {
   setTemplateNotes: (notes: string) => void;
   fetchTemplates: () => Promise<Template[]>;
   createEmptyTemplate: () => Template;
-}
-
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
 interface LastWorkoutResponse {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useTemplateEditor, type Template } from '@/hooks/useTemplateEditor';
 import { TemplateExerciseRow } from './TemplateExerciseRow';
 import { ExercisePicker } from './ExercisePicker';
@@ -105,7 +106,7 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerRow}>
           <Pressable onPress={onClose} style={styles.backButton}>
-            <Text style={styles.backButtonText}>←</Text>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
           <View style={styles.headerRight}>
             {autoSaveStatus === 'saving' && (
@@ -231,10 +232,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 9999,
     backgroundColor: colors.surfaceAlt,
-  },
-  backButtonText: {
-    fontSize: 20,
-    color: colors.text,
   },
   headerRight: {
     flexDirection: 'row',

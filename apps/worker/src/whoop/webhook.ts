@@ -1,14 +1,56 @@
 import type { WorkerEnv } from '../auth';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
-import { eq, and } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { userIntegration } from '@strength/db';
-import { syncAllWhoopData } from './sync';
+import { fetchRecoveryByCycleId, fetchSleepById, fetchWorkoutById } from './api';
+import { getValidAccessToken } from './token-rotation';
+import {
+  deleteWhoopRecovery,
+  deleteWhoopSleep,
+  deleteWhoopWorkout,
+  upsertWhoopRecovery,
+  upsertWhoopSleep,
+  upsertWhoopWorkout,
+} from './sync';
+
+export interface WhoopWebhookPayload {
+  id?: string | number;
+  trace_id?: string;
+  type?: string;
+  user_id?: string | number;
+}
 
 export interface WhoopWebhookEvent {
   eventType: string;
   userId: string;
+  objectId: string;
+  traceId?: string;
   data: Record<string, unknown>;
+}
+
+export function normalizeWhoopWebhookPayload(
+  payload: Record<string, unknown>,
+): WhoopWebhookEvent | null {
+  const eventType = typeof payload.type === 'string' ? payload.type : null;
+  const userIdValue = payload.user_id;
+  const objectIdValue = payload.id;
+
+  if (!eventType || (typeof userIdValue !== 'string' && typeof userIdValue !== 'number')) {
+    return null;
+  }
+
+  if (typeof objectIdValue !== 'string' && typeof objectIdValue !== 'number') {
+    return null;
+  }
+
+  return {
+    eventType,
+    userId: String(userIdValue),
+    objectId: String(objectIdValue),
+    traceId: typeof payload.trace_id === 'string' ? payload.trace_id : undefined,
+    data: payload,
+  };
 }
 
 export async function verifyWebhookSignature(
@@ -23,9 +65,14 @@ export async function verifyWebhookSignature(
     return false;
   }
 
-  const timestampMs = parseInt(timestamp, 10);
+  const numericTimestamp = Number.parseInt(timestamp, 10);
   const now = Date.now();
-  if (isNaN(timestampMs) || Math.abs(now - timestampMs) > 5 * 60 * 1000) {
+  const timestampMs =
+    Number.isFinite(numericTimestamp) && numericTimestamp < 1_000_000_000_000
+      ? numericTimestamp * 1000
+      : numericTimestamp;
+
+  if (Number.isNaN(timestampMs) || Math.abs(now - timestampMs) > 5 * 60 * 1000) {
     console.error('[WHOOP Webhook] Timestamp too old or invalid');
     return false;
   }
@@ -57,12 +104,12 @@ export async function verifyWebhookSignature(
   return result === 0;
 }
 
-export async function resolveWhoopUserId(
+async function resolveWhoopUserId(
   db: DrizzleD1Database<typeof schema>,
   whoopUserId: string,
 ): Promise<string | null> {
   const integration = await db
-    .select()
+    .select({ userId: userIntegration.userId })
     .from(userIntegration)
     .where(
       and(
@@ -71,47 +118,109 @@ export async function resolveWhoopUserId(
         eq(userIntegration.isActive, true),
       ),
     )
-    .limit(1);
+    .get();
 
-  return integration[0]?.userId ?? null;
+  return integration?.userId ?? null;
+}
+
+async function getWhoopAccessToken(
+  db: DrizzleD1Database<typeof schema>,
+  env: WorkerEnv,
+  userId: string,
+): Promise<string> {
+  const tokenResult = await getValidAccessToken(db, env, userId);
+  if (!tokenResult.token) {
+    throw new Error(tokenResult.error ?? 'Missing WHOOP access token');
+  }
+
+  return tokenResult.token;
+}
+
+async function handleWhoopRecoveryUpdate(
+  db: DrizzleD1Database<typeof schema>,
+  env: WorkerEnv,
+  userId: string,
+  sleepId: string,
+): Promise<void> {
+  const accessToken = await getWhoopAccessToken(db, env, userId);
+  const sleep = await fetchSleepById(accessToken, sleepId);
+
+  await upsertWhoopSleep(db, userId, sleep);
+
+  if (sleep.cycle_id == null) {
+    throw new Error(`WHOOP sleep ${sleepId} did not include a cycle_id`);
+  }
+
+  const recovery = await fetchRecoveryByCycleId(accessToken, sleep.cycle_id);
+  await upsertWhoopRecovery(db, userId, recovery);
 }
 
 export async function handleWebhookEvent(
   db: DrizzleD1Database<typeof schema>,
   env: WorkerEnv,
   event: WhoopWebhookEvent,
-): Promise<{ success: boolean; error?: string }> {
-  console.log(`[WHOOP Webhook] Handling event: ${event.eventType} for user ${event.userId}`);
+): Promise<{ success: boolean; error?: string; ignored?: boolean }> {
+  console.log(
+    `[WHOOP Webhook] Handling ${event.eventType} for WHOOP user ${event.userId} object ${event.objectId}`,
+  );
 
   const userId = await resolveWhoopUserId(db, event.userId);
   if (!userId) {
-    console.log(
-      `[WHOOP Webhook] Unknown WHOOP user ${event.userId}, attempting to find via integration...`,
-    );
-
-    return { success: false, error: 'User not found' };
+    console.warn(`[WHOOP Webhook] No local integration for WHOOP user ${event.userId}`);
+    return { success: true, ignored: true };
   }
 
   try {
-    const eventType = event.eventType;
+    switch (event.eventType) {
+      case 'workout.updated': {
+        const accessToken = await getWhoopAccessToken(db, env, userId);
+        const workout = await fetchWorkoutById(accessToken, event.objectId);
+        await upsertWhoopWorkout(db, userId, workout);
+        return { success: true };
+      }
 
-    if (eventType.includes('workout')) {
-      await syncAllWhoopData(db, env, userId);
-    } else if (eventType.includes('recovery')) {
-      await syncAllWhoopData(db, env, userId);
-    } else if (eventType.includes('sleep')) {
-      await syncAllWhoopData(db, env, userId);
-    } else if (eventType.includes('cycle')) {
-      await syncAllWhoopData(db, env, userId);
-    } else if (eventType.includes('body_measurement')) {
-      await syncAllWhoopData(db, env, userId);
-    } else if (eventType.includes('user_profile')) {
-      await syncAllWhoopData(db, env, userId);
+      case 'workout.deleted': {
+        await deleteWhoopWorkout(db, userId, event.objectId);
+        return { success: true };
+      }
+
+      case 'sleep.updated': {
+        const accessToken = await getWhoopAccessToken(db, env, userId);
+        const sleep = await fetchSleepById(accessToken, event.objectId);
+        await upsertWhoopSleep(db, userId, sleep);
+        return { success: true };
+      }
+
+      case 'sleep.deleted': {
+        await deleteWhoopSleep(db, userId, event.objectId);
+        await deleteWhoopRecovery(db, userId, event.objectId);
+        return { success: true };
+      }
+
+      case 'recovery.updated': {
+        await handleWhoopRecoveryUpdate(db, env, userId, event.objectId);
+        return { success: true };
+      }
+
+      case 'recovery.deleted': {
+        await deleteWhoopRecovery(db, userId, event.objectId);
+        return { success: true };
+      }
+
+      default: {
+        console.log(`[WHOOP Webhook] Ignoring unsupported event type ${event.eventType}`);
+        return { success: true, ignored: true };
+      }
+    }
+  } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && e.status === 404) {
+      console.warn(
+        `[WHOOP Webhook] WHOOP resource missing for ${event.eventType} ${event.objectId}; treating as no-op`,
+      );
+      return { success: true, ignored: true };
     }
 
-    return { success: true };
-  } catch (e) {
-    console.error(`[WHOOP Webhook] Error handling event:`, e);
+    console.error('[WHOOP Webhook] Error handling event:', e);
     return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
   }
 }

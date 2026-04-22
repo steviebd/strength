@@ -69,7 +69,7 @@ export function useTemplateEditorApi({
       );
 
       if (!isNew && templateId) {
-        await syncExercises(templateId, savedTemplate.id);
+        await syncExercises(templateId, savedTemplate.id!);
       } else {
         for (let i = 0; i < selectedExercises.length; i++) {
           const ex = selectedExercises[i];

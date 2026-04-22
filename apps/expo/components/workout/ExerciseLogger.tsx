@@ -125,7 +125,7 @@ export function ExerciseLogger({
         <View style={styles.setsContainer}>
           {sets.map((set, index) => (
             <SetLogger
-              key={set.id}
+              key={`${set.id}-${index}`}
               setNumber={index + 1}
               set={set}
               onUpdate={(updatedSet) => handleSetUpdate(index, updatedSet)}

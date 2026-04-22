@@ -4,6 +4,7 @@ import {
   Alert,
   Keyboard,
   LayoutChangeEvent,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -191,12 +192,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
   },
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background,
-  },
   modalScroll: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   modalScrollContent: {
     paddingBottom: 100,
@@ -427,6 +425,7 @@ export default function ProgramsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
+  const detailScrollRef = useRef<any>(null);
   const inputRefs = useRef<Record<string, any>>({});
   const inputPositions = useRef<Record<string, number>>({});
   const activeInputKey = useRef<string | null>(null);
@@ -812,15 +811,37 @@ export default function ProgramsScreen() {
         </>
       )}
 
-      {selectedProgram && showDetailModal && (
-        <View style={styles.modalOverlay}>
+      <Modal
+        visible={Boolean(selectedProgram && showDetailModal)}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => {
+          setShowDetailModal(false);
+          setSelectedProgram(null);
+        }}
+      >
+        {selectedProgram ? (
           <ScrollView
-            key={selectedProgram.slug}
+            ref={(r) => {
+              detailScrollRef.current = r;
+            }}
+            key={`${showDetailModal}-${selectedProgram?.slug ?? 'none'}`}
             style={styles.modalScroll}
             contentContainerStyle={styles.modalScrollContent}
+            onLayout={() => {
+              requestAnimationFrame(() => {
+                detailScrollRef.current?.scrollTo({ y: 0, animated: false });
+              });
+            }}
           >
             <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
-              <Pressable style={styles.backButton} onPress={() => setShowDetailModal(false)}>
+              <Pressable
+                style={styles.backButton}
+                onPress={() => {
+                  setShowDetailModal(false);
+                  setSelectedProgram(null);
+                }}
+              >
                 <Ionicons name="chevron-back" size={24} color={colors.text} />
               </Pressable>
               <Text style={styles.modalTitle}>Program Details</Text>
@@ -862,16 +883,27 @@ export default function ProgramsScreen() {
                 <Text style={styles.primaryButtonText}>Start This Program</Text>
               </Pressable>
 
-              <Pressable style={styles.secondaryButton} onPress={() => setShowDetailModal(false)}>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => {
+                  setShowDetailModal(false);
+                  setSelectedProgram(null);
+                }}
+              >
                 <Text style={styles.secondaryButtonText}>Cancel</Text>
               </Pressable>
             </View>
           </ScrollView>
-        </View>
-      )}
+        ) : null}
+      </Modal>
 
-      {showStartModal && (
-        <View style={styles.modalOverlay}>
+      <Modal
+        visible={showStartModal}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowStartModal(false)}
+      >
+        {showStartModal ? (
           <ScrollView
             ref={scrollViewRef}
             style={styles.modalScroll}
@@ -975,8 +1007,8 @@ export default function ProgramsScreen() {
               </Pressable>
             </View>
           </ScrollView>
-        </View>
-      )}
+        ) : null}
+      </Modal>
     </PageLayout>
   );
 }

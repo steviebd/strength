@@ -67,7 +67,7 @@ export default function WorkoutSessionScreen() {
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [exerciseLayouts, setExerciseLayouts] = useState<ExerciseLayout[]>([]);
-  const [showFloatingPill, setShowFloatingPill] = useState(false);
+  const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
   const { weightUnit: userWeightUnit } = useUserPreferences();
@@ -456,10 +456,7 @@ export default function WorkoutSessionScreen() {
             )}
 
             {exercises.length > 0 && (
-              <Pressable
-                style={styles.exerciseProgressBar}
-                onPress={scrollToCurrentExercise}
-              >
+              <Pressable style={styles.exerciseProgressBar} onPress={scrollToCurrentExercise}>
                 <View style={styles.exerciseProgressInfo}>
                   <Text style={styles.exerciseProgressText}>
                     {exercises[currentExerciseIndex]?.name}

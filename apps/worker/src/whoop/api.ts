@@ -9,6 +9,9 @@ export interface WhoopProfile {
 
 export interface WhoopWorkout {
   id: string;
+  user_id?: number;
+  created_at?: string;
+  updated_at?: string;
   start: string;
   end: string;
   timezone_offset: string;
@@ -33,12 +36,12 @@ export interface WhoopWorkout {
     };
   };
   during?: unknown;
-  zone_duration?: unknown;
 }
 
 export interface WhoopRecovery {
-  cycle_id?: string;
+  cycle_id?: number;
   sleep_id?: string;
+  user_id?: number;
   created_at?: string;
   updated_at?: string;
   score_state?: string;
@@ -48,12 +51,16 @@ export interface WhoopRecovery {
     hrv_rmssd_milli?: number;
     spo2_percentage?: number;
     skin_temp_celsius?: number;
+    respiratory_rate?: number;
     user_calibrating?: boolean;
   };
 }
 
 export interface WhoopCycle {
   id: string;
+  user_id?: number;
+  created_at?: string;
+  updated_at?: string;
   start: string;
   end: string;
   timezone_offset: string;
@@ -72,6 +79,10 @@ export interface WhoopCycle {
 
 export interface WhoopSleep {
   id: string;
+  cycle_id?: number;
+  user_id?: number;
+  created_at?: string;
+  updated_at?: string;
   start: string;
   end: string;
   timezone_offset: string;
@@ -102,20 +113,24 @@ export interface WhoopSleep {
 }
 
 export interface WhoopBodyMeasurement {
-  id: string;
-  measurement_date: string;
+  id?: string;
+  measurement_date?: string;
   height_meter: number;
   weight_kilogram: number;
   max_heart_rate?: number;
 }
 
-async function fetchWhoopApi<T>(
+type WhoopCollectionResponse<T> = {
+  records?: T[];
+  next_token?: string | null;
+};
+
+async function fetchWhoopJson<T>(
   endpoint: string,
   accessToken: string,
   params?: Record<string, string | number>,
-): Promise<T[]> {
+): Promise<T> {
   const url = new URL(`${WHOOP_API_BASE}/${endpoint}`);
-  url.searchParams.set('limit', '25');
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
@@ -139,59 +154,102 @@ async function fetchWhoopApi<T>(
     throw err;
   }
 
-  const data = await response.json();
-  if (Array.isArray(data)) {
-    return data as T[];
-  }
-  return ((data as { records?: T[] }).records ?? []) as T[];
+  return (await response.json()) as T;
+}
+
+async function fetchWhoopCollection<T>(
+  endpoint: string,
+  accessToken: string,
+  params?: Record<string, string | number>,
+): Promise<T[]> {
+  const records: T[] = [];
+  let nextToken: string | null | undefined;
+  const baseParams = params ?? {};
+
+  do {
+    const pageParams: Record<string, string | number> = {
+      limit: 25,
+      ...baseParams,
+    };
+    if (nextToken) {
+      pageParams.nextToken = nextToken;
+    }
+
+    const page = await fetchWhoopJson<WhoopCollectionResponse<T>>(
+      endpoint,
+      accessToken,
+      pageParams,
+    );
+
+    records.push(...(page.records ?? []));
+    nextToken = page.next_token;
+  } while (nextToken);
+
+  return records;
 }
 
 export async function getWhoopProfile(accessToken: string): Promise<WhoopProfile> {
-  const response = await fetch(`${WHOOP_API_BASE}/user/profile/basic`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`WHOOP profile fetch failed: ${response.status}`);
-  }
-
-  return response.json();
+  return fetchWhoopJson<WhoopProfile>('user/profile/basic', accessToken);
 }
 
-export async function fetchWorkouts(accessToken: string, since?: Date): Promise<WhoopWorkout[]> {
-  const params: Record<string, string | number> = {};
-  if (since) {
-    params.since = since.toISOString();
-  }
-  return fetchWhoopApi<WhoopWorkout>('activity/workout', accessToken, params);
+export async function fetchWorkoutById(
+  accessToken: string,
+  workoutId: string,
+): Promise<WhoopWorkout> {
+  return fetchWhoopJson<WhoopWorkout>(`activity/workout/${workoutId}`, accessToken);
 }
 
-export async function fetchRecoveries(accessToken: string, since?: Date): Promise<WhoopRecovery[]> {
-  const params: Record<string, string | number> = {};
-  if (since) {
-    params.since = since.toISOString();
-  }
-  return fetchWhoopApi<WhoopRecovery>('recovery', accessToken, params);
+export async function fetchSleepById(accessToken: string, sleepId: string): Promise<WhoopSleep> {
+  return fetchWhoopJson<WhoopSleep>(`activity/sleep/${sleepId}`, accessToken);
 }
 
-export async function fetchCycles(accessToken: string, since?: Date): Promise<WhoopCycle[]> {
-  const params: Record<string, string | number> = {};
-  if (since) {
-    params.since = since.toISOString();
-  }
-  return fetchWhoopApi<WhoopCycle>('cycle', accessToken, params);
+export async function fetchRecoveryByCycleId(
+  accessToken: string,
+  cycleId: number,
+): Promise<WhoopRecovery> {
+  return fetchWhoopJson<WhoopRecovery>(`cycle/${cycleId}/recovery`, accessToken);
 }
 
-export async function fetchSleep(accessToken: string, since?: Date): Promise<WhoopSleep[]> {
-  const params: Record<string, string | number> = {};
-  if (since) {
-    params.since = since.toISOString();
-  }
-  return fetchWhoopApi<WhoopSleep>('activity/sleep', accessToken, params);
+export async function fetchCycleById(accessToken: string, cycleId: string): Promise<WhoopCycle> {
+  return fetchWhoopJson<WhoopCycle>(`cycle/${cycleId}`, accessToken);
+}
+
+export async function fetchWorkouts(accessToken: string, start?: Date): Promise<WhoopWorkout[]> {
+  return fetchWhoopCollection<WhoopWorkout>(
+    'activity/workout',
+    accessToken,
+    start ? { start: start.toISOString() } : undefined,
+  );
+}
+
+export async function fetchRecoveries(accessToken: string, start?: Date): Promise<WhoopRecovery[]> {
+  return fetchWhoopCollection<WhoopRecovery>(
+    'recovery',
+    accessToken,
+    start ? { start: start.toISOString() } : undefined,
+  );
+}
+
+export async function fetchCycles(accessToken: string, start?: Date): Promise<WhoopCycle[]> {
+  return fetchWhoopCollection<WhoopCycle>(
+    'cycle',
+    accessToken,
+    start ? { start: start.toISOString() } : undefined,
+  );
+}
+
+export async function fetchSleep(accessToken: string, start?: Date): Promise<WhoopSleep[]> {
+  return fetchWhoopCollection<WhoopSleep>(
+    'activity/sleep',
+    accessToken,
+    start ? { start: start.toISOString() } : undefined,
+  );
 }
 
 export async function fetchBodyMeasurements(accessToken: string): Promise<WhoopBodyMeasurement[]> {
-  return fetchWhoopApi<WhoopBodyMeasurement>('user/measurement/body', accessToken);
+  const bodyMeasurement = await fetchWhoopJson<WhoopBodyMeasurement>(
+    'user/measurement/body',
+    accessToken,
+  );
+  return [bodyMeasurement];
 }

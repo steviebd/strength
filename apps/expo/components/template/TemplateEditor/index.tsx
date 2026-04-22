@@ -188,7 +188,7 @@ function useTemplateEditorApi({
         }),
       });
 
-      if (!isNew && templateId) {
+      if (!isNew && templateId && savedTemplate.id) {
         await syncExercises(templateId, savedTemplate.id);
       } else if (isNew) {
         for (let i = 0; i < selectedExercises.length; i++) {

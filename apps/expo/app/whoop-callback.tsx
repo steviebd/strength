@@ -27,7 +27,7 @@ export default function WhoopCallback() {
 
     router.replace({
       pathname: '/(app)/profile',
-      params: { ...(typeof error === 'string' ? { error } : { error: 'whoop_auth_failed' }) },
+      params: typeof error === 'string' ? { error } : { error: 'whoop_auth_failed' },
     });
   }, [error, router, success]);
 

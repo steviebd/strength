@@ -62,21 +62,23 @@ export function WorkoutCard({
             <Text style={styles.title} numberOfLines={1}>
               {name}
             </Text>
-            {isPending ? <Badge label="Pending" tone="orange" /> : null}
           </View>
           <View style={styles.metaRow}>
             <Text style={styles.dateText}>{formatDate(date)}</Text>
-            {onDelete ? (
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                style={styles.deleteButton}
-              >
-                <Text style={styles.deleteText}>Delete</Text>
-              </Pressable>
-            ) : null}
+            <View style={styles.rightActions}>
+              {isPending ? <Badge label="Pending" tone="orange" /> : null}
+              {onDelete ? (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  style={styles.deleteButton}
+                >
+                  <Text style={styles.deleteText}>Delete</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         </View>
 
@@ -133,7 +135,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.md,
+  },
+  rightActions: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: spacing.xs,
   },
   dateText: {
     fontSize: typography.fontSizes.xs,

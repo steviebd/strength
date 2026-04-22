@@ -2,7 +2,7 @@
   "name": "@strength/worker",
   "private": true,
   "scripts": {
-    "dev": "infisical export --env=dev --silent --format=dotenv --output-file=.dev.vars && bun run dev:wrangler",
+    "dev": "infisical export --env=dev --silent --format=dotenv --output-file=.dev.vars && bun run scripts/setup-dev.ts && bun run dev:wrangler",
     "dev:wrangler": "wrangler dev --ip 0.0.0.0",
     "deploy": "wrangler deploy",
     "db:apply:local": "wrangler d1 migrations apply strength-db --local",

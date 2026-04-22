@@ -39,7 +39,11 @@ import {
 } from './whoop/token-rotation';
 import { getWhoopProfile } from './whoop/api';
 import { syncAllWhoopData } from './whoop/sync';
-import { verifyWebhookSignature, handleWebhookEvent } from './whoop/webhook';
+import {
+  handleWebhookEvent,
+  normalizeWhoopWebhookPayload,
+  verifyWebhookSignature,
+} from './whoop/webhook';
 import { isWhoopConnected, getWhoopUserId, getWhoopProfileByUserId } from './whoop/user';
 import {
   buildCompletedSetRecord,
@@ -3312,11 +3316,10 @@ app.post('/api/whoop/disconnect', async (c) => {
 
 // POST /api/webhooks/whoop - WHOOP webhook receiver
 app.post('/api/webhooks/whoop', async (c) => {
-  const timestamp = c.req.raw.headers.get('X-Whoop-Timestamp') ?? '';
-  const signature = c.req.raw.headers.get('X-Whoop-Signature') ?? '';
+  const timestamp = c.req.raw.headers.get('X-WHOOP-Signature-Timestamp') ?? '';
+  const signature = c.req.raw.headers.get('X-WHOOP-Signature') ?? '';
   const rawBody = await c.req.raw.text();
 
-  // Verify signature
   const isValid = await verifyWebhookSignature(c.env, timestamp, signature, rawBody);
   if (!isValid) {
     console.error('[WHOOP Webhook] Invalid signature');
@@ -3324,25 +3327,23 @@ app.post('/api/webhooks/whoop', async (c) => {
   }
 
   try {
-    const body = JSON.parse(rawBody);
-    const eventType = body.eventType ?? body.type ?? 'unknown';
-    const whoopUserId = String(body.userId ?? body.user_id ?? '');
-
-    if (!whoopUserId) {
-      return c.json({ error: 'Missing user ID' }, 400);
+    const parsedBody = JSON.parse(rawBody) as Record<string, unknown>;
+    const event = normalizeWhoopWebhookPayload(parsedBody);
+    if (!event) {
+      return c.json({ error: 'Invalid WHOOP webhook payload' }, 400);
     }
 
     const db = getDb(c);
-    const result = await handleWebhookEvent(db, c.env, {
-      eventType,
-      userId: whoopUserId,
-      data: body,
-    });
+    const result = await handleWebhookEvent(db, c.env, event);
 
-    if (result.success) {
-      return c.json({ success: true });
+    if (result.success && result.ignored) {
+      return c.json({ success: true, ignored: true }, 202);
     } else {
-      return c.json({ error: result.error }, 400);
+      if (result.success) {
+        return c.json({ success: true });
+      }
+
+      return c.json({ error: result.error }, 500);
     }
   } catch (e) {
     console.error('[WHOOP Webhook] Error:', e);

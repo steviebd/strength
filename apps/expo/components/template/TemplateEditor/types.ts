@@ -13,7 +13,7 @@ export interface TemplateExercise {
 }
 
 export interface Template {
-  id: string;
+  id?: string;
   name: string;
   description: string | null;
   notes: string | null;
