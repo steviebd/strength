@@ -1,3 +1,4 @@
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 import {
   TRAINING_MAX_PERCENTAGE,
   roundToPlate,
@@ -46,14 +47,16 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         {
           name: t1Name,
           lift: config.t1,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
           sets: 5,
           reps: 1,
           targetWeight: calculateTargetWeight(t1OneRM, week, day, config.t1, false),
           isAmrap: false,
         },
         {
-          name: `${t1Name} 1+`,
+          name: t1Name,
           lift: config.t1,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
           sets: 1,
           reps: 1,
           targetWeight: calculateTargetWeight(t1OneRM, week, day, config.t1, false),
@@ -62,14 +65,16 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         {
           name: t2Name,
           lift: config.t2,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
           sets: 5,
           reps: 1,
           targetWeight: calculateTargetWeight(t2OneRM, week, day, config.t2, true),
           isAmrap: false,
         },
         {
-          name: `${t2Name} 1+`,
+          name: t2Name,
           lift: config.t2,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
           sets: 1,
           reps: 1,
           targetWeight: calculateTargetWeight(t2OneRM, week, day, config.t2, true),

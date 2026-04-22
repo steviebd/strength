@@ -3,16 +3,13 @@ import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { getLastWorkout, setLastWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { generateId } from '@strength/db';
 import type {
   Workout,
   WorkoutExercise,
   WorkoutSet,
   Exercise,
 } from '@/context/WorkoutSessionContext';
-
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 15);
-}
 
 function formatDuration(seconds: number): string {
   const hrs = Math.floor(seconds / 3600);
@@ -305,9 +302,20 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           notes: null,
           isAmrap: exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'),
         };
-        setExercises((prev) => [...prev, newWorkoutExercise]);
+        console.log('[DEBUG addExercise] Adding exercise:', JSON.stringify(newWorkoutExercise));
+        setExercises((prev) => {
+          console.log(
+            '[DEBUG addExercise] setExercises callback, prev length:',
+            prev.length,
+            'new exercise:',
+            newWorkoutExercise.name,
+          );
+          const next = [...prev, newWorkoutExercise];
+          console.log('[DEBUG addExercise] new state length:', next.length);
+          return next;
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to add exercise');
+        console.error('[DEBUG addExercise] ERROR:', err);
       }
     },
     [exercises.length],

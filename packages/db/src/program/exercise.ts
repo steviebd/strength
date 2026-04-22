@@ -31,15 +31,28 @@ export async function getOrCreateExerciseForUser(
   userId: string,
   exerciseName: string,
   liftType?: LiftType,
+  libraryId?: string,
 ): Promise<string> {
-  const existing = await db
+  if (libraryId) {
+    const existingByLibraryId = await db
+      .select({ id: exercises.id })
+      .from(exercises)
+      .where(and(eq(exercises.userId, userId), eq(exercises.libraryId, libraryId)))
+      .get();
+
+    if (existingByLibraryId) {
+      return existingByLibraryId.id;
+    }
+  }
+
+  const existingByName = await db
     .select({ id: exercises.id })
     .from(exercises)
     .where(and(eq(exercises.userId, userId), eq(exercises.name, exerciseName)))
     .get();
 
-  if (existing) {
-    return existing.id;
+  if (existingByName) {
+    return existingByName.id;
   }
 
   const libraryItem = getExerciseFromLibrary(exerciseName);

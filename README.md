@@ -28,8 +28,15 @@ Store these in the `dev` environment for this project:
 - `BETTER_AUTH_SECRET=<generate a long random secret>`
 - `BETTER_AUTH_URL=http://<your-machine-lan-ip>:8787`
 - `EXPO_PUBLIC_API_URL=http://<your-machine-lan-ip>:8787`
+- `CLOUDFLARE_ACCOUNT_ID=<your Cloudflare account id>`
+- `AI_GATEWAY_NAME=<your AI Gateway id>`
+- `CF_AI_GATEWAY_TOKEN=<your AI Gateway run token if gateway auth is enabled>`
+- `CLOUDFLARE_API_TOKEN=<optional fallback account token>`
+- `AI_MODEL_NAME=<optional model, defaults in worker if omitted>`
 - `WHOOP_CLIENT_ID=<from Whoop developer portal>`
 - `WHOOP_CLIENT_SECRET=<from Whoop developer portal>`
+
+This repo uses its own Infisical project. `strength/.infisical.json` is separate from `workout/.infisical.json`, so secrets added only to the `workout` project are not visible here.
 
 ### WHOOP OAuth Setup
 

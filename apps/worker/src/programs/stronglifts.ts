@@ -1,6 +1,7 @@
 import { roundToPlate } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
 import { strongliftsInfo, getStrongliftsAccessories } from './config/stronglifts';
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
 
 function calculateTargetWeight(
@@ -30,6 +31,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           sets: 5,
           reps: 5,
           targetWeight: calculateTargetWeight(oneRMs.squat, week, workoutIndex, 'squat'),
+          libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
         },
         ...(isDayA
           ? [
@@ -39,6 +41,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
                 sets: 5,
                 reps: 5,
                 targetWeight: calculateTargetWeight(oneRMs.bench, week, workoutIndex, 'bench'),
+                libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
               },
               {
                 name: 'Barbell Row',
@@ -46,6 +49,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
                 sets: 5,
                 reps: 5,
                 targetWeight: calculateTargetWeight(oneRMs.bench * 0.6, week, workoutIndex, 'row'),
+                libraryId: LIFT_TYPE_LIBRARY_ID['row'],
               },
             ]
           : [
@@ -55,6 +59,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
                 sets: 5,
                 reps: 5,
                 targetWeight: calculateTargetWeight(oneRMs.ohp, week, workoutIndex, 'ohp'),
+                libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
               },
               {
                 name: 'Deadlift',
@@ -67,6 +72,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
                   workoutIndex,
                   'deadlift',
                 ),
+                libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
               },
             ]),
       ];

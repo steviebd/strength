@@ -10,7 +10,7 @@ export function Input({ placeholder, value, onChangeText, style, ...props }: Inp
       <TextInput
         style={[styles.input, style]}
         placeholder={placeholder}
-        placeholderTextColor="#6B7280"
+        placeholderTextColor={colors.placeholderText}
         value={value}
         onChangeText={onChangeText}
         {...props}

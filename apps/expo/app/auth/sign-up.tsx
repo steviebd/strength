@@ -105,7 +105,7 @@ export default function SignUpScreen() {
                 color: colors.text,
               }}
               placeholder="Your name"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={colors.placeholderText}
               value={name}
               onChangeText={setName}
               returnKeyType="next"
@@ -145,7 +145,7 @@ export default function SignUpScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder="you@example.com"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={colors.placeholderText}
               value={email}
               onChangeText={setEmail}
               returnKeyType="next"
@@ -184,7 +184,7 @@ export default function SignUpScreen() {
               }}
               secureTextEntry
               placeholder="At least 8 characters"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={colors.placeholderText}
               value={password}
               onChangeText={setPassword}
               returnKeyType="next"
@@ -225,7 +225,7 @@ export default function SignUpScreen() {
               }}
               secureTextEntry
               placeholder="Confirm your password"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={colors.placeholderText}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               returnKeyType="done"
@@ -267,7 +267,7 @@ export default function SignUpScreen() {
           onPress={handleSubmit}
         >
           {isSubmitting && <ActivityIndicator size="small" color="#ffffff" />}
-          <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff' }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
             {isSubmitting ? 'Creating account...' : 'Create account'}
           </Text>
         </Pressable>

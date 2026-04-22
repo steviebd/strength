@@ -1,13 +1,14 @@
 import { eq, and } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
+import { requireAuth } from '../auth';
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
 }
 
 export async function getEntryHandler(c: any) {
-  const session = await c.get('session');
+  const session = await requireAuth(c);
   if (!session?.user) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
@@ -36,7 +37,7 @@ export async function getEntryHandler(c: any) {
 }
 
 export async function updateEntryHandler(c: any) {
-  const session = await c.get('session');
+  const session = await requireAuth(c);
   if (!session?.user) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
@@ -99,7 +100,7 @@ export async function updateEntryHandler(c: any) {
 }
 
 export async function deleteEntryHandler(c: any) {
-  const session = await c.get('session');
+  const session = await requireAuth(c);
   if (!session?.user) {
     return c.json({ message: 'Unauthorized' }, 401);
   }

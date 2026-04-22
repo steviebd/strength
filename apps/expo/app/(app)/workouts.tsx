@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Modal,
   ActivityIndicator,
   Alert,
+  RefreshControl,
   View,
   Text,
   Pressable,
@@ -28,13 +29,8 @@ import { WorkoutCard } from '@/components/workout/WorkoutCard';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
-import {
-  getCachedPrograms,
-  setCachedPrograms,
-  getPendingWorkouts,
-  addPendingWorkout,
-  removePendingWorkout,
-} from '@/lib/storage';
+import { getPendingWorkouts, addPendingWorkout, removePendingWorkout } from '@/lib/storage';
+import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
 import type { Template } from '@/hooks/useTemplateEditor';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -47,16 +43,6 @@ interface WorkoutHistoryItem {
   totalVolume: number | null;
   totalSets: number | null;
   exerciseCount: number | null;
-}
-
-interface ActiveProgram {
-  id: string;
-  programSlug: string;
-  name: string;
-  currentWeek: number | null;
-  currentSession: number | null;
-  totalSessionsCompleted: number;
-  totalSessionsPlanned: number;
 }
 
 interface PendingWorkout {
@@ -77,25 +63,11 @@ async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
   return apiFetch<WorkoutHistoryItem[]>('/api/workouts');
 }
 
-async function fetchActivePrograms(): Promise<ActiveProgram[]> {
-  const cached = await getCachedPrograms();
-
-  try {
-    const programs = await apiFetch<ActiveProgram[]>('/api/programs/active');
-    await setCachedPrograms(programs);
-    return programs;
-  } catch (e) {
-    if (cached && cached.length > 0) {
-      return cached;
-    }
-    throw e;
-  }
-}
-
 export default function WorkoutsIndex() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ view?: string }>();
+  const params = useLocalSearchParams<{ view?: string; focusProgramId?: string }>();
+  const scrollViewRef = useRef<any>(null);
   const [view, setView] = useState<'templates' | 'history'>(
     params.view === 'history' ? 'history' : 'templates',
   );
@@ -109,12 +81,36 @@ export default function WorkoutsIndex() {
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const queryClient = useQueryClient();
+  const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
 
   const loadPendingWorkouts = useCallback(async () => {
     const workouts = await getPendingWorkouts();
     setPendingWorkouts(workouts);
   }, []);
+
+  const refreshWorkoutsScreen = useCallback(
+    async (showRefreshIndicator = false) => {
+      if (showRefreshIndicator) {
+        setIsRefreshing(true);
+      }
+
+      try {
+        await loadPendingWorkouts();
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ['templates'] }),
+          queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
+          queryClient.refetchQueries({ queryKey: ['workoutHistory'] }),
+        ]);
+      } finally {
+        if (showRefreshIndicator) {
+          setIsRefreshing(false);
+        }
+      }
+    },
+    [loadPendingWorkouts, queryClient],
+  );
 
   useEffect(() => {
     void loadPendingWorkouts();
@@ -122,9 +118,8 @@ export default function WorkoutsIndex() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadPendingWorkouts();
-      void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
-    }, [loadPendingWorkouts, queryClient]),
+      void refreshWorkoutsScreen();
+    }, [refreshWorkoutsScreen]),
   );
 
   useEffect(() => {
@@ -133,6 +128,22 @@ export default function WorkoutsIndex() {
       void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     }
   }, [loadPendingWorkouts, view, queryClient]);
+
+  useEffect(() => {
+    if (params.focusProgramId && activePrograms.length > 0) {
+      const focusId = params.focusProgramId;
+      const targetIndex = activePrograms.findIndex((p) => p.id === focusId);
+      if (targetIndex !== -1 && scrollViewRef.current) {
+        const estimatedItemHeight = 280;
+        const headerHeight = 200;
+        const offset = targetIndex * estimatedItemHeight + headerHeight;
+        scrollViewRef.current.scrollTo({
+          y: offset,
+          animated: true,
+        });
+      }
+    }
+  }, [params.focusProgramId, activePrograms]);
 
   const {
     data: workoutHistory = [],
@@ -145,11 +156,6 @@ export default function WorkoutsIndex() {
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
-  const { data: activePrograms = [], isLoading: isLoadingActivePrograms } = useQuery({
-    queryKey: ['activePrograms'],
-    queryFn: fetchActivePrograms,
-  });
-
   const mergedHistory = useMemo(() => {
     const serverIds = new Set(workoutHistory.map((w) => w.id));
     const pendingFiltered = pendingWorkouts.filter((p) => !serverIds.has(p.id));
@@ -192,10 +198,10 @@ export default function WorkoutsIndex() {
     setShowTemplateEditor(true);
   };
 
-  const handleTemplateSaved = () => {
+  const handleTemplateSaved = async () => {
     setShowTemplateEditor(false);
     setEditingTemplate(null);
-    queryClient.resetQueries({ queryKey: ['templates'] });
+    await queryClient.refetchQueries({ queryKey: ['templates'] });
   };
 
   const handleOpenCurrentProgramWorkout = async (program: ActiveProgram) => {
@@ -203,6 +209,7 @@ export default function WorkoutsIndex() {
     try {
       const result = await apiFetch<{
         workoutId: string;
+        sessionName: string;
         created: boolean;
         completed: boolean;
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
@@ -220,7 +227,7 @@ export default function WorkoutsIndex() {
 
       await addPendingWorkout({
         id: result.workoutId,
-        name: program.name,
+        name: result.sessionName,
         startedAt: new Date().toISOString(),
         completedAt: null,
         source: 'program',
@@ -236,7 +243,7 @@ export default function WorkoutsIndex() {
         ...prev,
         {
           id: result.workoutId,
-          name: program.name,
+          name: result.sessionName,
           startedAt: new Date().toISOString(),
           completedAt: null,
           source: 'program',
@@ -301,6 +308,7 @@ export default function WorkoutsIndex() {
         {activePrograms.map((program) => {
           const isOpening = openingProgramWorkoutId === program.id;
           const isDeleting = deletingProgramId === program.id;
+          const isFocused = params.focusProgramId === program.id;
           const currentSession = program.currentSession ?? 1;
           const displaySessionNumber = getDisplaySessionNumber(program);
           const progress = Math.min(
@@ -309,12 +317,19 @@ export default function WorkoutsIndex() {
           );
 
           return (
-            <Surface key={program.id} style={styles.programSurface}>
+            <Surface
+              key={program.id}
+              style={{
+                ...styles.programSurface,
+                ...(isFocused ? styles.programSurfaceFocused : {}),
+              }}
+            >
               <View style={styles.programContent}>
                 <View style={styles.programHeader}>
                   <View style={styles.programInfo}>
                     <Text style={styles.programName}>{program.name}</Text>
                     <View style={styles.programBadges}>
+                      {isFocused && <Badge label="New" tone="emerald" />}
                       {program.currentWeek ? (
                         <Badge label={`Week ${program.currentWeek}`} tone="sky" />
                       ) : null}
@@ -373,6 +388,7 @@ export default function WorkoutsIndex() {
   return (
     <>
       <PageLayout
+        scrollViewRef={scrollViewRef}
         header={
           <PageHeader
             eyebrow="Training"
@@ -380,6 +396,17 @@ export default function WorkoutsIndex() {
             description="Launch a session quickly, keep templates organized, and review your recent training."
           />
         }
+        screenScrollViewProps={{
+          refreshControl: (
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                void refreshWorkoutsScreen(true);
+              }}
+              tintColor={colors.accentSecondary}
+            />
+          ),
+        }}
       >
         <SegmentedTabs
           options={[
@@ -503,7 +530,7 @@ export default function WorkoutsIndex() {
               <TextInput
                 style={styles.textInput}
                 placeholder="e.g., Upper Body Day"
-                placeholderTextColor="#64748b"
+                placeholderTextColor={colors.placeholderText}
                 value={workoutName}
                 onChangeText={setWorkoutName}
               />
@@ -555,6 +582,11 @@ const styles = StyleSheet.create({
   programSurface: {
     backgroundColor: 'rgba(30,41,59,0.7)',
   },
+  programSurfaceFocused: {
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    borderWidth: 2,
+    borderColor: colors.accentSecondary,
+  },
   programContent: {
     gap: spacing.md,
   },
@@ -579,7 +611,7 @@ const styles = StyleSheet.create({
   },
   programProgress: {
     fontSize: typography.fontSizes.base,
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   progressBarBg: {
     height: 8,
@@ -619,7 +651,7 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
-    color: '#fda4af',
+    color: colors.error,
   },
   templatesView: {
     gap: spacing.lg,
@@ -641,7 +673,7 @@ const styles = StyleSheet.create({
   quickStartDescription: {
     fontSize: typography.fontSizes.base,
     lineHeight: 24,
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   quickStartActions: {
     flexDirection: 'row',
@@ -672,7 +704,7 @@ const styles = StyleSheet.create({
   errorMessage: {
     fontSize: typography.fontSizes.base,
     textAlign: 'center',
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   emptyState: {
     alignItems: 'center',
@@ -688,7 +720,7 @@ const styles = StyleSheet.create({
   emptyMessage: {
     fontSize: typography.fontSizes.base,
     textAlign: 'center',
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   historyList: {
     gap: spacing.md,
@@ -714,7 +746,7 @@ const styles = StyleSheet.create({
   },
   closeButtonText: {
     fontSize: typography.fontSizes.lg,
-    color: '#64748b',
+    color: colors.textMuted,
   },
   modalSurface: {
     backgroundColor: colors.surface,
@@ -726,7 +758,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: typography.fontWeights.semibold,
     letterSpacing: 1.6,
-    color: '#64748b',
+    color: colors.textMuted,
   },
   textInput: {
     height: 56,

@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   startButtonText: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
     textAlign: 'center',
   },
 });

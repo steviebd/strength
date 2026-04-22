@@ -1,7 +1,7 @@
 import { platformStorage } from './platform-storage';
 
 const STORAGE_KEYS = {
-  LAST_WORKOUT: (exerciseId: string) => `lw:${exerciseId}`,
+  LAST_WORKOUT: (exerciseId: string) => `lw_${exerciseId}`,
   CACHED_PROGRAMS: 'cached_programs',
   PENDING_WORKOUTS: 'pending_workouts',
   ACTIVE_WORKOUT_SESSION: 'active_workout_session',

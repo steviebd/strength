@@ -129,12 +129,18 @@ export default function WorkoutSessionScreen() {
   }, [startWorkout, workoutName]);
 
   const handleAddExercise = useCallback(
-    async (exercises: ExerciseLibraryItem[]) => {
-      for (const exercise of exercises) {
+    async (exercisesList: ExerciseLibraryItem[]) => {
+      console.log(
+        '[DEBUG handleAddExercise] Received exercises:',
+        exercisesList.map((e) => e.name),
+      );
+      for (const exercise of exercisesList) {
+        console.log('[DEBUG handleAddExercise] Calling addExercise for:', exercise.name);
         await addExercise(exercise);
       }
+      console.log('[DEBUG handleAddExercise] Done. Context exercises count:', exercises.length);
     },
-    [addExercise],
+    [addExercise, exercises.length],
   );
 
   const handleExerciseSetsUpdate = useCallback(
@@ -284,7 +290,7 @@ export default function WorkoutSessionScreen() {
           <TextInput
             style={styles.textInput}
             placeholder="e.g., Upper Body Day"
-            placeholderTextColor="#71717a"
+            placeholderTextColor={colors.placeholderText}
             value={workoutName}
             onChangeText={setWorkoutName}
           />
@@ -375,33 +381,31 @@ export default function WorkoutSessionScreen() {
       style={{ flex: 1 }}
     >
       <ScrollProvider scrollViewRef={scrollViewRef}>
-        <PageLayout
-          headerType="custom"
-          headerSafeArea="header"
-          header={
-            <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-              <View style={styles.headerTop}>
-                <View style={styles.headerLeft}>
-                  <Text style={styles.subtitle}>
-                    {isViewingCompleted ? 'Completed Workout' : 'Active Workout'}
-                  </Text>
-                  <Text style={styles.title}>{workout?.name || 'Workout'}</Text>
-                </View>
-                <View style={styles.headerRight}>
-                  <Text style={styles.durationPrimary}>{formattedDuration}</Text>
-                  {isViewingCompleted && computedVolume > 0 && (
-                    <Text style={styles.durationSecondary}>
-                      {formatVolume(computedVolume)} {userWeightUnit}
-                    </Text>
-                  )}
-                </View>
-              </View>
-              <View style={styles.headerBottom}>{renderActionButtons()}</View>
+        <View style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}>
+          <View style={styles.headerTop}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.subtitle}>
+                {isViewingCompleted ? 'Completed Workout' : 'Active Workout'}
+              </Text>
+              <Text style={styles.title}>{workout?.name || 'Workout'}</Text>
             </View>
-          }
+            <View style={styles.headerRight}>
+              <Text style={styles.durationPrimary}>{formattedDuration}</Text>
+              {isViewingCompleted && computedVolume > 0 && (
+                <Text style={styles.durationSecondary}>
+                  {formatVolume(computedVolume)} {userWeightUnit}
+                </Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.headerBottom}>{renderActionButtons()}</View>
+        </View>
+        <PageLayout
+          headerType="none"
           scrollViewRef={scrollViewRef}
           screenScrollViewProps={{
-            bottomInset: 220,
+            bottomInset: 400,
+            topPadding: 170 + insets.top,
             horizontalPadding: spacing.md,
             showsVerticalScrollIndicator: false,
             keyboardShouldPersistTaps: 'handled',
@@ -435,15 +439,24 @@ export default function WorkoutSessionScreen() {
           )}
 
           <View style={styles.exerciseList}>
-            {exercises.map((exercise) => {
+            {exercises.map((exercise, idx) => {
               const localSets = exercise.sets.map((s) => ({
                 id: s.id,
                 reps: s.reps ?? 0,
                 weight: s.weight ?? 0,
                 completed: s.isComplete,
               }));
+              console.log(
+                '[DEBUG workout-session] rendering exercise:',
+                exercise.name,
+                'at idx:',
+                idx,
+              );
               return (
-                <View key={exercise.id} onLayout={(e) => handleExerciseLayout(exercise.id, e)}>
+                <View
+                  key={exercise.id ?? `exercise-${idx}`}
+                  onLayout={(e) => handleExerciseLayout(exercise.id, e)}
+                >
                   <ExerciseLogger
                     exercise={{
                       id: exercise.id,
@@ -467,6 +480,24 @@ export default function WorkoutSessionScreen() {
               <Pressable style={styles.addExerciseButton} onPress={() => setShowAddExercise(true)}>
                 <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
               </Pressable>
+            )}
+
+            {exercises.length > 0 && (
+              <View style={styles.exerciseProgressBar}>
+                <View style={styles.exerciseProgressInfo}>
+                  <Text style={styles.exerciseProgressText}>
+                    {exercises[currentExerciseIndex]?.name}
+                  </Text>
+                  <Text style={styles.exerciseProgressSubtext}>
+                    {currentExerciseIndex + 1} of {exercises.length} exercises
+                  </Text>
+                </View>
+                <View style={styles.setCounterInline}>
+                  <Text style={styles.setCounterInlineText}>
+                    Set {currentSetIndex + 1} of {exercises[currentExerciseIndex]?.sets.length}
+                  </Text>
+                </View>
+              </View>
             )}
           </View>
 
@@ -519,7 +550,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   goToWorkoutsButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
   },
@@ -570,7 +601,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   startButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
   },
@@ -587,11 +618,17 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.lg,
   },
-  header: {
+  fixedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+    zIndex: 10,
   },
   headerTop: {
     flexDirection: 'row',
@@ -654,7 +691,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
   },
   actionButtonTextPrimary: {
-    color: '#ffffff',
+    color: colors.text,
   },
   actionButtonTextSecondary: {
     color: colors.text,
@@ -727,5 +764,38 @@ const styles = StyleSheet.create({
   addExerciseButtonText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.lg,
+  },
+  exerciseProgressBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  exerciseProgressInfo: {
+    flex: 1,
+  },
+  exerciseProgressText: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  exerciseProgressSubtext: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+  },
+  setCounterInline: {
+    backgroundColor: `${colors.accent}20`,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  setCounterInlineText: {
+    color: colors.accent,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
   },
 });

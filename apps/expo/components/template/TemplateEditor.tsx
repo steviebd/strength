@@ -132,7 +132,7 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
           <TextInput
             style={styles.textInput}
             placeholder="e.g., Push Day"
-            placeholderTextColor="#71717a"
+            placeholderTextColor={colors.placeholderText}
             value={localName}
             onChangeText={setLocalName}
           />
@@ -143,7 +143,7 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
           <TextInput
             style={[styles.textInput, styles.multilineInput]}
             placeholder="Brief description of this workout"
-            placeholderTextColor="#71717a"
+            placeholderTextColor={colors.placeholderText}
             value={localDescription}
             onChangeText={setLocalDescription}
             multiline
@@ -155,7 +155,7 @@ export function TemplateEditor({ templateId, mode, onClose, onSaved }: TemplateE
           <TextInput
             style={[styles.textInput, styles.multilineInput]}
             placeholder="Any additional notes"
-            placeholderTextColor="#71717a"
+            placeholderTextColor={colors.placeholderText}
             value={localNotes}
             onChangeText={setLocalNotes}
             multiline
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
   },
   saveButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   addButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },

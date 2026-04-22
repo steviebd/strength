@@ -1,3 +1,5 @@
+import { convertToDisplayWeight } from '@strength/db';
+
 export interface TrainingContext {
   type: 'rest_day' | 'cardio' | 'powerlifting' | 'custom';
   customLabel?: string;
@@ -164,7 +166,9 @@ export function assembleSystemPrompt(context: SystemPromptContext): string {
     macroTargets,
   } = context;
 
-  const bwDisplay = bodyweightKg ? `${bodyweightKg} ${weightUnit}` : 'not recorded';
+  const bwDisplay = bodyweightKg
+    ? `${convertToDisplayWeight(bodyweightKg, weightUnit).toFixed(1)} ${weightUnit}`
+    : 'not recorded';
 
   const trainingSection = buildTrainingSection(trainingContext);
   const whoopSection = buildWhoopSection(whoopData);

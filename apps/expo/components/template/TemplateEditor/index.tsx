@@ -870,7 +870,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
   },
   emptyCard: {
     alignItems: 'center',
@@ -1049,7 +1049,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
     textAlign: 'center',
   },
 });

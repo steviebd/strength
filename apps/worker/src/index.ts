@@ -396,6 +396,7 @@ type SerializedProgramTargetLift = {
   isAccessory?: unknown;
   isRequired?: unknown;
   isAmrap?: unknown;
+  libraryId?: unknown;
 };
 
 type NormalizedProgramTargetLift = {
@@ -409,6 +410,7 @@ type NormalizedProgramTargetLift = {
   isAccessory: boolean;
   isRequired: boolean;
   isAmrap: boolean;
+  libraryId?: string;
 };
 
 function isProgramAmrap(targetLift: { name?: unknown; reps?: unknown; isAmrap?: unknown }) {
@@ -461,6 +463,7 @@ function normalizeProgramTargetLift(
     isAccessory,
     isRequired,
     isAmrap,
+    libraryId: typeof targetLift.libraryId === 'string' ? targetLift.libraryId : undefined,
   };
 }
 
@@ -746,6 +749,7 @@ async function createWorkoutFromProgramCycleWorkout(
       userId,
       targetLift.name,
       targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
+      targetLift.libraryId,
     );
 
     const workoutExercise = await db
@@ -1015,6 +1019,15 @@ app.post('/api/exercises', async (c) => {
         return c.json({ message: 'Exercise not found' }, 404);
       }
 
+      const existingByName = await findExistingUserExerciseByName(
+        db,
+        userId,
+        existingLibraryExercise.name,
+      );
+      if (existingByName && existingByName.id !== existingLibraryExercise.id) {
+        return c.json(existingByName, 200);
+      }
+
       return c.json(existingLibraryExercise, 201);
     }
 
@@ -1144,7 +1157,7 @@ app.get('/api/templates', async (c) => {
     const templateIds = results.map((template) => template.id);
     const templateExercises = await chunkedQuery(db, {
       ids: templateIds,
-      mergeKey: 'id',
+      mergeKey: 'templateId',
       builder: (chunk) =>
         db
           .select({
@@ -1382,8 +1395,10 @@ app.get('/api/templates/:id/exercises', async (c) => {
         isAmrap: schema.templateExercises.isAmrap,
         isAccessory: schema.templateExercises.isAccessory,
         isRequired: schema.templateExercises.isRequired,
+        name: schema.exercises.name,
       })
       .from(schema.templateExercises)
+      .innerJoin(schema.exercises, eq(schema.templateExercises.exerciseId, schema.exercises.id))
       .where(eq(schema.templateExercises.templateId, id))
       .orderBy(schema.templateExercises.orderIndex)
       .all();
@@ -1793,11 +1808,8 @@ app.get('/api/workouts/:id', async (c) => {
         orderIndex: schema.workoutExercises.orderIndex,
         notes: schema.workoutExercises.notes,
         isAmrap: schema.workoutExercises.isAmrap,
-        exercise: {
-          id: schema.exercises.id,
-          name: schema.exercises.name,
-          muscleGroup: schema.exercises.muscleGroup,
-        },
+        name: schema.exercises.name,
+        muscleGroup: schema.exercises.muscleGroup,
       })
       .from(schema.workoutExercises)
       .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
@@ -2717,6 +2729,7 @@ app.post('/api/programs/cycles/:id/workouts/current/start', async (c) => {
 
     return c.json({
       workoutId: workout.id,
+      sessionName: workout.name,
       created: true,
       completed: false,
     });
@@ -3113,6 +3126,10 @@ app.get('/api/whoop/data', async (c) => {
       });
     });
 
+    const uniqueCyclesById = normalizedCycles.filter(
+      (c, i, arr) => arr.findIndex((x) => x.whoopCycleId === c.whoopCycleId) === i,
+    );
+
     const normalizedWorkouts = workouts.map((row) => {
       const score = parseJsonObject(row.score);
       const kilojoule = getNumber(score, 'kilojoule');
@@ -3135,7 +3152,7 @@ app.get('/api/whoop/data', async (c) => {
     return c.json({
       recovery: filteredRecovery,
       sleep: normalizedSleep,
-      cycles: normalizedCycles,
+      cycles: uniqueCyclesById,
       workouts: normalizedWorkouts,
     });
   } catch (e) {

@@ -42,7 +42,7 @@ const sizeStyles = StyleSheet.create({
 });
 
 const textColors: Record<ButtonVariant, string> = {
-  default: '#ffffff',
+  default: colors.text,
   outline: colors.text,
   ghost: colors.textMuted,
 };

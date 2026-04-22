@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Modal, StyleSheet, Pressable } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, Modal, StyleSheet, Pressable, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { ScreenScrollView } from '@/components/ui/Screen';
 import { colors, typography, spacing, radius } from '@/theme';
 
 type MealType = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack';
+
+function getMealTypeFromHour(hour: number): MealType {
+  if (hour >= 6 && hour < 10) return 'Breakfast';
+  if (hour >= 11 && hour < 14) return 'Lunch';
+  if (hour >= 17 && hour < 20) return 'Dinner';
+  return 'Snack';
+}
 
 interface SaveMealDialogProps {
   visible: boolean;
@@ -24,11 +32,18 @@ interface SaveMealDialogProps {
     carbs: number;
     fat: number;
   }) => void;
+  onDelete?: () => void;
 }
 
 const MEAL_TYPES: MealType[] = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
-export function SaveMealDialog({ visible, onClose, analysis, onSave }: SaveMealDialogProps) {
+export function SaveMealDialog({
+  visible,
+  onClose,
+  analysis,
+  onSave,
+  onDelete,
+}: SaveMealDialogProps) {
   const [name, setName] = useState(analysis?.name ?? '');
   const [mealType, setMealType] = useState<MealType>('Breakfast');
   const [calories, setCalories] = useState(analysis ? String(analysis.calories) : '');
@@ -36,7 +51,14 @@ export function SaveMealDialog({ visible, onClose, analysis, onSave }: SaveMealD
   const [carbs, setCarbs] = useState(analysis ? String(analysis.carbsG) : '');
   const [fat, setFat] = useState(analysis ? String(analysis.fatG) : '');
 
-  React.useEffect(() => {
+  useEffect(() => {
+    if (!analysis) {
+      const hour = new Date().getHours();
+      setMealType(getMealTypeFromHour(hour));
+    }
+  }, [visible, analysis]);
+
+  useEffect(() => {
     if (analysis) {
       setName(analysis.name);
       setCalories(String(analysis.calories));
@@ -45,6 +67,15 @@ export function SaveMealDialog({ visible, onClose, analysis, onSave }: SaveMealD
       setFat(String(analysis.fatG));
     }
   }, [analysis]);
+
+  const resetState = () => {
+    setName('');
+    setMealType(getMealTypeFromHour(new Date().getHours()));
+    setCalories('');
+    setProtein('');
+    setCarbs('');
+    setFat('');
+  };
 
   const handleSave = () => {
     onSave({
@@ -55,22 +86,26 @@ export function SaveMealDialog({ visible, onClose, analysis, onSave }: SaveMealD
       carbs: parseFloat(carbs) || 0,
       fat: parseFloat(fat) || 0,
     });
-    setName('');
-    setMealType('Breakfast');
-    setCalories('');
-    setProtein('');
-    setCarbs('');
-    setFat('');
+    resetState();
   };
 
   const handleClose = () => {
-    setName('');
-    setMealType('Breakfast');
-    setCalories('');
-    setProtein('');
-    setCarbs('');
-    setFat('');
+    resetState();
     onClose();
+  };
+
+  const handleDelete = () => {
+    Alert.alert('Delete this meal?', '', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          onDelete?.();
+          handleClose();
+        },
+      },
+    ]);
   };
 
   return (
@@ -85,9 +120,16 @@ export function SaveMealDialog({ visible, onClose, analysis, onSave }: SaveMealD
           >
             <View style={styles.header}>
               <Text style={styles.title}>Save Meal</Text>
-              <Pressable onPress={handleClose}>
-                <Text style={styles.closeButton}>✕</Text>
-              </Pressable>
+              <View style={styles.headerButtons}>
+                {onDelete && (
+                  <Pressable onPress={handleDelete}>
+                    <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+                  </Pressable>
+                )}
+                <Pressable onPress={handleClose}>
+                  <Text style={styles.closeButton}>✕</Text>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.field}>
@@ -213,6 +255,11 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
   },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   closeButton: {
     fontSize: typography.fontSizes.xl,
     color: colors.textMuted,
@@ -259,7 +306,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   mealTypeTextSelected: {
-    color: '#ffffff',
+    color: colors.text,
   },
   row: {
     flexDirection: 'row',

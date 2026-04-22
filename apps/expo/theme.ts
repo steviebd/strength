@@ -7,11 +7,13 @@ export const colors = {
   border: '#3f3f46',
   text: '#fafafa',
   textMuted: '#a1a1aa',
+  placeholderText: '#71717a',
   accent: '#ef6f4f',
   accentSecondary: '#fb923c',
   success: '#22c55e',
   warning: '#f59e0b',
   error: '#ef4444',
+  sky: '#7dd3fc',
 };
 
 export const spacing = {

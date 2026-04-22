@@ -1,5 +1,6 @@
 import { TRAINING_MAX_PERCENTAGE, roundToPlate } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 import {
   canditoInfo,
   STRENGTH_BLOCK,
@@ -62,22 +63,25 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         {
           name: liftName,
           lift: config.t1,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
           sets: blockData.sets[0],
           reps: isDeload ? 3 : blockData.baseReps,
           targetWeight: calculateTargetWeight(t1OneRM, week, 1, config.t1, false),
           isAmrap: false,
         },
         {
-          name: `${liftName} 2`,
+          name: liftName,
           lift: config.t1,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
           sets: blockData.sets[1],
           reps: isDeload ? 3 : blockData.baseReps - 1,
           targetWeight: calculateTargetWeight(t1OneRM, week, 2, config.t1, false),
           isAmrap: false,
         },
         {
-          name: `${liftName} 3+`,
+          name: liftName,
           lift: config.t1,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
           sets: blockData.sets[2],
           reps: isDeload ? 3 : blockData.baseReps - 2,
           targetWeight: calculateTargetWeight(t1OneRM, week, 3, config.t1, false),
@@ -89,14 +93,16 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         {
           name: t2LiftName,
           lift: config.t2,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
           sets: 3,
           reps: isDeload ? 4 : 6,
           targetWeight: calculateTargetWeight(t2OneRM, week, 1, config.t2, true),
           isAmrap: false,
         },
         {
-          name: `${t2LiftName} 2`,
+          name: t2LiftName,
           lift: config.t2,
+          libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
           sets: 3,
           reps: isDeload ? 4 : 6,
           targetWeight: calculateTargetWeight(t2OneRM, week, 2, config.t2, true),

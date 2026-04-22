@@ -329,7 +329,7 @@ export default function ProgramOneRMTestScreen() {
               }
               keyboardType="decimal-pad"
               placeholder="0"
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.placeholderText}
             />
           </View>
         ))}
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     textAlign: 'center',
-    color: '#ffffff',
+    color: colors.text,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
   },

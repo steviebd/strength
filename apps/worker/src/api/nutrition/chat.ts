@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
-import { model } from '../../lib/ai';
+import { getModel } from '../../lib/ai';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
@@ -13,6 +13,7 @@ import {
   type MacroTargets,
 } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
+import { requireAuth } from '../auth';
 
 function getDb(c: any) {
   return drizzle(c.env.DB, { schema });
@@ -81,6 +82,7 @@ function calculateMacroTargets(
   bodyweightKg: number,
   trainingType: string | null,
   hasProgram: boolean,
+  fallbackCalories: number,
   customTargets?: {
     targetCalories?: number;
     targetProteinG?: number;
@@ -101,7 +103,7 @@ function calculateMacroTargets(
   const fatG = Math.round(bodyweightKg * 0.8);
   const proteinCals = proteinG * 4;
   const fatCals = fatG * 9;
-  const remainingCals = 2500 - proteinCals - fatCals;
+  const remainingCals = fallbackCalories - proteinCals - fatCals;
   const carbsG = Math.round(remainingCals / 4);
 
   let multiplier = 1;
@@ -114,7 +116,7 @@ function calculateMacroTargets(
   }
 
   return {
-    calories: Math.round(2500 * multiplier),
+    calories: Math.round(fallbackCalories * multiplier),
     proteinG,
     carbsG,
     fatG,
@@ -122,7 +124,7 @@ function calculateMacroTargets(
 }
 
 export async function chatHandler(c: any) {
-  const session = await c.get('session');
+  const session = await requireAuth(c);
   if (!session?.user) {
     return c.json({ message: 'Unauthorized' }, 401);
   }
@@ -232,6 +234,7 @@ export async function chatHandler(c: any) {
     bodyweightKg ?? 80,
     trainingCtx?.type ?? null,
     hasProgram,
+    bodyStats?.targetCalories ?? 2500,
     {
       targetCalories: bodyStats?.targetCalories ?? undefined,
       targetProteinG: bodyStats?.targetProteinG ?? undefined,
@@ -301,6 +304,7 @@ export async function chatHandler(c: any) {
   }));
   const userMessage = { role: 'user' as const, content: userContent };
   const aiMessages = [systemMessage, structuredContextMessage, ...priorMessages, userMessage];
+  const model = getModel(c.env);
 
   const result = streamText({
     model,
@@ -340,6 +344,7 @@ export async function chatHandler(c: any) {
           });
         }
       } catch (err) {
+        console.error('Stream error:', err);
         if (!isClosed) {
           controller.error(err);
         }

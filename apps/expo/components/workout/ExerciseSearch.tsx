@@ -53,6 +53,14 @@ interface CreateFormState {
   description: string;
 }
 
+function getUserSelectionKey(id: string) {
+  return `user:${id}`;
+}
+
+function getLibrarySelectionKey(id: string) {
+  return `library:${id}`;
+}
+
 export function ExerciseSearch({
   onSelect,
   onClose,
@@ -74,6 +82,7 @@ export function ExerciseSearch({
   const scrollViewportHeight = useRef(0);
 
   const handleClose = () => {
+    console.log('[DEBUG ExerciseSearch handleClose]');
     setPendingSelection([]);
     onClose();
   };
@@ -118,7 +127,6 @@ export function ExerciseSearch({
     try {
       const newExercise = await createCustomExercise(createForm);
       setUserExercises((prev) => [
-        ...prev,
         {
           id: newExercise.id,
           name: newExercise.name,
@@ -126,16 +134,14 @@ export function ExerciseSearch({
           description: newExercise.description,
           libraryId: null,
         },
+        ...prev,
       ]);
-      onSelect([
-        {
-          id: newExercise.id,
-          name: newExercise.name,
-          muscleGroup: newExercise.muscleGroup ?? '',
-          description: newExercise.description ?? '',
-        },
-      ]);
-      handleClose();
+      setPendingSelection((prev) => {
+        const selectionKey = getUserSelectionKey(newExercise.id);
+        return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
+      });
+      setShowCreateForm(false);
+      setCreateForm({ name: '', muscleGroup: '', description: '' });
     } catch (e) {
       console.error('Create exercise error:', e);
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
@@ -145,37 +151,64 @@ export function ExerciseSearch({
   }
 
   function handleConfirm() {
-    const selectedExercises: ExerciseLibraryItem[] = [];
-    for (const id of pendingSelection) {
-      const userEx = filteredUserExercises.find((ex) => ex.id === id);
-      if (userEx) {
-        selectedExercises.push({
-          id: userEx.id,
-          name: userEx.name,
-          muscleGroup: userEx.muscleGroup ?? '',
-          description: userEx.description ?? '',
-        });
-      } else {
-        const libEx = filteredLibraryExercises.find((ex) => ex.id === id);
-        if (libEx) {
+    void (async () => {
+      const selectedExercises: ExerciseLibraryItem[] = [];
+
+      for (const selectionKey of pendingSelection) {
+        if (selectionKey.startsWith('user:')) {
+          const userId = selectionKey.slice('user:'.length);
+          const userEx = userExercises.find((exercise) => exercise.id === userId);
+
+          if (!userEx) {
+            continue;
+          }
+
           selectedExercises.push({
-            id: libEx.id,
-            name: libEx.name,
-            muscleGroup: libEx.muscleGroup,
-            description: libEx.description,
+            id: userEx.id,
+            name: userEx.name,
+            muscleGroup: userEx.muscleGroup ?? '',
+            description: userEx.description ?? '',
           });
+          continue;
+        }
+
+        if (!selectionKey.startsWith('library:')) {
+          continue;
+        }
+
+        const libraryId = selectionKey.slice('library:'.length);
+        const libraryExercise = exerciseLibrary.find((exercise) => exercise.id === libraryId);
+
+        if (!libraryExercise) {
+          continue;
+        }
+
+        try {
+          const persistedExercise = await ensurePersistedExercise(libraryExercise);
+          selectedExercises.push({
+            id: persistedExercise.id,
+            name: persistedExercise.name,
+            muscleGroup: persistedExercise.muscleGroup ?? '',
+            description: persistedExercise.description ?? '',
+          });
+        } catch (e) {
+          console.error('Failed to persist library exercise:', e);
         }
       }
-    }
-    onSelect(selectedExercises);
-    setPendingSelection([]);
-    onClose();
+
+      onSelect(selectedExercises);
+      setPendingSelection([]);
+      onClose();
+    })();
   }
 
   const filteredUserExercises = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     return userExercises.filter(
-      (ex) => ex.name.toLowerCase().includes(query) && !excludeIds.includes(ex.id),
+      (ex) =>
+        ex.libraryId === null &&
+        ex.name.toLowerCase().includes(query) &&
+        !excludeIds.includes(ex.id),
     );
   }, [userExercises, searchQuery, excludeIds]);
 
@@ -218,7 +251,8 @@ export function ExerciseSearch({
     }
     const ex = item.data;
     const isUser = item.isUser;
-    const isSelected = pendingSelection.includes(ex.id);
+    const selectionKey = isUser ? getUserSelectionKey(ex.id) : getLibrarySelectionKey(ex.id);
+    const isSelected = pendingSelection.includes(selectionKey);
     return (
       <Pressable
         style={({ pressed }) => [
@@ -227,51 +261,12 @@ export function ExerciseSearch({
           isSelected ? styles.exerciseRowSelected : styles.exerciseRowDefault,
           pressed && styles.exerciseRowPressed,
         ]}
-        onPress={async () => {
-          if (isUser) {
-            setPendingSelection((prev) =>
-              prev.includes(ex.id) ? prev.filter((id) => id !== ex.id) : [...prev, ex.id],
-            );
-            return;
-          }
-          const existingUserExercise = userExercises.find((ue) => ue.libraryId === ex.id);
-          if (existingUserExercise) {
-            if (excludeIds.includes(existingUserExercise.id)) {
-              return;
-            }
-            setPendingSelection((prev) =>
-              prev.includes(existingUserExercise.id)
-                ? prev.filter((id) => id !== existingUserExercise.id)
-                : [...prev, existingUserExercise.id],
-            );
-            return;
-          }
-          try {
-            const newExercise = await ensurePersistedExercise(ex);
-            setUserExercises((prev) => {
-              if (prev.some((userExercise) => userExercise.id === newExercise.id)) {
-                return prev;
-              }
-
-              return [
-                ...prev,
-                {
-                  id: newExercise.id,
-                  name: newExercise.name,
-                  muscleGroup: newExercise.muscleGroup,
-                  description: newExercise.description,
-                  libraryId: newExercise.libraryId,
-                },
-              ];
-            });
-            setPendingSelection((prev) =>
-              prev.includes(newExercise.id)
-                ? prev.filter((id) => id !== newExercise.id)
-                : [...prev, newExercise.id],
-            );
-          } catch (e) {
-            console.error('Failed to create exercise from library:', e);
-          }
+        onPress={() => {
+          setPendingSelection((prev) =>
+            prev.includes(selectionKey)
+              ? prev.filter((id) => id !== selectionKey)
+              : [...prev, selectionKey],
+          );
         }}
       >
         <View style={styles.exerciseInfo}>
@@ -316,7 +311,7 @@ export function ExerciseSearch({
             <TextInput
               style={styles.searchInput}
               placeholder="Search exercises..."
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.placeholderText}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
@@ -337,7 +332,7 @@ export function ExerciseSearch({
             <TextInput
               style={styles.formInput}
               placeholder="e.g. Hammer Curls"
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.placeholderText}
               value={createForm.name}
               onChangeText={(text) => setCreateForm((f) => ({ ...f, name: text }))}
               autoFocus
@@ -379,7 +374,7 @@ export function ExerciseSearch({
             <TextInput
               style={[styles.formInput, styles.formInputMultiline]}
               placeholder="Add notes about form, equipment, etc."
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.placeholderText}
               value={createForm.description}
               onChangeText={(text) => setCreateForm((f) => ({ ...f, description: text }))}
               multiline
@@ -577,7 +572,7 @@ const styles = StyleSheet.create({
   selectedBadgeText: {
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
   },
   addBadge: {
     marginLeft: spacing.md,
@@ -642,7 +637,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
   },
   muscleGroupChipTextSelected: {
-    color: '#ffffff',
+    color: colors.text,
   },
   muscleGroupChipTextDefault: {
     color: colors.text,
@@ -655,7 +650,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: typography.fontSizes.sm,
-    color: '#f87171',
+    color: colors.error,
   },
   formButtons: {
     flexDirection: 'row',
@@ -689,7 +684,7 @@ const styles = StyleSheet.create({
   createButtonText: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
     textAlign: 'center',
   },
   buttonPressed: {
@@ -752,6 +747,6 @@ const styles = StyleSheet.create({
   confirmButtonText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
   },
 });

@@ -1,6 +1,7 @@
 import { TRAINING_MAX_PERCENTAGE, roundToPlate } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
 import { nuckolsInfo, WAVE_1, WAVE_2, getNuckolsAccessories } from './config/nuckols';
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
 
 function calculateTargetWeight(
@@ -44,22 +45,25 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: liftName,
             lift: config.t1,
+            libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
             sets: 3,
             reps: 8,
             targetWeight: calculateTargetWeight(t1OneRM, week, 1, config.t1, false, wave),
             isAmrap: false,
           },
           {
-            name: `${liftName} 2`,
+            name: liftName,
             lift: config.t1,
+            libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
             sets: 3,
             reps: 8,
             targetWeight: calculateTargetWeight(t1OneRM, week, 2, config.t1, false, wave),
             isAmrap: false,
           },
           {
-            name: `${liftName} 3`,
+            name: liftName,
             lift: config.t1,
+            libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
             sets: 3,
             reps: 8,
             targetWeight: calculateTargetWeight(t1OneRM, week, 3, config.t1, false, wave),
@@ -71,14 +75,16 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: t2LiftName,
             lift: config.t2,
+            libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
             sets: 3,
             reps: 10,
             targetWeight: calculateTargetWeight(t2OneRM, week, 1, config.t2, true, wave),
             isAmrap: false,
           },
           {
-            name: `${t2LiftName} 2`,
+            name: t2LiftName,
             lift: config.t2,
+            libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
             sets: 3,
             reps: 10,
             targetWeight: calculateTargetWeight(t2OneRM, week, 2, config.t2, true, wave),

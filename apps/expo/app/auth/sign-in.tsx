@@ -90,7 +90,7 @@ export default function SignInScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder="you@example.com"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={colors.placeholderText}
               value={email}
               onChangeText={setEmail}
               returnKeyType="next"
@@ -129,7 +129,7 @@ export default function SignInScreen() {
               }}
               secureTextEntry
               placeholder="Enter your password"
-              placeholderTextColor="#6b7280"
+              placeholderTextColor={colors.placeholderText}
               value={password}
               onChangeText={setPassword}
               returnKeyType="done"
@@ -171,7 +171,7 @@ export default function SignInScreen() {
           onPress={handleSubmit}
         >
           {isSubmitting && <ActivityIndicator size="small" color="#ffffff" />}
-          <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff' }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
             {isSubmitting ? 'Signing in...' : 'Sign in'}
           </Text>
         </Pressable>

@@ -40,6 +40,27 @@ Migrations: `packages/db/drizzle/migrations/`
 
 Auth is **intentionally disabled** unless `APP_ENV=development`. The worker skips auth middleware entirely in non-dev mode. Do not assume auth is active when working on API endpoints.
 
+### Shared Auth Helper
+
+When adding new API route handlers in `apps/worker/src/api/`, always use the shared `requireAuth` helper from `./api/auth`:
+
+```typescript
+import { requireAuth } from '../auth';
+
+export async function myHandler(c: any) {
+  const { session } = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  // ...
+}
+```
+
+This ensures consistent auth behavior — it checks middleware-set session first, then falls back to re-fetching from the cookie. Handlers that bypass `requireAuth` and call `c.get('session')` directly may fail auth on certain clients (e.g., native Expo apps).
+
+Existing handlers in `index.ts` (inline) and `apps/worker/src/api/nutrition/` (module files) both route through the same `requireAuth` function.
+
 ## D1 Database Setup (required on first clone)
 
 1. `cd apps/worker && wrangler d1 create strength-db`

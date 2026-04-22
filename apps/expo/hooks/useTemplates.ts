@@ -8,13 +8,17 @@ export type { Template };
 export function useTemplates() {
   const queryClient = useQueryClient();
   const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   const templatesQuery = useQuery({
-    queryKey: ['templates'],
+    queryKey: ['templates', userId],
+    enabled: !!userId,
     queryFn: async (): Promise<Template[]> => {
-      if (!session.data?.user) return [];
       return apiFetch('/api/templates');
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const createTemplate = useMutation({
@@ -64,7 +68,7 @@ export function useTemplates() {
 
   return {
     templates: templatesQuery.data ?? [],
-    isLoading: templatesQuery.isLoading,
+    isLoading: session.isPending || templatesQuery.isLoading,
     isError: templatesQuery.isError,
     error: templatesQuery.error,
     refetch: templatesQuery.refetch,

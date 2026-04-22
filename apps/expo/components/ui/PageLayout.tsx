@@ -9,7 +9,7 @@ interface PageLayoutProps {
   header?: ReactNode;
   headerType?: 'standard' | 'custom' | 'none';
   headerSafeArea?: 'layout' | 'header';
-  scrollViewRef?: RefObject<ScrollView>;
+  scrollViewRef?: RefObject<ScrollView | null>;
   screenScrollViewProps?: Partial<Omit<ScreenScrollViewProps, 'ref'>>;
 }
 

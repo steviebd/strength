@@ -1,13 +1,16 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { PageHeader } from '@/components/ui/app-primitives';
 import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import * as WebBrowser from 'expo-web-browser';
 import { colors, radius, spacing, typography } from '@/theme';
+import { Input } from '@/components/ui/Input';
+import { convertToDisplayWeight, convertToStorageWeight } from '@strength/db';
 
 interface WhoopStatus {
   connected: boolean;
@@ -41,14 +44,51 @@ async function syncWhoop(): Promise<{ success: boolean; errors?: string[] }> {
 
 export default function Profile() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: session, isPending } = authClient.useSession();
   const { weightUnit, setWeightUnit, isLoading } = useUserPreferences();
 
+  const [displayBodyweight, setDisplayBodyweight] = useState('');
   const [whoopStatus, setWhoopStatus] = useState<WhoopStatus | null>(null);
   const [whoopLoading, setWhoopLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: bodyStats } = useQuery({
+    queryKey: ['body-stats'],
+    queryFn: () => apiFetch<{ bodyweightKg: number | null }>('/api/nutrition/body-stats'),
+  });
+
+  const saveBodyweightMutation = useMutation({
+    mutationFn: (bodyweightKg: number) =>
+      apiFetch('/api/nutrition/body-stats', {
+        method: 'POST',
+        body: JSON.stringify({ bodyweightKg }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['body-stats'] });
+    },
+  });
+
+  useEffect(() => {
+    if (bodyStats?.bodyweightKg !== undefined && bodyStats?.bodyweightKg !== null) {
+      const display = convertToDisplayWeight(bodyStats.bodyweightKg, weightUnit);
+      setDisplayBodyweight(display.toFixed(1));
+    }
+  }, [bodyStats, weightUnit]);
+
+  const handleBodyweightChange = useCallback((text: string) => {
+    setDisplayBodyweight(text);
+  }, []);
+
+  const handleSaveBodyweight = () => {
+    const value = parseFloat(displayBodyweight);
+    if (!isNaN(value) && value > 0) {
+      const kg = convertToStorageWeight(value, weightUnit);
+      saveBodyweightMutation.mutate(kg);
+    }
+  };
 
   const handleSignOut = () => {
     authClient.signOut();
@@ -171,6 +211,38 @@ export default function Profile() {
           <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
             {user.email}
           </Text>
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Body Stats</Text>
+
+        <View style={styles.bodyweightRow}>
+          <Text style={styles.rowLabel}>Weight ({weightUnit})</Text>
+          <View style={styles.bodyweightInputRow}>
+            <Input
+              style={styles.bodyweightInput}
+              value={displayBodyweight}
+              onChangeText={handleBodyweightChange}
+              placeholder="0.0"
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+            />
+            <Pressable
+              onPress={handleSaveBodyweight}
+              disabled={saveBodyweightMutation.isPending}
+              style={[
+                styles.saveButton,
+                saveBodyweightMutation.isPending && styles.saveButtonDisabled,
+              ]}
+            >
+              {saveBodyweightMutation.isPending ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save</Text>
+              )}
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -373,7 +445,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 36,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
   },
   userName: {
     fontSize: 24,
@@ -463,7 +535,7 @@ const styles = StyleSheet.create({
   buttonPrimaryText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
   },
   buttonSecondary: {
     backgroundColor: colors.border,
@@ -538,7 +610,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.medium,
   },
   unitButtonTextActive: {
-    color: '#ffffff',
+    color: colors.text,
   },
   unitButtonTextInactive: {
     color: colors.textMuted,
@@ -551,7 +623,7 @@ const styles = StyleSheet.create({
   buttonSignOutText: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
     textAlign: 'center',
   },
   versionRow: {
@@ -561,5 +633,33 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+  },
+  bodyweightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bodyweightInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bodyweightInput: {
+    width: 100,
+    height: 40,
+  },
+  saveButton: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  saveButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
   },
 });

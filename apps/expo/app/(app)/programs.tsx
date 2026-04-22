@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   LayoutChangeEvent,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,42 +15,24 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '@/lib/api';
 import { addPendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { PageHeader } from '@/components/ui/app-primitives';
+import {
+  useActivePrograms,
+  useLatestOneRms,
+  useProgramsCatalog,
+  type ActiveProgram,
+  type ProgramListItem,
+} from '@/hooks/usePrograms';
 import { colors, spacing, radius, typography, layout } from '@/theme';
 
 const LBS_TO_KG = 0.453592;
-
-interface ProgramListItem {
-  slug: string;
-  name: string;
-  description: string;
-  difficulty: string;
-  daysPerWeek: number;
-  estimatedWeeks: number;
-  totalSessions: number;
-}
-
-interface ActiveProgram {
-  id: string;
-  programSlug: string;
-  name: string;
-  currentWeek: number | null;
-  currentSession: number | null;
-  totalSessionsCompleted: number;
-  totalSessionsPlanned: number;
-}
-
-interface LatestOneRMs {
-  squat1rm: number | null;
-  bench1rm: number | null;
-  deadlift1rm: number | null;
-  ohp1rm: number | null;
-}
 
 const PROGRAM_INFO: ProgramListItem[] = [
   {
@@ -279,15 +262,16 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   programNameTitle: {
-    color: colors.textMuted,
-    fontSize: typography.fontSizes.sm,
-    marginBottom: spacing.xs,
-  },
-  programNameValue: {
     color: colors.text,
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.sm,
+  },
+  programDescriptionText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 20,
+    marginBottom: spacing.lg,
   },
   instructionsText: {
     color: colors.textMuted,
@@ -429,21 +413,19 @@ function getDifficultyColor(difficulty: string) {
 
 export default function ProgramsScreen() {
   const router = useRouter();
-  const [availablePrograms, setAvailablePrograms] = useState<ProgramListItem[]>(PROGRAM_INFO);
-  const [activePrograms, setActivePrograms] = useState<ActiveProgram[]>([]);
-  const [latestOneRMs, setLatestOneRMs] = useState<LatestOneRMs | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<ProgramListItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [startingProgram, setStartingProgram] = useState(false);
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const { weightUnit } = useUserPreferences();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
   const inputRefs = useRef<Record<string, any>>({});
   const inputPositions = useRef<Record<string, number>>({});
@@ -453,6 +435,15 @@ export default function ProgramsScreen() {
   const scrollOffsetY = useRef(0);
   const pendingScrollTimeouts = useRef<number[]>([]);
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
+  const { programs: availablePrograms, isLoading: isLoadingPrograms } =
+    useProgramsCatalog(PROGRAM_INFO);
+  const {
+    activePrograms,
+    isLoading: isLoadingActivePrograms,
+    refetch: refetchActivePrograms,
+  } = useActivePrograms();
+  const { latestOneRMs, refetch: refetchLatestOneRms } = useLatestOneRms();
+  const loading = isLoadingPrograms || isLoadingActivePrograms;
 
   const scrollToInput = (key: string) => {
     const scrollView = scrollViewRef.current;
@@ -504,10 +495,6 @@ export default function ProgramsScreen() {
     };
 
   useEffect(() => {
-    void fetchProgramsScreenData();
-  }, []);
-
-  useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
@@ -533,28 +520,32 @@ export default function ProgramsScreen() {
     };
   }, []);
 
-  async function fetchProgramsScreenData() {
-    try {
-      const [programs, activeProgramsData] = await Promise.all([
-        apiFetch<ProgramListItem[]>('/api/programs'),
-        apiFetch<ActiveProgram[]>('/api/programs/active'),
-      ]);
-      setAvailablePrograms(
-        Array.isArray(programs) && programs.length > 0 ? programs : PROGRAM_INFO,
-      );
-      setActivePrograms(Array.isArray(activeProgramsData) ? activeProgramsData : []);
-      try {
-        const latestOneRMsData = await apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms');
-        setLatestOneRMs(latestOneRMsData);
-      } catch {
-        setLatestOneRMs(null);
+  const refreshProgramsScreen = useCallback(
+    async (showRefreshIndicator = false) => {
+      if (showRefreshIndicator) {
+        setIsRefreshing(true);
       }
-    } catch (e) {
-      console.error('Failed to fetch programs:', e);
-    } finally {
-      setLoading(false);
-    }
-  }
+
+      try {
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ['programs'] }),
+          refetchActivePrograms(),
+          refetchLatestOneRms(),
+        ]);
+      } finally {
+        if (showRefreshIndicator) {
+          setIsRefreshing(false);
+        }
+      }
+    },
+    [queryClient, refetchActivePrograms, refetchLatestOneRms],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshProgramsScreen();
+    }, [refreshProgramsScreen]),
+  );
 
   const getTotalSessions = (slug: string): number => {
     switch (slug) {
@@ -593,7 +584,7 @@ export default function ProgramsScreen() {
     try {
       const convertToKg = (value: number) => (weightUnit === 'lbs' ? value * LBS_TO_KG : value);
 
-      await apiFetch('/api/programs', {
+      const cycle = await apiFetch<{ id: string }>('/api/programs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -612,7 +603,14 @@ export default function ProgramsScreen() {
       setShowDetailModal(false);
       setSelectedProgram(null);
       setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
-      await fetchProgramsScreenData();
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
+        queryClient.refetchQueries({ queryKey: ['latestOneRms'] }),
+      ]);
+
+      if (cycle.id) {
+        router.push(`/(app)/workouts?focusProgramId=${cycle.id}`);
+      }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
     } finally {
@@ -629,6 +627,7 @@ export default function ProgramsScreen() {
     try {
       const result = await apiFetch<{
         workoutId: string;
+        sessionName: string;
         created: boolean;
         completed: boolean;
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
@@ -640,13 +639,13 @@ export default function ProgramsScreen() {
           'Session Already Completed',
           'This program session has already been completed.',
         );
-        await fetchProgramsScreenData();
+        await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
         return;
       }
 
       await addPendingWorkout({
         id: result.workoutId,
-        name: program.name,
+        name: result.sessionName,
         startedAt: new Date().toISOString(),
         completedAt: null,
         source: 'program',
@@ -677,7 +676,7 @@ export default function ProgramsScreen() {
           setDeletingProgramId(program.id);
           try {
             await apiFetch(`/api/programs/cycles/${program.id}`, { method: 'DELETE' });
-            await fetchProgramsScreenData();
+            await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
           } catch (e) {
             Alert.alert('Error', e instanceof Error ? e.message : 'Failed to delete program');
           } finally {
@@ -713,7 +712,20 @@ export default function ProgramsScreen() {
   const diffColor = (difficulty: string) => getDifficultyColor(difficulty);
 
   return (
-    <PageLayout header={<PageHeader eyebrow="Training Programs" title="Programs" />}>
+    <PageLayout
+      header={<PageHeader eyebrow="Training Programs" title="Programs" />}
+      screenScrollViewProps={{
+        refreshControl: (
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              void refreshProgramsScreen(true);
+            }}
+            tintColor={colors.accent}
+          />
+        ),
+      }}
+    >
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.accent} />
@@ -799,7 +811,11 @@ export default function ProgramsScreen() {
 
       {selectedProgram && showDetailModal && (
         <View style={styles.modalOverlay}>
-          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+          <ScrollView
+            key={selectedProgram.slug}
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalScrollContent}
+          >
             <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
               <Pressable style={styles.backButton} onPress={() => setShowDetailModal(false)}>
                 <Ionicons name="chevron-back" size={24} color={colors.text} />
@@ -808,6 +824,31 @@ export default function ProgramsScreen() {
             </View>
 
             <View style={styles.modalContent}>
+              <Text style={styles.programNameTitle}>{selectedProgram.name}</Text>
+              <Text style={styles.programDescriptionText}>{selectedProgram.description}</Text>
+
+              <View style={styles.badgeRow}>
+                <View
+                  style={[
+                    styles.difficultyBadge,
+                    { backgroundColor: diffColor(selectedProgram.difficulty).bg },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.difficultyText,
+                      { color: diffColor(selectedProgram.difficulty).text },
+                    ]}
+                  >
+                    {selectedProgram.difficulty}
+                  </Text>
+                </View>
+                <Text style={styles.separator}>·</Text>
+                <Text style={styles.metaText}>{selectedProgram.daysPerWeek} days/week</Text>
+                <Text style={styles.separator}>·</Text>
+                <Text style={styles.metaText}>{selectedProgram.estimatedWeeks} weeks</Text>
+              </View>
+
               <Pressable
                 style={styles.primaryButton}
                 onPress={() => {
@@ -863,7 +904,7 @@ export default function ProgramsScreen() {
               </View>
 
               <Text style={styles.programNameTitle}>Starting Program</Text>
-              <Text style={styles.programNameValue}>{selectedProgram?.name}</Text>
+              <Text style={styles.programNameTitle}>{selectedProgram?.name}</Text>
               <Text style={styles.instructionsText}>
                 Enter your current one-rep max (1RM) estimates for each lift. These will be used to
                 calculate your working weights.
@@ -905,7 +946,7 @@ export default function ProgramsScreen() {
                         clearPendingScrolls();
                       }}
                       placeholder="0"
-                      placeholderTextColor="#71717a"
+                      placeholderTextColor={colors.placeholderText}
                       keyboardType="decimal-pad"
                       returnKeyType={key === 'ohp' ? 'done' : 'next'}
                       blurOnSubmit={key === 'ohp'}

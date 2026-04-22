@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Card } from '@/components/ui/Card';
+import { Surface } from '@/components/ui/app-primitives';
 import { colors, typography, spacing } from '@/theme';
 
 interface WhoopNutritionCardProps {
@@ -34,7 +34,7 @@ export function WhoopNutritionCard({
   };
 
   return (
-    <Card>
+    <Surface>
       <Text style={styles.title}>WHOOP Recovery</Text>
 
       <View style={styles.metricsRow}>
@@ -59,7 +59,7 @@ export function WhoopNutritionCard({
           </Text>
         </View>
       </View>
-    </Card>
+    </Surface>
   );
 }
 

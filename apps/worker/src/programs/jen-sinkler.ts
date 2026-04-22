@@ -2,6 +2,7 @@ import { roundToPlate } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
 import { jenSinklerInfo, getJenSinklerAccessories } from './config/jen-sinkler';
 import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 
 function calculateTargetWeight(
   estimatedOneRM: number,
@@ -33,6 +34,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 5,
             reps: 5,
             targetWeight: calculateTargetWeight(oneRMs.squat, week, session, 'squat'),
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           },
           {
             name: 'Deadlift',
@@ -40,6 +42,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 5,
             targetWeight: calculateTargetWeight(oneRMs.deadlift, week, session, 'deadlift'),
+            libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           },
           {
             name: 'Leg Press',
@@ -47,6 +50,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 12,
             targetWeight: roundToPlate(oneRMs.squat * 0.7),
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           },
           {
             name: 'Leg Extension',
@@ -54,6 +58,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 15,
             targetWeight: roundToPlate(oneRMs.squat * 0.35),
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           },
           {
             name: 'Leg Curl',
@@ -61,6 +66,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 15,
             targetWeight: roundToPlate(oneRMs.deadlift * 0.3),
+            libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           },
         );
       } else if (session === 2) {
@@ -71,6 +77,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 5,
             reps: 5,
             targetWeight: calculateTargetWeight(oneRMs.bench, week, session, 'bench'),
+            libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           },
           {
             name: 'Barbell Row',
@@ -78,6 +85,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 4,
             reps: 6,
             targetWeight: calculateTargetWeight(oneRMs.bench, week, session, 'row'),
+            libraryId: LIFT_TYPE_LIBRARY_ID['row'],
           },
           {
             name: 'Overhead Press',
@@ -85,6 +93,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 4,
             reps: 8,
             targetWeight: calculateTargetWeight(oneRMs.ohp, week, session, 'ohp'),
+            libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           },
           {
             name: 'Pull-ups',
@@ -92,6 +101,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 8,
             targetWeight: 0,
+            libraryId: LIFT_TYPE_LIBRARY_ID['row'],
           },
           {
             name: 'Tricep Pushdowns',
@@ -99,6 +109,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 12,
             targetWeight: roundToPlate(oneRMs.bench * 0.25),
+            libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           },
           {
             name: 'Lateral Raises',
@@ -106,6 +117,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 15,
             targetWeight: roundToPlate(oneRMs.ohp * 0.15),
+            libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           },
         );
       } else {
@@ -116,6 +128,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 4,
             reps: 6,
             targetWeight: calculateTargetWeight(oneRMs.ohp, week, session, 'ohp'),
+            libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           },
           {
             name: 'Front Squat',
@@ -123,6 +136,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 4,
             reps: 8,
             targetWeight: roundToPlate(oneRMs.squat * 0.6),
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           },
           {
             name: 'Romanian Deadlift',
@@ -130,6 +144,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 4,
             reps: 8,
             targetWeight: roundToPlate(oneRMs.deadlift * 0.65),
+            libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           },
           {
             name: 'Dumbbell Bench Press',
@@ -137,6 +152,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 10,
             targetWeight: roundToPlate(oneRMs.bench * 0.5),
+            libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           },
           {
             name: 'Dumbbell Row',
@@ -144,6 +160,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             sets: 3,
             reps: 10,
             targetWeight: roundToPlate(oneRMs.bench * 0.4),
+            libraryId: LIFT_TYPE_LIBRARY_ID['row'],
           },
         );
       }

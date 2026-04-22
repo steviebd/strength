@@ -122,7 +122,7 @@ export function TemplateExerciseRow({
             onBlur={handleWeightBlur}
             keyboardType="decimal-pad"
             placeholder="0"
-            placeholderTextColor="#71717a"
+            placeholderTextColor={colors.placeholderText}
             selectTextOnFocus
           />
         </View>
@@ -134,7 +134,12 @@ export function TemplateExerciseRow({
           style={[styles.toggle, exercise.isAmrap && styles.toggleActive]}
         >
           <View style={[styles.toggleCheck, exercise.isAmrap && styles.toggleCheckActive]} />
-          <Text style={[styles.toggleLabel, exercise.isAmrap && styles.toggleLabelActive]}>
+          <Text
+            style={[
+              styles.toggleLabel,
+              exercise.isAmrap ? styles.toggleLabelActive : styles.toggleLabelDefault,
+            ]}
+          >
             AMRAP
           </Text>
         </Pressable>
@@ -240,7 +245,7 @@ const styles = StyleSheet.create({
   },
   removeButtonText: {
     fontSize: 14,
-    color: '#ef4444',
+    color: colors.error,
   },
   inputRow: {
     flexDirection: 'row',

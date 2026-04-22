@@ -231,8 +231,8 @@ export default function WhoopDataPage() {
             <Card style={styles.card}>
               <Text style={styles.cardTitle}>Recovery (7 days)</Text>
               <View>
-                {last7Recovery.map((r) => (
-                  <RecoveryDayRow key={r.id} recovery={r} />
+                {last7Recovery.map((r, idx) => (
+                  <RecoveryDayRow key={r.id ?? `recovery-${idx}`} recovery={r} />
                 ))}
               </View>
               <View style={styles.legendRow}>
@@ -313,8 +313,8 @@ export default function WhoopDataPage() {
             <Card style={styles.card}>
               <Text style={styles.cardTitle}>Sleep (7 days)</Text>
               <View style={styles.sleepChartRow}>
-                {last7Sleep.map((s) => (
-                  <SleepDayBar key={s.id} sleep={s} />
+                {last7Sleep.map((s, idx) => (
+                  <SleepDayBar key={s.id ?? `sleep-${idx}`} sleep={s} />
                 ))}
               </View>
               <View style={styles.sleepLegendRow}>
@@ -338,8 +338,8 @@ export default function WhoopDataPage() {
             <Card style={styles.card}>
               <Text style={styles.cardTitle}>Daily Cycles</Text>
               <View style={styles.cyclesList}>
-                {data.cycles.slice(0, 14).map((cycle) => (
-                  <View key={cycle.id} style={styles.cycleRow}>
+                {data.cycles.slice(0, 14).map((cycle, idx) => (
+                  <View key={cycle.id ?? `cycle-${idx}`} style={styles.cycleRow}>
                     <Text style={styles.cycleDate}>{formatDate(cycle.start)}</Text>
                     <View style={styles.cycleStats}>
                       <View style={styles.cycleStat}>

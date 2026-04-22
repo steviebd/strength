@@ -1,7 +1,6 @@
 import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { useTemplates, type Template } from '@/hooks/useTemplates';
 import { Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
-import { ScreenScrollView } from '@/components/ui/Screen';
 import { colors, spacing } from '@/theme';
 
 interface TemplateListProps {
@@ -46,7 +45,7 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
   }
 
   return (
-    <ScreenScrollView horizontalPadding={16} bottomInset={188}>
+    <View style={styles.listContainer}>
       {templates.map((template) => (
         <Surface key={template.id} style={styles.templateCard}>
           <Pressable
@@ -109,23 +108,21 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
           </View>
         </Surface>
       ))}
-    </ScreenScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   loadingContainer: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    paddingVertical: spacing.xl,
   },
   emptyContainer: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   emptyTitle: {
     fontSize: 20,
@@ -139,8 +136,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+  listContainer: {
+    gap: spacing.md,
+  },
   templateCard: {
-    marginBottom: spacing.md,
     backgroundColor: 'rgba(24,24,27,0.7)',
   },
   templateHeader: {
@@ -181,15 +180,15 @@ const styles = StyleSheet.create({
   exerciseName: {
     flex: 1,
     fontSize: 14,
-    color: '#e2e8f0',
+    color: colors.textMuted,
   },
   exerciseSets: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textMuted,
   },
   moreExercises: {
     fontSize: 12,
-    color: '#64748b',
+    color: colors.textMuted,
     marginTop: 4,
   },
   actionRow: {
@@ -205,7 +204,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   startButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },

@@ -7,10 +7,14 @@ type BadgeTone = 'neutral' | 'orange' | 'emerald' | 'sky' | 'rose';
 
 const badgeTones: Record<BadgeTone, { border: string; bg: string; text: string }> = {
   neutral: { border: 'rgba(255,255,255,0.1)', bg: 'rgba(255,255,255,0.05)', text: '#94a3b8' },
-  orange: { border: 'rgba(251,146,60,0.2)', bg: 'rgba(251,146,60,0.1)', text: '#fb923c' },
-  emerald: { border: 'rgba(34,197,94,0.2)', bg: 'rgba(34,197,94,0.1)', text: '#6ee7b7' },
-  sky: { border: 'rgba(56,189,248,0.2)', bg: 'rgba(56,189,248,0.1)', text: '#7dd3fc' },
-  rose: { border: 'rgba(251,113,133,0.2)', bg: 'rgba(251,113,133,0.1)', text: '#fda4af' },
+  orange: {
+    border: 'rgba(251,146,60,0.2)',
+    bg: 'rgba(251,146,60,0.1)',
+    text: colors.accentSecondary,
+  },
+  emerald: { border: 'rgba(34,197,94,0.2)', bg: 'rgba(34,197,94,0.1)', text: colors.success },
+  sky: { border: 'rgba(56,189,248,0.2)', bg: 'rgba(56,189,248,0.1)', text: colors.sky },
+  rose: { border: 'rgba(251,113,133,0.2)', bg: 'rgba(251,113,133,0.1)', text: colors.error },
 };
 
 export function PageHeader({
@@ -92,10 +96,10 @@ export function MetricTile({
 }) {
   const accentColors: Record<BadgeTone, string> = {
     neutral: colors.text,
-    orange: '#fb923c',
-    emerald: '#6ee7b7',
-    sky: '#7dd3fc',
-    rose: '#fda4af',
+    orange: colors.accentSecondary,
+    emerald: colors.success,
+    sky: colors.sky,
+    rose: colors.error,
   };
 
   return (
@@ -121,9 +125,9 @@ export function ActionButton({
   disabled?: boolean;
 }) {
   const variantStyles = {
-    primary: { bg: colors.accent, text: '#ffffff', iconColor: '#ffffff' },
-    secondary: { bg: 'rgba(255,255,255,0.05)', text: colors.text, iconColor: '#94a3b8' },
-    ghost: { bg: 'transparent', text: '#94a3b8', iconColor: '#94a3b8' },
+    primary: { bg: colors.accent, text: colors.text, iconColor: colors.text },
+    secondary: { bg: 'rgba(255,255,255,0.05)', text: colors.text, iconColor: colors.textMuted },
+    ghost: { bg: 'transparent', text: colors.textMuted, iconColor: colors.textMuted },
   };
 
   const v = variantStyles[variant];
@@ -189,7 +193,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: typography.fontWeights.semibold,
     letterSpacing: 2,
-    color: '#64748b',
+    color: colors.textMuted,
     textTransform: 'uppercase',
   },
   title: {
@@ -200,7 +204,7 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: typography.fontSizes.base,
-    color: '#94a3b8',
+    color: colors.textMuted,
     lineHeight: 24,
   },
   surface: {
@@ -225,7 +229,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
-    color: '#fb923c',
+    color: colors.accentSecondary,
   },
   badge: {
     flexDirection: 'row',
@@ -252,7 +256,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: typography.fontWeights.medium,
     letterSpacing: 1.6,
-    color: '#64748b',
+    color: colors.textMuted,
     textTransform: 'uppercase',
   },
   metricValue: {
@@ -262,7 +266,7 @@ const styles = StyleSheet.create({
   },
   metricHint: {
     fontSize: typography.fontSizes.sm,
-    color: '#94a3b8',
+    color: colors.textMuted,
     marginTop: 4,
   },
   actionButton: {
@@ -309,7 +313,7 @@ const styles = StyleSheet.create({
   segmentTabLabel: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   segmentTabLabelActive: {
     color: '#0a0a0a',

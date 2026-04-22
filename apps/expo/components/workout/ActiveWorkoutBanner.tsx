@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   continueButtonText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
-    color: '#ffffff',
+    color: colors.text,
     textAlign: 'center',
   },
   discardButton: {

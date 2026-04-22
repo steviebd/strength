@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: typography.fontSizes.xs,
-    color: '#64748b',
+    color: colors.textMuted,
   },
   deleteButton: {
     borderRadius: 9999,
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
   deleteText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
-    color: '#fda4af',
+    color: colors.error,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     fontSize: typography.fontSizes.sm,
-    color: '#64748b',
+    color: colors.textMuted,
   },
   metricValue: {
     fontSize: typography.fontSizes.base,

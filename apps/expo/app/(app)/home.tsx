@@ -131,7 +131,7 @@ export default function HomeScreen() {
               label="Open"
               icon="restaurant-outline"
               variant="secondary"
-              onPress={() => router.push('/(app)/nutrition')}
+              onPress={() => router.push('/nutrition')}
             />
           </View>
         </Surface>
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   },
   workoutFocus: {
     fontSize: typography.fontSizes.base,
-    color: '#94a3b8',
+    color: colors.textMuted,
     lineHeight: 24,
   },
   workoutIcon: {
@@ -246,12 +246,12 @@ const styles = StyleSheet.create({
   exerciseNumberText: {
     fontSize: 14,
     fontWeight: typography.fontWeights.medium,
-    color: '#cbd5e1',
+    color: colors.textMuted,
   },
   exerciseText: {
     flex: 1,
     fontSize: typography.fontSizes.base,
-    color: '#e2e8f0',
+    color: colors.textMuted,
   },
   workoutActions: {
     flexDirection: 'row',
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   },
   quickAccessDesc: {
     fontSize: typography.fontSizes.sm,
-    color: '#94a3b8',
+    color: colors.textMuted,
     lineHeight: 24,
   },
   recoveryCard: {
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   recoveryStatusText: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
-    color: '#94a3b8',
+    color: colors.textMuted,
   },
   recoveryMetrics: {
     flexDirection: 'row',

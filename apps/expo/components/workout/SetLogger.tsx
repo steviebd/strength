@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   completeTextDone: {
-    color: '#ffffff',
+    color: colors.text,
     fontWeight: typography.fontWeights.semibold,
   },
   completeTextDefault: {

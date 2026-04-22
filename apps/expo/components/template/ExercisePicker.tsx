@@ -67,6 +67,14 @@ interface CreateFormState {
   description: string;
 }
 
+function getUserSelectionKey(id: string) {
+  return `user:${id}`;
+}
+
+function getLibrarySelectionKey(id: string) {
+  return `library:${id}`;
+}
+
 export function ExercisePicker({
   visible,
   onClose,
@@ -123,7 +131,9 @@ export function ExercisePicker({
     return userExercises.filter((ex) => {
       const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesMuscle = selectedMuscleGroup === 'All' || ex.muscleGroup === selectedMuscleGroup;
-      return matchesSearch && matchesMuscle && !selectedIds.includes(ex.id);
+      return (
+        ex.libraryId === null && matchesSearch && matchesMuscle && !selectedIds.includes(ex.id)
+      );
     });
   }, [userExercises, searchQuery, selectedMuscleGroup, selectedIds]);
 
@@ -140,13 +150,7 @@ export function ExercisePicker({
     setCreateError(null);
     try {
       const newExercise = await createCustomExercise(createForm);
-      const exerciseObj = {
-        id: newExercise.id,
-        name: newExercise.name,
-        muscleGroup: newExercise.muscleGroup,
-      };
       setUserExercises((prev) => [
-        ...prev,
         {
           id: newExercise.id,
           name: newExercise.name,
@@ -154,9 +158,12 @@ export function ExercisePicker({
           description: newExercise.description,
           libraryId: newExercise.libraryId,
         },
+        ...prev,
       ]);
-      onSelect([exerciseObj]);
-      onClose();
+      setPendingSelection((prev) => {
+        const selectionKey = getUserSelectionKey(newExercise.id);
+        return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
+      });
       setShowCreateForm(false);
       setCreateForm({ name: '', muscleGroup: '', description: '' });
     } catch (e) {
@@ -187,66 +194,80 @@ export function ExercisePicker({
   }, [searchQuery, selectedMuscleGroup, selectedIds, userExercises]);
 
   const handleToggleUser = (exercise: UserExercise) => {
+    const selectionKey = getUserSelectionKey(exercise.id);
     setPendingSelection((prev) => {
-      if (prev.includes(exercise.id)) {
-        return prev.filter((id) => id !== exercise.id);
+      if (prev.includes(selectionKey)) {
+        return prev.filter((id) => id !== selectionKey);
       }
-      return [...prev, exercise.id];
+      return [...prev, selectionKey];
     });
   };
 
-  const handleToggleLibrary = async (exercise: ExerciseLibraryItem) => {
+  const handleToggleLibrary = (exercise: ExerciseLibraryItem) => {
+    const selectionKey = getLibrarySelectionKey(exercise.id);
     if (selectedIds.includes(exercise.id)) {
       return;
     }
 
-    try {
-      const persistedExercise = await ensurePersistedExercise(exercise);
-
-      setPendingSelection((prev) => {
-        if (prev.includes(persistedExercise.id)) {
-          return prev.filter((id) => id !== persistedExercise.id);
-        }
-        return [...prev, persistedExercise.id];
-      });
-
-      setUserExercises((prev) => {
-        if (prev.some((userExercise) => userExercise.id === persistedExercise.id)) {
-          return prev;
-        }
-        return [...prev, persistedExercise];
-      });
-    } catch (e) {
-      console.error('Failed to persist library exercise:', e);
-      setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
-    }
+    setPendingSelection((prev) => {
+      if (prev.includes(selectionKey)) {
+        return prev.filter((id) => id !== selectionKey);
+      }
+      return [...prev, selectionKey];
+    });
   };
 
   const handleConfirm = () => {
-    const selectedUser = filteredUserExercises.filter((ex) => pendingSelection.includes(ex.id));
-    const selectedLibrary = filteredLibraryExercises.filter((ex) =>
-      pendingSelection.includes(ex.id),
-    );
+    void (async () => {
+      const selectedExercises: Array<{ id: string; name: string; muscleGroup: string | null }> = [];
 
-    const selectedExercises = [
-      ...selectedUser.map((ex) => ({
-        id: ex.id,
-        name: ex.name,
-        muscleGroup: ex.muscleGroup,
-      })),
-      ...selectedLibrary.map((ex) => {
-        const persisted = userExercises.find((u) => u.libraryId === ex.id);
-        return {
-          id: persisted?.id ?? ex.id,
-          name: ex.name,
-          muscleGroup: ex.muscleGroup,
-        };
-      }),
-    ];
+      for (const selectionKey of pendingSelection) {
+        if (selectionKey.startsWith('user:')) {
+          const userId = selectionKey.slice('user:'.length);
+          const selectedUserExercise = userExercises.find((exercise) => exercise.id === userId);
 
-    onSelect(selectedExercises);
-    setPendingSelection([]);
-    onClose();
+          if (!selectedUserExercise) {
+            continue;
+          }
+
+          selectedExercises.push({
+            id: selectedUserExercise.id,
+            name: selectedUserExercise.name,
+            muscleGroup: selectedUserExercise.muscleGroup,
+          });
+          continue;
+        }
+
+        if (!selectionKey.startsWith('library:')) {
+          continue;
+        }
+
+        const libraryId = selectionKey.slice('library:'.length);
+        const selectedLibraryExercise = exerciseLibrary.find(
+          (exercise) => exercise.id === libraryId,
+        );
+
+        if (!selectedLibraryExercise) {
+          continue;
+        }
+
+        try {
+          const persistedExercise = await ensurePersistedExercise(selectedLibraryExercise);
+          selectedExercises.push({
+            id: persistedExercise.id,
+            name: persistedExercise.name,
+            muscleGroup: persistedExercise.muscleGroup,
+          });
+        } catch (e) {
+          console.error('Failed to persist library exercise:', e);
+          setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
+        }
+      }
+
+      onSelect(selectedExercises);
+      setPendingSelection([]);
+      onClose();
+    })();
   };
 
   const handleClose = () => {
@@ -277,7 +298,7 @@ export function ExercisePicker({
                 <TextInput
                   style={styles.searchInput}
                   placeholder="Search exercises..."
-                  placeholderTextColor="#71717a"
+                  placeholderTextColor={colors.placeholderText}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                 />
@@ -324,7 +345,7 @@ export function ExercisePicker({
               <TextInput
                 style={styles.formInput}
                 placeholder="e.g. Hammer Curls"
-                placeholderTextColor="#71717a"
+                placeholderTextColor={colors.placeholderText}
                 value={createForm.name}
                 onChangeText={(text) => setCreateForm((f) => ({ ...f, name: text }))}
               />
@@ -360,7 +381,7 @@ export function ExercisePicker({
               <TextInput
                 style={[styles.formInput, styles.formInputMultiline]}
                 placeholder="Add notes about form, equipment, etc."
-                placeholderTextColor="#71717a"
+                placeholderTextColor={colors.placeholderText}
                 value={createForm.description}
                 onChangeText={(text) => setCreateForm((f) => ({ ...f, description: text }))}
                 multiline
@@ -417,7 +438,9 @@ export function ExercisePicker({
                     <>
                       <Text style={styles.sectionLabel}>Your Exercises</Text>
                       {filteredUserExercises.map((exercise) => {
-                        const isSelected = pendingSelection.includes(exercise.id);
+                        const isSelected = pendingSelection.includes(
+                          getUserSelectionKey(exercise.id),
+                        );
                         return (
                           <Pressable
                             key={exercise.id}
@@ -444,7 +467,9 @@ export function ExercisePicker({
                     <>
                       <Text style={styles.sectionLabel}>Exercise Library</Text>
                       {filteredLibraryExercises.map((exercise) => {
-                        const isSelected = pendingSelection.includes(exercise.id);
+                        const isSelected = pendingSelection.includes(
+                          getLibrarySelectionKey(exercise.id),
+                        );
                         return (
                           <Pressable
                             key={exercise.id}
@@ -561,7 +586,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   filterTabTextActive: {
-    color: '#ffffff',
+    color: colors.text,
     fontWeight: '500',
   },
   createExercisePrompt: {
@@ -666,7 +691,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   addSelectedButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontWeight: '600',
   },
   formGroup: {
@@ -716,7 +741,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   muscleGroupChipTextActive: {
-    color: '#ffffff',
+    color: colors.text,
   },
   errorBox: {
     borderRadius: radius.sm,
@@ -725,7 +750,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   errorText: {
-    color: '#ef4444',
+    color: colors.error,
     fontSize: 14,
   },
   formButtons: {
@@ -755,7 +780,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   createButtonText: {
-    color: '#ffffff',
+    color: colors.text,
     fontSize: 15,
     fontWeight: '600',
   },

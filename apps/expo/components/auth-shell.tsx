@@ -78,7 +78,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
                   elevation: 8,
                 }}
               >
-                <Text style={{ fontSize: 28, fontWeight: '700', color: '#fff' }}>S</Text>
+                <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>S</Text>
               </View>
               <Text
                 style={{

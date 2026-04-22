@@ -2,6 +2,7 @@ import { roundToPlate } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
 import { megsquatsInfo, getMegsquatsAccessories } from './config/megsquats';
 import type { LiftType, OneRMValues, ProgramConfig, ProgramWorkout } from './types';
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 
 function getWavePercentage(week: number, setNumber: number): number {
   const waveData: Record<number, number[]> = {
@@ -82,6 +83,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Squat',
             lift: 'squat' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
             sets: setsConfig[0].sets,
             reps: setsConfig[0].reps,
             targetWeight: calculateTargetWeight(
@@ -96,6 +98,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Hip Thrust',
             lift: 'squat' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
             sets: 3,
             reps: 10,
             targetWeight: roundToPlate(oneRMs.squat * 0.6),
@@ -103,6 +106,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Romanian Deadlift',
             lift: 'deadlift' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
             sets: 3,
             reps: 10,
             targetWeight: roundToPlate(oneRMs.deadlift * 0.6),
@@ -110,6 +114,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Leg Press',
             lift: 'squat' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
             sets: 3,
             reps: 12,
             targetWeight: roundToPlate(oneRMs.squat * 0.8),
@@ -120,6 +125,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Bench Press',
             lift: 'bench' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
             sets: setsConfig[0].sets,
             reps: setsConfig[0].reps,
             targetWeight: calculateTargetWeight(
@@ -134,6 +140,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Barbell Row',
             lift: 'row' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['row'],
             sets: setsConfig[1].sets,
             reps: setsConfig[1].reps,
             targetWeight: calculateTargetWeight(
@@ -148,6 +155,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Pull-ups',
             lift: 'row' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['row'],
             sets: 3,
             reps: 8,
             targetWeight: 0,
@@ -155,6 +163,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Tricep Pushdowns',
             lift: 'bench' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
             sets: 3,
             reps: 12,
             targetWeight: roundToPlate(oneRMs.bench * 0.25),
@@ -162,6 +171,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Face Pulls',
             lift: 'ohp' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
             sets: 3,
             reps: 15,
             targetWeight: roundToPlate(oneRMs.ohp * 0.2),
@@ -172,6 +182,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Deadlift',
             lift: 'deadlift' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
             sets: setsConfig[0].sets,
             reps: setsConfig[0].reps,
             targetWeight: calculateTargetWeight(
@@ -186,6 +197,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Overhead Press',
             lift: 'ohp' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
             sets: setsConfig[1].sets,
             reps: setsConfig[1].reps,
             targetWeight: calculateTargetWeight(
@@ -200,6 +212,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           {
             name: 'Walking Lunges',
             lift: 'squat' as const,
+            libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
             sets: 3,
             reps: 10,
             targetWeight: roundToPlate(oneRMs.squat * 0.35),

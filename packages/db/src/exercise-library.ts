@@ -13,6 +13,16 @@ export interface ExerciseLibraryItem {
   videoTutorial?: VideoTutorial;
 }
 
+import type { LiftType } from '../../../apps/worker/src/programs/types';
+
+export const LIFT_TYPE_LIBRARY_ID: Record<LiftType, string> = {
+  squat: 'barbell-squat',
+  bench: 'barbell-bench-press',
+  deadlift: 'deadlift',
+  ohp: 'overhead-press',
+  row: 'barbell-row',
+};
+
 export const exerciseLibrary: ExerciseLibraryItem[] = [
   {
     id: 'barbell-bench-press',

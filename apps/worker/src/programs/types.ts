@@ -22,6 +22,7 @@ export interface ProgramExercise {
   sets: number;
   reps: number;
   isAmrap?: boolean;
+  libraryId?: string;
 }
 
 export interface ProgramSession {
@@ -49,6 +50,7 @@ export interface ProgramWorkout {
     reps: number;
     targetWeight: number;
     isAmrap?: boolean;
+    libraryId?: string;
   }>;
   accessories?: WorkoutAccessory[];
 }

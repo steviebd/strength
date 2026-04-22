@@ -2,6 +2,7 @@ import { roundToPlate } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
 import { madcowInfo, WEEK_PERCENTAGES, getMadcowAccessories } from './config/madcow';
 import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
+import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
 
 function calculateTargetWeight(
   estimatedOneRM: number,
@@ -38,6 +39,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         {
           name: 'Squat',
           lift: 'squat' as const,
+          libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: 5,
           reps: isDeload ? 3 : 5,
           targetWeight: calculateTargetWeight(oneRMs.squat, week, session, 'squat'),
@@ -47,6 +49,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
               {
                 name: 'Bench Press',
                 lift: 'bench' as const,
+                libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
                 sets: 5,
                 reps: isDeload ? 3 : 5,
                 targetWeight: calculateTargetWeight(oneRMs.bench, week, session, 'bench'),
@@ -54,6 +57,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
               {
                 name: 'Barbell Row',
                 lift: 'row' as const,
+                libraryId: LIFT_TYPE_LIBRARY_ID['row'],
                 sets: 5,
                 reps: isDeload ? 3 : 5,
                 targetWeight: calculateTargetWeight(oneRMs.bench * 0.6, week, session, 'row'),
@@ -63,6 +67,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
               {
                 name: 'Overhead Press',
                 lift: 'ohp' as const,
+                libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
                 sets: 5,
                 reps: isDeload ? 3 : 5,
                 targetWeight: calculateTargetWeight(oneRMs.ohp, week, session, 'ohp'),
@@ -70,6 +75,7 @@ export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
               {
                 name: 'Deadlift',
                 lift: 'deadlift' as const,
+                libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
                 sets: 5,
                 reps: isDeload ? 3 : 5,
                 targetWeight: calculateTargetWeight(oneRMs.deadlift, week, session, 'deadlift'),
