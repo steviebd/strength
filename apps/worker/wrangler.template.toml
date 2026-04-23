@@ -3,8 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2025-02-25"
 compatibility_flags = ["nodejs_compat"]
 
-[observability]
-logs = { enabled = false, invocation_logs = true }
+[observability.logs]
+enabled = true
+invocation_logs = true
 
 {{D1_BLOCK}}
 
