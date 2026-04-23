@@ -34,7 +34,7 @@ import { getProgram, generateWorkoutSchedule } from './programs';
 import { buildWhoopAuthorizationUrl, exchangeCodeForTokens, WHOOP_API_BASE } from './whoop/auth';
 import { storeWhoopTokens, revokeWhoopIntegration } from './whoop/token-rotation';
 import { getWhoopProfile } from './whoop/api';
-import { syncAllWhoopData } from './whoop/sync';
+import { syncAllWhoopData, upsertWhoopProfile } from './whoop/sync';
 import { isWhoopAuthError, toWhoopAuthErrorResponse } from './whoop/errors';
 import { getValidWhoopToken } from './whoop/token-manager';
 import {
@@ -2997,15 +2997,20 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const deepLink = decodedState.returnTo ?? 'strength://whoop-callback';
 
   if (error) {
+    console.warn('[WHOOP] Callback returned OAuth error', { error });
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { error }));
   }
 
   if (!code) {
+    console.warn('[WHOOP] Callback missing code');
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'no_code' }));
   }
 
   if (!decodedState.userId) {
-    console.error('[WHOOP] Callback missing userId in state');
+    console.error('[WHOOP] Callback missing userId in state', {
+      hasState: Boolean(state),
+      hasSecret: Boolean(resolvedEnv.BETTER_AUTH_SECRET),
+    });
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'invalid_state' }));
   }
 
@@ -3036,10 +3041,12 @@ app.get('/api/auth/whoop/callback', async (c) => {
       tokens.scope,
     );
 
-    // Auto-sync all WHOOP data
-    const syncResult = await syncAllWhoopData(db, resolvedEnv, userId);
-    console.log('[WHOOP] Auto-sync result:', syncResult);
+    await upsertWhoopProfile(db, userId, whoopProfile);
 
+    console.info('[WHOOP] Callback completed successfully', {
+      hasUserId: Boolean(userId),
+      hasWhoopUserId: Boolean(whoopProfile.user_id),
+    });
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { success: 'true' }));
   } catch (e) {
     console.error('[WHOOP] Callback error:', e);

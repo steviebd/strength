@@ -7,8 +7,6 @@ import { refreshAccessToken } from './auth';
 import { encryptToken, decryptToken } from '../utils/crypto';
 
 const REFRESH_BEFORE_HOURS = 24;
-const ROTATE_AFTER_DAYS = 7;
-
 interface TokenResult {
   token?: string;
   error?: string;
@@ -45,11 +43,6 @@ async function shouldRotate(integration: typeof userIntegration.$inferSelect): P
   const now = Date.now();
 
   if (expiresAt - now < REFRESH_BEFORE_HOURS * 60 * 60 * 1000) {
-    return true;
-  }
-
-  const createdAt = new Date(integration.createdAt).getTime();
-  if (now - createdAt > ROTATE_AFTER_DAYS * 24 * 60 * 60 * 1000) {
     return true;
   }
 

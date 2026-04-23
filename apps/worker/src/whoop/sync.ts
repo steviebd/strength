@@ -442,7 +442,20 @@ function formatSyncError(error: unknown) {
     return `${error.code}: ${error.message}`;
   }
 
-  return error instanceof Error ? error.message : 'Unknown';
+  if (!(error instanceof Error)) {
+    return 'Unknown';
+  }
+
+  const cause = error.cause;
+  if (cause instanceof Error && cause.message) {
+    return `${error.message}: ${cause.message}`;
+  }
+
+  if (cause && typeof cause === 'object' && 'message' in cause) {
+    return `${error.message}: ${String(cause.message)}`;
+  }
+
+  return error.message;
 }
 
 export async function syncAllWhoopData(
