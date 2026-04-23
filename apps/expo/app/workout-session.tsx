@@ -10,6 +10,7 @@ import {
   Pressable,
   TextInput,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,14 +92,6 @@ export default function WorkoutSessionScreen() {
     }
   }, [loadedWorkout, loadWorkout]);
 
-  useEffect(() => {
-    if (!workoutId) {
-      if (workout?.completedAt && !isActive) {
-        router.replace('/(app)/workouts');
-      }
-    }
-  }, [workout?.completedAt, isActive, router, workoutId, workout]);
-
   const KG_TO_LBS = 2.20462;
 
   const isViewingCompleted = !!workoutId && !!workout?.completedAt;
@@ -125,8 +118,11 @@ export default function WorkoutSessionScreen() {
 
   const handleStartWorkout = useCallback(async () => {
     const name = workoutName.trim() || 'Workout';
-    await startWorkout(name);
-  }, [startWorkout, workoutName]);
+    const workout = await startWorkout(name);
+    if (workout?.id) {
+      router.replace(`/workout-session?workoutId=${workout.id}`);
+    }
+  }, [router, startWorkout, workoutName]);
 
   const handleAddExercise = useCallback(
     async (exercisesList: ExerciseLibraryItem[]) => {
@@ -245,20 +241,47 @@ export default function WorkoutSessionScreen() {
     }
   }, [exerciseLayouts, exercises, currentExerciseIndex]);
 
-  const handleCompleteWorkout = useCallback(async () => {
-    await completeWorkout();
-    if (workoutId && isProgramSession) {
-      await removePendingWorkout(workoutId);
+  const scrollToExerciseIndex = useCallback(
+    (exerciseIndex: number) => {
+      const layout = exerciseLayouts.find((l) => l.id === exercises[exerciseIndex]?.id);
+      if (layout && scrollViewRef.current) {
+        scrollViewRef.current.scrollTo({
+          y: layout.y - 80,
+          animated: true,
+        });
+        setCurrentExerciseIndex(exerciseIndex);
+      }
+    },
+    [exerciseLayouts, exercises],
+  );
+
+  const findFirstIncompleteSet = useCallback(() => {
+    for (let i = 0; i < exercises.length; i++) {
+      for (let j = 0; j < exercises[i].sets.length; j++) {
+        const set = exercises[i].sets[j];
+        if ((set.weight !== null || set.reps !== null) && !set.isComplete) {
+          return { exerciseIndex: i, setIndex: j };
+        }
+      }
     }
-    if (workoutId) {
-      queryClient.invalidateQueries({ queryKey: ['workout', workoutId] });
+    return null;
+  }, [exercises]);
+
+  const executeCompleteWorkout = useCallback(async () => {
+    await completeWorkout();
+    const completedWorkoutId = workoutId ?? workout?.id;
+    if (completedWorkoutId && isProgramSession) {
+      await removePendingWorkout(completedWorkoutId);
+    }
+    if (completedWorkoutId) {
+      queryClient.invalidateQueries({ queryKey: ['workout', completedWorkoutId] });
     }
     queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     if (isProgramOneRMTest && typeof cycleId === 'string') {
       router.push(`/program-1rm-test?cycleId=${cycleId}`);
       return;
     }
-    router.push(isProgramSession ? '/(app)/programs' : '/(app)/workouts?view=history');
+    router.push('/(app)/home');
   }, [
     completeWorkout,
     cycleId,
@@ -266,8 +289,25 @@ export default function WorkoutSessionScreen() {
     isProgramSession,
     queryClient,
     router,
+    workout?.id,
     workoutId,
   ]);
+
+  const handleCompleteWorkout = useCallback(() => {
+    const incomplete = findFirstIncompleteSet();
+    if (incomplete) {
+      Alert.alert(
+        'Incomplete Set',
+        "You have at least one set that isn't marked complete. Complete it or continue anyway.",
+        [
+          { text: 'Go to Set', onPress: () => scrollToExerciseIndex(incomplete.exerciseIndex) },
+          { text: 'Continue', onPress: executeCompleteWorkout },
+        ],
+      );
+    } else {
+      executeCompleteWorkout();
+    }
+  }, [findFirstIncompleteSet, scrollToExerciseIndex, executeCompleteWorkout]);
 
   if (workoutId && isLoadingWorkout) {
     return (

@@ -167,10 +167,12 @@ export default function WorkoutsIndex() {
 
   const handleStartWorkout = async () => {
     const name = workoutName.trim() || 'Workout';
-    await startWorkout(name);
+    const workout = await startWorkout(name);
     setShowStartWorkout(false);
     setWorkoutName('');
-    router.push('/workout-session');
+    if (workout?.id) {
+      router.push(`/workout-session?workoutId=${workout.id}`);
+    }
   };
 
   const handleStartFromTemplate = async (template: Template) => {

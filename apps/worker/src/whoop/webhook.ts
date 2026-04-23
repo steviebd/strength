@@ -13,14 +13,7 @@ import {
   upsertWhoopWorkout,
 } from './sync';
 
-export interface WhoopWebhookPayload {
-  id?: string | number;
-  trace_id?: string;
-  type?: string;
-  user_id?: string | number;
-}
-
-export interface WhoopWebhookEvent {
+interface WhoopWebhookEvent {
   eventType: string;
   userId: string;
   objectId: string;

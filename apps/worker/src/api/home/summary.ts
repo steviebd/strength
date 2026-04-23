@@ -14,7 +14,17 @@ function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name:
   if (Array.isArray(targetLifts)) return targetLifts;
   try {
     const parsed = JSON.parse(targetLifts);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as {
+        exercises?: Array<{ name?: string }>;
+        accessories?: Array<{ name?: string }>;
+      };
+      return [...(record.exercises ?? []), ...(record.accessories ?? [])]
+        .filter((lift) => typeof lift?.name === 'string' && lift.name.length > 0)
+        .map((lift) => ({ name: lift.name as string }));
+    }
+    return [];
   } catch {
     return [];
   }
@@ -114,6 +124,7 @@ export async function homeSummaryHandler(c: any) {
           eq(schema.userProgramCycles.isComplete, false),
         ),
       )
+      .orderBy(desc(schema.userProgramCycles.startedAt))
       .all();
 
     const hasActiveProgram = activeCycles.length > 0;
@@ -123,6 +134,7 @@ export async function homeSummaryHandler(c: any) {
     let nextWorkout: {
       cycleWorkoutId: string;
       name: string;
+      programName: string;
       scheduledDate: string;
       scheduledTime: string | null;
       scheduledTimezone: string;
@@ -130,47 +142,49 @@ export async function homeSummaryHandler(c: any) {
     let isRestDay = false;
 
     if (activeCycle) {
-      const scheduledToday = await db
+      const cycleWorkouts = await db
         .select()
         .from(schema.programCycleWorkouts)
-        .where(
-          and(
-            eq(schema.programCycleWorkouts.cycleId, activeCycle.id),
-            eq(schema.programCycleWorkouts.scheduledDate, localDate),
-          ),
-        )
-        .get();
+        .where(eq(schema.programCycleWorkouts.cycleId, activeCycle.id))
+        .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
+        .all();
 
-      if (scheduledToday) {
-        todayScheduledWorkout = scheduledToday;
+      const currentCycleWorkout =
+        cycleWorkouts.find(
+          (workout) =>
+            !workout.isComplete &&
+            workout.weekNumber === activeCycle.currentWeek &&
+            workout.sessionNumber === activeCycle.currentSession,
+        ) ??
+        cycleWorkouts.find((workout) => !workout.isComplete) ??
+        null;
+
+      const incompleteScheduledToday =
+        cycleWorkouts.find(
+          (workout) => !workout.isComplete && workout.scheduledDate === localDate,
+        ) ?? null;
+
+      if (currentCycleWorkout?.scheduledDate === localDate) {
+        todayScheduledWorkout = currentCycleWorkout;
+      } else if (incompleteScheduledToday) {
+        todayScheduledWorkout = incompleteScheduledToday;
       } else {
         isRestDay = true;
-        const upcomingWorkouts = await db
-          .select({
-            id: schema.programCycleWorkouts.id,
-            sessionName: schema.programCycleWorkouts.sessionName,
-            scheduledDate: schema.programCycleWorkouts.scheduledDate,
-            scheduledTime: schema.programCycleWorkouts.scheduledTime,
-            scheduledTimezone: schema.programCycleWorkouts.scheduledTimezone,
-          })
-          .from(schema.programCycleWorkouts)
-          .where(
-            and(
-              eq(schema.programCycleWorkouts.cycleId, activeCycle.id),
-              gte(schema.programCycleWorkouts.scheduledDate, localDate),
-            ),
-          )
-          .orderBy(schema.programCycleWorkouts.scheduledDate)
-          .limit(1)
-          .get();
+        const upcomingWorkout =
+          currentCycleWorkout && currentCycleWorkout.scheduledDate
+            ? currentCycleWorkout
+            : (cycleWorkouts.find(
+                (workout) => !workout.isComplete && (workout.scheduledDate ?? '') >= localDate,
+              ) ?? currentCycleWorkout);
 
-        if (upcomingWorkouts) {
+        if (upcomingWorkout) {
           nextWorkout = {
-            cycleWorkoutId: upcomingWorkouts.id,
-            name: upcomingWorkouts.sessionName,
-            scheduledDate: upcomingWorkouts.scheduledDate ?? '',
-            scheduledTime: upcomingWorkouts.scheduledTime,
-            scheduledTimezone: upcomingWorkouts.scheduledTimezone ?? timezone,
+            cycleWorkoutId: upcomingWorkout.id,
+            name: upcomingWorkout.sessionName,
+            programName: activeCycle.name,
+            scheduledDate: upcomingWorkout.scheduledDate ?? '',
+            scheduledTime: upcomingWorkout.scheduledTime,
+            scheduledTimezone: upcomingWorkout.scheduledTimezone ?? timezone,
           };
         }
       }
@@ -193,6 +207,7 @@ export async function homeSummaryHandler(c: any) {
       nextWorkout: {
         cycleWorkoutId: string;
         name: string;
+        programName: string;
         scheduledDate: string;
         scheduledTime: string | null;
         scheduledTimezone: string;

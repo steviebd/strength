@@ -61,11 +61,18 @@ export default function HomeScreen() {
   };
 
   const workout = homeData?.todayWorkout?.workout;
+  const nextWorkout = homeData?.todayWorkout?.nextWorkout;
   const isRestDay = homeData?.todayWorkout?.isRestDay ?? false;
   const hasActiveProgram = homeData?.todayWorkout?.hasActiveProgram ?? false;
+  const startableCycleWorkoutId = workout?.cycleWorkoutId ?? nextWorkout?.cycleWorkoutId ?? null;
+  const workoutTitle = workout?.programName ?? nextWorkout?.programName ?? 'No Active Program';
+  const workoutSubtitle = workout?.name ?? (nextWorkout ? `Next: ${nextWorkout.name}` : null);
 
   const handleStartWorkout = async () => {
-    if (!workout?.cycleWorkoutId) return;
+    if (!startableCycleWorkoutId) {
+      router.push('/(app)/workouts');
+      return;
+    }
 
     try {
       const result = await apiFetch<{
@@ -73,7 +80,7 @@ export default function HomeScreen() {
         sessionName: string;
         created: boolean;
         completed: boolean;
-      }>(`/api/programs/cycle-workouts/${workout.cycleWorkoutId}/start`, {
+      }>(`/api/programs/cycle-workouts/${startableCycleWorkoutId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ timezone: activeTimezone }),
@@ -131,10 +138,8 @@ export default function HomeScreen() {
                 <Badge label="Today" tone="orange" />
               )}
               <View style={styles.workoutTitleGroup}>
-                <Text style={styles.workoutTitle}>
-                  {workout?.programName ?? 'No Active Program'}
-                </Text>
-                {workout?.name && <Text style={styles.workoutSubtitle}>{workout.name}</Text>}
+                <Text style={styles.workoutTitle}>{workoutTitle}</Text>
+                {workoutSubtitle && <Text style={styles.workoutSubtitle}>{workoutSubtitle}</Text>}
               </View>
             </View>
             <View style={styles.workoutIcon}>
@@ -163,7 +168,9 @@ export default function HomeScreen() {
             <View style={{ flex: 1 }}>
               {hasActiveProgram ? (
                 <ActionButton
-                  label={workout?.isComplete ? 'Completed' : 'Start Workout'}
+                  label={
+                    workout?.isComplete ? 'Completed' : isRestDay ? 'Start Next' : 'Start Workout'
+                  }
                   icon={workout?.isComplete ? 'checkmark' : 'play'}
                   onPress={handleStartWorkout}
                   disabled={workout?.isComplete}

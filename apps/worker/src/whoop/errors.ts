@@ -1,5 +1,3 @@
-export type WhoopReauthCause = 'token_revoked' | 'refresh_failed' | 'no_refresh_token';
-
 export class WhoopSessionExpiredError extends Error {
   code = 'WHOOP_SESSION_EXPIRED' as const;
   reauthUrl: string | null = null;
@@ -9,6 +7,8 @@ export class WhoopSessionExpiredError extends Error {
     this.name = 'WhoopSessionExpiredError';
   }
 }
+
+type WhoopReauthCause = 'token_revoked' | 'refresh_failed' | 'no_refresh_token';
 
 export class WhoopReauthRequiredError extends Error {
   code = 'WHOOP_REAUTH_REQUIRED' as const;

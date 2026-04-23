@@ -29,7 +29,7 @@ import {
   type WhoopWorkout,
 } from './api';
 
-export interface SyncResult {
+interface SyncResult {
   profile: number;
   workouts: number;
   recovery: number;

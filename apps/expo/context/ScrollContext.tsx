@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { ScrollView } from 'react-native';
 
-export interface ScrollContextValue {
+interface ScrollContextValue {
   scrollToInput: (inputRef: RefObject<any>) => void;
 }
 

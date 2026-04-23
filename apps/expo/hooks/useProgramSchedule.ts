@@ -15,7 +15,7 @@ export type ProgramScheduleWorkout = {
   status: 'today' | 'upcoming' | 'complete' | 'missed' | 'unscheduled';
 };
 
-export type ProgramScheduleCycle = {
+type ProgramScheduleCycle = {
   id: string;
   name: string;
   timezone: string;
@@ -25,7 +25,7 @@ export type ProgramScheduleCycle = {
   totalSessionsPlanned: number;
 };
 
-export type ProgramScheduleResponse = {
+type ProgramScheduleResponse = {
   cycle: ProgramScheduleCycle;
   thisWeek: ProgramScheduleWorkout[];
   upcoming: ProgramScheduleWorkout[];

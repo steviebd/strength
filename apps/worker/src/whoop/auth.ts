@@ -30,7 +30,7 @@ export function buildWhoopAuthorizationUrl(
   return `${WHOOP_AUTH_URL}?${params.toString()}`;
 }
 
-export interface WhoopTokenResponse {
+interface WhoopTokenResponse {
   access_token: string;
   refresh_token: string;
   token_type: string;

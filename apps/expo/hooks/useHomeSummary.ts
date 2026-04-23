@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 
-export type HomeScheduledWorkout = {
+type HomeScheduledWorkout = {
   cycleWorkoutId: string;
   workoutId: string | null;
   name: string;
@@ -16,15 +16,16 @@ export type HomeScheduledWorkout = {
   isComplete: boolean;
 };
 
-export type HomeNextWorkout = {
+type HomeNextWorkout = {
   cycleWorkoutId: string;
   name: string;
+  programName: string;
   scheduledDate: string;
   scheduledTime: string | null;
   scheduledTimezone: string;
 };
 
-export type HomeSummaryResponse = {
+type HomeSummaryResponse = {
   date: {
     localDate: string;
     timezone: string;

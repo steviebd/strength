@@ -14,13 +14,13 @@ interface WhoopCycle {
   totalStrain: number | null;
 }
 
-export interface WhoopCache {
+interface WhoopCache {
   recovery: WhoopRecovery | null;
   cycle: WhoopCycle | null;
   timestamp: number;
 }
 
-export interface UseWhoopDataResult {
+interface UseWhoopDataResult {
   data: WhoopCache | null;
   isLoading: boolean;
   error: Error | null;
