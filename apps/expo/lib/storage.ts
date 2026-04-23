@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   CACHED_PROGRAMS: 'cached_programs',
   PENDING_WORKOUTS: 'pending_workouts',
   ACTIVE_WORKOUT_SESSION: 'active_workout_session',
+  DISMISSED_DEVICE_TIMEZONE: 'dismissed_device_timezone',
   NUTRITION_CHAT_MESSAGES: (date: string, timezone: string) =>
     `nutrition_chat_messages_${timezone.replace(/\//g, '---')}_${date}`,
   NUTRITION_CHAT_DRAFT: (date: string, timezone: string) =>
@@ -165,6 +166,18 @@ async function setNutritionChatDraft(date: string, timezone: string, draft: stri
   platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone), draft);
 }
 
+async function getDismissedDeviceTimezone(): Promise<string | null> {
+  return platformStorage.getItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
+}
+
+async function setDismissedDeviceTimezone(timezone: string | null): Promise<void> {
+  if (!timezone) {
+    platformStorage.removeItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
+    return;
+  }
+  platformStorage.setItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE, timezone);
+}
+
 export {
   STORAGE_KEYS,
   LastWorkoutData,
@@ -186,4 +199,6 @@ export {
   setNutritionChatMessages,
   getNutritionChatDraft,
   setNutritionChatDraft,
+  getDismissedDeviceTimezone,
+  setDismissedDeviceTimezone,
 };

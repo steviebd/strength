@@ -125,7 +125,7 @@ function buildTemplateValues(args: Args): Record<string, string> {
       'binding = "DB"',
       `database_name = "${dbName}"`,
       `database_id = "${dbId}"`,
-      `preview_database_id = "${dbName}"`,
+      `preview_database_id = "${usingRemoteDev ? dbId : dbName}"`,
       usingRemoteDev ? 'remote = true' : null,
       'migrations_dir = "../../packages/db/drizzle/migrations"',
     ]

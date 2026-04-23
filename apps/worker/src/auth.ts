@@ -40,9 +40,25 @@ function normalizeBaseURL(value: string | undefined) {
   }
 
   try {
-    return new URL(trimmed).origin;
+    const origin = new URL(trimmed).origin;
+    return origin === 'null' ? undefined : origin;
   } catch {
     return undefined;
+  }
+}
+
+function normalizeTrustedOrigin(value: string | undefined) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const origin = new URL(trimmed).origin;
+    return origin === 'null' ? trimmed : origin;
+  } catch {
+    return trimmed;
   }
 }
 
@@ -53,7 +69,7 @@ function parseTrustedOrigins(value: string | undefined) {
 
   return value
     .split(',')
-    .map((origin) => normalizeBaseURL(origin))
+    .map((origin) => normalizeTrustedOrigin(origin))
     .filter((origin): origin is string => Boolean(origin));
 }
 
@@ -113,12 +129,15 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
   const db = drizzle(resolvedEnv.DB, { schema });
   const baseURL = resolveBaseURL(resolvedEnv, requestUrl);
   const cookiePolicy = resolveCookiePolicy(baseURL);
+  const trustedRequestOrigin =
+    resolvedEnv.APP_ENV === 'development' ? normalizeTrustedOrigin(requestOrigin) : undefined;
   const trustedOrigins = [
     'strength://',
     'strength://*',
+    ...(resolvedEnv.APP_ENV === 'development' ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
     ...parseTrustedOrigins(resolvedEnv.BETTER_AUTH_TRUSTED_ORIGINS),
     ...(baseURL ? [baseURL] : []),
-    ...(normalizeBaseURL(requestOrigin) ? [normalizeBaseURL(requestOrigin)!] : []),
+    ...(trustedRequestOrigin ? [trustedRequestOrigin] : []),
   ];
 
   return betterAuth({

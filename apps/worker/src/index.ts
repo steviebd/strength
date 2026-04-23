@@ -143,6 +143,7 @@ app.get('/api/profile/preferences', async (c) => {
     return c.json({
       weightUnit: prefs.weightUnit ?? 'kg',
       timezone: prefs.timezone ?? null,
+      weightPromptedAt: prefs.weightPromptedAt ?? null,
     });
   } catch (e) {
     console.log('DEBUG getPreferences error:', e);
@@ -159,7 +160,11 @@ app.put('/api/profile/preferences', async (c) => {
   const db = getDb(c);
   try {
     const body = await c.req.json();
-    const { weightUnit, timezone } = body as { weightUnit?: string; timezone?: string | null };
+    const { weightUnit, timezone, weightPromptedAt } = body as {
+      weightUnit?: string;
+      timezone?: string | null;
+      weightPromptedAt?: string | null;
+    };
 
     if (weightUnit !== undefined && !['kg', 'lbs'].includes(weightUnit)) {
       return c.json({ message: 'Invalid weight unit' }, 400);
@@ -169,7 +174,7 @@ app.put('/api/profile/preferences', async (c) => {
       return c.json({ message: 'Invalid timezone' }, 400);
     }
 
-    if (weightUnit === undefined && timezone === undefined) {
+    if (weightUnit === undefined && timezone === undefined && weightPromptedAt === undefined) {
       return c.json({ message: 'No preferences provided' }, 400);
     }
 
@@ -181,6 +186,12 @@ app.put('/api/profile/preferences', async (c) => {
 
     const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
     const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
+    const nextWeightPromptedAt =
+      weightPromptedAt === undefined
+        ? (existing?.weightPromptedAt ?? null)
+        : weightPromptedAt
+          ? new Date(weightPromptedAt)
+          : null;
 
     let result;
     if (existing) {
@@ -189,6 +200,7 @@ app.put('/api/profile/preferences', async (c) => {
         .set({
           weightUnit: nextWeightUnit,
           timezone: nextTimezone,
+          weightPromptedAt: nextWeightPromptedAt,
           updatedAt: new Date(),
         })
         .where(eq(schema.userPreferences.userId, userId))
@@ -202,6 +214,7 @@ app.put('/api/profile/preferences', async (c) => {
           userId,
           weightUnit: nextWeightUnit,
           timezone: nextTimezone,
+          weightPromptedAt: nextWeightPromptedAt,
           createdAt: now,
           updatedAt: now,
         })
@@ -212,6 +225,7 @@ app.put('/api/profile/preferences', async (c) => {
     return c.json({
       weightUnit: result.weightUnit ?? 'kg',
       timezone: result.timezone ?? null,
+      weightPromptedAt: result.weightPromptedAt ?? null,
     });
   } catch (e) {
     console.log('DEBUG updatePreferences error:', e);

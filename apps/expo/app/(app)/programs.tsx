@@ -447,7 +447,7 @@ export default function ProgramsScreen() {
     const cardY = inputCardLayouts.current[key];
     if (typeof cardY === 'number' && scrollViewRef.current) {
       const inputY = modalContentY.current + inputGroupY.current + cardY;
-      const targetY = Math.max(0, inputY - 96);
+      const targetY = Math.max(0, inputY - 120);
       scrollViewRef.current.scrollTo({ y: targetY, animated: true });
       setTimeout(() => {
         scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
