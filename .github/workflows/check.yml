@@ -18,17 +18,16 @@ jobs:
 
       - run: bun install
 
-      - id: env
-        run: |
-          case ${{ github.ref_name }} in
-            main|master)
-              echo "ENV_NAME=prod" >> $GITHUB_OUTPUT
-              ;;
-            *)
-              echo "ENV_NAME=staging" >> $GITHUB_OUTPUT
-              ;;
-          esac
+      - name: Run check
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
+        run: bun run check
 
-      - run: infisical run --env=${{ steps.env.outputs.ENV_NAME }} -- bun run check
-
-      - run: infisical run --env=${{ steps.env.outputs.ENV_NAME }} -- bun run test
+      - name: Run tests
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
+        run: bun run test
