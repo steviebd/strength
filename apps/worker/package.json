@@ -2,14 +2,15 @@
   "name": "@strength/worker",
   "private": true,
   "scripts": {
-    "dev": "bash ./scripts/run-with-infisical.sh --env dev --d1-mode local -- wrangler dev --ip 0.0.0.0",
-    "dev:remote": "bash ./scripts/run-with-infisical.sh --env dev --d1-mode remote -- wrangler dev --ip 0.0.0.0",
-    "db:apply:local": "bash ./scripts/run-with-infisical.sh --env dev --d1-mode local -- wrangler d1 migrations apply strength-db-dev --local",
-    "db:apply:remote": "bash ./scripts/run-with-infisical.sh --env dev --d1-mode remote -- wrangler d1 migrations apply strength-db-dev-remote --remote",
-    "db:apply:staging": "bash ./scripts/run-with-infisical.sh --env staging --d1-mode remote -- wrangler d1 migrations apply strength-db-staging --remote --env staging",
-    "db:apply:prod": "bash ./scripts/run-with-infisical.sh --env prod --d1-mode remote -- wrangler d1 migrations apply strength-db-prod --remote --env prod",
-    "deploy:staging": "bash ./scripts/run-with-infisical.sh --env staging --d1-mode remote -- wrangler deploy --env staging",
-    "deploy:prod": "bash ./scripts/run-with-infisical.sh --env prod --d1-mode remote -- wrangler deploy --env prod",
+    "dev": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler dev --ip 0.0.0.0",
+    "dev:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler dev --ip 0.0.0.0",
+    "db:apply:local": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler d1 migrations apply strength-db-dev --local",
+    "db:apply:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler d1 migrations apply strength-db-dev-remote --remote",
+    "db:apply:staging": "infisical run --env=staging --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env staging --d1-mode remote -- wrangler d1 migrations apply strength-db-staging --remote --env staging",
+    "db:apply:prod": "infisical run --env=prod --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env prod --d1-mode remote -- wrangler d1 migrations apply strength-db-prod --remote --env prod",
+    "deploy:staging": "infisical run --env=staging --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env staging --d1-mode remote -- wrangler deploy --env staging",
+    "deploy:prod": "infisical run --env=prod --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env prod --d1-mode remote -- wrangler deploy --env prod",
+    "generate:wrangler": "tsx scripts/generate-wrangler-config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

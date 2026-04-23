@@ -16,7 +16,7 @@ Note: `bun run check` exits 0 even with lint warnings (warnings are not errors).
 
 ## Dev Commands
 
-Worker config is generated from Infisical using Machine Identity. Export `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in your shell before running worker commands.
+Worker config is generated from Infisical-injected environment variables. For local development, authenticate with `infisical login` and create/confirm the ignored local `.infisical.json` with `infisical init`; do not use Machine Identity client credentials for local commands.
 
 ```bash
 bun run dev         # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with local D1
@@ -64,12 +64,17 @@ Existing handlers in `index.ts` (inline) and `apps/worker/src/api/nutrition/` (m
 
 ## D1 Database Setup (required on first clone)
 
-1. Export `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID`
-2. `cd apps/worker && wrangler d1 create strength-db-dev-remote`
-3. Store the returned UUID in Infisical `dev` as `CLOUDFLARE_D1_ID`
-4. `bun run db:push:dev`
+1. Run `infisical login`
+2. Run `infisical init` and select the strength Infisical project
+3. `cd apps/worker && wrangler d1 create strength-db-dev-remote`
+4. Store the returned UUID in Infisical `dev` as `CLOUDFLARE_D1_ID`
+5. `bun run db:push:dev`
 
-`apps/worker/wrangler.toml` is generated from `apps/worker/wrangler.template.toml` and uses the relative path `../../packages/db/drizzle/migrations` for migrations.
+`apps/worker/wrangler.toml` is generated from `apps/worker/wrangler.template.toml` and uses the relative path `../../packages/db/drizzle/migrations` for migrations. It contains plaintext secret values, is gitignored, and should never be committed.
+
+## GitHub Actions OIDC
+
+Deploy workflows use Infisical OIDC, not long-lived Infisical client credentials. Configure the Infisical machine identity with identity ID `78fef9da-6701-477e-940b-2960913a7252`, subject `repo:steviebd/strength:*`, and audience `https://github.com/steviebd`. Set `INFISICAL_PROJECT_SLUG` as a GitHub repository or organization variable, and do not add `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, or `INFISICAL_PROJECT_ID` as GitHub secrets.
 
 ## Network / Auth for Physical Devices
 

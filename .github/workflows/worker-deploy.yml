@@ -5,6 +5,10 @@ on:
     branches:
       - '**'
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy-staging:
     if: github.ref_name != 'main' && github.ref_name != 'master'
@@ -17,14 +21,23 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Install dependencies
+        run: bun install
+
+      - name: Fetch staging secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: oidc
+          identity-id: 78fef9da-6701-477e-940b-2960913a7252
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: staging
+
       - name: Deploy to staging
-        env:
-          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
-          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
+        working-directory: apps/worker
         run: |
-          bun run --filter @strength/worker db:apply:staging
-          bun run --filter @strength/worker deploy:staging
+          bun run generate:wrangler --env staging --d1-mode remote
+          wrangler d1 migrations apply strength-db-staging --remote --env staging
+          wrangler deploy --env staging
 
   deploy-production:
     if: github.ref_name == 'main' || github.ref_name == 'master'
@@ -37,11 +50,20 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Install dependencies
+        run: bun install
+
+      - name: Fetch production secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: oidc
+          identity-id: 78fef9da-6701-477e-940b-2960913a7252
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+
       - name: Deploy to production
-        env:
-          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
-          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
+        working-directory: apps/worker
         run: |
-          bun run --filter @strength/worker db:apply:prod
-          bun run --filter @strength/worker deploy:prod
+          bun run generate:wrangler --env prod --d1-mode remote
+          wrangler d1 migrations apply strength-db-prod --remote --env prod
+          wrangler deploy --env prod
