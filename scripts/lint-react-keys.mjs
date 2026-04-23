@@ -111,7 +111,13 @@ function getArrowReturnedExpression(node) {
 }
 
 function collectIssuesForFile(filePath, sourceText) {
-  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
   const issues = [];
 
   function report(node, message) {
@@ -125,7 +131,10 @@ function collectIssuesForFile(filePath, sourceText) {
     }
 
     if (ts.isStringLiteral(node.initializer)) {
-      report(node, 'JSX key must be scoped. Use a template like `section:${id}` instead of a raw literal.');
+      report(
+        node,
+        'JSX key must be scoped. Use a template like `section:${id}` instead of a raw literal.',
+      );
       return;
     }
 
@@ -142,11 +151,17 @@ function collectIssuesForFile(filePath, sourceText) {
   }
 
   function inspectKeyExtractorAttribute(node) {
-    if (!node.initializer || !ts.isJsxExpression(node.initializer) || !node.initializer.expression) {
+    if (
+      !node.initializer ||
+      !ts.isJsxExpression(node.initializer) ||
+      !node.initializer.expression
+    ) {
       return;
     }
 
-    const returnedExpression = getArrowReturnedExpression(unwrapExpression(node.initializer.expression));
+    const returnedExpression = getArrowReturnedExpression(
+      unwrapExpression(node.initializer.expression),
+    );
     if (!returnedExpression) {
       return;
     }

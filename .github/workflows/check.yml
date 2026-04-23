@@ -1,0 +1,34 @@
+name: Check
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: ['**']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - id: env
+        run: |
+          case ${{ github.ref_name }} in
+            main|master)
+              echo "ENV_NAME=prod" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "ENV_NAME=staging" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - run: infisical run --env=${{ steps.env.outputs.ENV_NAME }} -- bun run check
+
+      - run: infisical run --env=${{ steps.env.outputs.ENV_NAME }} -- bun run test

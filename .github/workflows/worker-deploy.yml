@@ -1,0 +1,45 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  deploy-staging:
+    if: github.ref_name != 'main' && github.ref_name != 'master'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Deploy to staging
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+        run: |
+          infisical run --env=staging -- bun run --filter @strength/worker db:apply:staging
+          infisical run --env=staging -- bun run --filter @strength/worker deploy:staging
+
+  deploy-production:
+    if: github.ref_name == 'main' || github.ref_name == 'master'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Deploy to production
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+        run: |
+          infisical run --env=prod -- bun run --filter @strength/worker db:apply:prod
+          infisical run --env=prod -- bun run --filter @strength/worker deploy:prod

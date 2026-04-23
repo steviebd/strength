@@ -591,3 +591,88 @@ This work is complete when:
 - Android app build/release automation is implemented through EAS Workflows
 - production Android releases build AABs and submit to Play Internal Testing
 - the repo contains the config/workflow files listed in this document
+
+---
+
+## Implementation Status
+
+**Completed:** 2026-04-22
+
+### Step 1: Infisical Setup ✅
+- Machine Identity configured (INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET in GitHub secrets)
+- `staging` and `prod` environments populated with all required secrets:
+  - `D1_DATABASE_ID` (real IDs from Cloudflare)
+  - `APP_ENV`
+  - `BETTER_AUTH_SECRET`
+  - `BETTER_AUTH_URL` (placeholder - will update after first deploy)
+  - `BETTER_AUTH_TRUSTED_ORIGINS`
+  - `EXPO_PUBLIC_API_URL` (placeholder - will update after first deploy)
+  - `ENCRYPTION_MASTER_KEY`
+  - `WHOOP_SYNC_RATE_LIMIT_PER_HOUR`
+  - `AI_GATEWAY_NAME` (workout-ai-staging / workout-ai-prod)
+  - `AI_MODEL_NAME` (same both envs)
+  - Existing WHOOP secrets (CLIENT_ID, CLIENT_SECRET, WEBHOOK_SECRET)
+  - Existing CF_AI_GATEWAY_TOKEN
+
+### Step 2: Cloudflare Resources ✅
+- Created `strength-db-staging` (ID: `32ee6818-3efa-4bd9-80df-c3f2366941ec`)
+- Created `strength-db-prod` (ID: `1dbcef97-07b8-4dd2-85d4-035792ae5581`)
+
+### Step 3: Rewrite wrangler.toml ✅
+- Top-level: local dev config (no database_id for local SQLite)
+- `[env.staging]`: name=strength-worker-staging, D1=32ee6818-..., staging vars
+- `[env.production]`: name=strength-worker-prod, D1=1dbcef97-..., prod vars
+
+### Step 4: Worker Package Scripts ✅
+- Added `deploy:staging`, `deploy:prod`, `db:apply:staging`, `db:apply:prod`
+- All use `infisical run --env=<env> --` pattern
+
+### Step 5: GitHub Actions check.yml ✅
+- Triggers on PR + pushes to dev/staging/main
+- Environment mapping: main→prod, everything else→staging (per updated rule: non-main = staging)
+- Uses `infisical run --env=$ENV_NAME -- bun run check`
+
+### Step 6: GitHub Actions worker-deploy.yml ✅
+- Triggers on pushes to staging/main/master
+- deploy-staging: any non-main branch → staging env
+- deploy-production: main/master → prod env
+- Runs db migrations then deploy via infisical run
+
+### Step 7: eas.json ✅
+- development: devClient + internal distribution
+- staging: Android APK for QA
+- production: AAB with autoIncrement
+
+### Step 8 & 9: EAS Workflows ✅
+- staging-android.yml: triggers on staging pushes, builds with staging profile
+- release-android.yml: triggers on v* tags, builds AAB + submits to Play Internal Testing
+
+### .env.example ✅
+- Updated to document all env vars with per-environment values
+- Includes D1_DATABASE_ID placeholder
+- Notes that staging/prod are managed via Infisical
+
+---
+
+## Follow-up Steps (After First Worker Deploy)
+
+1. **Update BETTER_AUTH_URL and EXPO_PUBLIC_API_URL** in Infisical:
+   - After staging Worker first deploys, update staging env URLs to real Worker URL
+   - After prod Worker first deploys, update prod env URLs to real Worker URL
+
+2. **Create GitHub Environments** in GitHub repo settings:
+   - `staging`: no manual approval needed
+   - `prod`: consider requiring approval before deploys
+
+3. **Test the CI/CD pipeline**:
+   - Push to a non-main branch → verify staging deploy
+   - Push to main → verify production deploy
+   - Check `/api/health` on both deploys
+
+4. **EAS credential setup** (Step 10):
+   - EAS-managed credentials for Android builds
+   - Service account for Play submission (if needed)
+
+5. **First EAS build test**:
+   - Test staging workflow by pushing to staging branch
+   - Test release workflow by creating a v* tag
