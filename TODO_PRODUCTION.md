@@ -39,6 +39,7 @@ Infisical should hold:
 - `APP_ENV`
 - `BETTER_AUTH_SECRET`
 - `WORKER_BASE_URL`
+- `EXPO_PUBLIC_WORKER_BASE_URL`
 - `BETTER_AUTH_TRUSTED_ORIGINS`
 - `ENCRYPTION_MASTER_KEY`
 - `WHOOP_CLIENT_ID`
@@ -149,6 +150,7 @@ For each of `staging` and `prod`, confirm the following exist:
 | `APP_ENV` | `staging` | `production` |
 | `BETTER_AUTH_SECRET` | unique secret | unique secret |
 | `WORKER_BASE_URL` | staging Worker URL | prod Worker URL |
+| `EXPO_PUBLIC_WORKER_BASE_URL` | staging Worker URL | prod Worker URL |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | staging allowed origins | prod allowed origins |
 | `ENCRYPTION_MASTER_KEY` | unique secret | unique secret |
 | `WHOOP_CLIENT_ID` | correct env value | correct env value |
@@ -163,7 +165,8 @@ For each of `staging` and `prod`, confirm the following exist:
 
 Notes:
 
-- `WORKER_BASE_URL` should point to the deployed Worker base URL for that environment.
+- `WORKER_BASE_URL` should point to the deployed Worker base URL for server-side auth/callback config.
+- `EXPO_PUBLIC_WORKER_BASE_URL` should point to the deployed Worker base URL for Expo app builds.
 - `APP_ENV` must remain `development` only in local dev. Non-dev auth behavior is intentionally different in the Worker code.
 
 ---
@@ -498,8 +501,8 @@ Use the current EAS environment variable / secret workflow supported by the inst
 
 ### Expected result
 
-- staging app builds resolve `WORKER_BASE_URL` to the staging Worker
-- production app builds resolve `WORKER_BASE_URL` to the prod Worker
+- staging app builds resolve `EXPO_PUBLIC_WORKER_BASE_URL` to the staging Worker
+- production app builds resolve `EXPO_PUBLIC_WORKER_BASE_URL` to the prod Worker
 
 ---
 
@@ -543,8 +546,8 @@ The implementer should verify all of the following.
 
 ### Environment correctness
 
-- [ ] staging `WORKER_BASE_URL` points to the staging Worker
-- [ ] prod `WORKER_BASE_URL` points to the prod Worker
+- [ ] staging `EXPO_PUBLIC_WORKER_BASE_URL` points to the staging Worker
+- [ ] prod `EXPO_PUBLIC_WORKER_BASE_URL` points to the prod Worker
 
 ### EAS
 
@@ -608,6 +611,7 @@ This work is complete when:
   - `APP_ENV`
   - `BETTER_AUTH_SECRET`
   - `WORKER_BASE_URL` (placeholder - will update after first deploy)
+  - `EXPO_PUBLIC_WORKER_BASE_URL` (same deployed Worker URL, embedded into Expo builds)
   - `BETTER_AUTH_TRUSTED_ORIGINS`
   - `ENCRYPTION_MASTER_KEY`
   - `WHOOP_SYNC_RATE_LIMIT_PER_HOUR`
@@ -658,7 +662,7 @@ This work is complete when:
 
 ## Follow-up Steps (After First Worker Deploy)
 
-1. **Update WORKER_BASE_URL** in Infisical:
+1. **Update Worker URLs** in Infisical:
    - After staging Worker first deploys, update staging env URLs to real Worker URL
    - After prod Worker first deploys, update prod env URLs to real Worker URL
 

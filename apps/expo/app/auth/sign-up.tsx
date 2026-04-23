@@ -56,7 +56,7 @@ export default function SignUpScreen() {
     } catch (error) {
       setError(
         error instanceof Error && error.message === 'Network request failed'
-          ? 'Unable to reach the auth server. Confirm the Worker is running and WORKER_BASE_URL points at a reachable host.'
+          ? 'Unable to reach the auth server. Confirm the Worker is running and EXPO_PUBLIC_WORKER_BASE_URL points at a reachable host.'
           : error instanceof Error
             ? error.message
             : 'Unable to create account.',

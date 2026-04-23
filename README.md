@@ -27,6 +27,7 @@ Store these in the `dev` environment for this project:
 - `APP_ENV=development`
 - `BETTER_AUTH_SECRET=<generate a long random secret>`
 - `WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
+- `EXPO_PUBLIC_WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
 - `CLOUDFLARE_ACCOUNT_ID=<your Cloudflare account id>`
 - `AI_GATEWAY_NAME=<your AI Gateway id>`
 - `CF_AI_GATEWAY_TOKEN=<your AI Gateway run token if gateway auth is enabled>`
@@ -54,7 +55,7 @@ http://localhost:8787/api/auth/whoop/callback
 
 For physical devices or Android emulator, use your machine's LAN IP (e.g., `http://192.168.1.x:8787/api/auth/whoop/callback`).
 
-If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device or Android emulator, `127.0.0.1` points at the device itself and auth requests will fail.
+If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device, Android emulator, or standalone APK, `EXPO_PUBLIC_WORKER_BASE_URL` must be reachable from that device. `127.0.0.1` points at the device itself and auth requests will fail.
 
 ## Local setup
 
