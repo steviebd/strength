@@ -9,6 +9,9 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy-staging:
     if: github.ref_name != 'main' && github.ref_name != 'master'
@@ -41,8 +44,8 @@ jobs:
         working-directory: apps/worker
         run: |
           bun run generate:wrangler --env staging --d1-mode remote
-          wrangler d1 migrations apply strength-db-staging --remote --env staging
-          wrangler deploy --env staging
+          bunx wrangler d1 migrations apply strength-db-staging --remote --env staging
+          bunx wrangler deploy --env staging
 
   deploy-production:
     if: github.ref_name == 'main' || github.ref_name == 'master'
@@ -75,5 +78,5 @@ jobs:
         working-directory: apps/worker
         run: |
           bun run generate:wrangler --env prod --d1-mode remote
-          wrangler d1 migrations apply strength-db-prod --remote --env prod
-          wrangler deploy --env prod
+          bunx wrangler d1 migrations apply strength-db-prod --remote --env prod
+          bunx wrangler deploy --env prod
