@@ -1,6 +1,5 @@
 import { streamText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
 import { getModel } from '../../lib/ai';
 import {
   assembleSystemPrompt,
@@ -13,13 +12,9 @@ import {
   type MacroTargets,
 } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { createHandler } from '../auth';
 import { formatLocalDate } from '@strength/db';
 import { getDateRangeForTimezone, resolveUserTimezone } from '../../lib/timezone';
-
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
 
 interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
@@ -129,14 +124,7 @@ function calculateMacroTargets(
   };
 }
 
-export async function chatHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
+export const chatHandler = createHandler(async (c, { userId, db }) => {
   let body: ChatRequest;
   try {
     body = await c.req.json();
@@ -385,17 +373,10 @@ export async function chatHandler(c: any) {
       Connection: 'keep-alive',
     },
   });
-}
+});
 
-export async function getChatHistoryHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-
-  const userId = session.user.id;
-  const db = getDb(c);
-  const { date, limit: limitParam, before } = c.req.query() as ChatHistoryQuery;
+export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => {
+  const { date, limit: limitParam, before } = c.req.query() as unknown as ChatHistoryQuery;
   const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
@@ -448,4 +429,4 @@ export async function getChatHistoryHandler(c: any) {
     nextCursor,
     hasMore: rows.length === limit,
   });
-}
+});

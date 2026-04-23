@@ -1,4 +1,32 @@
+import { drizzle } from 'drizzle-orm/d1';
+import type { Context } from 'hono';
 import { createAuth, type WorkerEnv } from '../auth';
+import * as schema from '@strength/db';
+
+type AuthInstance = ReturnType<typeof createAuth>;
+
+export type AuthUser = AuthInstance['$Infer']['Session']['user'];
+export type AuthSession = AuthInstance['$Infer']['Session']['session'];
+
+export type AppVariables = {
+  user: AuthUser | null;
+  session: AuthSession | null;
+};
+
+export type AppContext = Context<{ Bindings: WorkerEnv; Variables: AppVariables }>;
+
+export function createDb(env: WorkerEnv) {
+  return drizzle(env.DB, { schema });
+}
+
+export type AppDb = ReturnType<typeof createDb>;
+
+export type AuthContext = {
+  db: AppDb;
+  user: AuthUser;
+  session: AuthSession;
+  userId: string;
+};
 
 export function getAuthHeaders(c: any) {
   const headers = new Headers(c.req.raw.headers);
@@ -46,4 +74,30 @@ export async function requireAuth(c: any) {
   }
 
   return resolvedSession;
+}
+
+export async function requireAuthContext(c: AppContext): Promise<AuthContext | Response> {
+  const { user, session } = await requireAuth(c);
+  if (!user?.id || !session) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+
+  return { userId: user.id, user, session, db: createDb(c.env) };
+}
+
+export const requireAuthDb = requireAuthContext;
+
+export type SecuredHandler<R = Response> = (
+  c: AppContext,
+  data: { userId: string; db: AppDb },
+) => Promise<R>;
+
+export function createHandler<R = Response>(
+  handler: SecuredHandler<R>,
+): (c: AppContext) => Promise<Response | R> {
+  return async (c: AppContext) => {
+    const auth = await requireAuthContext(c);
+    if (auth instanceof Response) return auth;
+    return handler(c, { userId: auth.userId, db: auth.db });
+  };
 }

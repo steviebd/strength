@@ -1,20 +1,8 @@
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { createHandler } from '../auth';
 
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
-
-export async function getBodyStatsHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
+export const getBodyStatsHandler = createHandler(async (c, { userId, db }) => {
   const stats = await db
     .select()
     .from(schema.userBodyStats)
@@ -22,16 +10,9 @@ export async function getBodyStatsHandler(c: any) {
     .get();
 
   return c.json(stats ?? null);
-}
+});
 
-export async function upsertBodyStatsHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
+export const upsertBodyStatsHandler = createHandler(async (c, { userId, db }) => {
   let body: {
     bodyweightKg?: number;
     heightCm?: number;
@@ -93,4 +74,4 @@ export async function upsertBodyStatsHandler(c: any) {
   }
 
   return c.json(stats);
-}
+});

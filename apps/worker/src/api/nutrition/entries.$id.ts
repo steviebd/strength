@@ -1,68 +1,24 @@
 import { eq, and } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
 import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { createHandler } from '../auth';
+import { requireOwnedNutritionEntry } from '../guards';
 import { resolveUserTimezone } from '../../lib/timezone';
 
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
+export const getEntryHandler = createHandler(async (c, { userId, db }) => {
+  const id = c.req.param('id') as string;
 
-export async function getEntryHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
-  const id = c.req.param('id');
-
-  const entry = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.id, id),
-        eq(schema.nutritionEntries.userId, userId),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .get();
-
-  if (!entry) {
-    return c.json({ error: 'Nutrition entry not found' }, 404);
-  }
+  const entry = await requireOwnedNutritionEntry({ db, userId }, id);
+  if (entry instanceof Response) return entry;
 
   return c.json(entry);
-}
+});
 
-export async function updateEntryHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
+export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
+  const id = c.req.param('id') as string;
 
-  const id = c.req.param('id');
-
-  const existing = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.id, id),
-        eq(schema.nutritionEntries.userId, userId),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .get();
-
-  if (!existing) {
-    return c.json({ error: 'Nutrition entry not found' }, 404);
-  }
+  const existing = await requireOwnedNutritionEntry({ db, userId }, id);
+  if (existing instanceof Response) return existing;
 
   let body: {
     name?: string;
@@ -131,33 +87,13 @@ export async function updateEntryHandler(c: any) {
   }
 
   return c.json(updated);
-}
+});
 
-export async function deleteEntryHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
+export const deleteEntryHandler = createHandler(async (c, { userId, db }) => {
+  const id = c.req.param('id') as string;
 
-  const id = c.req.param('id');
-
-  const existing = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.id, id),
-        eq(schema.nutritionEntries.userId, userId),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .get();
-
-  if (!existing) {
-    return c.json({ error: 'Nutrition entry not found' }, 404);
-  }
+  const existing = await requireOwnedNutritionEntry({ db, userId }, id);
+  if (existing instanceof Response) return existing;
 
   await db
     .update(schema.nutritionEntries)
@@ -168,5 +104,5 @@ export async function deleteEntryHandler(c: any) {
     .where(and(eq(schema.nutritionEntries.id, id), eq(schema.nutritionEntries.userId, userId)))
     .run();
 
-  return c.json(null, 204);
-}
+  return c.body(null, 204);
+});

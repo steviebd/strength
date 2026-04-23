@@ -1,25 +1,13 @@
 import { eq, and, gte, lt } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
 import type { TrainingContext, WhoopData, MacroTargets } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { createHandler } from '../auth';
 import { getDateRangeForTimezone, resolveUserTimezone } from '../../lib/timezone';
-
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
 
 type TargetStrategy = 'manual' | 'bodyweight' | 'default';
 
-export async function dailySummaryHandler(c: any) {
+export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
   try {
-    const session = await requireAuth(c);
-    if (!session?.user) {
-      return c.json({ message: 'Unauthorized' }, 401);
-    }
-    const userId = session.user.id;
-    const db = getDb(c);
-
     const date = c.req.query('date');
 
     if (!date) {
@@ -219,4 +207,4 @@ export async function dailySummaryHandler(c: any) {
     console.error(e);
     throw e;
   }
-}
+});

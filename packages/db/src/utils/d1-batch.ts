@@ -4,7 +4,7 @@ import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core/table';
 type DbClient = DrizzleD1Database<Record<string, unknown>>;
 
 export const DEFAULT_CHUNK_SIZE = 100;
-export const DEFAULT_CONCURRENCY = 4;
+export const DEFAULT_CONCURRENCY = 8;
 export const DEFAULT_MAX_QUERY_PARAMS = 100;
 
 export async function batchParallel<T>(

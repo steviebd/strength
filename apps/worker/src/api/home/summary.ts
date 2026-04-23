@@ -1,13 +1,8 @@
 import { eq, and, gte, lte, desc, isNotNull } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
 import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { requireAuthContext } from '../auth';
 import { resolveUserTimezone, getDateRangeForTimezone } from '../../lib/timezone';
-
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
 
 function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name: string }> {
   if (!targetLifts) return [];
@@ -87,12 +82,9 @@ function getRecoveryStatusTone(recoveryScore: number | null): RecoveryStatus {
 
 export async function homeSummaryHandler(c: any) {
   try {
-    const session = await requireAuth(c);
-    if (!session?.user) {
-      return c.json({ message: 'Unauthorized' }, 401);
-    }
-    const userId = session.user.id;
-    const db = getDb(c);
+    const auth = await requireAuthContext(c);
+    if (auth instanceof Response) return auth;
+    const { userId, db } = auth;
 
     const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
     if (timezoneResult.error || !timezoneResult.timezone) {
