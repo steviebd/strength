@@ -4,7 +4,7 @@
 
 Set up production-ready CI/CD so that:
 
-- GitHub Actions stores **only** the Infisical Machine Identity credentials
+- GitHub Actions stores **only** the Infisical project slug (OIDC authentication)
 - All other deploy/build configuration is fetched from **Infisical** at runtime
 - Cloudflare Worker deploys use the correct per-environment runtime secrets without leaking CI credentials into Worker runtime
 - Expo native release automation is handled by **EAS Workflows**
@@ -22,10 +22,9 @@ This document is written as a handoff for someone else to implement.
 
 Store only:
 
-- `INFISICAL_CLIENT_ID`
-- `INFISICAL_CLIENT_SECRET`
+- `INFISICAL_PROJECT_SLUG`
 
-These are used only so GitHub Actions can authenticate to Infisical and fetch environment-specific values.
+This is used so GitHub Actions can authenticate to Infisical via OIDC and fetch environment-specific values.
 
 **Infisical**
 
@@ -88,13 +87,14 @@ Infisical remains canonical, but EAS still needs its own mirrored copy of any ap
 
 These are intentional corrections and should not be reverted:
 
-1. Do **not** use a single exported `.env` file for both CLI auth and Worker runtime secret upload.
-2. Do **not** upload `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, or other CI-only credentials as Worker secrets.
-3. Do **not** rely on `${D1_DATABASE_ID}` variable substitution inside `wrangler.toml`.
-4. Do **not** make Android production builds as `apk` if the release is meant for Play Store submission.
-5. Do **not** run mobile release automation from GitHub Actions as the primary system.
-6. Do **not** depend on `source .env && ...` for CI steps that need environment variables in child processes.
-7. Do **not** use `eas secret:create --profile ...` in the implementation; the current CLI shape does not match that assumption.
+1. Do **not** use client credentials (`INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET`) — use OIDC via `Infisical/secrets-action`.
+2. Do **not** use a single exported `.env` file for both CLI auth and Worker runtime secret upload.
+3. Do **not** upload `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, or other CI-only credentials as Worker secrets.
+4. Do **not** rely on `${D1_DATABASE_ID}` variable substitution inside `wrangler.toml`.
+5. Do **not** make Android production builds as `apk` if the release is meant for Play Store submission.
+6. Do **not** run mobile release automation from GitHub Actions as the primary system.
+7. Do **not** depend on `source .env && ...` for CI steps that need environment variables in child processes.
+8. Do **not** use `eas secret:create --profile ...` in the implementation; the current CLI shape does not match that assumption.
 
 ---
 
@@ -124,7 +124,13 @@ Create or confirm an Infisical Machine Identity that can read:
 - `staging`
 - `prod`
 
-GitHub Actions will use only this identity.
+Configure with:
+- **Type**: GitHub OIDC
+- **Identity ID**: `78fef9da-6701-477e-940b-2960913a7252`
+- **Subject**: `repo:steviebd/strength:*`
+- **Audience**: `https://github.com`
+
+GitHub Actions will use OIDC token authentication — no client credentials needed.
 
 ### GitHub secrets
 
@@ -132,8 +138,7 @@ In GitHub repository settings, add only:
 
 | Secret | Purpose |
 | ------ | ------- |
-| `INFISICAL_CLIENT_ID` | Infisical machine identity client ID |
-| `INFISICAL_CLIENT_SECRET` | Infisical machine identity client secret |
+| `INFISICAL_PROJECT_SLUG` | Infisical project slug for OIDC authentication |
 
 ### Required Infisical values
 
@@ -323,9 +328,9 @@ Run repository checks on:
    - `main` -> `prod`
    - `staging` -> `staging`
    - everything else -> `dev`
-4. Authenticate to Infisical using:
-   - `INFISICAL_CLIENT_ID`
-   - `INFISICAL_CLIENT_SECRET`
+4. Authenticate to Infisical using OIDC via `Infisical/secrets-action`:
+   - `INFISICAL_PROJECT_SLUG` from GitHub secrets
+   - `identity-id` from machine identity
 5. Run:
    - `infisical run --env=<env> -- bun run check`
 6. Optionally also run:
@@ -523,7 +528,8 @@ The implementer should verify all of the following.
 ### Repo and CI
 
 - [ ] PRs run `bun run check`
-- [ ] CI uses only `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` from GitHub secrets
+- [ ] CI uses only `INFISICAL_PROJECT_SLUG` from GitHub secrets
+- [ ] CI uses OIDC via `Infisical/secrets-action` for Infisical authentication
 - [ ] CI uses `infisical run --env=... -- ...` instead of `source .env && ...`
 
 ### Cloudflare Worker
@@ -580,8 +586,8 @@ Use this order so the work is less error-prone:
 
 This work is complete when:
 
-- GitHub Actions stores only the Infisical machine identity credentials
-- all other environment-specific values are sourced from Infisical
+- GitHub Actions stores only the Infisical project slug
+- all other environment-specific values are sourced from Infisical via OIDC
 - Worker deploys do not leak CI credentials into Worker runtime
 - staging and production Worker deploys are automated through GitHub Actions
 - Android app build/release automation is implemented through EAS Workflows
@@ -595,7 +601,8 @@ This work is complete when:
 **Completed:** 2026-04-22
 
 ### Step 1: Infisical Setup ✅
-- Machine Identity configured (INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET in GitHub secrets)
+- Machine Identity configured with OIDC (identity ID `78fef9da-6701-477e-940b-2960913a7252`)
+- `INFISICAL_PROJECT_SLUG` in GitHub secrets
 - `staging` and `prod` environments populated with all required secrets:
   - `D1_DATABASE_ID` (real IDs from Cloudflare)
   - `APP_ENV`

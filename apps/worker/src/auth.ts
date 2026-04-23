@@ -3,6 +3,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
+import { hashPassword, verifyPassword } from './auth/password';
 
 export interface WorkerEnv {
   DB: D1Database;
@@ -129,6 +130,10 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
     }),
     emailAndPassword: {
       enabled: true,
+      password: {
+        hash: hashPassword,
+        verify: verifyPassword,
+      },
     },
     trustedOrigins: Array.from(new Set(trustedOrigins)),
     cookies: {

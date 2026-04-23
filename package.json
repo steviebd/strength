@@ -10,6 +10,7 @@
     "dev": "bun run --filter @strength/worker dev",
     "dev:remote": "bun run --filter @strength/worker dev:remote",
     "dev:expo": "infisical run --env=dev -- bun --filter @strength/expo dev",
+    "dev:expo:staging": "infisical run --env=staging -- bun --filter @strength/expo dev",
     "db:generate": "bun --filter @strength/db db:generate",
     "db:apply:local": "bun run --filter @strength/worker db:apply:local",
     "db:push:dev": "bun run --filter @strength/worker db:apply:local",
@@ -24,7 +25,7 @@
     "fallow": "fallow"
   },
   "dependencies": {
-    "expo": "~55.0.16",
+    "expo": "~55.0.17",
     "expo-constants": "~55.0.15",
     "expo-linking": "~55.0.14",
     "expo-router": "~55.0.13",
