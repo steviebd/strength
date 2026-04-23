@@ -13,7 +13,7 @@ function getExpoHost() {
 }
 
 function resolveApiUrl() {
-  const configuredUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787';
+  const configuredUrl = process.env.WORKER_BASE_URL ?? 'http://localhost:8787';
 
   if (Platform.OS === 'web') {
     const resolved = configuredUrl.replace(/\/$/, '');

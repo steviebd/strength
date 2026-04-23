@@ -26,8 +26,7 @@ Store these in the `dev` environment for this project:
 
 - `APP_ENV=development`
 - `BETTER_AUTH_SECRET=<generate a long random secret>`
-- `BETTER_AUTH_URL=http://<your-machine-lan-ip>:8787`
-- `EXPO_PUBLIC_API_URL=http://<your-machine-lan-ip>:8787`
+- `WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
 - `CLOUDFLARE_ACCOUNT_ID=<your Cloudflare account id>`
 - `AI_GATEWAY_NAME=<your AI Gateway id>`
 - `CF_AI_GATEWAY_TOKEN=<your AI Gateway run token if gateway auth is enabled>`
@@ -44,7 +43,7 @@ This repo uses its own Infisical project. The local `strength/.infisical.json` f
 In the [Whoop Developer Portal](https://developer.whoop.com), set your OAuth Redirect URI to:
 
 ```
-${BETTER_AUTH_URL}/api/auth/whoop/callback
+${WORKER_BASE_URL}/api/auth/whoop/callback
 ```
 
 For local development with the iOS simulator on the same Mac, this would be:

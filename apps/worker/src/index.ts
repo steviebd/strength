@@ -2969,7 +2969,7 @@ app.post('/api/whoop/auth', async (c) => {
   const baseURL = resolveBaseURL(resolvedEnv, c.req.url);
   if (!baseURL) {
     return c.json(
-      { error: 'BETTER_AUTH_URL is not configured and no request base URL was available' },
+      { error: 'WORKER_BASE_URL is not configured and no request base URL was available' },
       500,
     );
   }

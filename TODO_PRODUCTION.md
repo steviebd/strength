@@ -39,9 +39,8 @@ Infisical should hold:
 
 - `APP_ENV`
 - `BETTER_AUTH_SECRET`
-- `BETTER_AUTH_URL`
+- `WORKER_BASE_URL`
 - `BETTER_AUTH_TRUSTED_ORIGINS`
-- `EXPO_PUBLIC_API_URL`
 - `ENCRYPTION_MASTER_KEY`
 - `WHOOP_CLIENT_ID`
 - `WHOOP_CLIENT_SECRET`
@@ -144,9 +143,8 @@ For each of `staging` and `prod`, confirm the following exist:
 | --- | ------------- | ---------- |
 | `APP_ENV` | `staging` | `production` |
 | `BETTER_AUTH_SECRET` | unique secret | unique secret |
-| `BETTER_AUTH_URL` | staging Worker URL | prod Worker URL |
+| `WORKER_BASE_URL` | staging Worker URL | prod Worker URL |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | staging allowed origins | prod allowed origins |
-| `EXPO_PUBLIC_API_URL` | same as staging API URL | same as prod API URL |
 | `ENCRYPTION_MASTER_KEY` | unique secret | unique secret |
 | `WHOOP_CLIENT_ID` | correct env value | correct env value |
 | `WHOOP_CLIENT_SECRET` | correct env value | correct env value |
@@ -160,7 +158,7 @@ For each of `staging` and `prod`, confirm the following exist:
 
 Notes:
 
-- `BETTER_AUTH_URL` and `EXPO_PUBLIC_API_URL` should point to the deployed Worker base URL for that environment.
+- `WORKER_BASE_URL` should point to the deployed Worker base URL for that environment.
 - `APP_ENV` must remain `development` only in local dev. Non-dev auth behavior is intentionally different in the Worker code.
 
 ---
@@ -495,8 +493,8 @@ Use the current EAS environment variable / secret workflow supported by the inst
 
 ### Expected result
 
-- staging app builds resolve `EXPO_PUBLIC_API_URL` to the staging Worker
-- production app builds resolve `EXPO_PUBLIC_API_URL` to the prod Worker
+- staging app builds resolve `WORKER_BASE_URL` to the staging Worker
+- production app builds resolve `WORKER_BASE_URL` to the prod Worker
 
 ---
 
@@ -539,10 +537,8 @@ The implementer should verify all of the following.
 
 ### Environment correctness
 
-- [ ] staging `BETTER_AUTH_URL` points to the staging Worker
-- [ ] prod `BETTER_AUTH_URL` points to the prod Worker
-- [ ] staging `EXPO_PUBLIC_API_URL` points to the staging Worker
-- [ ] prod `EXPO_PUBLIC_API_URL` points to the prod Worker
+- [ ] staging `WORKER_BASE_URL` points to the staging Worker
+- [ ] prod `WORKER_BASE_URL` points to the prod Worker
 
 ### EAS
 
@@ -604,9 +600,8 @@ This work is complete when:
   - `D1_DATABASE_ID` (real IDs from Cloudflare)
   - `APP_ENV`
   - `BETTER_AUTH_SECRET`
-  - `BETTER_AUTH_URL` (placeholder - will update after first deploy)
+  - `WORKER_BASE_URL` (placeholder - will update after first deploy)
   - `BETTER_AUTH_TRUSTED_ORIGINS`
-  - `EXPO_PUBLIC_API_URL` (placeholder - will update after first deploy)
   - `ENCRYPTION_MASTER_KEY`
   - `WHOOP_SYNC_RATE_LIMIT_PER_HOUR`
   - `AI_GATEWAY_NAME` (workout-ai-staging / workout-ai-prod)
@@ -656,7 +651,7 @@ This work is complete when:
 
 ## Follow-up Steps (After First Worker Deploy)
 
-1. **Update BETTER_AUTH_URL and EXPO_PUBLIC_API_URL** in Infisical:
+1. **Update WORKER_BASE_URL** in Infisical:
    - After staging Worker first deploys, update staging env URLs to real Worker URL
    - After prod Worker first deploys, update prod env URLs to real Worker URL
 

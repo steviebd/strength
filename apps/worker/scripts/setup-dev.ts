@@ -18,22 +18,22 @@ console.log(`🔍 Detected LAN IP: ${ip}`);
 console.log(`📍 Worker URL: ${workerUrl}`);
 
 const marker = '\n# AUTO_DETECTED_LAN_IP\n';
-const value = `BETTER_AUTH_URL=${workerUrl}\n`;
+const value = `WORKER_BASE_URL=${workerUrl}\n`;
 
 if (existsSync(DEV_VARS_PATH)) {
   let content = readFileSync(DEV_VARS_PATH, 'utf-8');
 
-  if (content.includes('BETTER_AUTH_URL=')) {
-    content = content.replace(/^BETTER_AUTH_URL=.*$/m, `BETTER_AUTH_URL=${workerUrl}`);
+  if (content.includes('WORKER_BASE_URL=')) {
+    content = content.replace(/^WORKER_BASE_URL=.*$/m, `WORKER_BASE_URL=${workerUrl}`);
     writeFileSync(DEV_VARS_PATH, content);
-    console.log(`✅ Updated BETTER_AUTH_URL in existing .dev.vars`);
+    console.log(`✅ Updated WORKER_BASE_URL in existing .dev.vars`);
   } else {
     appendFileSync(DEV_VARS_PATH, `${marker}${value}`);
-    console.log(`✅ Appended BETTER_AUTH_URL to .dev.vars`);
+    console.log(`✅ Appended WORKER_BASE_URL to .dev.vars`);
   }
 } else {
   writeFileSync(DEV_VARS_PATH, `${marker}${value}`);
-  console.log(`✅ Created .dev.vars with BETTER_AUTH_URL`);
+  console.log(`✅ Created .dev.vars with WORKER_BASE_URL`);
 }
 
 console.log('\n🚀 Starting wrangler dev...');

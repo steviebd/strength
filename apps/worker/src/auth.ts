@@ -7,7 +7,7 @@ import * as schema from '@strength/db';
 export interface WorkerEnv {
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL: string;
+  WORKER_BASE_URL: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
   APP_ENV?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -82,7 +82,7 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
     ...env,
     APP_ENV: env.APP_ENV ?? processEnv.APP_ENV,
     BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET ?? processEnv.BETTER_AUTH_SECRET ?? '',
-    BETTER_AUTH_URL: env.BETTER_AUTH_URL ?? processEnv.BETTER_AUTH_URL ?? '',
+    WORKER_BASE_URL: env.WORKER_BASE_URL ?? processEnv.WORKER_BASE_URL ?? '',
     BETTER_AUTH_TRUSTED_ORIGINS:
       env.BETTER_AUTH_TRUSTED_ORIGINS ?? processEnv.BETTER_AUTH_TRUSTED_ORIGINS,
     CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID ?? processEnv.CLOUDFLARE_ACCOUNT_ID,
@@ -98,7 +98,7 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
 
 export function resolveBaseURL(env: WorkerEnv, requestUrl?: string) {
   const resolvedEnv = resolveWorkerEnv(env);
-  const configuredBaseURL = normalizeBaseURL(resolvedEnv.BETTER_AUTH_URL);
+  const configuredBaseURL = normalizeBaseURL(resolvedEnv.WORKER_BASE_URL);
 
   if (configuredBaseURL) {
     return configuredBaseURL;
