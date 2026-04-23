@@ -39,6 +39,7 @@ import { colors, spacing, radius, typography, layout } from '@/theme';
 const LBS_TO_KG = 0.453592;
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+type OneRmValues = { squat: string; bench: string; deadlift: string; ohp: string };
 type StartMode = 'smart' | 'strict';
 type PreferredTime = 'morning' | 'afternoon' | 'evening';
 
@@ -646,7 +647,12 @@ export default function ProgramsScreen() {
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
+  const [values, setValues] = useState<OneRmValues>({
+    squat: '',
+    bench: '',
+    deadlift: '',
+    ohp: '',
+  });
   const [scheduleStep, setScheduleStep] = useState<'1rm' | 'schedule' | 'review'>('1rm');
   const [preferredGymDays, setPreferredGymDays] = useState<DayOfWeek[]>([]);
   const [preferredTime, setPreferredTime] = useState<PreferredTime>('morning');
@@ -666,6 +672,7 @@ export default function ProgramsScreen() {
   const inputGroupY = useRef(0);
   const scheduleSectionY = useRef<number | null>(null);
   const inputCardLayouts = useRef<Record<string, number>>({});
+  const valuesRef = useRef<OneRmValues>(values);
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
     useProgramsCatalog(PROGRAM_INFO);
@@ -743,6 +750,28 @@ export default function ProgramsScreen() {
     if (nextKey) {
       inputRefs.current[nextKey]?.focus();
     }
+  };
+
+  const hasAllOneRmValues = (oneRmValues: OneRmValues) =>
+    Boolean(oneRmValues.squat && oneRmValues.bench && oneRmValues.deadlift && oneRmValues.ohp);
+
+  const setOneRmValues = (nextValues: OneRmValues) => {
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+  };
+
+  const updateOneRmValue = (key: keyof OneRmValues, value: string) => {
+    const nextValue = value.replace(/[^0-9.]/g, '');
+    setOneRmValues({ ...valuesRef.current, [key]: nextValue });
+  };
+
+  const continueToSchedule = () => {
+    if (startingProgram || !hasAllOneRmValues(valuesRef.current)) {
+      return;
+    }
+
+    setReviewConfirmed(false);
+    setScheduleStep('schedule');
   };
 
   const refreshProgramsScreen = useCallback(
@@ -832,7 +861,7 @@ export default function ProgramsScreen() {
       setShowStartModal(false);
       setShowDetailModal(false);
       setSelectedProgram(null);
-      setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
+      setOneRmValues({ squat: '', bench: '', deadlift: '', ohp: '' });
       setScheduleStep('1rm');
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
@@ -933,12 +962,14 @@ export default function ProgramsScreen() {
         return weightUnit === 'lbs' ? (value * 2.20462).toFixed(1) : value.toString();
       };
 
-      setValues({
+      setOneRmValues({
         squat: toDisplay(latestOneRMs.squat1rm),
         bench: toDisplay(latestOneRMs.bench1rm),
         deadlift: toDisplay(latestOneRMs.deadlift1rm),
         ohp: toDisplay(latestOneRMs.ohp1rm),
       });
+    } else {
+      setOneRmValues({ squat: '', bench: '', deadlift: '', ohp: '' });
     }
 
     const defaultDays: DayOfWeek[] =
@@ -1168,7 +1199,7 @@ export default function ProgramsScreen() {
               contentContainerStyle={{
                 paddingBottom: insets.bottom + 400,
               }}
-              keyboardShouldPersistTaps="handled"
+              keyboardShouldPersistTaps="always"
               keyboardDismissMode="interactive"
             >
               <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
@@ -1230,9 +1261,7 @@ export default function ProgramsScreen() {
                         }}
                         style={styles.textInput}
                         value={values[key as keyof typeof values]}
-                        onChangeText={(v) =>
-                          setValues((prev) => ({ ...prev, [key]: v.replace(/[^0-9.]/g, '') }))
-                        }
+                        onChangeText={(v) => updateOneRmValue(key as keyof OneRmValues, v)}
                         onFocus={() => scrollToInputByKey(key)}
                         placeholder="0"
                         placeholderTextColor={colors.placeholderText}
@@ -1250,24 +1279,14 @@ export default function ProgramsScreen() {
                     <Pressable
                       style={[
                         styles.primaryButton,
-                        (!values.squat ||
-                          !values.bench ||
-                          !values.deadlift ||
-                          !values.ohp ||
-                          startingProgram) &&
+                        (!hasAllOneRmValues(values) || startingProgram) &&
                           styles.startButtonDisabled,
                       ]}
-                      onPress={() => {
-                        setReviewConfirmed(false);
-                        setScheduleStep('schedule');
+                      onPressIn={continueToSchedule}
+                      onPress={continueToSchedule}
+                      accessibilityState={{
+                        disabled: !hasAllOneRmValues(values) || startingProgram,
                       }}
-                      disabled={
-                        !values.squat ||
-                        !values.bench ||
-                        !values.deadlift ||
-                        !values.ohp ||
-                        startingProgram
-                      }
                     >
                       <Text style={styles.primaryButtonText}>Continue to Schedule</Text>
                     </Pressable>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { type RefObject } from 'react';
 import {
   View,
   TextInput,
@@ -20,6 +20,8 @@ interface ChatInputProps {
   placeholder?: string;
   variant?: 'embedded' | 'footer';
   captureRequestKey?: number;
+  onFocus?: () => void;
+  inputRef?: RefObject<TextInput | null>;
 }
 
 export function ChatInput({
@@ -31,6 +33,8 @@ export function ChatInput({
   placeholder = 'Describe a meal, ask a question, or request a meal idea...',
   variant = 'footer',
   captureRequestKey,
+  onFocus,
+  inputRef,
 }: ChatInputProps) {
   const handleSend = () => {
     const trimmed = value.trim();
@@ -39,17 +43,16 @@ export function ChatInput({
     onChangeText('');
   };
 
-  return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View
-        style={[styles.container, variant === 'embedded' ? styles.containerEmbedded : undefined]}
-      >
-        <MealImageCapture
-          onImageCapture={onImageCapture}
-          disabled={isLoading}
-          captureRequestKey={captureRequestKey}
-        />
+  const content = (
+    <View style={[styles.container, variant === 'embedded' ? styles.containerEmbedded : undefined]}>
+      <MealImageCapture
+        onImageCapture={onImageCapture}
+        disabled={isLoading}
+        captureRequestKey={captureRequestKey}
+      />
+      <View style={styles.inputWrapper}>
         <TextInput
+          ref={inputRef}
           style={styles.input}
           value={value}
           onChangeText={onChangeText}
@@ -58,17 +61,30 @@ export function ChatInput({
           editable={!isLoading}
           returnKeyType="send"
           onSubmitEditing={handleSend}
+          multiline
+          maxLength={2000}
+          onFocus={onFocus}
         />
-        <Button
-          onPress={handleSend}
-          disabled={!value.trim() || isLoading}
-          style={styles.sendButton}
-          size="sm"
-          variant="default"
-        >
-          {isLoading ? <ActivityIndicator size="small" color="#ffffff" /> : '↑'}
-        </Button>
       </View>
+      <Button
+        onPress={handleSend}
+        disabled={!value.trim() || isLoading}
+        style={styles.sendButton}
+        size="sm"
+        variant="default"
+      >
+        {isLoading ? <ActivityIndicator size="small" color="#ffffff" /> : '↑'}
+      </Button>
+    </View>
+  );
+
+  if (variant === 'embedded') {
+    return content;
+  }
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {content}
     </KeyboardAvoidingView>
   );
 }
@@ -76,12 +92,13 @@ export function ChatInput({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: spacing.sm,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     padding: spacing.md,
+    paddingBottom: 48,
   },
   containerEmbedded: {
     backgroundColor: 'transparent',
@@ -89,19 +106,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingBottom: 0,
   },
+  inputWrapper: {
+    flex: 1,
+    minHeight: 80,
+    maxHeight: 160,
+  },
   input: {
     flex: 1,
-    height: 48,
+    minHeight: 80,
+    maxHeight: 160,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     color: colors.text,
     fontSize: 15,
+    textAlignVertical: 'top',
   },
   sendButton: {
     width: 48,
     minWidth: 48,
+    alignSelf: 'flex-end',
   },
 });

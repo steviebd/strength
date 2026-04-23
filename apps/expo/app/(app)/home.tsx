@@ -211,22 +211,27 @@ export default function HomeScreen() {
 
       <SectionTitle title="Quick Access" />
       <View style={styles.quickAccessSection}>
-        <Surface style={styles.quickAccessCard}>
-          <View style={styles.quickAccessRow}>
-            <View style={styles.quickAccessContent}>
-              <Text style={styles.quickAccessTitle}>Nutrition</Text>
-              <Text style={styles.quickAccessDesc}>
-                Log meals, track macros, and compare intake against recovery.
-              </Text>
+        <Pressable
+          onPress={() => router.push('/nutrition?focusChat=1')}
+          style={({ pressed }) => [pressed ? styles.quickAccessPressed : undefined]}
+        >
+          <Surface style={styles.quickAccessCard}>
+            <View style={styles.quickAccessRow}>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Nutrition</Text>
+                <Text style={styles.quickAccessDesc}>
+                  Log meals, track macros, and compare intake against recovery.
+                </Text>
+              </View>
+              <ActionButton
+                label="Open"
+                icon="restaurant-outline"
+                variant="secondary"
+                onPress={() => router.push('/nutrition?focusChat=1')}
+              />
             </View>
-            <ActionButton
-              label="Open"
-              icon="restaurant-outline"
-              variant="secondary"
-              onPress={() => router.push('/nutrition')}
-            />
-          </View>
-        </Surface>
+          </Surface>
+        </Pressable>
 
         <Surface style={styles.quickAccessCard}>
           <View style={styles.quickAccessRow}>
@@ -413,6 +418,9 @@ const styles = StyleSheet.create({
   },
   quickAccessCard: {
     backgroundColor: 'rgba(24,24,27,0.7)',
+  },
+  quickAccessPressed: {
+    opacity: 0.82,
   },
   quickAccessRow: {
     flexDirection: 'row',
