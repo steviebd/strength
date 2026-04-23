@@ -1,6 +1,7 @@
 {
   "name": "@strength/worker",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler dev --ip 0.0.0.0",
     "dev:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler dev --ip 0.0.0.0",

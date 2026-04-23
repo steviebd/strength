@@ -1,12 +1,13 @@
-name = "{{TOP_LEVEL_NAME}}"
+name = "strength-worker"
 main = "src/index.ts"
 compatibility_date = "2025-02-25"
 compatibility_flags = ["nodejs_compat"]
 
-{{TOP_LEVEL_D1_BLOCK}}
+[observability]
+logs = { enabled = false, invocation_logs = true }
 
-{{TOP_LEVEL_VARS_BLOCK}}
+{{D1_BLOCK}}
 
-{{STAGING_BLOCK}}
+{{VARS_BLOCK}}
 
-{{PRODUCTION_BLOCK}}
+{{ENV_BLOCK}}
