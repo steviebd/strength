@@ -170,12 +170,19 @@ function renderTemplate(args: Args): string {
   const template = readFileSync(TEMPLATE_PATH, 'utf8');
   const values = buildTemplateValues(args);
 
-  let rendered = template;
+  const assetsMatch = template.match(/\[assets\][\s\S]*?(?=\n\n|$)/);
+  let assetsBlock = '';
+  if (assetsMatch) {
+    assetsBlock = assetsMatch[0];
+  }
+  const templateWithoutAssets = template.replace(assetsBlock, '');
+
+  let rendered = templateWithoutAssets;
   for (const [key, value] of Object.entries(values)) {
     rendered = rendered.replaceAll(`{{${key}}}`, value);
   }
 
-  return rendered
+  return (rendered + '\n' + assetsBlock)
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd()
     .concat('\n');

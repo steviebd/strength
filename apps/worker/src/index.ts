@@ -8,7 +8,7 @@ import {
   resolveWorkerEnv,
   type WorkerEnv,
 } from './auth';
-import { getAuth, loadAuthSession, populateAuthContext, requireAuth } from './api/auth';
+import { getAuth, populateAuthContext, requireAuth } from './api/auth';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, gt, like, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
@@ -32,13 +32,11 @@ import {
 } from '@strength/db';
 import { getProgram, generateWorkoutSchedule } from './programs';
 import { buildWhoopAuthorizationUrl, exchangeCodeForTokens, WHOOP_API_BASE } from './whoop/auth';
-import {
-  storeWhoopTokens,
-  revokeWhoopIntegration,
-  getValidAccessToken,
-} from './whoop/token-rotation';
+import { storeWhoopTokens, revokeWhoopIntegration } from './whoop/token-rotation';
 import { getWhoopProfile } from './whoop/api';
 import { syncAllWhoopData } from './whoop/sync';
+import { isWhoopAuthError, toWhoopAuthErrorResponse } from './whoop/errors';
+import { getValidWhoopToken } from './whoop/token-manager';
 import {
   handleWebhookEvent,
   normalizeWhoopWebhookPayload,
@@ -2974,12 +2972,16 @@ app.post('/api/whoop/auth', async (c) => {
     );
   }
   const redirectUri = `${baseURL}/api/auth/whoop/callback`;
-  const state = encodeWhoopOAuthState({
+  if (!resolvedEnv.BETTER_AUTH_SECRET) {
+    return c.json({ error: 'BETTER_AUTH_SECRET is missing from the worker environment' }, 500);
+  }
+
+  const state = await encodeWhoopOAuthState(resolvedEnv.BETTER_AUTH_SECRET, {
     nonce: crypto.randomUUID(),
+    userId,
     ...(returnTo ? { returnTo } : {}),
   });
 
-  // Store state in cookie for verification
   const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri);
 
   return c.json({ authUrl, state });
@@ -2991,28 +2993,27 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');
-  const deepLink = decodeWhoopOAuthState(state).returnTo ?? 'strength://whoop-callback';
+  const decodedState = await decodeWhoopOAuthState(resolvedEnv.BETTER_AUTH_SECRET, state);
+  const deepLink = decodedState.returnTo ?? 'strength://whoop-callback';
 
   if (error) {
-    return c.redirect(`${deepLink}?error=${encodeURIComponent(error)}`);
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error }));
   }
 
   if (!code) {
-    return c.redirect(`${deepLink}?error=no_code`);
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'no_code' }));
   }
 
-  // Get session from cookie (callback is accessed after auth)
-  const session = await loadAuthSession(c);
-
-  if (!session?.user) {
-    return c.redirect(`${deepLink}?error=session_expired`);
+  if (!decodedState.userId) {
+    console.error('[WHOOP] Callback missing userId in state');
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'invalid_state' }));
   }
 
-  const userId = session.user.id;
+  const userId = decodedState.userId;
   const db = getDb(c);
   const baseURL = resolveBaseURL(resolvedEnv, c.req.url);
   if (!baseURL) {
-    return c.redirect(`${deepLink}?error=missing_base_url`);
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'missing_base_url' }));
   }
   const redirectUri = `${baseURL}/api/auth/whoop/callback`;
 
@@ -3039,39 +3040,105 @@ app.get('/api/auth/whoop/callback', async (c) => {
     const syncResult = await syncAllWhoopData(db, resolvedEnv, userId);
     console.log('[WHOOP] Auto-sync result:', syncResult);
 
-    return c.redirect(`${deepLink}?success=true`);
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { success: 'true' }));
   } catch (e) {
     console.error('[WHOOP] Callback error:', e);
     return c.redirect(
-      `${deepLink}?error=${encodeURIComponent(e instanceof Error ? e.message : 'unknown')}`,
+      buildWhoopCallbackRedirect(deepLink, {
+        error: e instanceof Error ? e.message : 'unknown',
+      }),
     );
   }
 });
 
-function encodeWhoopOAuthState(payload: { nonce: string; returnTo?: string }) {
-  const json = JSON.stringify(payload);
-  return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+const WHOOP_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+function base64UrlEncode(value: string) {
+  return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-function decodeWhoopOAuthState(state: string | undefined): { nonce?: string; returnTo?: string } {
-  if (!state) {
+function base64UrlDecode(value: string) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  return atob(padded);
+}
+
+async function signWhoopState(secret: string, payload: string) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
+  return base64UrlEncode(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+async function encodeWhoopOAuthState(
+  secret: string,
+  payload: { nonce: string; returnTo?: string; userId: string },
+) {
+  const encodedPayload = base64UrlEncode(
+    JSON.stringify({
+      ...payload,
+      expiresAt: Date.now() + WHOOP_OAUTH_STATE_TTL_MS,
+    }),
+  );
+  const signature = await signWhoopState(secret, encodedPayload);
+  return `${encodedPayload}.${signature}`;
+}
+
+async function decodeWhoopOAuthState(
+  secret: string | undefined,
+  state: string | undefined,
+): Promise<{
+  nonce?: string;
+  returnTo?: string;
+  userId?: string;
+}> {
+  if (!state || !secret) {
     return {};
   }
 
-  const normalized = state.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const [encodedPayload, signature, extra] = state.split('.');
+  if (!encodedPayload || !signature || extra !== undefined) {
+    return {};
+  }
+
+  const expectedSignature = await signWhoopState(secret, encodedPayload);
+  if (signature !== expectedSignature) {
+    return {};
+  }
 
   try {
-    const parsed = JSON.parse(atob(padded)) as { nonce?: string; returnTo?: string };
+    const parsed = JSON.parse(base64UrlDecode(encodedPayload)) as {
+      expiresAt?: number;
+      nonce?: string;
+      returnTo?: string;
+      userId?: string;
+    };
+    if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt < Date.now()) {
+      return {};
+    }
+
     return {
       ...(typeof parsed.nonce === 'string' ? { nonce: parsed.nonce } : {}),
       ...(typeof parsed.returnTo === 'string' && isAllowedWhoopReturnTo(parsed.returnTo)
         ? { returnTo: parsed.returnTo }
         : {}),
+      ...(typeof parsed.userId === 'string' ? { userId: parsed.userId } : {}),
     };
   } catch {
     return {};
   }
+}
+
+function buildWhoopCallbackRedirect(deepLink: string, params: Record<string, string>) {
+  const separator = deepLink.includes('?') ? '&' : '?';
+  const query = new URLSearchParams(params).toString();
+  return `${deepLink}${separator}${query}`;
 }
 
 function isAllowedWhoopReturnTo(value: string) {
@@ -3095,11 +3162,35 @@ app.post('/api/whoop/sync-all', async (c) => {
   // Check if connected
   const connected = await isWhoopConnected(db, userId);
   if (!connected) {
-    return c.json({ message: 'WHOOP not connected' }, 400);
+    return c.json(
+      {
+        error: 'WHOOP_SESSION_EXPIRED',
+        message: 'WHOOP not connected. Please reconnect your account.',
+        reauthUrl: null,
+      },
+      401,
+    );
   }
 
   try {
     const result = await syncAllWhoopData(db, c.env, userId);
+    const authError = result.errors.find(
+      (message) =>
+        message.includes('WHOOP_SESSION_EXPIRED') ||
+        message.includes('WHOOP_REAUTH_REQUIRED') ||
+        message.includes('Please reconnect WHOOP') ||
+        message.includes('Please re-authorize'),
+    );
+    if (authError) {
+      return c.json(
+        {
+          error: 'WHOOP_REAUTH_REQUIRED',
+          message: authError,
+        },
+        401,
+      );
+    }
+
     return c.json({
       success: result.errors.length === 0,
       ...result,
@@ -3127,20 +3218,34 @@ app.get('/api/whoop/status', async (c) => {
     return c.json({ connected: false });
   }
 
-  const whoopUserId = await getWhoopUserId(db, userId);
-  const profile = await getWhoopProfileByUserId(db, userId);
+  try {
+    await getValidWhoopToken(db, c.env, userId);
 
-  return c.json({
-    connected: true,
-    whoopUserId,
-    profile: profile
-      ? {
-          email: profile.email,
-          firstName: profile.firstName,
-          lastName: profile.lastName,
-        }
-      : null,
-  });
+    const whoopUserId = await getWhoopUserId(db, userId);
+    const profile = await getWhoopProfileByUserId(db, userId);
+
+    return c.json({
+      connected: true,
+      whoopUserId,
+      profile: profile
+        ? {
+            email: profile.email,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+          }
+        : null,
+    });
+  } catch (e) {
+    if (isWhoopAuthError(e)) {
+      return c.json({
+        connected: false,
+        ...toWhoopAuthErrorResponse(e),
+      });
+    }
+
+    console.error('[WHOOP] Status error:', e);
+    return c.json({ message: 'Failed to check WHOOP status' }, 500);
+  }
 });
 
 // GET /api/whoop/data - Get WHOOP data (recovery, sleep, cycles, workouts)
@@ -3154,13 +3259,22 @@ app.get('/api/whoop/data', async (c) => {
 
   const connected = await isWhoopConnected(db, userId);
   if (!connected) {
-    return c.json({ message: 'WHOOP not connected' }, 400);
+    return c.json(
+      {
+        error: 'WHOOP_SESSION_EXPIRED',
+        message: 'WHOOP not connected. Please reconnect your account.',
+        reauthUrl: null,
+      },
+      401,
+    );
   }
 
   const days = parseInt(c.req.query('days') ?? '30', 10);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   try {
+    await getValidWhoopToken(db, c.env, userId);
+
     const [recovery, sleep, cycles, workouts] = await Promise.all([
       db
         .select()
@@ -3291,6 +3405,10 @@ app.get('/api/whoop/data', async (c) => {
       workouts: normalizedWorkouts,
     });
   } catch (e) {
+    if (isWhoopAuthError(e)) {
+      return c.json(toWhoopAuthErrorResponse(e), 401);
+    }
+
     console.error('[WHOOP] Data fetch error:', e);
     return c.json({ message: 'Failed to fetch WHOOP data' }, 500);
   }

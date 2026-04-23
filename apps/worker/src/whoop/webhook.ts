@@ -3,8 +3,7 @@ import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
 import { and, eq } from 'drizzle-orm';
 import { userIntegration } from '@strength/db';
-import { fetchRecoveryByCycleId, fetchSleepById, fetchWorkoutById } from './api';
-import { getValidAccessToken } from './token-rotation';
+import { fetchRecoveryByCycleId, fetchSleepById, fetchWorkoutById } from './client';
 import {
   deleteWhoopRecovery,
   deleteWhoopSleep,
@@ -123,27 +122,13 @@ async function resolveWhoopUserId(
   return integration?.userId ?? null;
 }
 
-async function getWhoopAccessToken(
-  db: DrizzleD1Database<typeof schema>,
-  env: WorkerEnv,
-  userId: string,
-): Promise<string> {
-  const tokenResult = await getValidAccessToken(db, env, userId);
-  if (!tokenResult.token) {
-    throw new Error(tokenResult.error ?? 'Missing WHOOP access token');
-  }
-
-  return tokenResult.token;
-}
-
 async function handleWhoopRecoveryUpdate(
   db: DrizzleD1Database<typeof schema>,
   env: WorkerEnv,
   userId: string,
   sleepId: string,
 ): Promise<void> {
-  const accessToken = await getWhoopAccessToken(db, env, userId);
-  const sleep = await fetchSleepById(accessToken, sleepId);
+  const sleep = await fetchSleepById(db, env, userId, sleepId);
 
   await upsertWhoopSleep(db, userId, sleep);
 
@@ -151,7 +136,7 @@ async function handleWhoopRecoveryUpdate(
     throw new Error(`WHOOP sleep ${sleepId} did not include a cycle_id`);
   }
 
-  const recovery = await fetchRecoveryByCycleId(accessToken, sleep.cycle_id);
+  const recovery = await fetchRecoveryByCycleId(db, env, userId, sleep.cycle_id);
   await upsertWhoopRecovery(db, userId, recovery);
 }
 
@@ -173,8 +158,7 @@ export async function handleWebhookEvent(
   try {
     switch (event.eventType) {
       case 'workout.updated': {
-        const accessToken = await getWhoopAccessToken(db, env, userId);
-        const workout = await fetchWorkoutById(accessToken, event.objectId);
+        const workout = await fetchWorkoutById(db, env, userId, event.objectId);
         await upsertWhoopWorkout(db, userId, workout);
         return { success: true };
       }
@@ -185,8 +169,7 @@ export async function handleWebhookEvent(
       }
 
       case 'sleep.updated': {
-        const accessToken = await getWhoopAccessToken(db, env, userId);
-        const sleep = await fetchSleepById(accessToken, event.objectId);
+        const sleep = await fetchSleepById(db, env, userId, event.objectId);
         await upsertWhoopSleep(db, userId, sleep);
         return { success: true };
       }

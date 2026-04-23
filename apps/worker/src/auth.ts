@@ -140,10 +140,6 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
       secure: cookiePolicy.secure,
       sameSite: cookiePolicy.sameSite,
     },
-    rateLimit: {
-      maxRequests: 5,
-      window: 60,
-    },
     plugins: [expo()],
   });
 }

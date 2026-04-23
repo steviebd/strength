@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Keyboard,
+  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
   Platform,
@@ -419,20 +419,15 @@ export default function ProgramsScreen() {
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
-  const [keyboardInset, setKeyboardInset] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
   const { activeTimezone, weightUnit } = useUserPreferences();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const scrollViewRef = useRef<any>(null);
-  const detailScrollRef = useRef<any>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const detailScrollRef = useRef<ScrollView>(null);
   const inputRefs = useRef<Record<string, any>>({});
-  const inputPositions = useRef<Record<string, number>>({});
-  const activeInputKey = useRef<string | null>(null);
-  const keyboardHeight = useRef(0);
-  const scrollViewportHeight = useRef(0);
-  const scrollOffsetY = useRef(0);
-  const pendingScrollTimeouts = useRef<number[]>([]);
+  const modalContentY = useRef(0);
+  const inputGroupY = useRef(0);
+  const inputCardLayouts = useRef<Record<string, number>>({});
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
     useProgramsCatalog(PROGRAM_INFO);
@@ -444,38 +439,40 @@ export default function ProgramsScreen() {
   const { latestOneRMs, refetch: refetchLatestOneRms } = useLatestOneRms();
   const loading = isLoadingPrograms || isLoadingActivePrograms;
 
-  const scrollToInput = (key: string) => {
-    const scrollView = scrollViewRef.current;
-    if (!scrollView || scrollViewportHeight.current === 0) {
+  const handleInputCardLayout = (key: string, event: LayoutChangeEvent) => {
+    inputCardLayouts.current[key] = event.nativeEvent.layout.y;
+  };
+
+  const scrollToInputByKey = (key: string) => {
+    const cardY = inputCardLayouts.current[key];
+    if (typeof cardY === 'number' && scrollViewRef.current) {
+      const inputY = modalContentY.current + inputGroupY.current + cardY;
+      const targetY = Math.max(0, inputY - 96);
+      scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      }, 250);
       return;
     }
 
-    const inputY = inputPositions.current[key];
-    if (inputY === undefined) {
-      return;
+    const inputRef = inputRefs.current[key];
+    if (inputRef && scrollViewRef.current) {
+      inputRef.measure(
+        (
+          _x: number,
+          _y: number,
+          _width: number,
+          _height: number,
+          _pageX: number,
+          pageY: number,
+        ) => {
+          const KEYBOARD_HEIGHT = 300;
+          const TOP_OFFSET = 100;
+          const targetY = Math.max(0, pageY - KEYBOARD_HEIGHT - TOP_OFFSET);
+          scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+        },
+      );
     }
-
-    const desiredTopOffset = Platform.OS === 'android' ? 8 : 24;
-    const targetY = Math.max(0, inputY - desiredTopOffset);
-
-    scrollView.scrollTo({ y: targetY, animated: true });
-  };
-
-  const clearPendingScrolls = () => {
-    pendingScrollTimeouts.current.forEach((timeoutId) => clearTimeout(timeoutId));
-    pendingScrollTimeouts.current = [];
-  };
-
-  const scheduleScrollToInput = (key: string) => {
-    clearPendingScrolls();
-    [0, 120, 280, 420].forEach((delay) => {
-      const timeoutId = setTimeout(() => {
-        if (activeInputKey.current === key) {
-          scrollToInput(key);
-        }
-      }, delay);
-      pendingScrollTimeouts.current.push(timeoutId as unknown as number);
-    });
   };
 
   const focusNextInput = (key: (typeof inputOrder)[number]) => {
@@ -486,38 +483,6 @@ export default function ProgramsScreen() {
       inputRefs.current[nextKey]?.focus();
     }
   };
-
-  const handleInputLayout =
-    (key: string) =>
-    (event: LayoutChangeEvent): void => {
-      inputPositions.current[key] = event.nativeEvent.layout.y;
-    };
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      keyboardHeight.current = event.endCoordinates.height;
-      setKeyboardInset(event.endCoordinates.height);
-
-      if (activeInputKey.current) {
-        scheduleScrollToInput(activeInputKey.current);
-      }
-    });
-
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      keyboardHeight.current = 0;
-      setKeyboardInset(0);
-      clearPendingScrolls();
-    });
-
-    return () => {
-      clearPendingScrolls();
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   const refreshProgramsScreen = useCallback(
     async (showRefreshIndicator = false) => {
@@ -904,109 +869,110 @@ export default function ProgramsScreen() {
         onRequestClose={() => setShowStartModal(false)}
       >
         {showStartModal ? (
-          <ScrollView
-            ref={scrollViewRef}
-            style={styles.modalScroll}
-            contentContainerStyle={{
-              paddingBottom: keyboardInset + insets.bottom + Math.max(520, viewportHeight * 1.35),
-            }}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            onLayout={(event) => {
-              scrollViewportHeight.current = event.nativeEvent.layout.height;
-              setViewportHeight(event.nativeEvent.layout.height);
-            }}
-            onScroll={(event) => {
-              scrollOffsetY.current = event.nativeEvent.contentOffset.y;
-            }}
-            scrollEventThrottle={16}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
           >
-            <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
-              <Pressable style={styles.backButton} onPress={() => setShowStartModal(false)}>
-                <Ionicons name="chevron-back" size={24} color={colors.text} />
-              </Pressable>
-              <Text style={styles.modalTitle}>Enter 1RM</Text>
-            </View>
-
-            <View style={styles.modalContent}>
-              <View style={styles.infoBox}>
-                <Text style={styles.infoBoxTitle}>How to estimate your 1RM</Text>
-                <Text style={styles.infoBoxText}>
-                  Your 1RM is the maximum weight you can lift for a single rep with good form. If
-                  you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
-                  using the formula: 1RM = weight × (1 + reps/30).
-                </Text>
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.modalScroll}
+              contentContainerStyle={{
+                paddingBottom: insets.bottom + 400,
+              }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+            >
+              <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
+                <Pressable style={styles.backButton} onPress={() => setShowStartModal(false)}>
+                  <Ionicons name="chevron-back" size={24} color={colors.text} />
+                </Pressable>
+                <Text style={styles.modalTitle}>Enter 1RM</Text>
               </View>
 
-              <Text style={styles.programNameTitle}>Starting Program</Text>
-              <Text style={styles.programNameTitle}>{selectedProgram?.name}</Text>
-              <Text style={styles.instructionsText}>
-                Enter your current one-rep max (1RM) estimates for each lift. These will be used to
-                calculate your working weights.
-              </Text>
-
-              <View style={styles.inputGroup}>
-                {[
-                  { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
-                  { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
-                  { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
-                  { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
-                ].map(({ key, label, icon }) => (
-                  <View key={`program-1rm:${key}`} style={styles.inputCard}>
-                    <View style={styles.inputHeaderRow}>
-                      <View style={styles.inputLabelRow}>
-                        <Text style={styles.inputIcon}>{icon}</Text>
-                        <Text style={styles.inputLabel}>{label}</Text>
-                      </View>
-                      <Text style={styles.inputUnit}>{weightUnit}</Text>
-                    </View>
-                    <TextInput
-                      ref={(ref) => {
-                        inputRefs.current[key] = ref;
-                      }}
-                      style={styles.textInput}
-                      onLayout={handleInputLayout(key)}
-                      value={values[key as keyof typeof values]}
-                      onChangeText={(v) =>
-                        setValues((prev) => ({ ...prev, [key]: v.replace(/[^0-9.]/g, '') }))
-                      }
-                      onFocus={() => {
-                        activeInputKey.current = key;
-                        scheduleScrollToInput(key);
-                      }}
-                      onBlur={() => {
-                        if (activeInputKey.current === key) {
-                          activeInputKey.current = null;
-                        }
-                        clearPendingScrolls();
-                      }}
-                      placeholder="0"
-                      placeholderTextColor={colors.placeholderText}
-                      keyboardType="decimal-pad"
-                      returnKeyType={key === 'ohp' ? 'done' : 'next'}
-                      blurOnSubmit={key === 'ohp'}
-                      onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
-                    />
-                  </View>
-                ))}
-              </View>
-
-              <Pressable
-                style={[styles.startButton, startingProgram && styles.startButtonDisabled]}
-                onPress={handleStartProgram}
-                disabled={startingProgram}
+              <View
+                style={styles.modalContent}
+                onLayout={(event) => {
+                  modalContentY.current = event.nativeEvent.layout.y;
+                }}
               >
-                {startingProgram ? (
-                  <View style={styles.startButtonRow}>
-                    <ActivityIndicator size="small" color={colors.text} />
-                    <Text style={styles.startButtonText}>Starting Program...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.startButtonText}>Start Program</Text>
-                )}
-              </Pressable>
-            </View>
-          </ScrollView>
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoBoxTitle}>How to estimate your 1RM</Text>
+                  <Text style={styles.infoBoxText}>
+                    Your 1RM is the maximum weight you can lift for a single rep with good form. If
+                    you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
+                    using the formula: 1RM = weight × (1 + reps/30).
+                  </Text>
+                </View>
+
+                <Text style={styles.programNameTitle}>Starting Program</Text>
+                <Text style={styles.programNameTitle}>{selectedProgram?.name}</Text>
+                <Text style={styles.instructionsText}>
+                  Enter your current one-rep max (1RM) estimates for each lift. These will be used
+                  to calculate your working weights.
+                </Text>
+
+                <View
+                  style={styles.inputGroup}
+                  onLayout={(event) => {
+                    inputGroupY.current = event.nativeEvent.layout.y;
+                  }}
+                >
+                  {[
+                    { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
+                    { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
+                    { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
+                    { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
+                  ].map(({ key, label, icon }) => (
+                    <View
+                      key={`program-1rm:${key}`}
+                      style={styles.inputCard}
+                      onLayout={(event) => handleInputCardLayout(key, event)}
+                    >
+                      <View style={styles.inputHeaderRow}>
+                        <View style={styles.inputLabelRow}>
+                          <Text style={styles.inputIcon}>{icon}</Text>
+                          <Text style={styles.inputLabel}>{label}</Text>
+                        </View>
+                        <Text style={styles.inputUnit}>{weightUnit}</Text>
+                      </View>
+                      <TextInput
+                        ref={(ref) => {
+                          inputRefs.current[key] = ref;
+                        }}
+                        style={styles.textInput}
+                        value={values[key as keyof typeof values]}
+                        onChangeText={(v) =>
+                          setValues((prev) => ({ ...prev, [key]: v.replace(/[^0-9.]/g, '') }))
+                        }
+                        onFocus={() => scrollToInputByKey(key)}
+                        placeholder="0"
+                        placeholderTextColor={colors.placeholderText}
+                        keyboardType="decimal-pad"
+                        returnKeyType={key === 'ohp' ? 'done' : 'next'}
+                        blurOnSubmit={key === 'ohp'}
+                        onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
+                      />
+                    </View>
+                  ))}
+                </View>
+
+                <Pressable
+                  style={[styles.startButton, startingProgram && styles.startButtonDisabled]}
+                  onPress={handleStartProgram}
+                  disabled={startingProgram}
+                >
+                  {startingProgram ? (
+                    <View style={styles.startButtonRow}>
+                      <ActivityIndicator size="small" color={colors.text} />
+                      <Text style={styles.startButtonText}>Starting Program...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.startButtonText}>Start Program</Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         ) : null}
       </Modal>
     </PageLayout>

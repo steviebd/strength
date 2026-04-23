@@ -150,8 +150,8 @@ export default function Profile() {
       } else {
         setSyncResult(`Sync completed with errors: ${result.errors?.join(', ')}`);
       }
-    } catch {
-      setSyncResult('Sync failed');
+    } catch (e) {
+      setSyncResult(e instanceof Error ? e.message : 'Sync failed');
     } finally {
       setSyncing(false);
     }

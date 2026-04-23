@@ -6,6 +6,17 @@ type ApiFetchOptions = RequestInit & {
   __stream?: boolean;
 };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public details: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export function apiFetch<T = unknown>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
   const url = endpoint.startsWith('http')
     ? endpoint
@@ -25,16 +36,19 @@ export function apiFetch<T = unknown>(endpoint: string, options?: ApiFetchOption
     ...options,
     headers,
     credentials: isNative ? 'omit' : 'include',
-  }).then((res) => {
+  }).then(async (res) => {
     if (!res.ok) {
-      return res
-        .json()
-        .then((err) => {
-          throw new Error(err.message || `Request failed: ${res.status}`);
-        })
-        .catch(() => {
-          throw new Error(`Request failed: ${res.status}`);
-        });
+      let details: unknown = null;
+      try {
+        details = await res.json();
+      } catch {}
+
+      const message =
+        details && typeof details === 'object' && 'message' in details
+          ? String((details as { message?: unknown }).message)
+          : `Request failed: ${res.status}`;
+
+      throw new ApiError(message, res.status, details);
     }
     if (options?.__stream) {
       return res as unknown as Promise<T>;

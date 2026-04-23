@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Build Expo web assets
+        run: bun --filter @strength/expo web:build
+
       - name: Fetch staging secrets from Infisical
         uses: Infisical/secrets-action@v1.0.15
         with:
@@ -62,6 +65,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      - name: Build Expo web assets
+        run: bun --filter @strength/expo web:build
 
       - name: Fetch production secrets from Infisical
         uses: Infisical/secrets-action@v1.0.15
