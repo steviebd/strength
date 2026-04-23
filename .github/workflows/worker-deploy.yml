@@ -18,6 +18,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
@@ -29,7 +34,7 @@ jobs:
         with:
           method: oidc
           identity-id: 78fef9da-6701-477e-940b-2960913a7252
-          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           env-slug: staging
 
       - name: Deploy to staging
@@ -47,6 +52,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
@@ -58,7 +68,7 @@ jobs:
         with:
           method: oidc
           identity-id: 78fef9da-6701-477e-940b-2960913a7252
-          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           env-slug: prod
 
       - name: Deploy to production

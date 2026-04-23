@@ -74,7 +74,7 @@ Existing handlers in `index.ts` (inline) and `apps/worker/src/api/nutrition/` (m
 
 ## GitHub Actions OIDC
 
-Deploy workflows use Infisical OIDC, not long-lived Infisical client credentials. Configure the Infisical machine identity with identity ID `78fef9da-6701-477e-940b-2960913a7252`, subject `repo:steviebd/strength:*`, and audience `https://github.com/steviebd`. Set `INFISICAL_PROJECT_SLUG` as a GitHub repository or organization variable, and do not add `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, or `INFISICAL_PROJECT_ID` as GitHub secrets.
+Deploy workflows use Infisical OIDC, not long-lived Infisical client credentials. Configure the Infisical machine identity with identity ID `78fef9da-6701-477e-940b-2960913a7252`, subject `repo:steviebd/strength:*`, and audience `https://github.com/steviebd`. Set `INFISICAL_PROJECT_SLUG` as a GitHub repository or organization secret, and do not add `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, or `INFISICAL_PROJECT_ID` as GitHub secrets.
 
 ## Network / Auth for Physical Devices
 

@@ -98,7 +98,7 @@ GitHub Actions fetches deployment secrets from Infisical at runtime using OIDC. 
 - Subject: `repo:steviebd/strength:*`
 - Audience: `https://github.com/steviebd`
 
-Set `INFISICAL_PROJECT_SLUG` as a GitHub repository or organization variable. Do not store `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, or `INFISICAL_PROJECT_ID` as GitHub secrets; deploy workflows use short-lived OIDC tokens instead.
+Set `INFISICAL_PROJECT_SLUG` as a GitHub repository or organization secret. Do not store `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, or `INFISICAL_PROJECT_ID` as GitHub secrets; deploy workflows use short-lived OIDC tokens instead.
 
 ## Notes
 
