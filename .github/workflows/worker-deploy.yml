@@ -29,9 +29,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build Expo web assets
-        run: bun --filter @strength/expo web:build
-
       - name: Fetch staging secrets from Infisical
         uses: Infisical/secrets-action@v1.0.15
         with:
@@ -39,6 +36,9 @@ jobs:
           identity-id: 78fef9da-6701-477e-940b-2960913a7252
           project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           env-slug: staging
+
+      - name: Build Expo web assets
+        run: bun --filter @strength/expo web:build
 
       - name: Deploy to staging
         working-directory: apps/worker
@@ -66,9 +66,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build Expo web assets
-        run: bun --filter @strength/expo web:build
-
       - name: Fetch production secrets from Infisical
         uses: Infisical/secrets-action@v1.0.15
         with:
@@ -76,6 +73,9 @@ jobs:
           identity-id: 78fef9da-6701-477e-940b-2960913a7252
           project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           env-slug: prod
+
+      - name: Build Expo web assets
+        run: bun --filter @strength/expo web:build
 
       - name: Deploy to production
         working-directory: apps/worker
