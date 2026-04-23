@@ -21,3 +21,11 @@ apps/worker/.dev.vars
 
 expo-env.d.ts
 # @end expo-cli
+.fallow/
+.yarn/
+.vite-hooks/
+apps/expo/.eas/workflows/
+apps/worker/.staging.vars
+.staging.vars
+apps/worker/wrangler.toml
+.infisical.json.bak

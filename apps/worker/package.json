@@ -2,10 +2,15 @@
   "name": "@strength/worker",
   "private": true,
   "scripts": {
-    "dev": "infisical export --env=dev --silent --format=dotenv --output-file=.dev.vars && bun run scripts/setup-dev.ts && bun run dev:wrangler",
-    "dev:wrangler": "wrangler dev --ip 0.0.0.0",
-    "deploy": "wrangler deploy",
-    "db:apply:local": "wrangler d1 migrations apply strength-db --local",
+    "dev": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler dev --ip 0.0.0.0",
+    "dev:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler dev --ip 0.0.0.0",
+    "db:apply:local": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler d1 migrations apply strength-db-dev --local",
+    "db:apply:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler d1 migrations apply strength-db-dev-remote --remote",
+    "db:apply:staging": "infisical run --env=staging --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env staging --d1-mode remote -- wrangler d1 migrations apply strength-db-staging --remote --env staging",
+    "db:apply:prod": "infisical run --env=prod --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env prod --d1-mode remote -- wrangler d1 migrations apply strength-db-prod --remote --env prod",
+    "deploy:staging": "infisical run --env=staging --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env staging --d1-mode remote -- wrangler deploy --env staging",
+    "deploy:prod": "infisical run --env=prod --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env prod --d1-mode remote -- wrangler deploy --env prod",
+    "generate:wrangler": "tsx scripts/generate-wrangler-config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,6 +23,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260418.1",
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0"
   }
 }

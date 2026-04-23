@@ -1,0 +1,12 @@
+name = "{{TOP_LEVEL_NAME}}"
+main = "src/index.ts"
+compatibility_date = "2025-02-25"
+compatibility_flags = ["nodejs_compat"]
+
+{{TOP_LEVEL_D1_BLOCK}}
+
+{{TOP_LEVEL_VARS_BLOCK}}
+
+{{STAGING_BLOCK}}
+
+{{PRODUCTION_BLOCK}}

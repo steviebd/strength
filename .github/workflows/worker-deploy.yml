@@ -1,0 +1,79 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-staging:
+    if: github.ref_name != 'main' && github.ref_name != 'master'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Fetch staging secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: oidc
+          identity-id: 78fef9da-6701-477e-940b-2960913a7252
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: staging
+
+      - name: Deploy to staging
+        working-directory: apps/worker
+        run: |
+          bun run generate:wrangler --env staging --d1-mode remote
+          bunx wrangler d1 migrations apply strength-db-staging --remote --env staging
+          bunx wrangler deploy --env staging
+
+  deploy-production:
+    if: github.ref_name == 'main' || github.ref_name == 'master'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Fetch production secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: oidc
+          identity-id: 78fef9da-6701-477e-940b-2960913a7252
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+
+      - name: Deploy to production
+        working-directory: apps/worker
+        run: |
+          bun run generate:wrangler --env prod --d1-mode remote
+          bunx wrangler d1 migrations apply strength-db-prod --remote --env prod
+          bunx wrangler deploy --env prod

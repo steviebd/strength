@@ -193,6 +193,16 @@ export default function WorkoutSessionScreen() {
                 animated: true,
               });
             }
+          } else {
+            setCurrentExerciseIndex(exerciseIndex);
+            setCurrentSetIndex(justCompletedIndex);
+            const currentLayout = exerciseLayouts.find((l) => l.id === exercises[exerciseIndex].id);
+            if (currentLayout && scrollViewRef.current) {
+              scrollViewRef.current.scrollTo({
+                y: currentLayout.y - 80,
+                animated: true,
+              });
+            }
           }
         }
       }

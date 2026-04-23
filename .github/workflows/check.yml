@@ -1,0 +1,32 @@
+name: Check
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: ['**']
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Run check
+        run: bun run check
+
+      - name: Run tests
+        run: bun run test
