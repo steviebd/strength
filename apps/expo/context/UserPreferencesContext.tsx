@@ -51,10 +51,13 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       setWeightUnitState('kg');
       setTimezoneState(deviceTimezone);
       setHasPersistedTimezone(false);
+      setShowTimezoneMismatchModal(false);
+      setWeightPromptedAtState(null);
       setIsLoading(false);
       return;
     }
 
+    let isActive = true;
     setIsLoading(true);
 
     apiFetch<{
@@ -63,26 +66,41 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       weightPromptedAt?: string | null;
     }>('/api/profile/preferences')
       .then((data) => {
-        if (data.weightUnit) {
-          setWeightUnitState(data.weightUnit);
+        if (!isActive) {
+          return;
         }
 
-        if (data.timezone) {
-          setTimezoneState(data.timezone);
-          setHasPersistedTimezone(true);
-          const isMismatch = data.timezone !== deviceTimezone;
+        const nextTimezone = data.timezone ?? null;
+
+        setWeightUnitState(data.weightUnit ?? 'kg');
+        setTimezoneState(nextTimezone);
+        setHasPersistedTimezone(Boolean(nextTimezone));
+        setWeightPromptedAtState(data.weightPromptedAt ?? null);
+
+        if (nextTimezone) {
+          const isMismatch = nextTimezone !== deviceTimezone;
           const needsPrompt =
             isMismatch &&
             (dismissedDeviceTimezone === null || dismissedDeviceTimezone !== deviceTimezone);
           setShowTimezoneMismatchModal(needsPrompt);
-        }
-
-        if (data.weightPromptedAt) {
-          setWeightPromptedAtState(data.weightPromptedAt);
+        } else {
+          setShowTimezoneMismatchModal(false);
         }
       })
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
+      .catch((error) => {
+        if (isActive) {
+          console.error(error);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, [deviceTimezone, dismissedDeviceTimezone, session.data?.user, session.isPending]);
 
   const setWeightUnit = useCallback(

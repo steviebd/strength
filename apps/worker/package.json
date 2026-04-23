@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler dev --ip 0.0.0.0",
-    "dev:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler dev --ip 0.0.0.0",
+    "dev": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/dev-with-optional-tunnel.sh --env dev --d1-mode local -- wrangler dev --ip 0.0.0.0",
+    "dev:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/dev-with-optional-tunnel.sh --env dev --d1-mode remote -- wrangler dev --ip 0.0.0.0",
     "db:apply:local": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode local -- wrangler d1 migrations apply strength-db-dev --local",
     "db:apply:remote": "infisical run --env=dev --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env dev --d1-mode remote -- wrangler d1 migrations apply strength-db-dev-remote --remote",
     "db:apply:staging": "infisical run --env=staging --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env staging --d1-mode remote -- wrangler d1 migrations apply strength-db-staging --remote --env staging",

@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,9 @@ import {
   Text,
   TextInput,
   View,
+  ActionSheetIOS,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -31,9 +33,14 @@ import {
   type ActiveProgram,
   type ProgramListItem,
 } from '@/hooks/usePrograms';
+import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, spacing, radius, typography, layout } from '@/theme';
 
 const LBS_TO_KG = 0.453592;
+
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+type StartMode = 'smart' | 'strict';
+type PreferredTime = 'morning' | 'afternoon' | 'evening';
 
 const PROGRAM_INFO: ProgramListItem[] = [
   {
@@ -126,6 +133,54 @@ const PROGRAM_INFO: ProgramListItem[] = [
 
 function getDisplaySessionNumber(program: ActiveProgram) {
   return Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
+}
+
+function computeFirstSessionDate(startDate: Date, gymDays: DayOfWeek[], mode: StartMode): Date {
+  const dayMap: Record<number, DayOfWeek> = {
+    0: 'sunday',
+    1: 'monday',
+    2: 'tuesday',
+    3: 'wednesday',
+    4: 'thursday',
+    5: 'friday',
+    6: 'saturday',
+  };
+
+  if (mode === 'smart') {
+    return startDate;
+  }
+
+  const startDayIndex = startDate.getDay();
+  const startDayName = dayMap[startDayIndex];
+  const startDayIdx = gymDays.indexOf(startDayName);
+
+  if (startDayIdx === -1) {
+    for (let i = 1; i <= 7; i++) {
+      const checkDay = (startDayIndex + i) % 7;
+      const checkDayName = dayMap[checkDay];
+      if (gymDays.includes(checkDayName)) {
+        const result = new Date(startDate);
+        result.setDate(result.getDate() + i);
+        return result;
+      }
+    }
+  }
+
+  return startDate;
+}
+
+function isFirstSelectedDay(dayName: DayOfWeek, gymDays: DayOfWeek[]): boolean {
+  const dayOrder: Record<DayOfWeek, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+  const sorted = [...gymDays].sort((a, b) => dayOrder[a] - dayOrder[b]);
+  return sorted[0] === dayName;
 }
 
 const styles = StyleSheet.create({
@@ -338,6 +393,180 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     textAlign: 'center',
   },
+  dayChip: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayChipSelected: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayChipText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  dayChipTextSelected: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  timeChip: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeChipSelected: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeChipText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  timeChipTextSelected: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  scheduleCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  scheduleLabel: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    marginBottom: spacing.xs,
+  },
+  scheduleHint: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginBottom: spacing.md,
+  },
+  dayChipsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  timeChipsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  dateButton: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  dateButtonText: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+  },
+  startModeSection: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  startModeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: colors.accent,
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+  },
+  startModeTextContainer: {
+    flex: 1,
+  },
+  startModeTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  startModeDescription: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginTop: spacing.xs,
+  },
+  firstSessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  scheduleButtons: {
+    gap: spacing.md,
+  },
+  reviewProgramName: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+    marginBottom: spacing.xs,
+  },
+  reviewMeta: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    marginBottom: spacing.lg,
+  },
+  reviewSection: {
+    marginBottom: spacing.md,
+  },
+  reviewLabel: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginBottom: spacing.xs,
+  },
+  reviewDaysRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  reviewValue: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+  },
   activeSection: {
     marginBottom: spacing.xl,
   },
@@ -365,34 +594,33 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   activeCardButtons: {
+    gap: spacing.md,
+  },
+  activeCardButtonsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  activeOpenButton: {
-    flex: 1,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.sm,
     alignItems: 'center',
   },
-  activeOpenButtonText: {
-    color: colors.text,
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
+  flex1: {
+    flex: 1,
   },
-  activeDeleteButton: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  deleteButton: {
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.2)',
+    backgroundColor: 'rgba(244,63,94,0.1)',
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
   },
-  activeDeleteButtonText: {
-    color: colors.error,
-    fontSize: typography.fontSizes.sm,
+  deleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  deleteButtonText: {
+    fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
+    color: colors.error,
   },
 });
 
@@ -419,6 +647,15 @@ export default function ProgramsScreen() {
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
+  const [scheduleStep, setScheduleStep] = useState<'1rm' | 'schedule' | 'review'>('1rm');
+  const [preferredGymDays, setPreferredGymDays] = useState<DayOfWeek[]>([]);
+  const [preferredTime, setPreferredTime] = useState<PreferredTime>('morning');
+  const [programStartDate, setProgramStartDate] = useState<Date>(new Date());
+  const [startMode, setStartMode] = useState<StartMode>('smart');
+  const [firstSessionDate, setFirstSessionDate] = useState<Date>(new Date());
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [showStartModeChoice, setShowStartModeChoice] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const { activeTimezone, weightUnit } = useUserPreferences();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -427,6 +664,7 @@ export default function ProgramsScreen() {
   const inputRefs = useRef<Record<string, any>>({});
   const modalContentY = useRef(0);
   const inputGroupY = useRef(0);
+  const scheduleSectionY = useRef<number | null>(null);
   const inputCardLayouts = useRef<Record<string, number>>({});
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
@@ -475,6 +713,29 @@ export default function ProgramsScreen() {
     }
   };
 
+  const scrollToScheduleSection = useCallback(() => {
+    if (scheduleSectionY.current === null || !scrollViewRef.current) {
+      return;
+    }
+
+    const targetY = Math.max(0, modalContentY.current + scheduleSectionY.current - spacing.sm);
+    scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+  }, []);
+
+  useEffect(() => {
+    if (scheduleStep !== 'schedule') {
+      return;
+    }
+
+    const shortDelay = setTimeout(scrollToScheduleSection, 50);
+    const layoutDelay = setTimeout(scrollToScheduleSection, 250);
+
+    return () => {
+      clearTimeout(shortDelay);
+      clearTimeout(layoutDelay);
+    };
+  }, [scheduleStep, scrollToScheduleSection]);
+
   const focusNextInput = (key: (typeof inputOrder)[number]) => {
     const currentIndex = inputOrder.indexOf(key);
     const nextKey = inputOrder[currentIndex + 1];
@@ -511,7 +772,7 @@ export default function ProgramsScreen() {
     }, [refreshProgramsScreen]),
   );
 
-  const getTotalSessions = (slug: string): number => {
+  const _getTotalSessions = (slug: string): number => {
     switch (slug) {
       case 'stronglifts-5x5':
         return 24;
@@ -537,6 +798,8 @@ export default function ProgramsScreen() {
   };
 
   const handleStartProgram = async () => {
+    if (scheduleStep !== 'review') return;
+
     if (!values.squat || !values.bench || !values.deadlift || !values.ohp) {
       Alert.alert('Missing Values', 'Please enter all your 1RM values to continue.');
       return;
@@ -558,8 +821,10 @@ export default function ProgramsScreen() {
           bench1rm: convertToKg(parseFloat(values.bench)),
           deadlift1rm: convertToKg(parseFloat(values.deadlift)),
           ohp1rm: convertToKg(parseFloat(values.ohp)),
-          totalSessionsPlanned: getTotalSessions(selectedProgram.slug),
-          estimatedWeeks: selectedProgram.estimatedWeeks,
+          preferredGymDays,
+          preferredTimeOfDay: preferredTime,
+          programStartDate: programStartDate.toISOString().split('T')[0],
+          firstSessionDate: firstSessionDate.toISOString().split('T')[0],
           timezone: activeTimezone,
         }),
       });
@@ -568,13 +833,15 @@ export default function ProgramsScreen() {
       setShowDetailModal(false);
       setSelectedProgram(null);
       setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
+      setScheduleStep('1rm');
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
         queryClient.refetchQueries({ queryKey: ['latestOneRms'] }),
+        queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] }),
       ]);
 
       if (cycle.id) {
-        router.push(`/(app)/workouts?focusProgramId=${cycle.id}`);
+        router.push(`/(app)/home?focusProgramId=${cycle.id}`);
       }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
@@ -673,6 +940,21 @@ export default function ProgramsScreen() {
         ohp: toDisplay(latestOneRMs.ohp1rm),
       });
     }
+
+    const defaultDays: DayOfWeek[] =
+      selectedProgram?.daysPerWeek === 4
+        ? ['monday', 'wednesday', 'thursday', 'friday']
+        : ['monday', 'wednesday', 'friday'];
+
+    const startDate = new Date();
+    setPreferredGymDays(defaultDays);
+    setPreferredTime('morning');
+    setProgramStartDate(startDate);
+    setStartMode('smart');
+    setFirstSessionDate(startDate);
+    setReviewConfirmed(false);
+    setShowStartModeChoice(false);
+    setScheduleStep('1rm');
     setShowStartModal(true);
   };
 
@@ -714,28 +996,35 @@ export default function ProgramsScreen() {
                     </View>
                   </View>
                   <View style={styles.activeCardButtons}>
-                    <Pressable
-                      style={styles.activeOpenButton}
+                    <ActionButton
+                      label={
+                        openingProgramWorkoutId === program.id ? 'Opening...' : 'Start Next Session'
+                      }
+                      icon="play"
                       onPress={() => handleOpenCurrentProgramWorkout(program)}
                       disabled={openingProgramWorkoutId === program.id}
-                    >
-                      {openingProgramWorkoutId === program.id ? (
-                        <ActivityIndicator size="small" color={colors.text} />
-                      ) : (
-                        <Text style={styles.activeOpenButtonText}>Continue Workout</Text>
-                      )}
-                    </Pressable>
-                    <Pressable
-                      style={styles.activeDeleteButton}
-                      onPress={() => handleDeleteProgram(program)}
-                      disabled={deletingProgramId === program.id}
-                    >
-                      {deletingProgramId === program.id ? (
-                        <ActivityIndicator size="small" color={colors.error} />
-                      ) : (
-                        <Text style={styles.activeDeleteButtonText}>Delete</Text>
-                      )}
-                    </Pressable>
+                    />
+                    <View style={styles.activeCardButtonsRow}>
+                      <View style={styles.flex1}>
+                        <ActionButton
+                          label="View Schedule"
+                          icon="calendar-outline"
+                          variant="secondary"
+                          onPress={() => router.push(`/program-schedule?cycleId=${program.id}`)}
+                          disabled={openingProgramWorkoutId === program.id}
+                        />
+                      </View>
+                      <Pressable
+                        style={[
+                          styles.deleteButton,
+                          deletingProgramId === program.id && styles.deleteButtonDisabled,
+                        ]}
+                        onPress={() => handleDeleteProgram(program)}
+                        disabled={deletingProgramId === program.id}
+                      >
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
               ))}
@@ -956,20 +1245,409 @@ export default function ProgramsScreen() {
                   ))}
                 </View>
 
-                <Pressable
-                  style={[styles.startButton, startingProgram && styles.startButtonDisabled]}
-                  onPress={handleStartProgram}
-                  disabled={startingProgram}
-                >
-                  {startingProgram ? (
-                    <View style={styles.startButtonRow}>
-                      <ActivityIndicator size="small" color={colors.text} />
-                      <Text style={styles.startButtonText}>Starting Program...</Text>
+                {scheduleStep === '1rm' && (
+                  <>
+                    <Pressable
+                      style={[
+                        styles.primaryButton,
+                        (!values.squat ||
+                          !values.bench ||
+                          !values.deadlift ||
+                          !values.ohp ||
+                          startingProgram) &&
+                          styles.startButtonDisabled,
+                      ]}
+                      onPress={() => {
+                        setReviewConfirmed(false);
+                        setScheduleStep('schedule');
+                      }}
+                      disabled={
+                        !values.squat ||
+                        !values.bench ||
+                        !values.deadlift ||
+                        !values.ohp ||
+                        startingProgram
+                      }
+                    >
+                      <Text style={styles.primaryButtonText}>Continue to Schedule</Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {scheduleStep === 'schedule' && (
+                  <View
+                    onLayout={(event) => {
+                      scheduleSectionY.current = event.nativeEvent.layout.y;
+                    }}
+                  >
+                    <SectionTitle title="Schedule" />
+                    <Surface style={styles.scheduleCard}>
+                      <Text style={styles.scheduleLabel}>Preferred Training Days</Text>
+                      <Text style={styles.scheduleHint}>
+                        Select {selectedProgram?.daysPerWeek} days per week
+                      </Text>
+                      <View style={styles.dayChipsRow}>
+                        {(
+                          [
+                            'monday',
+                            'tuesday',
+                            'wednesday',
+                            'thursday',
+                            'friday',
+                            'saturday',
+                            'sunday',
+                          ] as DayOfWeek[]
+                        ).map((day) => {
+                          const isSelected = preferredGymDays.includes(day);
+                          return (
+                            <Pressable
+                              key={`dayChip-${day}`}
+                              style={isSelected ? styles.dayChipSelected : styles.dayChip}
+                              onPress={() => {
+                                setReviewConfirmed(false);
+                                if (isSelected) {
+                                  setPreferredGymDays((prev) => prev.filter((d) => d !== day));
+                                } else if (
+                                  preferredGymDays.length < (selectedProgram?.daysPerWeek ?? 3)
+                                ) {
+                                  setPreferredGymDays((prev) => [...prev, day]);
+                                }
+                              }}
+                            >
+                              <Text
+                                style={isSelected ? styles.dayChipTextSelected : styles.dayChipText}
+                              >
+                                {day.charAt(0).toUpperCase()}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={[styles.scheduleLabel, { marginTop: spacing.md }]}>
+                        Preferred Time of Day
+                      </Text>
+                      <View style={styles.timeChipsRow}>
+                        {(['morning', 'afternoon', 'evening'] as PreferredTime[]).map((time) => {
+                          const isSelected = preferredTime === time;
+                          return (
+                            <Pressable
+                              key={`timeChip-${time}`}
+                              style={isSelected ? styles.timeChipSelected : styles.timeChip}
+                              onPress={() => {
+                                setReviewConfirmed(false);
+                                setPreferredTime(time);
+                              }}
+                            >
+                              <Text
+                                style={
+                                  isSelected ? styles.timeChipTextSelected : styles.timeChipText
+                                }
+                              >
+                                {time.charAt(0).toUpperCase() + time.slice(1)}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={[styles.scheduleLabel, { marginTop: spacing.md }]}>
+                        Program Start Date
+                      </Text>
+                      <Pressable
+                        style={styles.dateButton}
+                        onPress={() => {
+                          if (Platform.OS === 'ios') {
+                            ActionSheetIOS.showActionSheetWithOptions(
+                              {
+                                options: ['Cancel', 'Select Date'],
+                                cancelButtonIndex: 0,
+                              },
+                              () => setShowDatePicker(true),
+                            );
+                          } else {
+                            setShowDatePicker(true);
+                          }
+                        }}
+                      >
+                        <Text style={styles.dateButtonText}>
+                          {programStartDate.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={18}
+                          color={colors.text}
+                          style={{ marginLeft: spacing.sm }}
+                        />
+                      </Pressable>
+
+                      {showDatePicker && (
+                        <DateTimePicker
+                          value={programStartDate}
+                          mode="date"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onValueChange={(_event, selectedDate) => {
+                            if (Platform.OS === 'android') {
+                              setShowDatePicker(false);
+                            }
+                            if (selectedDate) {
+                              const newStartDate = selectedDate;
+                              setProgramStartDate(newStartDate);
+                              setReviewConfirmed(false);
+                              const dayMap: Record<number, DayOfWeek> = {
+                                0: 'sunday',
+                                1: 'monday',
+                                2: 'tuesday',
+                                3: 'wednesday',
+                                4: 'thursday',
+                                5: 'friday',
+                                6: 'saturday',
+                              };
+                              const startDayName = dayMap[newStartDate.getDay()];
+                              const isTrainingDay = isFirstSelectedDay(
+                                startDayName,
+                                preferredGymDays,
+                              );
+                              if (isTrainingDay) {
+                                setFirstSessionDate(newStartDate);
+                                setShowStartModeChoice(false);
+                              } else {
+                                setStartMode('smart');
+                                setFirstSessionDate(newStartDate);
+                                setShowStartModeChoice(true);
+                              }
+                            }
+                          }}
+                        />
+                      )}
+
+                      {showStartModeChoice && (
+                        <View style={styles.startModeSection}>
+                          <Text style={styles.scheduleHint}>
+                            {programStartDate.toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              month: 'long',
+                              day: 'numeric',
+                            })}{' '}
+                            is not a training day. Choose how to start:
+                          </Text>
+                          <Pressable
+                            style={styles.startModeOption}
+                            onPress={() => {
+                              setReviewConfirmed(false);
+                              setStartMode('smart');
+                              setFirstSessionDate(programStartDate);
+                            }}
+                          >
+                            <View
+                              style={[
+                                styles.radioOuter,
+                                startMode === 'smart' && styles.radioOuterSelected,
+                              ]}
+                            >
+                              {startMode === 'smart' && <View style={styles.radioInner} />}
+                            </View>
+                            <View style={styles.startModeTextContainer}>
+                              <Text style={styles.startModeTitle}>Smart Start</Text>
+                              <Text style={styles.startModeDescription}>
+                                Start program today even though it's not a training day
+                              </Text>
+                            </View>
+                          </Pressable>
+                          <Pressable
+                            style={styles.startModeOption}
+                            onPress={() => {
+                              setReviewConfirmed(false);
+                              setStartMode('strict');
+                              setFirstSessionDate(
+                                computeFirstSessionDate(
+                                  programStartDate,
+                                  preferredGymDays,
+                                  'strict',
+                                ),
+                              );
+                            }}
+                          >
+                            <View
+                              style={[
+                                styles.radioOuter,
+                                startMode === 'strict' && styles.radioOuterSelected,
+                              ]}
+                            >
+                              {startMode === 'strict' && <View style={styles.radioInner} />}
+                            </View>
+                            <View style={styles.startModeTextContainer}>
+                              <Text style={styles.startModeTitle}>Strict Start</Text>
+                              <Text style={styles.startModeDescription}>
+                                First training day is{' '}
+                                {firstSessionDate.toLocaleDateString('en-US', {
+                                  weekday: 'long',
+                                  month: 'long',
+                                  day: 'numeric',
+                                })}
+                              </Text>
+                            </View>
+                          </Pressable>
+                          <Pressable
+                            style={styles.primaryButton}
+                            onPress={() => {
+                              setReviewConfirmed(true);
+                              setScheduleStep('review');
+                            }}
+                          >
+                            <Text style={styles.primaryButtonText}>Confirm</Text>
+                          </Pressable>
+                        </View>
+                      )}
+
+                      <View style={styles.firstSessionRow}>
+                        <Text style={styles.scheduleLabel}>First Session</Text>
+                        <Badge
+                          label={firstSessionDate.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                          tone="emerald"
+                        />
+                      </View>
+                    </Surface>
+
+                    <View style={styles.scheduleButtons}>
+                      <Pressable
+                        style={[
+                          styles.primaryButton,
+                          showStartModeChoice && !reviewConfirmed && styles.startButtonDisabled,
+                        ]}
+                        onPress={() => {
+                          const startDayIndex = programStartDate.getDay();
+                          const dayMap: Record<number, DayOfWeek> = {
+                            0: 'sunday',
+                            1: 'monday',
+                            2: 'tuesday',
+                            3: 'wednesday',
+                            4: 'thursday',
+                            5: 'friday',
+                            6: 'saturday',
+                          };
+                          const startDayName = dayMap[startDayIndex];
+                          if (!isFirstSelectedDay(startDayName, preferredGymDays)) {
+                            setShowStartModeChoice(true);
+                            setReviewConfirmed(false);
+                            // Don't advance to review yet - user needs to choose Smart/Strict
+                          } else {
+                            setReviewConfirmed(true);
+                            setFirstSessionDate(programStartDate);
+                            setShowStartModeChoice(false);
+                            setScheduleStep('review');
+                          }
+                        }}
+                        disabled={showStartModeChoice && !reviewConfirmed}
+                      >
+                        <Text style={styles.primaryButtonText}>Continue to Review</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => setScheduleStep('1rm')}
+                      >
+                        <Text style={styles.secondaryButtonText}>Back</Text>
+                      </Pressable>
                     </View>
-                  ) : (
-                    <Text style={styles.startButtonText}>Start Program</Text>
-                  )}
-                </Pressable>
+                  </View>
+                )}
+
+                {scheduleStep === 'review' && (
+                  <>
+                    <SectionTitle title="Review" />
+                    <Surface style={styles.scheduleCard}>
+                      <Text style={styles.reviewProgramName}>{selectedProgram?.name}</Text>
+                      <Text style={styles.reviewMeta}>
+                        {selectedProgram?.estimatedWeeks} weeks · {selectedProgram?.totalSessions}{' '}
+                        sessions · {selectedProgram?.daysPerWeek} days/week
+                      </Text>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>Training Days</Text>
+                        <View style={styles.reviewDaysRow}>
+                          {preferredGymDays.map((day) => (
+                            <Badge
+                              key={`reviewDay-${day}`}
+                              label={day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                              tone="sky"
+                            />
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>Preferred Time</Text>
+                        <Badge
+                          label={preferredTime.charAt(0).toUpperCase() + preferredTime.slice(1)}
+                          tone="neutral"
+                        />
+                      </View>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>Start Date</Text>
+                        <Text style={styles.reviewValue}>
+                          {programStartDate.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                      </View>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>First Session</Text>
+                        <Text style={styles.reviewValue}>
+                          {firstSessionDate.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                      </View>
+                    </Surface>
+
+                    <View style={styles.scheduleButtons}>
+                      <Pressable
+                        style={[
+                          styles.startButton,
+                          (startingProgram || !reviewConfirmed) && styles.startButtonDisabled,
+                        ]}
+                        onPress={handleStartProgram}
+                        disabled={startingProgram || !reviewConfirmed}
+                      >
+                        {startingProgram ? (
+                          <View style={styles.startButtonRow}>
+                            <ActivityIndicator size="small" color={colors.text} />
+                            <Text style={styles.startButtonText}>Starting Program...</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.startButtonText}>Confirm & Start Program</Text>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => {
+                          setReviewConfirmed(false);
+                          setScheduleStep('schedule');
+                          setTimeout(() => {
+                            scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+                          }, 100);
+                        }}
+                      >
+                        <Text style={styles.secondaryButtonText}>Back</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
               </View>
             </ScrollView>
           </KeyboardAvoidingView>

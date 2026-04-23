@@ -2506,6 +2506,136 @@ app.get('/api/programs/cycles/:id', async (c) => {
   }
 });
 
+app.get('/api/programs/cycles/:id/schedule', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleId = c.req.param('id');
+  const requestedTimezone = c.req.query('timezone');
+
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
+  if (timezoneResult.error) {
+    return c.json({ message: timezoneResult.error }, 400);
+  }
+  const timezone = timezoneResult.timezone;
+
+  try {
+    const result = await getProgramCycleWithWorkouts(db, cycleId, userId);
+    if (!result) {
+      return c.json({ message: 'Program cycle not found' }, 404);
+    }
+
+    const { cycle, workouts } = result;
+    const todayStr = formatLocalDate(new Date(), timezone);
+
+    const workoutIds = workouts.filter((w) => w.workoutId).map((w) => w.workoutId as string);
+
+    const linkedWorkouts =
+      workoutIds.length > 0
+        ? await db
+            .select({ id: schema.workouts.id, completedAt: schema.workouts.completedAt })
+            .from(schema.workouts)
+            .where(inArray(schema.workouts.id, workoutIds))
+            .all()
+        : [];
+
+    const linkedWorkoutMap = new Map(linkedWorkouts.map((w) => [w.id, w]));
+
+    const thisWeek: any[] = [];
+    const upcoming: any[] = [];
+    const completed: any[] = [];
+
+    for (const workout of workouts) {
+      const linkedWorkout = workout.workoutId ? linkedWorkoutMap.get(workout.workoutId) : undefined;
+      const isWorkoutComplete = workout.isComplete || !!linkedWorkout?.completedAt;
+
+      const parsedTargetLifts = parseProgramTargetLifts(workout.targetLifts);
+      const exercises = parsedTargetLifts.all.map((l) => l.name);
+
+      if (!workout.scheduledDate) {
+        const scheduleWorkout = {
+          cycleWorkoutId: workout.id,
+          workoutId: workout.workoutId ?? null,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+          name: workout.sessionName,
+          exercises,
+          scheduledDate: null,
+          scheduledTime: workout.scheduledTime ?? null,
+          scheduledTimezone: workout.scheduledTimezone ?? null,
+          status: isWorkoutComplete ? 'complete' : 'unscheduled',
+        };
+        if (isWorkoutComplete) {
+          completed.push(scheduleWorkout);
+        }
+        continue;
+      }
+
+      if (isWorkoutComplete) {
+        completed.push({
+          cycleWorkoutId: workout.id,
+          workoutId: workout.workoutId ?? null,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+          name: workout.sessionName,
+          exercises,
+          scheduledDate: workout.scheduledDate,
+          scheduledTime: workout.scheduledTime ?? null,
+          scheduledTimezone: workout.scheduledTimezone ?? null,
+          status: 'complete' as const,
+        });
+      } else if (workout.scheduledDate === todayStr) {
+        thisWeek.push({
+          cycleWorkoutId: workout.id,
+          workoutId: workout.workoutId ?? null,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+          name: workout.sessionName,
+          exercises,
+          scheduledDate: workout.scheduledDate,
+          scheduledTime: workout.scheduledTime ?? null,
+          scheduledTimezone: workout.scheduledTimezone ?? null,
+          status: 'today' as const,
+        });
+      } else if (workout.scheduledDate > todayStr) {
+        upcoming.push({
+          cycleWorkoutId: workout.id,
+          workoutId: workout.workoutId ?? null,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+          name: workout.sessionName,
+          exercises,
+          scheduledDate: workout.scheduledDate,
+          scheduledTime: workout.scheduledTime ?? null,
+          scheduledTimezone: workout.scheduledTimezone ?? null,
+          status: 'upcoming' as const,
+        });
+      }
+    }
+
+    return c.json({
+      cycle: {
+        id: cycle.id,
+        name: cycle.name,
+        timezone,
+        currentWeek: cycle.currentWeek ?? null,
+        currentSession: cycle.currentSession ?? null,
+        totalSessionsCompleted: cycle.totalSessionsCompleted,
+        totalSessionsPlanned: cycle.totalSessionsPlanned,
+      },
+      thisWeek,
+      upcoming,
+      completed,
+    });
+  } catch (_e) {
+    console.error('Failed to fetch program cycle schedule:', _e);
+    return c.json({ message: 'Failed to fetch program cycle schedule' }, 500);
+  }
+});
+
 app.put('/api/programs/cycles/:id', async (c) => {
   const session = await requireAuth(c);
   if (!session?.user) {
@@ -2830,6 +2960,96 @@ app.post('/api/programs/cycles/:id/workouts/current/start', async (c) => {
   }
 });
 
+app.post('/api/programs/cycle-workouts/:cycleWorkoutId/start', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleWorkoutId = c.req.param('cycleWorkoutId');
+
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const cycleWorkout = await db
+      .select({
+        id: schema.programCycleWorkouts.id,
+        cycleId: schema.programCycleWorkouts.cycleId,
+        sessionName: schema.programCycleWorkouts.sessionName,
+        targetLifts: schema.programCycleWorkouts.targetLifts,
+        workoutId: schema.programCycleWorkouts.workoutId,
+        scheduledTimezone: schema.programCycleWorkouts.scheduledTimezone,
+        userId: schema.userProgramCycles.userId,
+      })
+      .from(schema.programCycleWorkouts)
+      .innerJoin(
+        schema.userProgramCycles,
+        eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+      )
+      .where(eq(schema.programCycleWorkouts.id, cycleWorkoutId))
+      .get();
+
+    if (!cycleWorkout) {
+      return c.json({ message: 'Cycle workout not found' }, 404);
+    }
+
+    if (cycleWorkout.userId !== userId) {
+      return c.json({ message: 'Cycle workout not found' }, 404);
+    }
+
+    if (cycleWorkout.workoutId) {
+      const existingWorkout = await db
+        .select({
+          id: schema.workouts.id,
+          completedAt: schema.workouts.completedAt,
+          isDeleted: schema.workouts.isDeleted,
+        })
+        .from(schema.workouts)
+        .where(
+          and(eq(schema.workouts.id, cycleWorkout.workoutId), eq(schema.workouts.userId, userId)),
+        )
+        .get();
+
+      if (existingWorkout && !existingWorkout.isDeleted) {
+        return c.json({
+          workoutId: existingWorkout.id,
+          sessionName: cycleWorkout.sessionName,
+          created: false,
+          completed: !!existingWorkout.completedAt,
+          programCycleId: cycleWorkout.cycleId,
+        });
+      }
+    }
+
+    const timezoneResult = await resolveUserTimezone(
+      db,
+      userId,
+      body.timezone ?? cycleWorkout.scheduledTimezone ?? null,
+    );
+    if (timezoneResult.error || !timezoneResult.timezone) {
+      return c.json({ message: timezoneResult.error }, 400);
+    }
+
+    const workout = await createWorkoutFromProgramCycleWorkout(
+      db,
+      userId,
+      cycleWorkout.cycleId,
+      cycleWorkout,
+      timezoneResult.timezone,
+    );
+
+    return c.json({
+      workoutId: workout.id,
+      sessionName: workout.name,
+      created: true,
+      completed: false,
+      programCycleId: cycleWorkout.cycleId,
+    });
+  } catch (_e) {
+    return c.json({ message: 'Failed to start workout' }, 500);
+  }
+});
+
 app.post('/api/programs/cycles/:id/complete-session', async (c) => {
   const session = await requireAuth(c);
   if (!session?.user) {
@@ -2887,6 +3107,153 @@ app.post('/api/programs/cycles/:id/complete-session', async (c) => {
     return c.json(result);
   } catch (_e) {
     return c.json({ message: 'Failed to complete session' }, 500);
+  }
+});
+
+app.put('/api/programs/cycle-workouts/:cycleWorkoutId/schedule', async (c) => {
+  const session = await requireAuth(c);
+  if (!session?.user) {
+    return c.json({ message: 'Unauthorized' }, 401);
+  }
+  const userId = session.user.id;
+  const db = getDb(c);
+  const cycleWorkoutId = c.req.param('cycleWorkoutId');
+
+  try {
+    const body = await c.req.json();
+    const {
+      scheduledDate,
+      scheduledTime,
+      timezone: requestedTimezone,
+    } = body as {
+      scheduledDate: string;
+      scheduledTime?: string | null;
+      timezone?: string;
+    };
+
+    if (!scheduledDate || !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
+      return c.json({ message: 'Invalid scheduledDate. Must be YYYY-MM-DD' }, 400);
+    }
+
+    if (
+      scheduledTime !== undefined &&
+      scheduledTime !== null &&
+      !/^\d{2}:\d{2}$/.test(scheduledTime)
+    ) {
+      return c.json({ message: 'Invalid scheduledTime. Must be HH:mm or null' }, 400);
+    }
+
+    const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
+    if (timezoneResult.error || !timezoneResult.timezone) {
+      return c.json({ message: timezoneResult.error || 'Timezone resolution failed' }, 400);
+    }
+    const resolvedTimezone = timezoneResult.timezone;
+
+    const cycleWorkout = await db
+      .select({
+        id: schema.programCycleWorkouts.id,
+        cycleId: schema.programCycleWorkouts.cycleId,
+        scheduledDate: schema.programCycleWorkouts.scheduledDate,
+        scheduledTime: schema.programCycleWorkouts.scheduledTime,
+        scheduledTimezone: schema.programCycleWorkouts.scheduledTimezone,
+        weekNumber: schema.programCycleWorkouts.weekNumber,
+        sessionNumber: schema.programCycleWorkouts.sessionNumber,
+        sessionName: schema.programCycleWorkouts.sessionName,
+        targetLifts: schema.programCycleWorkouts.targetLifts,
+        isComplete: schema.programCycleWorkouts.isComplete,
+        workoutId: schema.programCycleWorkouts.workoutId,
+        userId: schema.userProgramCycles.userId,
+      })
+      .from(schema.programCycleWorkouts)
+      .innerJoin(
+        schema.userProgramCycles,
+        eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+      )
+      .where(eq(schema.programCycleWorkouts.id, cycleWorkoutId))
+      .get();
+
+    if (!cycleWorkout) {
+      return c.json({ message: 'Cycle workout not found' }, 404);
+    }
+
+    if (cycleWorkout.userId !== userId) {
+      return c.json({ message: 'Cycle workout not found' }, 404);
+    }
+
+    const existingOnDate = await db
+      .select({ id: schema.programCycleWorkouts.id })
+      .from(schema.programCycleWorkouts)
+      .innerJoin(
+        schema.userProgramCycles,
+        eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+      )
+      .where(
+        and(
+          eq(schema.userProgramCycles.userId, userId),
+          eq(schema.programCycleWorkouts.scheduledDate, scheduledDate),
+          eq(schema.programCycleWorkouts.id, cycleWorkoutId),
+        ),
+      )
+      .get();
+
+    let warning: 'date_collision' | undefined;
+    if (cycleWorkout.scheduledDate !== scheduledDate) {
+      const collision = await db
+        .select({ id: schema.programCycleWorkouts.id })
+        .from(schema.programCycleWorkouts)
+        .innerJoin(
+          schema.userProgramCycles,
+          eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+        )
+        .where(
+          and(
+            eq(schema.userProgramCycles.userId, userId),
+            eq(schema.programCycleWorkouts.scheduledDate, scheduledDate),
+            sql`${schema.programCycleWorkouts.id} != ${cycleWorkoutId}`,
+          ),
+        )
+        .get();
+
+      if (collision) {
+        warning = 'date_collision';
+      }
+    }
+
+    const updateValues: Record<string, unknown> = {
+      scheduledDate,
+      updatedAt: new Date(),
+    };
+
+    if (scheduledTime !== undefined) {
+      updateValues.scheduledTime = scheduledTime;
+      updateValues.scheduledTimezone = scheduledTime ? resolvedTimezone : null;
+    }
+
+    const updated = await db
+      .update(schema.programCycleWorkouts)
+      .set(updateValues)
+      .where(eq(schema.programCycleWorkouts.id, cycleWorkoutId))
+      .returning()
+      .get();
+
+    const workout = {
+      id: updated.id,
+      cycleId: updated.cycleId,
+      weekNumber: updated.weekNumber,
+      sessionNumber: updated.sessionNumber,
+      sessionName: updated.sessionName,
+      targetLifts: updated.targetLifts,
+      isComplete: updated.isComplete,
+      workoutId: updated.workoutId,
+      scheduledDate: updated.scheduledDate,
+      scheduledTime: updated.scheduledTime,
+      scheduledTimezone: updated.scheduledTimezone,
+    };
+
+    return c.json({ workout, ...(warning ? { warning } : {}) });
+  } catch (_e) {
+    console.log('DEBUG scheduleCycleWorkout error:', _e);
+    return c.json({ message: 'Failed to schedule workout' }, 500);
   }
 });
 
@@ -2978,11 +3345,22 @@ app.post('/api/whoop/auth', async (c) => {
     }
   } catch {}
 
-  const baseURL = resolveBaseURL(resolvedEnv, c.req.url);
+  const baseURL = resolveWhoopRedirectBaseURL(resolvedEnv, c.req.url);
   if (!baseURL) {
     return c.json(
       { error: 'WORKER_BASE_URL is not configured and no request base URL was available' },
       500,
+    );
+  }
+  if (!isAllowedWhoopRedirectBaseURL(baseURL)) {
+    return c.json(
+      {
+        error: 'invalid_whoop_redirect_uri',
+        message:
+          'WHOOP requires an HTTPS redirect URI unless the host is localhost. Use an HTTPS tunnel for Expo Go on a physical device.',
+        redirectUri: `${baseURL}/api/auth/whoop/callback`,
+      },
+      400,
     );
   }
   const redirectUri = `${baseURL}/api/auth/whoop/callback`;
@@ -2997,6 +3375,12 @@ app.post('/api/whoop/auth', async (c) => {
   });
 
   const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri);
+  console.info('[WHOOP] Authorization URL generated', {
+    redirectUri,
+    requestUrl: c.req.url,
+    configuredBaseURL: resolveBaseURL(resolvedEnv),
+    returnTo,
+  });
 
   return c.json({ authUrl, state });
 });
@@ -3007,12 +3391,23 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const error = c.req.query('error');
+  const errorDescription = c.req.query('error_description');
+  const errorUri = c.req.query('error_uri');
   const decodedState = await decodeWhoopOAuthState(resolvedEnv.BETTER_AUTH_SECRET, state);
   const deepLink = decodedState.returnTo ?? 'strength://whoop-callback';
 
   if (error) {
-    console.warn('[WHOOP] Callback returned OAuth error', { error });
-    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error }));
+    console.warn('[WHOOP] Callback returned OAuth error', {
+      error,
+      errorDescription,
+      errorUri,
+      requestUrl: c.req.url,
+    });
+    return c.redirect(
+      buildWhoopCallbackRedirect(deepLink, {
+        error: errorDescription ?? error,
+      }),
+    );
   }
 
   if (!code) {
@@ -3030,7 +3425,7 @@ app.get('/api/auth/whoop/callback', async (c) => {
 
   const userId = decodedState.userId;
   const db = getDb(c);
-  const baseURL = resolveBaseURL(resolvedEnv, c.req.url);
+  const baseURL = resolveWhoopRedirectBaseURL(resolvedEnv, c.req.url);
   if (!baseURL) {
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'missing_base_url' }));
   }
@@ -3160,6 +3555,53 @@ function buildWhoopCallbackRedirect(deepLink: string, params: Record<string, str
   const separator = deepLink.includes('?') ? '&' : '?';
   const query = new URLSearchParams(params).toString();
   return `${deepLink}${separator}${query}`;
+}
+
+function getURLOrigin(value: string | undefined) {
+  try {
+    return value ? new URL(value).origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackOrigin(value: string | undefined) {
+  const origin = getURLOrigin(value);
+  if (!origin) {
+    return false;
+  }
+
+  const hostname = new URL(origin).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function resolveWhoopRedirectBaseURL(env: WorkerEnv, requestUrl?: string) {
+  const configuredBaseURL = resolveBaseURL(env);
+  const requestBaseURL = getURLOrigin(requestUrl);
+
+  if (
+    env.APP_ENV === 'development' &&
+    isLoopbackOrigin(configuredBaseURL) &&
+    requestBaseURL &&
+    !isLoopbackOrigin(requestBaseURL)
+  ) {
+    return requestBaseURL;
+  }
+
+  return resolveBaseURL(env, requestUrl);
+}
+
+function isAllowedWhoopRedirectBaseURL(value: string) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' ||
+      url.hostname === 'localhost' ||
+      url.hostname.endsWith('.localhost')
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isAllowedWhoopReturnTo(value: string) {
@@ -3523,5 +3965,10 @@ app.get('/api/nutrition/body-stats', getBodyStatsHandler);
 app.post('/api/nutrition/body-stats', upsertBodyStatsHandler);
 
 app.post('/api/nutrition/training-context', upsertTrainingContextHandler);
+
+// Home API Routes
+import { homeSummaryHandler } from './api/home/summary';
+
+app.get('/api/home/summary', homeSummaryHandler);
 
 export default app;

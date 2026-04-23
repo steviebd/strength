@@ -86,6 +86,7 @@ export async function refreshAccessToken(
       client_id: resolvedEnv.WHOOP_CLIENT_ID!,
       client_secret: resolvedEnv.WHOOP_CLIENT_SECRET!,
       refresh_token: refreshToken,
+      scope: 'offline',
     }),
   });
 

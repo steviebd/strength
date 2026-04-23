@@ -79,7 +79,7 @@ export async function createProgramCycle(
       startingOhp1rm: data.ohp1rm,
       totalSessionsPlanned: data.totalSessionsPlanned,
       estimatedWeeks: data.estimatedWeeks,
-      preferredGymDays: data.preferredGymDays ?? null,
+      preferredGymDays: data.preferredGymDays ? JSON.stringify(data.preferredGymDays) : null,
       preferredTimeOfDay: data.preferredTimeOfDay ?? null,
       programStartDate: data.programStartDate ?? null,
       firstSessionDate: data.firstSessionDate ?? null,

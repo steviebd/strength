@@ -53,9 +53,38 @@ For local development with the iOS simulator on the same Mac, this would be:
 http://localhost:8787/api/auth/whoop/callback
 ```
 
-For physical devices or Android emulator, use your machine's LAN IP (e.g., `http://192.168.1.x:8787/api/auth/whoop/callback`).
-
 If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device, Android emulator, or standalone APK, `EXPO_PUBLIC_WORKER_BASE_URL` must be reachable from that device. `127.0.0.1` points at the device itself and auth requests will fail.
+
+WHOOP requires HTTPS redirect URIs unless the host ends in `localhost`, so physical-device Expo Go OAuth should use a Cloudflare Tunnel instead of a LAN HTTP URL.
+
+One-time Cloudflare Tunnel setup:
+
+```bash
+brew install cloudflared
+cloudflared tunnel login
+cloudflared tunnel create strength-dev
+cloudflared tunnel route dns strength-dev strength-dev.your-domain.com
+```
+
+Set these in Infisical `dev`:
+
+```bash
+CLOUDFLARE_TUNNEL_NAME=strength-dev
+CLOUDFLARE_TUNNEL_HOSTNAME=strength-dev.your-domain.com
+WORKER_BASE_URL=https://strength-dev.your-domain.com
+```
+
+Then add this WHOOP redirect URI:
+
+```text
+https://strength-dev.your-domain.com/api/auth/whoop/callback
+```
+
+With `CLOUDFLARE_TUNNEL_NAME` and `CLOUDFLARE_TUNNEL_HOSTNAME` set, `bun run dev` and `bun run dev:remote` automatically start the tunnel on the MacBook and point the worker config at the HTTPS hostname. `dev` uses local D1; `dev:remote` uses remote dev D1.
+
+The dev script runs `cloudflared tunnel run --url http://localhost:8787 strength-dev`, so this repo does not require a `~/.cloudflared/config.yml` file for local development. If you prefer to manage ingress in Cloudflare's dashboard or a local config file, keep it equivalent to `strength-dev.your-domain.com -> http://localhost:8787`.
+
+This should be a public hostname, not a Cloudflare private hostname or private CIDR route. WHOOP's OAuth service must be able to call the redirect URI from the public internet, and it will not be on your Cloudflare WARP/private network. Keep the tunnel config in Infisical `dev` only, stop `bun run dev` when not testing, and rely on the worker's app auth for protected APIs. The OAuth callback path itself must remain publicly reachable for WHOOP to complete the flow.
 
 ## Local setup
 

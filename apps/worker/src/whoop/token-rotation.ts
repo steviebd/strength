@@ -17,6 +17,8 @@ interface DecryptedTokens {
   refreshToken: string;
 }
 
+const refreshLocks = new Map<string, Promise<string>>();
+
 async function getIntegration(
   db: DrizzleD1Database<typeof schema>,
   userId: string,
@@ -68,6 +70,23 @@ async function decryptStoredTokens(
   }
 
   return { accessToken, refreshToken };
+}
+
+async function refreshWithLock(
+  integrationId: string,
+  refresh: () => Promise<string>,
+): Promise<string> {
+  const existingRefresh = refreshLocks.get(integrationId);
+  if (existingRefresh) {
+    return existingRefresh;
+  }
+
+  const refreshPromise = refresh().finally(() => {
+    refreshLocks.delete(integrationId);
+  });
+  refreshLocks.set(integrationId, refreshPromise);
+
+  return refreshPromise;
 }
 
 async function refreshWhoopAccessToken(
@@ -122,7 +141,9 @@ export async function getValidAccessToken(
 
     if (await shouldRotate(integration)) {
       console.log('[WHOOP Token] Token needs rotation, refreshing...');
-      const token = await refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken);
+      const token = await refreshWithLock(integration.id, () =>
+        refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken),
+      );
       return { token };
     }
 
@@ -154,7 +175,9 @@ export async function forceRefreshAccessToken(
       integration,
       resolvedEnv.ENCRYPTION_MASTER_KEY!,
     );
-    const token = await refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken);
+    const token = await refreshWithLock(integration.id, () =>
+      refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken),
+    );
     return { token };
   } catch (error) {
     console.error('[WHOOP Token] Error force-refreshing access token:', error);

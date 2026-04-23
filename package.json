@@ -18,7 +18,7 @@
     "db:apply:remote": "bun run --filter @strength/worker db:apply:remote",
     "db:apply:staging": "bun run --filter @strength/worker db:apply:staging",
     "db:apply:prod": "bun run --filter @strength/worker db:apply:prod",
-    "db:reset": "rm -rf apps/worker/.wrangler/ && bun run db:push:dev",
+    "db:reset": "rm -rf apps/worker/.wrangler/ && bun run db:apply:local",
     "lint:keys": "bun scripts/lint-react-keys.mjs",
     "typecheck": "bun --filter '*' typecheck",
     "setup": "bun install",
@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.5",
+    "@react-native-community/datetimepicker": "^9.1.0",
     "@strength/db": "workspace:*",
     "@strength/worker": "workspace:*",
     "better-auth": "^1.6.5",
