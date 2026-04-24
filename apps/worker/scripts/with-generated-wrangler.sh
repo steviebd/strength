@@ -35,4 +35,5 @@ fi
 
 cd "$WORKER_DIR"
 bun x tsx scripts/generate-wrangler-config.ts --env "$ENV_NAME" --d1-mode "$D1_MODE"
+export PATH="$WORKER_DIR/../../node_modules/.bin:$WORKER_DIR/node_modules/.bin:$PATH"
 exec "$@"

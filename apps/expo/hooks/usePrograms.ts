@@ -22,7 +22,7 @@ export interface ActiveProgram {
   totalSessionsPlanned: number;
 }
 
-export interface LatestOneRMs {
+interface LatestOneRMs {
   squat1rm: number | null;
   bench1rm: number | null;
   deadlift1rm: number | null;

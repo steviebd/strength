@@ -78,7 +78,7 @@ Deploy workflows use Infisical OIDC, not long-lived Infisical client credentials
 
 ## Network / Auth for Physical Devices
 
-`wrangler dev` binds to `0.0.0.0`. The Expo app's `BETTER_AUTH_URL` and `EXPO_PUBLIC_API_URL` must point to your machine's LAN IP (not `127.0.0.1`) when testing from a physical Android device or emulator. Use `ifconfig` to find your LAN IP.
+`wrangler dev` binds to `0.0.0.0`. The Expo app's `EXPO_PUBLIC_WORKER_BASE_URL` must point to your machine's LAN IP (not `127.0.0.1`) when testing from a physical Android device or emulator. Use `ifconfig` to find your LAN IP.
 
 ## TypeScript
 

@@ -1,22 +1,10 @@
 import { eq, and } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
-import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { formatLocalDate } from '@strength/db';
+import { createHandler } from '../auth';
 import { resolveUserTimezone } from '../../lib/timezone';
 
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
-
-export async function getEntriesHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
+export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
   const requestedTimezone = c.req.query('timezone');
   const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   if (timezoneResult.error || !timezoneResult.timezone) {
@@ -48,16 +36,9 @@ export async function getEntriesHandler(c: any) {
     .all();
 
   return c.json(entries);
-}
+});
 
-export async function createEntryHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
+export const createEntryHandler = createHandler(async (c, { userId, db }) => {
   let body: {
     name?: string;
     mealType?: string;
@@ -123,4 +104,4 @@ export async function createEntryHandler(c: any) {
     .get();
 
   return c.json(entry, 201);
-}
+});

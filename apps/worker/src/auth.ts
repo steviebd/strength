@@ -3,11 +3,12 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
+import { hashPassword, verifyPassword } from './auth/password';
 
 export interface WorkerEnv {
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL: string;
+  WORKER_BASE_URL: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
   APP_ENV?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -39,9 +40,25 @@ function normalizeBaseURL(value: string | undefined) {
   }
 
   try {
-    return new URL(trimmed).origin;
+    const origin = new URL(trimmed).origin;
+    return origin === 'null' ? undefined : origin;
   } catch {
     return undefined;
+  }
+}
+
+function normalizeTrustedOrigin(value: string | undefined) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const origin = new URL(trimmed).origin;
+    return origin === 'null' ? trimmed : origin;
+  } catch {
+    return trimmed;
   }
 }
 
@@ -52,7 +69,7 @@ function parseTrustedOrigins(value: string | undefined) {
 
   return value
     .split(',')
-    .map((origin) => normalizeBaseURL(origin))
+    .map((origin) => normalizeTrustedOrigin(origin))
     .filter((origin): origin is string => Boolean(origin));
 }
 
@@ -82,7 +99,7 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
     ...env,
     APP_ENV: env.APP_ENV ?? processEnv.APP_ENV,
     BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET ?? processEnv.BETTER_AUTH_SECRET ?? '',
-    BETTER_AUTH_URL: env.BETTER_AUTH_URL ?? processEnv.BETTER_AUTH_URL ?? '',
+    WORKER_BASE_URL: env.WORKER_BASE_URL ?? processEnv.WORKER_BASE_URL ?? '',
     BETTER_AUTH_TRUSTED_ORIGINS:
       env.BETTER_AUTH_TRUSTED_ORIGINS ?? processEnv.BETTER_AUTH_TRUSTED_ORIGINS,
     CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID ?? processEnv.CLOUDFLARE_ACCOUNT_ID,
@@ -98,7 +115,7 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
 
 export function resolveBaseURL(env: WorkerEnv, requestUrl?: string) {
   const resolvedEnv = resolveWorkerEnv(env);
-  const configuredBaseURL = normalizeBaseURL(resolvedEnv.BETTER_AUTH_URL);
+  const configuredBaseURL = normalizeBaseURL(resolvedEnv.WORKER_BASE_URL);
 
   if (configuredBaseURL) {
     return configuredBaseURL;
@@ -112,12 +129,15 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
   const db = drizzle(resolvedEnv.DB, { schema });
   const baseURL = resolveBaseURL(resolvedEnv, requestUrl);
   const cookiePolicy = resolveCookiePolicy(baseURL);
+  const trustedRequestOrigin =
+    resolvedEnv.APP_ENV === 'development' ? normalizeTrustedOrigin(requestOrigin) : undefined;
   const trustedOrigins = [
     'strength://',
     'strength://*',
+    ...(resolvedEnv.APP_ENV === 'development' ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
     ...parseTrustedOrigins(resolvedEnv.BETTER_AUTH_TRUSTED_ORIGINS),
     ...(baseURL ? [baseURL] : []),
-    ...(normalizeBaseURL(requestOrigin) ? [normalizeBaseURL(requestOrigin)!] : []),
+    ...(trustedRequestOrigin ? [trustedRequestOrigin] : []),
   ];
 
   return betterAuth({
@@ -129,15 +149,15 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
     }),
     emailAndPassword: {
       enabled: true,
+      password: {
+        hash: hashPassword,
+        verify: verifyPassword,
+      },
     },
     trustedOrigins: Array.from(new Set(trustedOrigins)),
     cookies: {
       secure: cookiePolicy.secure,
       sameSite: cookiePolicy.sameSite,
-    },
-    rateLimit: {
-      maxRequests: 5,
-      window: 60,
     },
     plugins: [expo()],
   });

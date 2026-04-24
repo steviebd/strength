@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Keyboard,
+  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
   Platform,
@@ -13,7 +13,9 @@ import {
   Text,
   TextInput,
   View,
+  ActionSheetIOS,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -31,9 +33,15 @@ import {
   type ActiveProgram,
   type ProgramListItem,
 } from '@/hooks/usePrograms';
+import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, spacing, radius, typography, layout } from '@/theme';
 
 const LBS_TO_KG = 0.453592;
+
+type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+type OneRmValues = { squat: string; bench: string; deadlift: string; ohp: string };
+type StartMode = 'smart' | 'strict';
+type PreferredTime = 'morning' | 'afternoon' | 'evening';
 
 const PROGRAM_INFO: ProgramListItem[] = [
   {
@@ -126,6 +134,54 @@ const PROGRAM_INFO: ProgramListItem[] = [
 
 function getDisplaySessionNumber(program: ActiveProgram) {
   return Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
+}
+
+function computeFirstSessionDate(startDate: Date, gymDays: DayOfWeek[], mode: StartMode): Date {
+  const dayMap: Record<number, DayOfWeek> = {
+    0: 'sunday',
+    1: 'monday',
+    2: 'tuesday',
+    3: 'wednesday',
+    4: 'thursday',
+    5: 'friday',
+    6: 'saturday',
+  };
+
+  if (mode === 'smart') {
+    return startDate;
+  }
+
+  const startDayIndex = startDate.getDay();
+  const startDayName = dayMap[startDayIndex];
+  const startDayIdx = gymDays.indexOf(startDayName);
+
+  if (startDayIdx === -1) {
+    for (let i = 1; i <= 7; i++) {
+      const checkDay = (startDayIndex + i) % 7;
+      const checkDayName = dayMap[checkDay];
+      if (gymDays.includes(checkDayName)) {
+        const result = new Date(startDate);
+        result.setDate(result.getDate() + i);
+        return result;
+      }
+    }
+  }
+
+  return startDate;
+}
+
+function isFirstSelectedDay(dayName: DayOfWeek, gymDays: DayOfWeek[]): boolean {
+  const dayOrder: Record<DayOfWeek, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+  const sorted = [...gymDays].sort((a, b) => dayOrder[a] - dayOrder[b]);
+  return sorted[0] === dayName;
 }
 
 const styles = StyleSheet.create({
@@ -338,6 +394,180 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     textAlign: 'center',
   },
+  dayChip: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayChipSelected: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayChipText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  dayChipTextSelected: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  timeChip: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeChipSelected: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeChipText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  timeChipTextSelected: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  scheduleCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  scheduleLabel: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    marginBottom: spacing.xs,
+  },
+  scheduleHint: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginBottom: spacing.md,
+  },
+  dayChipsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  timeChipsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  dateButton: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  dateButtonText: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+  },
+  startModeSection: {
+    marginTop: spacing.md,
+    gap: spacing.sm,
+  },
+  startModeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterSelected: {
+    borderColor: colors.accent,
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+  },
+  startModeTextContainer: {
+    flex: 1,
+  },
+  startModeTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  startModeDescription: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginTop: spacing.xs,
+  },
+  firstSessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  scheduleButtons: {
+    gap: spacing.md,
+  },
+  reviewProgramName: {
+    color: colors.text,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+    marginBottom: spacing.xs,
+  },
+  reviewMeta: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    marginBottom: spacing.lg,
+  },
+  reviewSection: {
+    marginBottom: spacing.md,
+  },
+  reviewLabel: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginBottom: spacing.xs,
+  },
+  reviewDaysRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  reviewValue: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+  },
   activeSection: {
     marginBottom: spacing.xl,
   },
@@ -365,34 +595,33 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   activeCardButtons: {
+    gap: spacing.md,
+  },
+  activeCardButtonsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  activeOpenButton: {
-    flex: 1,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.sm,
     alignItems: 'center',
   },
-  activeOpenButtonText: {
-    color: colors.text,
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
+  flex1: {
+    flex: 1,
   },
-  activeDeleteButton: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  deleteButton: {
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.2)',
+    backgroundColor: 'rgba(244,63,94,0.1)',
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
   },
-  activeDeleteButtonText: {
-    color: colors.error,
-    fontSize: typography.fontSizes.sm,
+  deleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  deleteButtonText: {
+    fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
+    color: colors.error,
   },
 });
 
@@ -418,21 +647,32 @@ export default function ProgramsScreen() {
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [values, setValues] = useState({ squat: '', bench: '', deadlift: '', ohp: '' });
-  const [keyboardInset, setKeyboardInset] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
+  const [values, setValues] = useState<OneRmValues>({
+    squat: '',
+    bench: '',
+    deadlift: '',
+    ohp: '',
+  });
+  const [scheduleStep, setScheduleStep] = useState<'1rm' | 'schedule' | 'review'>('1rm');
+  const [preferredGymDays, setPreferredGymDays] = useState<DayOfWeek[]>([]);
+  const [preferredTime, setPreferredTime] = useState<PreferredTime>('morning');
+  const [programStartDate, setProgramStartDate] = useState<Date>(new Date());
+  const [startMode, setStartMode] = useState<StartMode>('smart');
+  const [firstSessionDate, setFirstSessionDate] = useState<Date>(new Date());
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [showStartModeChoice, setShowStartModeChoice] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const { activeTimezone, weightUnit } = useUserPreferences();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const scrollViewRef = useRef<any>(null);
-  const detailScrollRef = useRef<any>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const detailScrollRef = useRef<ScrollView>(null);
   const inputRefs = useRef<Record<string, any>>({});
-  const inputPositions = useRef<Record<string, number>>({});
-  const activeInputKey = useRef<string | null>(null);
-  const keyboardHeight = useRef(0);
-  const scrollViewportHeight = useRef(0);
-  const scrollOffsetY = useRef(0);
-  const pendingScrollTimeouts = useRef<number[]>([]);
+  const modalContentY = useRef(0);
+  const inputGroupY = useRef(0);
+  const scheduleSectionY = useRef<number | null>(null);
+  const inputCardLayouts = useRef<Record<string, number>>({});
+  const valuesRef = useRef<OneRmValues>(values);
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
     useProgramsCatalog(PROGRAM_INFO);
@@ -444,39 +684,64 @@ export default function ProgramsScreen() {
   const { latestOneRMs, refetch: refetchLatestOneRms } = useLatestOneRms();
   const loading = isLoadingPrograms || isLoadingActivePrograms;
 
-  const scrollToInput = (key: string) => {
-    const scrollView = scrollViewRef.current;
-    if (!scrollView || scrollViewportHeight.current === 0) {
+  const handleInputCardLayout = (key: string, event: LayoutChangeEvent) => {
+    inputCardLayouts.current[key] = event.nativeEvent.layout.y;
+  };
+
+  const scrollToInputByKey = (key: string) => {
+    const cardY = inputCardLayouts.current[key];
+    if (typeof cardY === 'number' && scrollViewRef.current) {
+      const inputY = modalContentY.current + inputGroupY.current + cardY;
+      const targetY = Math.max(0, inputY - 120);
+      scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+      }, 250);
       return;
     }
 
-    const inputY = inputPositions.current[key];
-    if (inputY === undefined) {
+    const inputRef = inputRefs.current[key];
+    if (inputRef && scrollViewRef.current) {
+      inputRef.measure(
+        (
+          _x: number,
+          _y: number,
+          _width: number,
+          _height: number,
+          _pageX: number,
+          pageY: number,
+        ) => {
+          const KEYBOARD_HEIGHT = 300;
+          const TOP_OFFSET = 100;
+          const targetY = Math.max(0, pageY - KEYBOARD_HEIGHT - TOP_OFFSET);
+          scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+        },
+      );
+    }
+  };
+
+  const scrollToScheduleSection = useCallback(() => {
+    if (scheduleSectionY.current === null || !scrollViewRef.current) {
       return;
     }
 
-    const desiredTopOffset = Platform.OS === 'android' ? 8 : 24;
-    const targetY = Math.max(0, inputY - desiredTopOffset);
+    const targetY = Math.max(0, modalContentY.current + scheduleSectionY.current - spacing.sm);
+    scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+  }, []);
 
-    scrollView.scrollTo({ y: targetY, animated: true });
-  };
+  useEffect(() => {
+    if (scheduleStep !== 'schedule') {
+      return;
+    }
 
-  const clearPendingScrolls = () => {
-    pendingScrollTimeouts.current.forEach((timeoutId) => clearTimeout(timeoutId));
-    pendingScrollTimeouts.current = [];
-  };
+    const shortDelay = setTimeout(scrollToScheduleSection, 50);
+    const layoutDelay = setTimeout(scrollToScheduleSection, 250);
 
-  const scheduleScrollToInput = (key: string) => {
-    clearPendingScrolls();
-    [0, 120, 280, 420].forEach((delay) => {
-      const timeoutId = setTimeout(() => {
-        if (activeInputKey.current === key) {
-          scrollToInput(key);
-        }
-      }, delay);
-      pendingScrollTimeouts.current.push(timeoutId as unknown as number);
-    });
-  };
+    return () => {
+      clearTimeout(shortDelay);
+      clearTimeout(layoutDelay);
+    };
+  }, [scheduleStep, scrollToScheduleSection]);
 
   const focusNextInput = (key: (typeof inputOrder)[number]) => {
     const currentIndex = inputOrder.indexOf(key);
@@ -487,37 +752,27 @@ export default function ProgramsScreen() {
     }
   };
 
-  const handleInputLayout =
-    (key: string) =>
-    (event: LayoutChangeEvent): void => {
-      inputPositions.current[key] = event.nativeEvent.layout.y;
-    };
+  const hasAllOneRmValues = (oneRmValues: OneRmValues) =>
+    Boolean(oneRmValues.squat && oneRmValues.bench && oneRmValues.deadlift && oneRmValues.ohp);
 
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+  const setOneRmValues = (nextValues: OneRmValues) => {
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+  };
 
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      keyboardHeight.current = event.endCoordinates.height;
-      setKeyboardInset(event.endCoordinates.height);
+  const updateOneRmValue = (key: keyof OneRmValues, value: string) => {
+    const nextValue = value.replace(/[^0-9.]/g, '');
+    setOneRmValues({ ...valuesRef.current, [key]: nextValue });
+  };
 
-      if (activeInputKey.current) {
-        scheduleScrollToInput(activeInputKey.current);
-      }
-    });
+  const continueToSchedule = () => {
+    if (startingProgram || !hasAllOneRmValues(valuesRef.current)) {
+      return;
+    }
 
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      keyboardHeight.current = 0;
-      setKeyboardInset(0);
-      clearPendingScrolls();
-    });
-
-    return () => {
-      clearPendingScrolls();
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
+    setReviewConfirmed(false);
+    setScheduleStep('schedule');
+  };
 
   const refreshProgramsScreen = useCallback(
     async (showRefreshIndicator = false) => {
@@ -546,7 +801,7 @@ export default function ProgramsScreen() {
     }, [refreshProgramsScreen]),
   );
 
-  const getTotalSessions = (slug: string): number => {
+  const _getTotalSessions = (slug: string): number => {
     switch (slug) {
       case 'stronglifts-5x5':
         return 24;
@@ -572,6 +827,8 @@ export default function ProgramsScreen() {
   };
 
   const handleStartProgram = async () => {
+    if (scheduleStep !== 'review') return;
+
     if (!values.squat || !values.bench || !values.deadlift || !values.ohp) {
       Alert.alert('Missing Values', 'Please enter all your 1RM values to continue.');
       return;
@@ -593,8 +850,10 @@ export default function ProgramsScreen() {
           bench1rm: convertToKg(parseFloat(values.bench)),
           deadlift1rm: convertToKg(parseFloat(values.deadlift)),
           ohp1rm: convertToKg(parseFloat(values.ohp)),
-          totalSessionsPlanned: getTotalSessions(selectedProgram.slug),
-          estimatedWeeks: selectedProgram.estimatedWeeks,
+          preferredGymDays,
+          preferredTimeOfDay: preferredTime,
+          programStartDate: programStartDate.toISOString().split('T')[0],
+          firstSessionDate: firstSessionDate.toISOString().split('T')[0],
           timezone: activeTimezone,
         }),
       });
@@ -602,14 +861,16 @@ export default function ProgramsScreen() {
       setShowStartModal(false);
       setShowDetailModal(false);
       setSelectedProgram(null);
-      setValues({ squat: '', bench: '', deadlift: '', ohp: '' });
+      setOneRmValues({ squat: '', bench: '', deadlift: '', ohp: '' });
+      setScheduleStep('1rm');
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
         queryClient.refetchQueries({ queryKey: ['latestOneRms'] }),
+        queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] }),
       ]);
 
       if (cycle.id) {
-        router.push(`/(app)/workouts?focusProgramId=${cycle.id}`);
+        router.push(`/(app)/home?focusProgramId=${cycle.id}`);
       }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
@@ -701,13 +962,30 @@ export default function ProgramsScreen() {
         return weightUnit === 'lbs' ? (value * 2.20462).toFixed(1) : value.toString();
       };
 
-      setValues({
+      setOneRmValues({
         squat: toDisplay(latestOneRMs.squat1rm),
         bench: toDisplay(latestOneRMs.bench1rm),
         deadlift: toDisplay(latestOneRMs.deadlift1rm),
         ohp: toDisplay(latestOneRMs.ohp1rm),
       });
+    } else {
+      setOneRmValues({ squat: '', bench: '', deadlift: '', ohp: '' });
     }
+
+    const defaultDays: DayOfWeek[] =
+      selectedProgram?.daysPerWeek === 4
+        ? ['monday', 'wednesday', 'thursday', 'friday']
+        : ['monday', 'wednesday', 'friday'];
+
+    const startDate = new Date();
+    setPreferredGymDays(defaultDays);
+    setPreferredTime('morning');
+    setProgramStartDate(startDate);
+    setStartMode('smart');
+    setFirstSessionDate(startDate);
+    setReviewConfirmed(false);
+    setShowStartModeChoice(false);
+    setScheduleStep('1rm');
     setShowStartModal(true);
   };
 
@@ -749,28 +1027,35 @@ export default function ProgramsScreen() {
                     </View>
                   </View>
                   <View style={styles.activeCardButtons}>
-                    <Pressable
-                      style={styles.activeOpenButton}
+                    <ActionButton
+                      label={
+                        openingProgramWorkoutId === program.id ? 'Opening...' : 'Start Next Session'
+                      }
+                      icon="play"
                       onPress={() => handleOpenCurrentProgramWorkout(program)}
                       disabled={openingProgramWorkoutId === program.id}
-                    >
-                      {openingProgramWorkoutId === program.id ? (
-                        <ActivityIndicator size="small" color={colors.text} />
-                      ) : (
-                        <Text style={styles.activeOpenButtonText}>Continue Workout</Text>
-                      )}
-                    </Pressable>
-                    <Pressable
-                      style={styles.activeDeleteButton}
-                      onPress={() => handleDeleteProgram(program)}
-                      disabled={deletingProgramId === program.id}
-                    >
-                      {deletingProgramId === program.id ? (
-                        <ActivityIndicator size="small" color={colors.error} />
-                      ) : (
-                        <Text style={styles.activeDeleteButtonText}>Delete</Text>
-                      )}
-                    </Pressable>
+                    />
+                    <View style={styles.activeCardButtonsRow}>
+                      <View style={styles.flex1}>
+                        <ActionButton
+                          label="View Schedule"
+                          icon="calendar-outline"
+                          variant="secondary"
+                          onPress={() => router.push(`/program-schedule?cycleId=${program.id}`)}
+                          disabled={openingProgramWorkoutId === program.id}
+                        />
+                      </View>
+                      <Pressable
+                        style={[
+                          styles.deleteButton,
+                          deletingProgramId === program.id && styles.deleteButtonDisabled,
+                        ]}
+                        onPress={() => handleDeleteProgram(program)}
+                        disabled={deletingProgramId === program.id}
+                      >
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
               ))}
@@ -904,109 +1189,487 @@ export default function ProgramsScreen() {
         onRequestClose={() => setShowStartModal(false)}
       >
         {showStartModal ? (
-          <ScrollView
-            ref={scrollViewRef}
-            style={styles.modalScroll}
-            contentContainerStyle={{
-              paddingBottom: keyboardInset + insets.bottom + Math.max(520, viewportHeight * 1.35),
-            }}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            onLayout={(event) => {
-              scrollViewportHeight.current = event.nativeEvent.layout.height;
-              setViewportHeight(event.nativeEvent.layout.height);
-            }}
-            onScroll={(event) => {
-              scrollOffsetY.current = event.nativeEvent.contentOffset.y;
-            }}
-            scrollEventThrottle={16}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
           >
-            <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
-              <Pressable style={styles.backButton} onPress={() => setShowStartModal(false)}>
-                <Ionicons name="chevron-back" size={24} color={colors.text} />
-              </Pressable>
-              <Text style={styles.modalTitle}>Enter 1RM</Text>
-            </View>
-
-            <View style={styles.modalContent}>
-              <View style={styles.infoBox}>
-                <Text style={styles.infoBoxTitle}>How to estimate your 1RM</Text>
-                <Text style={styles.infoBoxText}>
-                  Your 1RM is the maximum weight you can lift for a single rep with good form. If
-                  you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
-                  using the formula: 1RM = weight × (1 + reps/30).
-                </Text>
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.modalScroll}
+              contentContainerStyle={{
+                paddingBottom: insets.bottom + 400,
+              }}
+              keyboardShouldPersistTaps="always"
+              keyboardDismissMode="interactive"
+            >
+              <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
+                <Pressable style={styles.backButton} onPress={() => setShowStartModal(false)}>
+                  <Ionicons name="chevron-back" size={24} color={colors.text} />
+                </Pressable>
+                <Text style={styles.modalTitle}>Enter 1RM</Text>
               </View>
 
-              <Text style={styles.programNameTitle}>Starting Program</Text>
-              <Text style={styles.programNameTitle}>{selectedProgram?.name}</Text>
-              <Text style={styles.instructionsText}>
-                Enter your current one-rep max (1RM) estimates for each lift. These will be used to
-                calculate your working weights.
-              </Text>
-
-              <View style={styles.inputGroup}>
-                {[
-                  { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
-                  { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
-                  { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
-                  { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
-                ].map(({ key, label, icon }) => (
-                  <View key={`program-1rm:${key}`} style={styles.inputCard}>
-                    <View style={styles.inputHeaderRow}>
-                      <View style={styles.inputLabelRow}>
-                        <Text style={styles.inputIcon}>{icon}</Text>
-                        <Text style={styles.inputLabel}>{label}</Text>
-                      </View>
-                      <Text style={styles.inputUnit}>{weightUnit}</Text>
-                    </View>
-                    <TextInput
-                      ref={(ref) => {
-                        inputRefs.current[key] = ref;
-                      }}
-                      style={styles.textInput}
-                      onLayout={handleInputLayout(key)}
-                      value={values[key as keyof typeof values]}
-                      onChangeText={(v) =>
-                        setValues((prev) => ({ ...prev, [key]: v.replace(/[^0-9.]/g, '') }))
-                      }
-                      onFocus={() => {
-                        activeInputKey.current = key;
-                        scheduleScrollToInput(key);
-                      }}
-                      onBlur={() => {
-                        if (activeInputKey.current === key) {
-                          activeInputKey.current = null;
-                        }
-                        clearPendingScrolls();
-                      }}
-                      placeholder="0"
-                      placeholderTextColor={colors.placeholderText}
-                      keyboardType="decimal-pad"
-                      returnKeyType={key === 'ohp' ? 'done' : 'next'}
-                      blurOnSubmit={key === 'ohp'}
-                      onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
-                    />
-                  </View>
-                ))}
-              </View>
-
-              <Pressable
-                style={[styles.startButton, startingProgram && styles.startButtonDisabled]}
-                onPress={handleStartProgram}
-                disabled={startingProgram}
+              <View
+                style={styles.modalContent}
+                onLayout={(event) => {
+                  modalContentY.current = event.nativeEvent.layout.y;
+                }}
               >
-                {startingProgram ? (
-                  <View style={styles.startButtonRow}>
-                    <ActivityIndicator size="small" color={colors.text} />
-                    <Text style={styles.startButtonText}>Starting Program...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.startButtonText}>Start Program</Text>
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoBoxTitle}>How to estimate your 1RM</Text>
+                  <Text style={styles.infoBoxText}>
+                    Your 1RM is the maximum weight you can lift for a single rep with good form. If
+                    you're unsure, you can estimate by lifting a weight you can do for 5-8 reps and
+                    using the formula: 1RM = weight × (1 + reps/30).
+                  </Text>
+                </View>
+
+                <Text style={styles.programNameTitle}>Starting Program</Text>
+                <Text style={styles.programNameTitle}>{selectedProgram?.name}</Text>
+                <Text style={styles.instructionsText}>
+                  Enter your current one-rep max (1RM) estimates for each lift. These will be used
+                  to calculate your working weights.
+                </Text>
+
+                <View
+                  style={styles.inputGroup}
+                  onLayout={(event) => {
+                    inputGroupY.current = event.nativeEvent.layout.y;
+                  }}
+                >
+                  {[
+                    { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
+                    { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
+                    { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
+                    { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
+                  ].map(({ key, label, icon }) => (
+                    <View
+                      key={`program-1rm:${key}`}
+                      style={styles.inputCard}
+                      onLayout={(event) => handleInputCardLayout(key, event)}
+                    >
+                      <View style={styles.inputHeaderRow}>
+                        <View style={styles.inputLabelRow}>
+                          <Text style={styles.inputIcon}>{icon}</Text>
+                          <Text style={styles.inputLabel}>{label}</Text>
+                        </View>
+                        <Text style={styles.inputUnit}>{weightUnit}</Text>
+                      </View>
+                      <TextInput
+                        ref={(ref) => {
+                          inputRefs.current[key] = ref;
+                        }}
+                        style={styles.textInput}
+                        value={values[key as keyof typeof values]}
+                        onChangeText={(v) => updateOneRmValue(key as keyof OneRmValues, v)}
+                        onFocus={() => scrollToInputByKey(key)}
+                        placeholder="0"
+                        placeholderTextColor={colors.placeholderText}
+                        keyboardType="decimal-pad"
+                        returnKeyType={key === 'ohp' ? 'done' : 'next'}
+                        blurOnSubmit={key === 'ohp'}
+                        onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
+                      />
+                    </View>
+                  ))}
+                </View>
+
+                {scheduleStep === '1rm' && (
+                  <>
+                    <Pressable
+                      style={[
+                        styles.primaryButton,
+                        (!hasAllOneRmValues(values) || startingProgram) &&
+                          styles.startButtonDisabled,
+                      ]}
+                      onPressIn={continueToSchedule}
+                      onPress={continueToSchedule}
+                      accessibilityState={{
+                        disabled: !hasAllOneRmValues(values) || startingProgram,
+                      }}
+                    >
+                      <Text style={styles.primaryButtonText}>Continue to Schedule</Text>
+                    </Pressable>
+                  </>
                 )}
-              </Pressable>
-            </View>
-          </ScrollView>
+
+                {scheduleStep === 'schedule' && (
+                  <View
+                    onLayout={(event) => {
+                      scheduleSectionY.current = event.nativeEvent.layout.y;
+                    }}
+                  >
+                    <SectionTitle title="Schedule" />
+                    <Surface style={styles.scheduleCard}>
+                      <Text style={styles.scheduleLabel}>Preferred Training Days</Text>
+                      <Text style={styles.scheduleHint}>
+                        Select {selectedProgram?.daysPerWeek} days per week
+                      </Text>
+                      <View style={styles.dayChipsRow}>
+                        {(
+                          [
+                            'monday',
+                            'tuesday',
+                            'wednesday',
+                            'thursday',
+                            'friday',
+                            'saturday',
+                            'sunday',
+                          ] as DayOfWeek[]
+                        ).map((day) => {
+                          const isSelected = preferredGymDays.includes(day);
+                          return (
+                            <Pressable
+                              key={`dayChip-${day}`}
+                              style={isSelected ? styles.dayChipSelected : styles.dayChip}
+                              onPress={() => {
+                                setReviewConfirmed(false);
+                                if (isSelected) {
+                                  setPreferredGymDays((prev) => prev.filter((d) => d !== day));
+                                } else if (
+                                  preferredGymDays.length < (selectedProgram?.daysPerWeek ?? 3)
+                                ) {
+                                  setPreferredGymDays((prev) => [...prev, day]);
+                                }
+                              }}
+                            >
+                              <Text
+                                style={isSelected ? styles.dayChipTextSelected : styles.dayChipText}
+                              >
+                                {day.charAt(0).toUpperCase()}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={[styles.scheduleLabel, { marginTop: spacing.md }]}>
+                        Preferred Time of Day
+                      </Text>
+                      <View style={styles.timeChipsRow}>
+                        {(['morning', 'afternoon', 'evening'] as PreferredTime[]).map((time) => {
+                          const isSelected = preferredTime === time;
+                          return (
+                            <Pressable
+                              key={`timeChip-${time}`}
+                              style={isSelected ? styles.timeChipSelected : styles.timeChip}
+                              onPress={() => {
+                                setReviewConfirmed(false);
+                                setPreferredTime(time);
+                              }}
+                            >
+                              <Text
+                                style={
+                                  isSelected ? styles.timeChipTextSelected : styles.timeChipText
+                                }
+                              >
+                                {time.charAt(0).toUpperCase() + time.slice(1)}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      <Text style={[styles.scheduleLabel, { marginTop: spacing.md }]}>
+                        Program Start Date
+                      </Text>
+                      <Pressable
+                        style={styles.dateButton}
+                        onPress={() => {
+                          if (Platform.OS === 'ios') {
+                            ActionSheetIOS.showActionSheetWithOptions(
+                              {
+                                options: ['Cancel', 'Select Date'],
+                                cancelButtonIndex: 0,
+                              },
+                              () => setShowDatePicker(true),
+                            );
+                          } else {
+                            setShowDatePicker(true);
+                          }
+                        }}
+                      >
+                        <Text style={styles.dateButtonText}>
+                          {programStartDate.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={18}
+                          color={colors.text}
+                          style={{ marginLeft: spacing.sm }}
+                        />
+                      </Pressable>
+
+                      {showDatePicker && (
+                        <DateTimePicker
+                          value={programStartDate}
+                          mode="date"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onValueChange={(_event, selectedDate) => {
+                            if (Platform.OS === 'android') {
+                              setShowDatePicker(false);
+                            }
+                            if (selectedDate) {
+                              const newStartDate = selectedDate;
+                              setProgramStartDate(newStartDate);
+                              setReviewConfirmed(false);
+                              const dayMap: Record<number, DayOfWeek> = {
+                                0: 'sunday',
+                                1: 'monday',
+                                2: 'tuesday',
+                                3: 'wednesday',
+                                4: 'thursday',
+                                5: 'friday',
+                                6: 'saturday',
+                              };
+                              const startDayName = dayMap[newStartDate.getDay()];
+                              const isTrainingDay = isFirstSelectedDay(
+                                startDayName,
+                                preferredGymDays,
+                              );
+                              if (isTrainingDay) {
+                                setFirstSessionDate(newStartDate);
+                                setShowStartModeChoice(false);
+                              } else {
+                                setStartMode('smart');
+                                setFirstSessionDate(newStartDate);
+                                setShowStartModeChoice(true);
+                              }
+                            }
+                          }}
+                        />
+                      )}
+
+                      {showStartModeChoice && (
+                        <View style={styles.startModeSection}>
+                          <Text style={styles.scheduleHint}>
+                            {programStartDate.toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              month: 'long',
+                              day: 'numeric',
+                            })}{' '}
+                            is not a training day. Choose how to start:
+                          </Text>
+                          <Pressable
+                            style={styles.startModeOption}
+                            onPress={() => {
+                              setReviewConfirmed(false);
+                              setStartMode('smart');
+                              setFirstSessionDate(programStartDate);
+                            }}
+                          >
+                            <View
+                              style={[
+                                styles.radioOuter,
+                                startMode === 'smart' && styles.radioOuterSelected,
+                              ]}
+                            >
+                              {startMode === 'smart' && <View style={styles.radioInner} />}
+                            </View>
+                            <View style={styles.startModeTextContainer}>
+                              <Text style={styles.startModeTitle}>Smart Start</Text>
+                              <Text style={styles.startModeDescription}>
+                                Start program today even though it's not a training day
+                              </Text>
+                            </View>
+                          </Pressable>
+                          <Pressable
+                            style={styles.startModeOption}
+                            onPress={() => {
+                              setReviewConfirmed(false);
+                              setStartMode('strict');
+                              setFirstSessionDate(
+                                computeFirstSessionDate(
+                                  programStartDate,
+                                  preferredGymDays,
+                                  'strict',
+                                ),
+                              );
+                            }}
+                          >
+                            <View
+                              style={[
+                                styles.radioOuter,
+                                startMode === 'strict' && styles.radioOuterSelected,
+                              ]}
+                            >
+                              {startMode === 'strict' && <View style={styles.radioInner} />}
+                            </View>
+                            <View style={styles.startModeTextContainer}>
+                              <Text style={styles.startModeTitle}>Strict Start</Text>
+                              <Text style={styles.startModeDescription}>
+                                First training day is{' '}
+                                {firstSessionDate.toLocaleDateString('en-US', {
+                                  weekday: 'long',
+                                  month: 'long',
+                                  day: 'numeric',
+                                })}
+                              </Text>
+                            </View>
+                          </Pressable>
+                          <Pressable
+                            style={styles.primaryButton}
+                            onPress={() => {
+                              setReviewConfirmed(true);
+                              setScheduleStep('review');
+                            }}
+                          >
+                            <Text style={styles.primaryButtonText}>Confirm</Text>
+                          </Pressable>
+                        </View>
+                      )}
+
+                      <View style={styles.firstSessionRow}>
+                        <Text style={styles.scheduleLabel}>First Session</Text>
+                        <Badge
+                          label={firstSessionDate.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                          tone="emerald"
+                        />
+                      </View>
+                    </Surface>
+
+                    <View style={styles.scheduleButtons}>
+                      <Pressable
+                        style={[
+                          styles.primaryButton,
+                          showStartModeChoice && !reviewConfirmed && styles.startButtonDisabled,
+                        ]}
+                        onPress={() => {
+                          const startDayIndex = programStartDate.getDay();
+                          const dayMap: Record<number, DayOfWeek> = {
+                            0: 'sunday',
+                            1: 'monday',
+                            2: 'tuesday',
+                            3: 'wednesday',
+                            4: 'thursday',
+                            5: 'friday',
+                            6: 'saturday',
+                          };
+                          const startDayName = dayMap[startDayIndex];
+                          if (!isFirstSelectedDay(startDayName, preferredGymDays)) {
+                            setShowStartModeChoice(true);
+                            setReviewConfirmed(false);
+                            // Don't advance to review yet - user needs to choose Smart/Strict
+                          } else {
+                            setReviewConfirmed(true);
+                            setFirstSessionDate(programStartDate);
+                            setShowStartModeChoice(false);
+                            setScheduleStep('review');
+                          }
+                        }}
+                        disabled={showStartModeChoice && !reviewConfirmed}
+                      >
+                        <Text style={styles.primaryButtonText}>Continue to Review</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => setScheduleStep('1rm')}
+                      >
+                        <Text style={styles.secondaryButtonText}>Back</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {scheduleStep === 'review' && (
+                  <>
+                    <SectionTitle title="Review" />
+                    <Surface style={styles.scheduleCard}>
+                      <Text style={styles.reviewProgramName}>{selectedProgram?.name}</Text>
+                      <Text style={styles.reviewMeta}>
+                        {selectedProgram?.estimatedWeeks} weeks · {selectedProgram?.totalSessions}{' '}
+                        sessions · {selectedProgram?.daysPerWeek} days/week
+                      </Text>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>Training Days</Text>
+                        <View style={styles.reviewDaysRow}>
+                          {preferredGymDays.map((day) => (
+                            <Badge
+                              key={`reviewDay-${day}`}
+                              label={day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                              tone="sky"
+                            />
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>Preferred Time</Text>
+                        <Badge
+                          label={preferredTime.charAt(0).toUpperCase() + preferredTime.slice(1)}
+                          tone="neutral"
+                        />
+                      </View>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>Start Date</Text>
+                        <Text style={styles.reviewValue}>
+                          {programStartDate.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                      </View>
+
+                      <View style={styles.reviewSection}>
+                        <Text style={styles.reviewLabel}>First Session</Text>
+                        <Text style={styles.reviewValue}>
+                          {firstSessionDate.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                      </View>
+                    </Surface>
+
+                    <View style={styles.scheduleButtons}>
+                      <Pressable
+                        style={[
+                          styles.startButton,
+                          (startingProgram || !reviewConfirmed) && styles.startButtonDisabled,
+                        ]}
+                        onPress={handleStartProgram}
+                        disabled={startingProgram || !reviewConfirmed}
+                      >
+                        {startingProgram ? (
+                          <View style={styles.startButtonRow}>
+                            <ActivityIndicator size="small" color={colors.text} />
+                            <Text style={styles.startButtonText}>Starting Program...</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.startButtonText}>Confirm & Start Program</Text>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => {
+                          setReviewConfirmed(false);
+                          setScheduleStep('schedule');
+                          setTimeout(() => {
+                            scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+                          }, 100);
+                        }}
+                      >
+                        <Text style={styles.secondaryButtonText}>Back</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         ) : null}
       </Modal>
     </PageLayout>

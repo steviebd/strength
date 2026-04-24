@@ -1,7 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
+import { apiFetch } from '@/lib/api';
 import { colors, radius, spacing, typography } from '@/theme';
 import {
   ActionButton,
@@ -12,33 +16,92 @@ import {
   Surface,
 } from '@/components/ui/app-primitives';
 import { PageLayout } from '@/components/ui/PageLayout';
-
-const today = new Date();
-const formattedDate = today.toLocaleDateString('en-US', {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
-});
+import { useHomeSummary } from '@/hooks/useHomeSummary';
+import { useUserPreferences } from '@/context/UserPreferencesContext';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const session = authClient.useSession();
   const user = session.data?.user;
   const displayName = user?.name || user?.email || 'Athlete';
   const avatarLetter = user?.name?.[0] || user?.email?.[0] || '?';
+  const { activeTimezone } = useUserPreferences();
+  const { data: homeData } = useHomeSummary();
+  const queryClient = useQueryClient();
+  const params = useLocalSearchParams<{ focusProgramId?: string }>();
 
-  const nextWorkout = {
-    title: 'Upper Body Push',
-    focus: 'Bench + overhead press',
-    exercises: ['Bench Press', 'Incline Dumbbell Press', 'Cable Flyes', 'Tricep Pushdowns'],
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] });
+    }, [activeTimezone, queryClient]),
+  );
+
+  useEffect(() => {
+    if (params.focusProgramId && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+  }, [params.focusProgramId]);
+
+  const formattedDate =
+    homeData?.date.formatted ??
+    new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
+
+  const weeklyProgress = homeData?.weeklyStats ?? {
+    workoutsCompleted: 0,
+    workoutsTarget: 0,
+    streakDays: 0,
+    totalVolume: 0,
+    totalVolumeLabel: '0',
   };
 
-  const weeklyProgress = {
-    workoutsCompleted: 4,
-    workoutsTarget: 5,
-    streakDays: 12,
-    totalVolume: '42.5k',
+  const workout = homeData?.todayWorkout?.workout;
+  const nextWorkout = homeData?.todayWorkout?.nextWorkout;
+  const isRestDay = homeData?.todayWorkout?.isRestDay ?? false;
+  const hasActiveProgram = homeData?.todayWorkout?.hasActiveProgram ?? false;
+  const startableCycleWorkoutId = workout?.cycleWorkoutId ?? nextWorkout?.cycleWorkoutId ?? null;
+  const workoutTitle = workout?.programName ?? nextWorkout?.programName ?? 'No Active Program';
+  const workoutSubtitle = workout?.name ?? (nextWorkout ? `Next: ${nextWorkout.name}` : null);
+
+  const handleStartWorkout = async () => {
+    if (!startableCycleWorkoutId) {
+      router.push('/(app)/workouts');
+      return;
+    }
+
+    try {
+      const result = await apiFetch<{
+        workoutId: string;
+        sessionName: string;
+        created: boolean;
+        completed: boolean;
+      }>(`/api/programs/cycle-workouts/${startableCycleWorkoutId}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: activeTimezone }),
+      });
+
+      if (result.completed) {
+        Alert.alert('Already Completed', 'This workout has already been completed.');
+        return;
+      }
+
+      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start workout');
+    }
   };
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: ['homeSummary', activeTimezone] });
+    setIsRefreshing(false);
+  }, [activeTimezone]);
 
   return (
     <PageLayout
@@ -54,40 +117,71 @@ export default function HomeScreen() {
           }
         />
       }
+      scrollViewRef={scrollViewRef}
+      screenScrollViewProps={{
+        refreshControl: (
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.accentSecondary}
+          />
+        ),
+      }}
     >
       <Surface style={styles.workoutCard}>
         <View style={styles.workoutContent}>
           <View style={styles.workoutHeader}>
             <View style={styles.workoutHeaderLeft}>
-              <Badge label="Today" tone="orange" />
+              {isRestDay ? (
+                <Badge label="Rest Day" tone="emerald" />
+              ) : (
+                <Badge label="Today" tone="orange" />
+              )}
               <View style={styles.workoutTitleGroup}>
-                <Text style={styles.workoutTitle}>{nextWorkout.title}</Text>
-                <Text style={styles.workoutFocus}>{nextWorkout.focus}</Text>
+                <Text style={styles.workoutTitle}>{workoutTitle}</Text>
+                {workoutSubtitle && <Text style={styles.workoutSubtitle}>{workoutSubtitle}</Text>}
               </View>
             </View>
             <View style={styles.workoutIcon}>
-              <Ionicons name="barbell-outline" size={24} color="#fdba74" />
+              <Ionicons
+                name={isRestDay ? 'moon-outline' : 'barbell-outline'}
+                size={24}
+                color={isRestDay ? '#6ee7b7' : '#fdba74'}
+              />
             </View>
           </View>
 
-          <View style={styles.exerciseList}>
-            {nextWorkout.exercises.map((exercise, index) => (
-              <View key={`${exercise}-${index}`} style={styles.exerciseRow}>
-                <View style={styles.exerciseNumber}>
-                  <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+          {!isRestDay && workout?.exercises && workout.exercises.length > 0 && (
+            <View style={styles.exerciseList}>
+              {workout.exercises.map((exercise, index) => (
+                <View key={`${exercise}-${index}`} style={styles.exerciseRow}>
+                  <View style={styles.exerciseNumber}>
+                    <Text style={styles.exerciseNumberText}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.exerciseText}>{exercise}</Text>
                 </View>
-                <Text style={styles.exerciseText}>{exercise}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
 
           <View style={styles.workoutActions}>
             <View style={{ flex: 1 }}>
-              <ActionButton
-                label="Start Workout"
-                icon="play"
-                onPress={() => router.push('/(app)/workouts')}
-              />
+              {hasActiveProgram ? (
+                <ActionButton
+                  label={
+                    workout?.isComplete ? 'Completed' : isRestDay ? 'Start Next' : 'Start Workout'
+                  }
+                  icon={workout?.isComplete ? 'checkmark' : 'play'}
+                  onPress={handleStartWorkout}
+                  disabled={workout?.isComplete}
+                />
+              ) : (
+                <ActionButton
+                  label="Start Workout"
+                  icon="play"
+                  onPress={() => router.push('/(app)/workouts')}
+                />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <ActionButton
@@ -114,27 +208,37 @@ export default function HomeScreen() {
           hint="Consistency"
           tone="emerald"
         />
-        <MetricTile label="Volume" value={weeklyProgress.totalVolume} hint="Lifted" tone="sky" />
+        <MetricTile
+          label="Volume"
+          value={weeklyProgress.totalVolumeLabel}
+          hint="Lifted"
+          tone="sky"
+        />
       </View>
 
       <SectionTitle title="Quick Access" />
       <View style={styles.quickAccessSection}>
-        <Surface style={styles.quickAccessCard}>
-          <View style={styles.quickAccessRow}>
-            <View style={styles.quickAccessContent}>
-              <Text style={styles.quickAccessTitle}>Nutrition</Text>
-              <Text style={styles.quickAccessDesc}>
-                Log meals, track macros, and compare intake against recovery.
-              </Text>
+        <Pressable
+          onPress={() => router.push('/nutrition?focusChat=1')}
+          style={({ pressed }) => [pressed ? styles.quickAccessPressed : undefined]}
+        >
+          <Surface style={styles.quickAccessCard}>
+            <View style={styles.quickAccessRow}>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Nutrition</Text>
+                <Text style={styles.quickAccessDesc}>
+                  Log meals, track macros, and compare intake against recovery.
+                </Text>
+              </View>
+              <ActionButton
+                label="Open"
+                icon="restaurant-outline"
+                variant="secondary"
+                onPress={() => router.push('/nutrition?focusChat=1')}
+              />
             </View>
-            <ActionButton
-              label="Open"
-              icon="restaurant-outline"
-              variant="secondary"
-              onPress={() => router.push('/nutrition')}
-            />
-          </View>
-        </Surface>
+          </Surface>
+        </Pressable>
 
         <Surface style={styles.quickAccessCard}>
           <View style={styles.quickAccessRow}>
@@ -159,11 +263,58 @@ export default function HomeScreen() {
         <View style={styles.recoveryContent}>
           <View style={styles.recoveryHeader}>
             <Text style={styles.recoveryStatusText}>Current status</Text>
-            <Badge label="Ready to train" tone="emerald" />
+            {homeData?.recoverySnapshot?.isWhoopConnected ? (
+              <Badge
+                label={
+                  homeData.recoverySnapshot.recoveryStatus === 'green'
+                    ? 'Ready to train'
+                    : homeData.recoverySnapshot.recoveryStatus === 'yellow'
+                      ? 'Moderate'
+                      : 'Needs recovery'
+                }
+                tone={
+                  homeData.recoverySnapshot.recoveryStatus === 'green'
+                    ? 'emerald'
+                    : homeData.recoverySnapshot.recoveryStatus === 'yellow'
+                      ? 'orange'
+                      : 'rose'
+                }
+              />
+            ) : (
+              <Badge label="WHOOP disconnected" tone="neutral" />
+            )}
           </View>
           <View style={styles.recoveryMetrics}>
-            <MetricTile label="Sleep" value="7h 48m" hint="Last night" />
-            <MetricTile label="Recovery" value="78%" hint="WHOOP synced" tone="emerald" />
+            {homeData?.recoverySnapshot?.isWhoopConnected ? (
+              <>
+                <MetricTile
+                  label="Sleep"
+                  value={homeData.recoverySnapshot.sleepDurationLabel ?? '--'}
+                  hint="Last night"
+                />
+                <MetricTile
+                  label="Recovery"
+                  value={
+                    homeData.recoverySnapshot.recoveryScore !== null
+                      ? `${homeData.recoverySnapshot.recoveryScore}%`
+                      : '--'
+                  }
+                  hint="WHOOP synced"
+                  tone={
+                    homeData.recoverySnapshot.recoveryStatus === 'green'
+                      ? 'emerald'
+                      : homeData.recoverySnapshot.recoveryStatus === 'yellow'
+                        ? 'orange'
+                        : 'rose'
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <MetricTile label="Sleep" value="--" hint="No data" />
+                <MetricTile label="Recovery" value="--" hint="Connect WHOOP" />
+              </>
+            )}
           </View>
         </View>
       </Surface>
@@ -207,10 +358,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   workoutTitle: {
-    fontSize: 30,
+    fontSize: 24,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+    lineHeight: 28,
+  },
+  workoutSubtitle: {
+    fontSize: 18,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    lineHeight: 30,
+    lineHeight: 24,
   },
   workoutFocus: {
     fontSize: typography.fontSizes.base,
@@ -268,6 +425,9 @@ const styles = StyleSheet.create({
   },
   quickAccessCard: {
     backgroundColor: 'rgba(24,24,27,0.7)',
+  },
+  quickAccessPressed: {
+    opacity: 0.82,
   },
   quickAccessRow: {
     flexDirection: 'row',

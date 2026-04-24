@@ -11,14 +11,16 @@ import {
   whoopSleep,
   whoopWorkout,
 } from '@strength/db';
-import { forceRefreshAccessToken, getValidAccessToken } from './token-rotation';
 import {
-  fetchBodyMeasurements,
-  fetchCycles,
-  fetchRecoveries,
-  fetchSleep,
-  fetchWorkouts,
-  getWhoopProfile,
+  fetchBodyMeasurements as fetchBodyMeasurementsWithToken,
+  fetchCycles as fetchCyclesWithToken,
+  fetchRecoveries as fetchRecoveriesWithToken,
+  fetchSleep as fetchSleepWithToken,
+  fetchWorkouts as fetchWorkoutsWithToken,
+  getWhoopProfile as getWhoopProfileWithToken,
+} from './client';
+import { isWhoopAuthError } from './errors';
+import {
   type WhoopBodyMeasurement,
   type WhoopCycle,
   type WhoopProfile,
@@ -27,7 +29,7 @@ import {
   type WhoopWorkout,
 } from './api';
 
-export interface SyncResult {
+interface SyncResult {
   profile: number;
   workouts: number;
   recovery: number;
@@ -435,6 +437,27 @@ async function syncBodyMeasurements(
   return count;
 }
 
+function formatSyncError(error: unknown) {
+  if (isWhoopAuthError(error)) {
+    return `${error.code}: ${error.message}`;
+  }
+
+  if (!(error instanceof Error)) {
+    return 'Unknown';
+  }
+
+  const cause = error.cause;
+  if (cause instanceof Error && cause.message) {
+    return `${error.message}: ${cause.message}`;
+  }
+
+  if (cause && typeof cause === 'object' && 'message' in cause) {
+    return `${error.message}: ${String(cause.message)}`;
+  }
+
+  return error.message;
+}
+
 export async function syncAllWhoopData(
   db: DrizzleD1Database<typeof schema>,
   env: WorkerEnv,
@@ -450,62 +473,33 @@ export async function syncAllWhoopData(
     errors: [],
   };
 
-  const tokenResult = await getValidAccessToken(db, env, userId);
-  if (!tokenResult.token) {
-    result.errors.push(`Token error: ${tokenResult.error}`);
-    return result;
-  }
-
-  let accessToken = tokenResult.token;
-
-  async function runWithFreshToken<T>(
-    label: string,
-    action: (token: string) => Promise<T>,
-  ): Promise<T> {
-    try {
-      return await action(accessToken);
-    } catch (e) {
-      if (e && typeof e === 'object' && 'status' in e && e.status === 401) {
-        const refreshed = await forceRefreshAccessToken(db, env, userId);
-        if (!refreshed.token) {
-          throw new Error(`${label} token refresh failed: ${refreshed.error ?? 'Unknown error'}`);
-        }
-
-        accessToken = refreshed.token;
-        return action(accessToken);
-      }
-
-      throw e;
-    }
-  }
-
   try {
     try {
-      const profile = await runWithFreshToken('Profile', getWhoopProfile);
+      const profile = await getWhoopProfileWithToken(db, env, userId);
       result.profile = await upsertWhoopProfile(db, userId, profile);
     } catch (e) {
-      result.errors.push(`Profile: ${e instanceof Error ? e.message : 'Unknown'}`);
+      result.errors.push(`Profile: ${formatSyncError(e)}`);
     }
 
     try {
-      const workouts = await runWithFreshToken('Workouts', fetchWorkouts);
+      const workouts = await fetchWorkoutsWithToken(db, env, userId);
       result.workouts = await syncWorkouts(db, userId, workouts);
     } catch (e) {
-      result.errors.push(`Workouts: ${e instanceof Error ? e.message : 'Unknown'}`);
+      result.errors.push(`Workouts: ${formatSyncError(e)}`);
     }
 
     try {
-      const recoveries = await runWithFreshToken('Recovery', fetchRecoveries);
+      const recoveries = await fetchRecoveriesWithToken(db, env, userId);
       result.recovery = await syncRecoveries(db, userId, recoveries);
     } catch (e) {
-      result.errors.push(`Recovery: ${e instanceof Error ? e.message : 'Unknown'}`);
+      result.errors.push(`Recovery: ${formatSyncError(e)}`);
     }
 
     try {
-      const cycles = await runWithFreshToken('Cycles', fetchCycles);
+      const cycles = await fetchCyclesWithToken(db, env, userId);
       result.cycles = await syncCycles(db, userId, cycles);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown';
+      const msg = formatSyncError(e);
       if (e && typeof e === 'object' && 'status' in e && e.status === 403) {
         console.log('[WHOOP Sync] Cycles scope not granted, skipping');
       } else {
@@ -514,20 +508,20 @@ export async function syncAllWhoopData(
     }
 
     try {
-      const sleep = await runWithFreshToken('Sleep', fetchSleep);
+      const sleep = await fetchSleepWithToken(db, env, userId);
       result.sleep = await syncSleepRecords(db, userId, sleep);
     } catch (e) {
-      result.errors.push(`Sleep: ${e instanceof Error ? e.message : 'Unknown'}`);
+      result.errors.push(`Sleep: ${formatSyncError(e)}`);
     }
 
     try {
-      const measurements = await runWithFreshToken('Body Measurements', fetchBodyMeasurements);
+      const measurements = await fetchBodyMeasurementsWithToken(db, env, userId);
       result.bodyMeasurements = await syncBodyMeasurements(db, userId, measurements);
     } catch (e) {
-      result.errors.push(`Body Measurements: ${e instanceof Error ? e.message : 'Unknown'}`);
+      result.errors.push(`Body Measurements: ${formatSyncError(e)}`);
     }
   } catch (e) {
-    result.errors.push(`Sync error: ${e instanceof Error ? e.message : 'Unknown'}`);
+    result.errors.push(`Sync error: ${formatSyncError(e)}`);
   }
 
   return result;

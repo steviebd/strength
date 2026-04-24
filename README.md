@@ -26,8 +26,8 @@ Store these in the `dev` environment for this project:
 
 - `APP_ENV=development`
 - `BETTER_AUTH_SECRET=<generate a long random secret>`
-- `BETTER_AUTH_URL=http://<your-machine-lan-ip>:8787`
-- `EXPO_PUBLIC_API_URL=http://<your-machine-lan-ip>:8787`
+- `WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
+- `EXPO_PUBLIC_WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
 - `CLOUDFLARE_ACCOUNT_ID=<your Cloudflare account id>`
 - `AI_GATEWAY_NAME=<your AI Gateway id>`
 - `CF_AI_GATEWAY_TOKEN=<your AI Gateway run token if gateway auth is enabled>`
@@ -44,7 +44,7 @@ This repo uses its own Infisical project. The local `strength/.infisical.json` f
 In the [Whoop Developer Portal](https://developer.whoop.com), set your OAuth Redirect URI to:
 
 ```
-${BETTER_AUTH_URL}/api/auth/whoop/callback
+${WORKER_BASE_URL}/api/auth/whoop/callback
 ```
 
 For local development with the iOS simulator on the same Mac, this would be:
@@ -53,9 +53,40 @@ For local development with the iOS simulator on the same Mac, this would be:
 http://localhost:8787/api/auth/whoop/callback
 ```
 
-For physical devices or Android emulator, use your machine's LAN IP (e.g., `http://192.168.1.x:8787/api/auth/whoop/callback`).
+If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device, Android emulator, or standalone APK, `EXPO_PUBLIC_WORKER_BASE_URL` must be reachable from that device. `127.0.0.1` points at the device itself and auth requests will fail.
 
-If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device or Android emulator, `127.0.0.1` points at the device itself and auth requests will fail.
+WHOOP requires HTTPS redirect URIs unless the host ends in `localhost`, so physical-device Expo Go OAuth should use a Cloudflare Tunnel instead of a LAN HTTP URL.
+
+One-time Cloudflare Tunnel setup:
+
+```bash
+brew install cloudflared
+cloudflared tunnel login
+cloudflared tunnel create strength-dev
+cloudflared tunnel route dns strength-dev strength-dev.your-domain.com
+```
+
+Set these in Infisical `dev`:
+
+```bash
+CLOUDFLARE_TUNNEL_TOKEN=<token from Cloudflare Zero Trust tunnel configuration>
+CLOUDFLARE_TUNNEL_HOSTNAME=strength-dev.your-domain.com
+WORKER_BASE_URL=https://strength-dev.your-domain.com
+```
+
+Then add this WHOOP redirect URI:
+
+```text
+https://strength-dev.your-domain.com/api/auth/whoop/callback
+```
+
+Configure the tunnel's public hostname in Cloudflare Zero Trust to route `strength-dev.your-domain.com` to `http://localhost:8787`. With `CLOUDFLARE_TUNNEL_TOKEN` and `CLOUDFLARE_TUNNEL_HOSTNAME` set, `bun run dev` and `bun run dev:remote` automatically start the tunnel on whichever machine is running the Worker and point the worker config at the HTTPS hostname. `dev` uses local D1; `dev:remote` uses remote dev D1.
+
+The dev script runs `cloudflared tunnel run --token "$CLOUDFLARE_TUNNEL_TOKEN"` as a child process of `bun run dev`, so the tunnel is stopped when the Worker dev process stops and no machine-specific `~/.cloudflared/*.json` credential file is required. Do not run the same tunnel as a login item, LaunchAgent, or systemd service for local development; it should only be active while `bun run dev` or `bun run dev:remote` is running.
+
+If you prefer local named-tunnel credentials instead of a token, set `CLOUDFLARE_TUNNEL_NAME=strength-dev` with `CLOUDFLARE_TUNNEL_HOSTNAME`. That fallback still depends on credentials in `~/.cloudflared`, so it is less portable across machines.
+
+This should be a public hostname, not a Cloudflare private hostname or private CIDR route. WHOOP's OAuth service must be able to call the redirect URI from the public internet, and it will not be on your Cloudflare WARP/private network. Keep the tunnel config in Infisical `dev` only, stop `bun run dev` when not testing, and rely on the worker's app auth for protected APIs. The OAuth callback path itself must remain publicly reachable for WHOOP to complete the flow.
 
 ## Local setup
 

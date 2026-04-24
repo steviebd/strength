@@ -7,6 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
+import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
+import { useMutation } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 
 const TAB_ICONS = {
   home: {
@@ -39,8 +42,26 @@ const TAB_ICONS = {
 export default function AppLayout() {
   const session = authClient.useSession();
   const insets = useSafeAreaInsets();
-  const { isLoading, needsTimezoneSelection, timezone, deviceTimezone, setTimezone } =
-    useUserPreferences();
+  const {
+    isLoading,
+    needsTimezoneSelection,
+    needsWeightSelection,
+    timezone,
+    deviceTimezone,
+    setTimezone,
+    showTimezoneMismatchModal,
+    dismissTimezoneMismatchModal,
+    weightUnit,
+    markWeightAsPrompted,
+  } = useUserPreferences();
+
+  const saveBodyweightMutation = useMutation({
+    mutationFn: (bodyweightKg: number) =>
+      apiFetch('/api/nutrition/body-stats', {
+        method: 'POST',
+        body: JSON.stringify({ bodyweightKg }),
+      }),
+  });
 
   if (session.isPending || session.isRefetching) {
     return null;
@@ -164,6 +185,28 @@ export default function AppLayout() {
           onConfirm={setTimezone}
           dismissLocked
           acceptFirst={Boolean(deviceTimezone)}
+        />
+
+        <TimezonePickerModal
+          visible={showTimezoneMismatchModal}
+          title="Timezone changed?"
+          description="Your device timezone is different from your saved preference. Would you like to update it?"
+          confirmLabel="Update timezone"
+          selectedTimezone={deviceTimezone}
+          onClose={dismissTimezoneMismatchModal}
+          onConfirm={setTimezone}
+          acceptFirst={true}
+        />
+
+        <WeightPickerModal
+          visible={!isLoading && needsWeightSelection}
+          weightUnit={weightUnit}
+          onSave={async (bodyweightKg) => {
+            await saveBodyweightMutation.mutateAsync(bodyweightKg);
+            await markWeightAsPrompted();
+          }}
+          onSkip={markWeightAsPrompted}
+          isSaving={saveBodyweightMutation.isPending}
         />
       </>
     </QueryProvider>

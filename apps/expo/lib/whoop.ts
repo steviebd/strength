@@ -112,7 +112,7 @@ export interface WhoopSleep {
   sleepQualityTier: string | null;
 }
 
-export interface WhoopCycle {
+interface WhoopCycle {
   id: string;
   start: number;
   end: number;
@@ -122,7 +122,7 @@ export interface WhoopCycle {
   kilojoule: number | null;
 }
 
-export interface WhoopWorkout {
+interface WhoopWorkout {
   id: string;
   start: number;
   end: number;

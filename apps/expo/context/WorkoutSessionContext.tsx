@@ -52,15 +52,6 @@ export interface Exercise {
 
 export type ExerciseLibraryItem = Exercise;
 
-export interface WorkoutSessionState {
-  workout: Workout | null;
-  exercises: WorkoutExercise[];
-  isLoading: boolean;
-  error: string | null;
-  duration: number;
-  isActive: boolean;
-}
-
 interface WorkoutSessionContextValue {
   workout: Workout | null;
   exercises: WorkoutExercise[];
@@ -70,7 +61,7 @@ interface WorkoutSessionContextValue {
   formattedDuration: string;
   isActive: boolean;
   weightUnit: 'kg' | 'lbs';
-  startWorkout: (name: string) => Promise<void>;
+  startWorkout: (name: string) => Promise<Workout | null>;
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => void;

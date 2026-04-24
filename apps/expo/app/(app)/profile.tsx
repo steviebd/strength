@@ -45,6 +45,18 @@ async function syncWhoop(): Promise<{ success: boolean; errors?: string[] }> {
   });
 }
 
+function parseWhoopCallbackResult(url: string) {
+  try {
+    const parsed = new URL(url);
+    return {
+      error: parsed.searchParams.get('error'),
+      success: parsed.searchParams.get('success'),
+    };
+  } catch {
+    return { error: null, success: null };
+  }
+}
+
 export default function Profile() {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{ whoop?: string; error?: string; focus?: string }>();
@@ -105,6 +117,18 @@ export default function Profile() {
     authClient.signOut();
   };
 
+  const loadWhoopStatus = async () => {
+    setWhoopLoading(true);
+    try {
+      const status = await fetchWhoopStatus();
+      setWhoopStatus(status);
+    } catch (e) {
+      console.error('Failed to load WHOOP status:', e);
+    } finally {
+      setWhoopLoading(false);
+    }
+  };
+
   const handleConnectWhoop = async () => {
     setError(null);
     setWhoopLoading(true);
@@ -113,6 +137,23 @@ export default function Profile() {
       const result = await connectWhoop(returnTo);
       if (result.authUrl) {
         const authResult = await WebBrowser.openAuthSessionAsync(result.authUrl, returnTo);
+        if (authResult.type === 'success') {
+          const callback = parseWhoopCallbackResult(authResult.url);
+          if (callback.success === 'true') {
+            setSyncResult('WHOOP connected successfully!');
+            setHighlightWhoopCard(true);
+            setShouldFocusWhoopCard(true);
+            await loadWhoopStatus();
+            return;
+          }
+
+          if (callback.error) {
+            setError(decodeURIComponent(callback.error).replace(/_/g, ' '));
+            await loadWhoopStatus();
+            return;
+          }
+        }
+
         if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
           setError('WHOOP authorization was not completed');
         }
@@ -150,22 +191,10 @@ export default function Profile() {
       } else {
         setSyncResult(`Sync completed with errors: ${result.errors?.join(', ')}`);
       }
-    } catch {
-      setSyncResult('Sync failed');
+    } catch (e) {
+      setSyncResult(e instanceof Error ? e.message : 'Sync failed');
     } finally {
       setSyncing(false);
-    }
-  };
-
-  const loadWhoopStatus = async () => {
-    setWhoopLoading(true);
-    try {
-      const status = await fetchWhoopStatus();
-      setWhoopStatus(status);
-    } catch (e) {
-      console.error('Failed to load WHOOP status:', e);
-    } finally {
-      setWhoopLoading(false);
     }
   };
 

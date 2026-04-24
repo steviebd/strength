@@ -3,6 +3,7 @@ import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { isValidTimeZone } from '@strength/db';
 import { getActiveTimezone, getCurrentDeviceTimezone } from '@/lib/timezone';
+import { getDismissedDeviceTimezone, setDismissedDeviceTimezone } from '@/lib/storage';
 
 type WeightUnit = 'kg' | 'lbs';
 type UserTimezone = string | null;
@@ -13,8 +14,12 @@ interface UserPreferencesContextValue {
   deviceTimezone: UserTimezone;
   activeTimezone: UserTimezone;
   needsTimezoneSelection: boolean;
+  needsWeightSelection: boolean;
+  showTimezoneMismatchModal: boolean;
   setWeightUnit: (unit: WeightUnit) => Promise<void>;
   setTimezone: (timezone: string) => Promise<void>;
+  dismissTimezoneMismatchModal: () => Promise<void>;
+  markWeightAsPrompted: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -26,7 +31,16 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const [timezone, setTimezoneState] = useState<UserTimezone>(null);
   const [deviceTimezone] = useState<UserTimezone>(() => getCurrentDeviceTimezone());
   const [hasPersistedTimezone, setHasPersistedTimezone] = useState(false);
+  const [dismissedDeviceTimezone, setDismissedDeviceTimezoneState] = useState<string | null>(null);
+  const [showTimezoneMismatchModal, setShowTimezoneMismatchModal] = useState(false);
+  const [weightPromptedAt, setWeightPromptedAtState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    getDismissedDeviceTimezone().then((val) => {
+      setDismissedDeviceTimezoneState(val);
+    });
+  }, []);
 
   useEffect(() => {
     if (session.isPending) {
@@ -37,30 +51,57 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       setWeightUnitState('kg');
       setTimezoneState(deviceTimezone);
       setHasPersistedTimezone(false);
+      setShowTimezoneMismatchModal(false);
+      setWeightPromptedAtState(null);
       setIsLoading(false);
       return;
     }
 
+    let isActive = true;
     setIsLoading(true);
 
-    apiFetch<{ weightUnit?: WeightUnit; timezone?: UserTimezone }>('/api/profile/preferences')
+    apiFetch<{
+      weightUnit?: WeightUnit;
+      timezone?: UserTimezone;
+      weightPromptedAt?: string | null;
+    }>('/api/profile/preferences')
       .then((data) => {
-        if (data.weightUnit) {
-          setWeightUnitState(data.weightUnit);
-        }
-
-        if (data.timezone) {
-          setTimezoneState(data.timezone);
-          setHasPersistedTimezone(true);
+        if (!isActive) {
           return;
         }
 
-        setTimezoneState(deviceTimezone);
-        setHasPersistedTimezone(false);
+        const nextTimezone = data.timezone ?? null;
+
+        setWeightUnitState(data.weightUnit ?? 'kg');
+        setTimezoneState(nextTimezone);
+        setHasPersistedTimezone(Boolean(nextTimezone));
+        setWeightPromptedAtState(data.weightPromptedAt ?? null);
+
+        if (nextTimezone) {
+          const isMismatch = nextTimezone !== deviceTimezone;
+          const needsPrompt =
+            isMismatch &&
+            (dismissedDeviceTimezone === null || dismissedDeviceTimezone !== deviceTimezone);
+          setShowTimezoneMismatchModal(needsPrompt);
+        } else {
+          setShowTimezoneMismatchModal(false);
+        }
       })
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
-  }, [deviceTimezone, session.data?.user, session.isPending]);
+      .catch((error) => {
+        if (isActive) {
+          console.error(error);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [deviceTimezone, dismissedDeviceTimezone, session.data?.user, session.isPending]);
 
   const setWeightUnit = useCallback(
     async (unit: WeightUnit) => {
@@ -94,6 +135,8 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
 
       setTimezoneState(nextTimezone);
       setHasPersistedTimezone(true);
+      setDismissedDeviceTimezoneState(null);
+      setDismissedDeviceTimezone(null);
 
       try {
         await apiFetch('/api/profile/preferences', {
@@ -109,7 +152,35 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     [hasPersistedTimezone, session.data?.user, timezone],
   );
 
+  const dismissTimezoneMismatchModal = useCallback(async () => {
+    setShowTimezoneMismatchModal(false);
+    setDismissedDeviceTimezoneState(deviceTimezone);
+    await setDismissedDeviceTimezone(deviceTimezone);
+  }, [deviceTimezone]);
+
+  const markWeightAsPrompted = useCallback(async () => {
+    if (!session.data?.user) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    setWeightPromptedAtState(now);
+    try {
+      await apiFetch('/api/profile/preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ weightPromptedAt: now }),
+      });
+    } catch (error) {
+      setWeightPromptedAtState(null);
+      console.error(error);
+    }
+  }, [session.data?.user]);
+
   const needsTimezoneSelection = Boolean(session.data?.user) && !isLoading && !hasPersistedTimezone;
+  const needsWeightSelection =
+    Boolean(session.data?.user) && !isLoading && hasPersistedTimezone && !weightPromptedAt;
+  const isTimezoneMismatch =
+    hasPersistedTimezone && timezone !== null && timezone !== deviceTimezone;
   const activeTimezone = getActiveTimezone(timezone, deviceTimezone);
 
   return (
@@ -120,8 +191,12 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
         deviceTimezone,
         activeTimezone,
         needsTimezoneSelection,
+        needsWeightSelection,
+        showTimezoneMismatchModal: isTimezoneMismatch && showTimezoneMismatchModal,
         setWeightUnit,
         setTimezone,
+        dismissTimezoneMismatchModal,
+        markWeightAsPrompted,
         isLoading,
       }}
     >

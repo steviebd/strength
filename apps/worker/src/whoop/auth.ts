@@ -30,7 +30,7 @@ export function buildWhoopAuthorizationUrl(
   return `${WHOOP_AUTH_URL}?${params.toString()}`;
 }
 
-export interface WhoopTokenResponse {
+interface WhoopTokenResponse {
   access_token: string;
   refresh_token: string;
   token_type: string;
@@ -86,6 +86,7 @@ export async function refreshAccessToken(
       client_id: resolvedEnv.WHOOP_CLIENT_ID!,
       client_secret: resolvedEnv.WHOOP_CLIENT_SECRET!,
       refresh_token: refreshToken,
+      scope: 'offline',
     }),
   });
 

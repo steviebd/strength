@@ -1,0 +1,1 @@
+CREATE INDEX idx_workout_sets_exercise_set_number ON workout_sets (workout_exercise_id, set_number);

@@ -29,3 +29,4 @@ apps/worker/.staging.vars
 .staging.vars
 apps/worker/wrangler.toml
 .infisical.json.bak
+apps/expo/@stevenbduong__strength.bak.jks

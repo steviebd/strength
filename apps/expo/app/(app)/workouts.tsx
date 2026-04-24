@@ -167,10 +167,12 @@ export default function WorkoutsIndex() {
 
   const handleStartWorkout = async () => {
     const name = workoutName.trim() || 'Workout';
-    await startWorkout(name);
+    const workout = await startWorkout(name);
     setShowStartWorkout(false);
     setWorkoutName('');
-    router.push('/workout-session');
+    if (workout?.id) {
+      router.push(`/workout-session?workoutId=${workout.id}`);
+    }
   };
 
   const handleStartFromTemplate = async (template: Template) => {
@@ -274,7 +276,7 @@ export default function WorkoutsIndex() {
     setPendingWorkouts((prev) => prev.filter((p) => p.id !== workoutId));
   };
 
-  const handleDeleteProgram = (program: ActiveProgram) => {
+  const _handleDeleteProgram = (program: ActiveProgram) => {
     Alert.alert('Delete Active Program', `Delete ${program.name}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -370,17 +372,13 @@ export default function WorkoutsIndex() {
                         disabled={isOpening || isDeleting}
                       />
                     </View>
-                    <Pressable
-                      style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
-                      onPress={() => handleDeleteProgram(program)}
+                    <ActionButton
+                      label="View Schedule"
+                      icon="calendar-outline"
+                      variant="secondary"
+                      onPress={() => router.push(`/program-schedule?cycleId=${program.id}`)}
                       disabled={isOpening || isDeleting}
-                    >
-                      {isDeleting ? (
-                        <ActivityIndicator size="small" color="#fda4af" />
-                      ) : (
-                        <Text style={styles.deleteButtonText}>Delete</Text>
-                      )}
-                    </Pressable>
+                    />
                   </View>
                 </View>
               </View>
@@ -659,6 +657,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.medium,
     color: colors.error,
   },
+
   templatesView: {
     gap: spacing.lg,
   },

@@ -7,8 +7,6 @@ import { refreshAccessToken } from './auth';
 import { encryptToken, decryptToken } from '../utils/crypto';
 
 const REFRESH_BEFORE_HOURS = 24;
-const ROTATE_AFTER_DAYS = 7;
-
 interface TokenResult {
   token?: string;
   error?: string;
@@ -18,6 +16,8 @@ interface DecryptedTokens {
   accessToken: string;
   refreshToken: string;
 }
+
+const refreshLocks = new Map<string, Promise<string>>();
 
 async function getIntegration(
   db: DrizzleD1Database<typeof schema>,
@@ -48,11 +48,6 @@ async function shouldRotate(integration: typeof userIntegration.$inferSelect): P
     return true;
   }
 
-  const createdAt = new Date(integration.createdAt).getTime();
-  if (now - createdAt > ROTATE_AFTER_DAYS * 24 * 60 * 60 * 1000) {
-    return true;
-  }
-
   return false;
 }
 
@@ -75,6 +70,23 @@ async function decryptStoredTokens(
   }
 
   return { accessToken, refreshToken };
+}
+
+async function refreshWithLock(
+  integrationId: string,
+  refresh: () => Promise<string>,
+): Promise<string> {
+  const existingRefresh = refreshLocks.get(integrationId);
+  if (existingRefresh) {
+    return existingRefresh;
+  }
+
+  const refreshPromise = refresh().finally(() => {
+    refreshLocks.delete(integrationId);
+  });
+  refreshLocks.set(integrationId, refreshPromise);
+
+  return refreshPromise;
 }
 
 async function refreshWhoopAccessToken(
@@ -129,7 +141,9 @@ export async function getValidAccessToken(
 
     if (await shouldRotate(integration)) {
       console.log('[WHOOP Token] Token needs rotation, refreshing...');
-      const token = await refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken);
+      const token = await refreshWithLock(integration.id, () =>
+        refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken),
+      );
       return { token };
     }
 
@@ -161,7 +175,9 @@ export async function forceRefreshAccessToken(
       integration,
       resolvedEnv.ENCRYPTION_MASTER_KEY!,
     );
-    const token = await refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken);
+    const token = await refreshWithLock(integration.id, () =>
+      refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken),
+    );
     return { token };
   } catch (error) {
     console.error('[WHOOP Token] Error force-refreshing access token:', error);

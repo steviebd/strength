@@ -6,6 +6,10 @@ on:
   push:
     branches: ['**']
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -24,6 +28,24 @@ jobs:
           bun-version: latest
 
       - run: bun install
+
+      - name: Resolve environment
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            echo "ENV_NAME=prod" >> $GITHUB_ENV
+          elif [ "${{ github.ref_name }}" == "staging" ]; then
+            echo "ENV_NAME=staging" >> $GITHUB_ENV
+          else
+            echo "ENV_NAME=dev" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: oidc
+          identity-id: 78fef9da-6701-477e-940b-2960913a7252
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: ${{ env.ENV_NAME }}
 
       - name: Run check
         run: bun run check

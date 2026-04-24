@@ -10,6 +10,15 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "android": {
+      "package": "com.strength.app"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c874ac48-018b-4ad3-9391-51243cc1c5bd"
+      }
     }
   }
 }

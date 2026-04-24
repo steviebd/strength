@@ -2,9 +2,8 @@ import { platformStorage } from './platform-storage';
 
 const STORAGE_KEYS = {
   LAST_WORKOUT: (exerciseId: string) => `lw_${exerciseId}`,
-  CACHED_PROGRAMS: 'cached_programs',
   PENDING_WORKOUTS: 'pending_workouts',
-  ACTIVE_WORKOUT_SESSION: 'active_workout_session',
+  DISMISSED_DEVICE_TIMEZONE: 'dismissed_device_timezone',
   NUTRITION_CHAT_MESSAGES: (date: string, timezone: string) =>
     `nutrition_chat_messages_${timezone.replace(/\//g, '---')}_${date}`,
   NUTRITION_CHAT_DRAFT: (date: string, timezone: string) =>
@@ -33,11 +32,6 @@ interface PendingWorkout {
   totalSets: null;
 }
 
-interface CachedProgramData {
-  programs: any[];
-  cachedAt: string;
-}
-
 interface NutritionChatCache {
   messages: unknown[];
   cachedAt: string;
@@ -57,29 +51,6 @@ async function getLastWorkout(exerciseId: string): Promise<LastWorkoutData | nul
 async function setLastWorkout(exerciseId: string, data: LastWorkoutData): Promise<void> {
   const key = STORAGE_KEYS.LAST_WORKOUT(exerciseId);
   platformStorage.setItem(key, JSON.stringify(data));
-}
-
-async function getCachedPrograms(): Promise<any[] | null> {
-  const data = platformStorage.getItem(STORAGE_KEYS.CACHED_PROGRAMS);
-  if (!data) return null;
-  try {
-    const parsed = JSON.parse(data) as CachedProgramData;
-    return parsed.programs;
-  } catch {
-    return null;
-  }
-}
-
-async function setCachedPrograms(programs: any[]): Promise<void> {
-  const data: CachedProgramData = {
-    programs,
-    cachedAt: new Date().toISOString(),
-  };
-  platformStorage.setItem(STORAGE_KEYS.CACHED_PROGRAMS, JSON.stringify(data));
-}
-
-async function clearCachedPrograms(): Promise<void> {
-  platformStorage.setItem(STORAGE_KEYS.CACHED_PROGRAMS, '');
 }
 
 async function getPendingWorkouts(): Promise<PendingWorkout[]> {
@@ -106,24 +77,6 @@ async function removePendingWorkout(workoutId: string): Promise<void> {
 
 async function clearPendingWorkouts(): Promise<void> {
   platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, '');
-}
-
-async function getActiveWorkoutSession(): Promise<{ workout: any; exercises: any[] } | null> {
-  const data = platformStorage.getItem(STORAGE_KEYS.ACTIVE_WORKOUT_SESSION);
-  if (!data) return null;
-  try {
-    return JSON.parse(data) as { workout: any; exercises: any[] };
-  } catch {
-    return null;
-  }
-}
-
-async function setActiveWorkoutSession(data: { workout: any; exercises: any[] }): Promise<void> {
-  platformStorage.setItem(STORAGE_KEYS.ACTIVE_WORKOUT_SESSION, JSON.stringify(data));
-}
-
-async function clearActiveWorkoutSession(): Promise<void> {
-  platformStorage.setItem(STORAGE_KEYS.ACTIVE_WORKOUT_SESSION, '');
 }
 
 async function getNutritionChatMessages<T>(date: string, timezone: string): Promise<T[]> {
@@ -165,25 +118,31 @@ async function setNutritionChatDraft(date: string, timezone: string, draft: stri
   platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone), draft);
 }
 
+async function getDismissedDeviceTimezone(): Promise<string | null> {
+  return platformStorage.getItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
+}
+
+async function setDismissedDeviceTimezone(timezone: string | null): Promise<void> {
+  if (!timezone) {
+    platformStorage.removeItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
+    return;
+  }
+  platformStorage.setItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE, timezone);
+}
+
 export {
-  STORAGE_KEYS,
   LastWorkoutData,
   PendingWorkout,
-  CachedProgramData,
   getLastWorkout,
   setLastWorkout,
-  getCachedPrograms,
-  setCachedPrograms,
-  clearCachedPrograms,
   getPendingWorkouts,
   addPendingWorkout,
   removePendingWorkout,
   clearPendingWorkouts,
-  getActiveWorkoutSession,
-  setActiveWorkoutSession,
-  clearActiveWorkoutSession,
   getNutritionChatMessages,
   setNutritionChatMessages,
   getNutritionChatDraft,
   setNutritionChatDraft,
+  getDismissedDeviceTimezone,
+  setDismissedDeviceTimezone,
 };

@@ -1,22 +1,10 @@
 import { eq, and } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/d1';
 import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
-import { requireAuth } from '../auth';
+import { createHandler } from '../auth';
 import { resolveUserTimezone } from '../../lib/timezone';
 
-function getDb(c: any) {
-  return drizzle(c.env.DB, { schema });
-}
-
-export async function upsertTrainingContextHandler(c: any) {
-  const session = await requireAuth(c);
-  if (!session?.user) {
-    return c.json({ message: 'Unauthorized' }, 401);
-  }
-  const userId = session.user.id;
-  const db = getDb(c);
-
+export const upsertTrainingContextHandler = createHandler(async (c, { userId, db }) => {
   let body: {
     date?: string;
     type?: string;
@@ -110,4 +98,4 @@ export async function upsertTrainingContextHandler(c: any) {
     trainingType: result.trainingType,
     customLabel: result.customLabel,
   });
-}
+});

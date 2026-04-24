@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
-import { getLastWorkout, setLastWorkout } from '@/lib/storage';
+import { getLastWorkout, setLastWorkout, removePendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { generateId } from '@strength/db';
 import type {
@@ -21,6 +21,17 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function generateLocalId(): string {
+  return `local-${generateId()}`;
+}
+
+function isServerId(id: string | null | undefined): boolean {
+  return (
+    typeof id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+  );
+}
+
 interface UseWorkoutSessionReturn {
   workout: Workout | null;
   exercises: WorkoutExercise[];
@@ -30,7 +41,7 @@ interface UseWorkoutSessionReturn {
   formattedDuration: string;
   isActive: boolean;
   weightUnit: 'kg' | 'lbs';
-  startWorkout: (name: string) => Promise<void>;
+  startWorkout: (name: string) => Promise<Workout | null>;
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => Promise<void>;
@@ -119,7 +130,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
 
   const startWorkout = useCallback(
     async (name: string) => {
-      if (!session.data?.user) return;
+      if (!session.data?.user) return null;
       setIsLoading(true);
       setError(null);
       try {
@@ -135,13 +146,15 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         timerRef.current = setInterval(() => {
           setDuration((d) => d + 1);
         }, 1000);
+        return workoutData;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to start workout');
+        return null;
       } finally {
         setIsLoading(false);
       }
     },
-    [session.data?.user],
+    [activeTimezone, session.data?.user],
   );
 
   const loadWorkout = useCallback(
@@ -194,7 +207,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         if (existingWorkoutExercise) {
           for (let j = 0; j < exercise.sets.length; j++) {
             const set = exercise.sets[j];
-            if (set.id && set.id.includes('-') && set.id.length > 30) {
+            if (isServerId(set.id)) {
               await apiFetch(`/api/workouts/sets/${set.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -289,6 +302,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     if (workout?.id) {
       try {
         await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
+        await removePendingWorkout(workout.id);
       } catch (err) {
         console.error('Failed to delete workout:', err);
       }
@@ -312,7 +326,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           cached && cached.weight !== null && cached.reps !== null
             ? [
                 {
-                  id: generateId(),
+                  id: generateLocalId(),
                   workoutExerciseId: '',
                   setNumber: 1,
                   weight: cached.weight,
@@ -325,7 +339,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
               ]
             : [
                 {
-                  id: generateId(),
+                  id: generateLocalId(),
                   workoutExerciseId: '',
                   setNumber: 1,
                   weight: null,
@@ -338,7 +352,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
               ];
 
         const newWorkoutExercise: WorkoutExercise = {
-          id: generateId(),
+          id: generateLocalId(),
           exerciseId: exercise.id,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
@@ -385,7 +399,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         if (ex.id !== workoutExerciseId) return ex;
         const lastSet = ex.sets[ex.sets.length - 1];
         const newSet: WorkoutSet = {
-          id: generateId(),
+          id: generateLocalId(),
           workoutExerciseId,
           setNumber: ex.sets.length + 1,
           weight: lastSet?.weight ?? null,
@@ -409,7 +423,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         })),
       );
       const set = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
-      if (set && set.id.includes('-') && set.id.length > 30) {
+      if (isServerId(set?.id)) {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -449,14 +463,12 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         })),
       );
       const set = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
-      if (set) {
-        if (set.id.includes('-') && set.id.length > 30) {
-          apiFetch(`/api/workouts/sets/${setId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ isComplete, timezone: activeTimezone }),
-          }).catch(console.error);
-        }
+      if (isServerId(set?.id)) {
+        apiFetch(`/api/workouts/sets/${setId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isComplete, timezone: activeTimezone }),
+        }).catch(console.error);
       }
     },
     [activeTimezone, exercises],

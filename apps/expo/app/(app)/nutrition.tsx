@@ -1,7 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { ActionButton, PageHeader, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -131,6 +144,8 @@ function getSuggestedPrompts(trainingType: TrainingType) {
 }
 
 const CHAT_HISTORY_PAGE_SIZE = 5;
+const CHAT_FOCUS_HISTORY_OFFSET = 260;
+const NUTRITION_BOTTOM_INSET = 420;
 
 function normalizeMessage(message: ChatMessageData): ChatMessageData {
   const analysis =
@@ -224,6 +239,7 @@ function buildChatExchanges(messages: ChatMessageData[]): ChatExchangeData[] {
 }
 
 export default function NutritionScreen() {
+  const params = useLocalSearchParams<{ focusChat?: string }>();
   const { activeTimezone } = useUserPreferences();
   const timezone = activeTimezone ?? 'UTC';
   const date = getTodayLocalDate(timezone);
@@ -244,6 +260,11 @@ export default function NutritionScreen() {
   const [exchangeExpansion, setExchangeExpansion] = useState<Record<string, boolean>>({});
   const [savingAnalysisMessageId, setSavingAnalysisMessageId] = useState<string | null>(null);
   const hasAppliedServerHistory = useRef(false);
+  const messagesScrollRef = useRef<ScrollView | null>(null);
+  const chatInputRef = useRef<TextInput | null>(null);
+  const hasFocusedChatRoute = useRef(false);
+  const [assistantSectionY, setAssistantSectionY] = useState<number | null>(null);
+  const [chatInputY, setChatInputY] = useState<number | null>(null);
 
   const { data: whoopData } = useWhoopData(date, timezone);
 
@@ -720,147 +741,220 @@ export default function NutritionScreen() {
 
   const quickPrompts = getSuggestedPrompts(trainingType);
 
+  const scrollToChatInput = useCallback(
+    (focusInput = false, delayMs = 80) => {
+      if (assistantSectionY === null || chatInputY === null) {
+        return;
+      }
+
+      const targetY = Math.max(assistantSectionY + chatInputY - CHAT_FOCUS_HISTORY_OFFSET, 0);
+
+      setTimeout(() => {
+        messagesScrollRef.current?.scrollTo({ y: targetY, animated: true });
+
+        if (focusInput) {
+          setTimeout(() => {
+            chatInputRef.current?.focus();
+          }, 250);
+        }
+      }, delayMs);
+    },
+    [assistantSectionY, chatInputY],
+  );
+
+  const handleInputFocus = useCallback(() => {
+    scrollToChatInput(false);
+  }, [scrollToChatInput]);
+
+  useEffect(() => {
+    if (
+      params.focusChat !== '1' ||
+      hasFocusedChatRoute.current ||
+      assistantSectionY === null ||
+      chatInputY === null
+    ) {
+      return;
+    }
+
+    hasFocusedChatRoute.current = true;
+    scrollToChatInput(true);
+  }, [assistantSectionY, chatInputY, params.focusChat, scrollToChatInput]);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      scrollToChatInput(false, 0);
+    });
+
+    return () => {
+      showSubscription.remove();
+    };
+  }, [scrollToChatInput]);
+
   return (
     <>
-      <PageLayout
-        header={
-          <PageHeader
-            eyebrow={formatTodayEyebrow(date)}
-            title="Nutrition"
-            description="Log meals, track macros, and adjust intake around training and recovery."
-          />
-        }
-        screenScrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {summary ? (
-          <NutritionDashboard
-            entries={summary.entries}
-            totals={summary.totals}
-            targets={summary.targets}
-            targetMeta={summary.targetMeta}
-            bodyweightKg={summary.bodyweightKg}
-            trainingType={trainingType}
-            onTrainingTypeChange={handleTrainingTypeChange}
-            whoopData={
-              whoopData?.recovery
-                ? {
-                    recoveryScore: whoopData.recovery.score,
-                    recoveryStatus: whoopData.recovery.status,
-                    hrv: whoopData.recovery.hrv,
-                    caloriesBurned: whoopData.cycle?.caloriesBurned ?? null,
-                    totalStrain: whoopData.cycle?.totalStrain ?? null,
-                  }
-                : summary.whoopRecovery
+        <PageLayout
+          header={
+            <PageHeader
+              eyebrow={formatTodayEyebrow(date)}
+              title="Nutrition"
+              description="Log meals, track macros, and adjust intake around training and recovery."
+            />
+          }
+          screenScrollViewProps={{
+            bottomInset: NUTRITION_BOTTOM_INSET,
+            keyboardDismissMode: 'interactive',
+            keyboardShouldPersistTaps: 'handled',
+          }}
+          scrollViewRef={messagesScrollRef}
+        >
+          {summary ? (
+            <NutritionDashboard
+              entries={summary.entries}
+              totals={summary.totals}
+              targets={summary.targets}
+              targetMeta={summary.targetMeta}
+              bodyweightKg={summary.bodyweightKg}
+              trainingType={trainingType}
+              onTrainingTypeChange={handleTrainingTypeChange}
+              whoopData={
+                whoopData?.recovery
                   ? {
-                      recoveryScore: summary.whoopRecovery.score,
-                      recoveryStatus: summary.whoopRecovery.status,
-                      hrv: summary.whoopRecovery.hrv,
-                      caloriesBurned: summary.whoopCycle?.caloriesBurned ?? null,
-                      totalStrain: summary.whoopCycle?.totalStrain ?? null,
+                      recoveryScore: whoopData.recovery.score,
+                      recoveryStatus: whoopData.recovery.status,
+                      hrv: whoopData.recovery.hrv,
+                      caloriesBurned: whoopData.cycle?.caloriesBurned ?? null,
+                      totalStrain: whoopData.cycle?.totalStrain ?? null,
                     }
-                  : null
-            }
-            onMealEdit={handleMealEdit}
-            onMealDelete={handleMealDelete}
-          />
-        ) : null}
-
-        <Surface style={styles.assistantSection}>
-          <SectionTitle title="Nutrition Assistant" />
-          <Text style={styles.assistantDescription}>
-            Use a photo or a quick prompt to estimate meals, ask for meal ideas, or get macro
-            guidance.
-          </Text>
-
-          <View style={styles.quickActions}>
-            {quickPrompts.map((prompt) => (
-              <View key={`quick-prompt:${prompt}`} style={styles.quickActionSlot}>
-                <ActionButton
-                  label={prompt}
-                  icon="sparkles-outline"
-                  variant="secondary"
-                  onPress={() => handleQuickPrompt(prompt)}
-                  disabled={isLoading}
-                />
-              </View>
-            ))}
-          </View>
-
-          {pendingImage ? (
-            <View style={styles.pendingImageCard}>
-              <Image source={{ uri: pendingImage.uri }} style={styles.pendingImage} />
-              <View style={styles.pendingImageCopy}>
-                <Text style={styles.pendingImageTitle}>Photo ready</Text>
-                <Text style={styles.pendingImageText}>
-                  Add a short message to estimate this meal and log it.
-                </Text>
-              </View>
-              <Pressable onPress={() => setPendingImage(null)} style={styles.pendingImageClear}>
-                <Ionicons name="close" size={18} color={colors.textMuted} />
-              </Pressable>
-            </View>
+                  : summary.whoopRecovery
+                    ? {
+                        recoveryScore: summary.whoopRecovery.score,
+                        recoveryStatus: summary.whoopRecovery.status,
+                        hrv: summary.whoopRecovery.hrv,
+                        caloriesBurned: summary.whoopCycle?.caloriesBurned ?? null,
+                        totalStrain: summary.whoopCycle?.totalStrain ?? null,
+                      }
+                    : null
+              }
+              onMealEdit={handleMealEdit}
+              onMealDelete={handleMealDelete}
+            />
           ) : null}
 
-          <View style={styles.messageList}>
-            {messages.length === 0 ? (
-              <View style={styles.emptyChat}>
-                <Ionicons name="chatbubbles-outline" size={36} color={colors.textMuted} />
-                <Text style={styles.emptyChatTitle}>No assistant messages yet</Text>
-                <Text style={styles.emptyChatText}>
-                  Try a quick prompt, describe what you ate, or attach a meal photo.
-                </Text>
-              </View>
-            ) : (
-              <>
-                {hasMoreHistory ? (
-                  <ActionButton
-                    label={
-                      isLoadingMoreHistory ? 'Loading older messages...' : 'Load older messages'
-                    }
-                    icon="time-outline"
-                    variant="ghost"
-                    onPress={() => void loadOlderHistory()}
-                    disabled={isLoadingMoreHistory}
-                  />
-                ) : null}
-                {exchanges.map((exchange, index) => {
-                  const isLatestExchange = index === exchanges.length - 1;
-                  const isExpanded = exchangeExpansion[exchange.id] ?? isLatestExchange;
+          <View
+            onLayout={(event) => {
+              setAssistantSectionY(event.nativeEvent.layout.y);
+            }}
+          >
+            <Surface style={styles.assistantSection}>
+              <SectionTitle title="Nutrition Assistant" />
+              <Text style={styles.assistantDescription}>
+                Use a photo or a quick prompt to estimate meals, ask for meal ideas, or get macro
+                guidance.
+              </Text>
 
-                  return (
-                    <ChatMessage
-                      key={`chat-exchange:${exchange.id}`}
-                      exchange={exchange}
-                      expanded={isExpanded}
-                      onToggleExpanded={() =>
-                        setExchangeExpansion((current) => ({
-                          ...current,
-                          [exchange.id]: !isExpanded,
-                        }))
-                      }
-                      onSaveAnalysis={handleSaveFromAnalysis}
-                      isSavingAnalysis={
-                        savingAnalysisMessageId === exchange.assistantMessage?.id &&
-                        (saveMealMutation.isPending || deleteMealMutation.isPending)
-                      }
+              <View style={styles.quickActions}>
+                {quickPrompts.map((prompt) => (
+                  <View key={`quick-prompt:${prompt}`} style={styles.quickActionSlot}>
+                    <ActionButton
+                      label={prompt}
+                      icon="sparkles-outline"
+                      variant="secondary"
+                      onPress={() => handleQuickPrompt(prompt)}
+                      disabled={isLoading}
                     />
-                  );
-                })}
-              </>
-            )}
-          </View>
+                  </View>
+                ))}
+              </View>
 
-          <ChatInput
-            onSend={handleSend}
-            onImageCapture={handleImageCapture}
-            isLoading={isLoading}
-            value={draftText}
-            onChangeText={setDraftText}
-            variant="embedded"
-            captureRequestKey={captureRequestKey}
-          />
-        </Surface>
-      </PageLayout>
+              {pendingImage ? (
+                <View style={styles.pendingImageCard}>
+                  <Image source={{ uri: pendingImage.uri }} style={styles.pendingImage} />
+                  <View style={styles.pendingImageCopy}>
+                    <Text style={styles.pendingImageTitle}>Photo ready</Text>
+                    <Text style={styles.pendingImageText}>
+                      Add a short message to estimate this meal and log it.
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => setPendingImage(null)} style={styles.pendingImageClear}>
+                    <Ionicons name="close" size={18} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ) : null}
+
+              <View style={styles.messageList}>
+                {messages.length === 0 ? (
+                  <View style={styles.emptyChat}>
+                    <Ionicons name="chatbubbles-outline" size={36} color={colors.textMuted} />
+                    <Text style={styles.emptyChatTitle}>No assistant messages yet</Text>
+                    <Text style={styles.emptyChatText}>
+                      Try a quick prompt, describe what you ate, or attach a meal photo.
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    {hasMoreHistory ? (
+                      <ActionButton
+                        label={
+                          isLoadingMoreHistory ? 'Loading older messages...' : 'Load older messages'
+                        }
+                        icon="time-outline"
+                        variant="ghost"
+                        onPress={() => void loadOlderHistory()}
+                        disabled={isLoadingMoreHistory}
+                      />
+                    ) : null}
+                    {exchanges.map((exchange, index) => {
+                      const isLatestExchange = index === exchanges.length - 1;
+                      const isExpanded = exchangeExpansion[exchange.id] ?? isLatestExchange;
+
+                      return (
+                        <ChatMessage
+                          key={`chat-exchange:${exchange.id}`}
+                          exchange={exchange}
+                          expanded={isExpanded}
+                          onToggleExpanded={() =>
+                            setExchangeExpansion((current) => ({
+                              ...current,
+                              [exchange.id]: !isExpanded,
+                            }))
+                          }
+                          onSaveAnalysis={handleSaveFromAnalysis}
+                          isSavingAnalysis={
+                            savingAnalysisMessageId === exchange.assistantMessage?.id &&
+                            (saveMealMutation.isPending || deleteMealMutation.isPending)
+                          }
+                        />
+                      );
+                    })}
+                  </>
+                )}
+              </View>
+
+              <View
+                onLayout={(event) => {
+                  setChatInputY(event.nativeEvent.layout.y);
+                }}
+              >
+                <ChatInput
+                  onSend={handleSend}
+                  onImageCapture={handleImageCapture}
+                  isLoading={isLoading}
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  variant="embedded"
+                  captureRequestKey={captureRequestKey}
+                  onFocus={handleInputFocus}
+                  inputRef={chatInputRef}
+                />
+              </View>
+            </Surface>
+          </View>
+        </PageLayout>
+      </KeyboardAvoidingView>
 
       <SaveMealDialog
         visible={showSaveDialog}
@@ -879,6 +973,9 @@ export default function NutritionScreen() {
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   assistantSection: {
     marginTop: spacing.lg,
     gap: spacing.md,
