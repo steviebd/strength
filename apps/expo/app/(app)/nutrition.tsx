@@ -1,18 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
@@ -22,26 +20,24 @@ import { apiFetch } from '@/lib/api';
 import {
   getNutritionChatDraft,
   getNutritionChatMessages,
+  getNutritionPendingImage,
   setNutritionChatDraft,
   setNutritionChatMessages,
+  setNutritionPendingImage,
 } from '@/lib/storage';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
-import { SaveMealDialog } from '@/components/nutrition/SaveMealDialog';
 import { useWhoopData } from '@/hooks/useWhoopData';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { getTodayLocalDate } from '@/lib/timezone';
+import {
+  parseMealAnalysisFromContent,
+  resolveMealTypeForAnalysis,
+  type MealAnalysis,
+} from '@/lib/nutritionChat';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
-
-interface MealAnalysis {
-  name: string;
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
-}
 
 interface ChatMessageData {
   id: string;
@@ -102,15 +98,6 @@ interface DailySummary {
   whoopCycle: { caloriesBurned: number | null; totalStrain: number | null } | null;
 }
 
-function getDefaultMealTypeForNow(): 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack' {
-  const hour = new Date().getHours();
-
-  if (hour >= 6 && hour < 10) return 'Breakfast';
-  if (hour >= 11 && hour < 14) return 'Lunch';
-  if (hour >= 17 && hour < 20) return 'Dinner';
-  return 'Snack';
-}
-
 function formatTodayEyebrow(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -148,30 +135,50 @@ const CHAT_FOCUS_HISTORY_OFFSET = 260;
 const NUTRITION_BOTTOM_INSET = 420;
 
 function normalizeMessage(message: ChatMessageData): ChatMessageData {
-  const analysis =
-    message.analysis ??
-    (() => {
-      const jsonMatch = message.content.match(/```json\n([\s\S]*?)\n```/);
-      if (!jsonMatch?.[1]) return undefined;
-      try {
-        const parsed = JSON.parse(jsonMatch[1]);
-        if (parsed.name && typeof parsed.calories === 'number') {
-          return {
-            name: parsed.name,
-            calories: parsed.calories,
-            proteinG: parsed.proteinG ?? 0,
-            carbsG: parsed.carbsG ?? 0,
-            fatG: parsed.fatG ?? 0,
-          };
-        }
-      } catch {}
-      return undefined;
-    })();
+  const analysis = message.analysis ?? parseMealAnalysisFromContent(message.content) ?? undefined;
 
   return {
     ...message,
     analysis,
   };
+}
+
+function getMessageSavedKey(message: ChatMessageData): string {
+  return `${message.role}:${message.content}`;
+}
+
+function mergeSavedEntryIds(
+  serverMessages: ChatMessageData[],
+  localMessages: ChatMessageData[],
+): ChatMessageData[] {
+  const savedById = new Map<string, string>();
+  const savedByContent = new Map<string, string[]>();
+
+  for (const message of localMessages) {
+    if (!message.savedEntryId) continue;
+
+    savedById.set(message.id, message.savedEntryId);
+
+    const contentKey = getMessageSavedKey(message);
+    const existing = savedByContent.get(contentKey) ?? [];
+    existing.push(message.savedEntryId);
+    savedByContent.set(contentKey, existing);
+  }
+
+  return serverMessages.map((message) => {
+    const savedByExactId = savedById.get(message.id);
+    if (savedByExactId) {
+      return { ...message, savedEntryId: savedByExactId };
+    }
+
+    const contentMatches = savedByContent.get(getMessageSavedKey(message));
+    const savedByMatchingContent = contentMatches?.shift();
+    if (savedByMatchingContent) {
+      return { ...message, savedEntryId: savedByMatchingContent };
+    }
+
+    return message;
+  });
 }
 
 function dedupeMessages(messages: ChatMessageData[]): ChatMessageData[] {
@@ -238,21 +245,40 @@ function buildChatExchanges(messages: ChatMessageData[]): ChatExchangeData[] {
   return exchanges;
 }
 
+function removeEntryFromSummary(summary: DailySummary | undefined, entryId: string) {
+  if (!summary) return summary;
+
+  const removedEntry = summary.entries.find((entry) => entry.id === entryId);
+  if (!removedEntry) return summary;
+
+  return {
+    ...summary,
+    entries: summary.entries.filter((entry) => entry.id !== entryId),
+    totals: {
+      calories: summary.totals.calories - (removedEntry.calories ?? 0),
+      proteinG: summary.totals.proteinG - (removedEntry.proteinG ?? 0),
+      carbsG: summary.totals.carbsG - (removedEntry.carbsG ?? 0),
+      fatG: summary.totals.fatG - (removedEntry.fatG ?? 0),
+    },
+  };
+}
+
 export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
+  const queryClient = useQueryClient();
   const { activeTimezone } = useUserPreferences();
   const timezone = activeTimezone ?? 'UTC';
   const date = getTodayLocalDate(timezone);
+  const dailySummaryQueryKey = useMemo(
+    () => ['nutrition-daily-summary', date, timezone],
+    [date, timezone],
+  );
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [trainingType, setTrainingType] = useState<TrainingType>('rest_day');
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [pendingAnalysis, setPendingAnalysis] = useState<MealAnalysis | null>(null);
-  const [editingEntry, setEditingEntry] = useState<MealEntry | null>(null);
   const [pendingImage, setPendingImage] = useState<{ base64: string; uri: string } | null>(null);
   const [captureRequestKey, setCaptureRequestKey] = useState(0);
-  const [queuedPromptAfterCapture, setQueuedPromptAfterCapture] = useState<string | null>(null);
   const [historyCursor, setHistoryCursor] = useState<number | null>(null);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
@@ -265,11 +291,12 @@ export default function NutritionScreen() {
   const hasFocusedChatRoute = useRef(false);
   const [assistantSectionY, setAssistantSectionY] = useState<number | null>(null);
   const [chatInputY, setChatInputY] = useState<number | null>(null);
+  const savingAnalysisMessageIds = useRef(new Set<string>());
 
   const { data: whoopData } = useWhoopData(date, timezone);
 
   const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
-    queryKey: ['nutrition-daily-summary', date, timezone],
+    queryKey: dailySummaryQueryKey,
     queryFn: () =>
       apiFetch(
         `/api/nutrition/daily-summary?date=${date}&timezone=${encodeURIComponent(timezone)}`,
@@ -286,16 +313,17 @@ export default function NutritionScreen() {
     let isCancelled = false;
 
     async function restoreLocalState() {
-      const [cachedMessages, cachedDraft] = await Promise.all([
+      const [cachedMessages, cachedDraft, cachedPendingImage] = await Promise.all([
         getNutritionChatMessages<ChatMessageData>(date, timezone),
         getNutritionChatDraft(date, timezone),
+        getNutritionPendingImage(date, timezone),
       ]);
 
       if (isCancelled) return;
 
       setMessages(cachedMessages.map(normalizeMessage));
       setDraftText(cachedDraft);
-      setPendingImage(null);
+      setPendingImage(cachedPendingImage);
       setHistoryCursor(null);
       setHasMoreHistory(false);
       setExchangeExpansion({});
@@ -345,6 +373,26 @@ export default function NutritionScreen() {
     });
   }, [summary]);
 
+  const clearSavedEntryFromMessages = useCallback((entryId: string) => {
+    setMessages((current) => {
+      let hasChanges = false;
+
+      const next = current.map((message) => {
+        if (message.savedEntryId !== entryId) {
+          return message;
+        }
+
+        hasChanges = true;
+        return {
+          ...message,
+          savedEntryId: null,
+        };
+      });
+
+      return hasChanges ? next : current;
+    });
+  }, []);
+
   const exchanges = useMemo(() => buildChatExchanges(messages), [messages]);
 
   const historyQuery = useQuery<ChatHistoryResponse>({
@@ -373,7 +421,7 @@ export default function NutritionScreen() {
       }),
     );
 
-    setMessages(serverMessages);
+    setMessages((current) => mergeSavedEntryIds(serverMessages, current));
     setHistoryCursor(historyQuery.data.nextCursor);
     setHasMoreHistory(historyQuery.data.hasMore);
     setExchangeExpansion({});
@@ -388,7 +436,6 @@ export default function NutritionScreen() {
       protein: number;
       carbs: number;
       fat: number;
-      id?: string;
     }) => {
       const payload = {
         name: data.name,
@@ -399,13 +446,6 @@ export default function NutritionScreen() {
         fatG: data.fat,
         timezone,
       };
-
-      if (data.id) {
-        return apiFetch(`/api/nutrition/entries/${data.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
-      }
 
       return apiFetch('/api/nutrition/entries', {
         method: 'POST',
@@ -419,8 +459,24 @@ export default function NutritionScreen() {
 
   const deleteMealMutation = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/nutrition/entries/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      refetchSummary();
+    onMutate: async (entryId) => {
+      await queryClient.cancelQueries({ queryKey: dailySummaryQueryKey });
+      const previousSummary = queryClient.getQueryData<DailySummary>(dailySummaryQueryKey);
+
+      queryClient.setQueryData<DailySummary | undefined>(dailySummaryQueryKey, (current) =>
+        removeEntryFromSummary(current, entryId),
+      );
+
+      return { previousSummary };
+    },
+    onError: (_error, _entryId, context) => {
+      if (context?.previousSummary) {
+        queryClient.setQueryData(dailySummaryQueryKey, context.previousSummary);
+      }
+    },
+    onSuccess: (_data, entryId) => {
+      clearSavedEntryFromMessages(entryId);
+      void queryClient.invalidateQueries({ queryKey: dailySummaryQueryKey });
     },
   });
 
@@ -435,26 +491,6 @@ export default function NutritionScreen() {
     },
   });
 
-  const parseAnalysisFromContent = (content: string): MealAnalysis | null => {
-    const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch && jsonMatch[1]) {
-      try {
-        const parsed = JSON.parse(jsonMatch[1]);
-        if (parsed.name && typeof parsed.calories === 'number') {
-          return {
-            name: parsed.name,
-            calories: parsed.calories,
-            proteinG: parsed.proteinG ?? 0,
-            carbsG: parsed.carbsG ?? 0,
-            fatG: parsed.fatG ?? 0,
-          };
-        }
-      } catch {}
-    }
-
-    return null;
-  };
-
   const handleTrainingTypeChange = useCallback(
     (type: TrainingType) => {
       setTrainingType(type);
@@ -463,15 +499,14 @@ export default function NutritionScreen() {
     [trainingContextMutation],
   );
 
-  const handleMealEdit = useCallback((entry: MealEntry) => {
-    setEditingEntry(entry);
-    setPendingAnalysis(null);
-    setShowSaveDialog(true);
-  }, []);
-
   const handleMealDelete = useCallback(
     (entryId: string) => {
-      deleteMealMutation.mutate(entryId);
+      deleteMealMutation.mutate(entryId, {
+        onError: (error) => {
+          const message = error instanceof Error ? error.message : 'Unable to delete meal.';
+          Alert.alert('Delete failed', message);
+        },
+      });
     },
     [deleteMealMutation],
   );
@@ -488,6 +523,7 @@ export default function NutritionScreen() {
 
       setMessages((prev) => [...prev, userMsg]);
       setPendingImage(null);
+      void setNutritionPendingImage(date, timezone, null);
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
@@ -524,19 +560,49 @@ export default function NutritionScreen() {
             const data = line.slice(6);
             if (data === '[DONE]') continue;
 
+            let delta: unknown;
             try {
-              const delta = JSON.parse(data);
-              if (delta.type === 'text-delta' && delta.text) {
-                assistantContent += delta.text;
-                setMessages((prev) =>
-                  prev.map((message) =>
-                    message.id === assistantMsgId
-                      ? { ...message, content: assistantContent }
-                      : message,
-                  ),
-                );
-              }
-            } catch {}
+              delta = JSON.parse(data);
+            } catch {
+              continue;
+            }
+
+            if (!delta || typeof delta !== 'object') {
+              continue;
+            }
+
+            if ('type' in delta && delta.type === 'error') {
+              const error = 'error' in delta ? delta.error : null;
+              const errorMessage =
+                error instanceof Error
+                  ? error.message
+                  : typeof error === 'string'
+                    ? error
+                    : 'The assistant stream returned an error.';
+              throw new Error(errorMessage);
+            }
+
+            const textDelta =
+              'type' in delta && delta.type === 'text-delta' && 'text' in delta
+                ? typeof delta.text === 'string'
+                  ? delta.text
+                  : ''
+                : 'textDelta' in delta && typeof delta.textDelta === 'string'
+                  ? delta.textDelta
+                  : 'delta' in delta && typeof delta.delta === 'string'
+                    ? delta.delta
+                    : '';
+
+            if (textDelta) {
+              assistantContent += textDelta;
+              setMessages((prev) =>
+                prev.map((message) =>
+                  message.id === assistantMsgId
+                    ? { ...message, content: assistantContent }
+                    : message,
+                ),
+              );
+            }
           }
         };
 
@@ -585,7 +651,7 @@ export default function NutritionScreen() {
       } finally {
         setIsLoading(false);
 
-        const analysis = parseAnalysisFromContent(assistantContent);
+        const analysis = parseMealAnalysisFromContent(assistantContent);
         if (analysis) {
           setMessages((prev) =>
             prev.map((message) =>
@@ -607,7 +673,7 @@ export default function NutritionScreen() {
 
     try {
       const response = await apiFetch<ChatHistoryResponse>(
-        `/api/nutrition/chat/history?date=${date}&limit=${CHAT_HISTORY_PAGE_SIZE}&before=${historyCursor}`,
+        `/api/nutrition/chat/history?date=${date}&timezone=${encodeURIComponent(timezone)}&limit=${CHAT_HISTORY_PAGE_SIZE}&before=${historyCursor}`,
       );
 
       const olderMessages = response.messages.map((message) =>
@@ -619,30 +685,21 @@ export default function NutritionScreen() {
         }),
       );
 
-      setMessages((prev) => dedupeMessages([...olderMessages, ...prev]));
+      setMessages((prev) => dedupeMessages([...mergeSavedEntryIds(olderMessages, prev), ...prev]));
       setHistoryCursor(response.nextCursor);
       setHasMoreHistory(response.hasMore);
     } finally {
       setIsLoadingMoreHistory(false);
     }
-  }, [date, historyCursor, isLoadingMoreHistory]);
-
-  const handleImageCapture = useCallback(
-    (base64: string, uri: string) => {
-      const image = { base64, uri };
-      setPendingImage(image);
-
-      if (queuedPromptAfterCapture) {
-        const prompt = queuedPromptAfterCapture;
-        setQueuedPromptAfterCapture(null);
-        void sendMessage(prompt, image);
-      }
-    },
-    [queuedPromptAfterCapture, sendMessage],
-  );
+  }, [date, historyCursor, isLoadingMoreHistory, timezone]);
 
   const handleSaveFromAnalysis = useCallback(
     async (messageId: string, analysis: MealAnalysis, savedEntryId?: string | null) => {
+      if (savingAnalysisMessageIds.current.has(messageId)) {
+        return;
+      }
+
+      savingAnalysisMessageIds.current.add(messageId);
       setSavingAnalysisMessageId(messageId);
 
       try {
@@ -659,7 +716,7 @@ export default function NutritionScreen() {
 
         const entry = await saveMealMutation.mutateAsync({
           name: analysis.name,
-          mealType: getDefaultMealTypeForNow(),
+          mealType: resolveMealTypeForAnalysis(analysis),
           calories: analysis.calories,
           protein: analysis.proteinG,
           carbs: analysis.carbsG,
@@ -684,40 +741,12 @@ export default function NutritionScreen() {
         const message = error instanceof Error ? error.message : 'Unable to save meal.';
         Alert.alert('Save failed', message);
       } finally {
+        savingAnalysisMessageIds.current.delete(messageId);
         setSavingAnalysisMessageId((current) => (current === messageId ? null : current));
       }
     },
     [deleteMealMutation, saveMealMutation],
   );
-
-  const handleSaveMeal = useCallback(
-    async (data: {
-      name: string;
-      mealType: string;
-      calories: number;
-      protein: number;
-      carbs: number;
-      fat: number;
-    }) => {
-      await saveMealMutation.mutateAsync({
-        ...data,
-        id: editingEntry?.id,
-      });
-      setShowSaveDialog(false);
-      setPendingAnalysis(null);
-      setEditingEntry(null);
-    },
-    [editingEntry?.id, saveMealMutation],
-  );
-
-  const handleDeleteMeal = useCallback(() => {
-    if (editingEntry?.id) {
-      deleteMealMutation.mutate(editingEntry.id);
-    }
-    setShowSaveDialog(false);
-    setPendingAnalysis(null);
-    setEditingEntry(null);
-  }, [deleteMealMutation, editingEntry?.id]);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -729,7 +758,6 @@ export default function NutritionScreen() {
   const handleQuickPrompt = useCallback(
     (prompt: string) => {
       if (prompt === 'Estimate this meal from a photo' && !pendingImage) {
-        setQueuedPromptAfterCapture(prompt);
         setCaptureRequestKey((current) => current + 1);
         return;
       }
@@ -765,6 +793,16 @@ export default function NutritionScreen() {
   const handleInputFocus = useCallback(() => {
     scrollToChatInput(false);
   }, [scrollToChatInput]);
+
+  const handleImageCapture = useCallback(
+    (base64: string, uri: string) => {
+      const image = { base64, uri };
+      setPendingImage(image);
+      void setNutritionPendingImage(date, timezone, image);
+      scrollToChatInput(true, 0);
+    },
+    [date, scrollToChatInput, timezone],
+  );
 
   useEffect(() => {
     if (
@@ -839,7 +877,6 @@ export default function NutritionScreen() {
                       }
                     : null
               }
-              onMealEdit={handleMealEdit}
               onMealDelete={handleMealDelete}
             />
           ) : null}
@@ -869,21 +906,6 @@ export default function NutritionScreen() {
                   </View>
                 ))}
               </View>
-
-              {pendingImage ? (
-                <View style={styles.pendingImageCard}>
-                  <Image source={{ uri: pendingImage.uri }} style={styles.pendingImage} />
-                  <View style={styles.pendingImageCopy}>
-                    <Text style={styles.pendingImageTitle}>Photo ready</Text>
-                    <Text style={styles.pendingImageText}>
-                      Add a short message to estimate this meal and log it.
-                    </Text>
-                  </View>
-                  <Pressable onPress={() => setPendingImage(null)} style={styles.pendingImageClear}>
-                    <Ionicons name="close" size={18} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-              ) : null}
 
               <View style={styles.messageList}>
                 {messages.length === 0 ? (
@@ -949,25 +971,17 @@ export default function NutritionScreen() {
                   captureRequestKey={captureRequestKey}
                   onFocus={handleInputFocus}
                   inputRef={chatInputRef}
+                  pendingImageUri={pendingImage?.uri ?? null}
+                  onClearImage={() => {
+                    setPendingImage(null);
+                    void setNutritionPendingImage(date, timezone, null);
+                  }}
                 />
               </View>
             </Surface>
           </View>
         </PageLayout>
       </KeyboardAvoidingView>
-
-      <SaveMealDialog
-        visible={showSaveDialog}
-        onClose={() => {
-          setShowSaveDialog(false);
-          setPendingAnalysis(null);
-          setEditingEntry(null);
-        }}
-        analysis={pendingAnalysis}
-        onSave={handleSaveMeal}
-        onDelete={editingEntry?.id ? handleDeleteMeal : undefined}
-        isSaving={saveMealMutation.isPending}
-      />
     </>
   );
 }
@@ -993,43 +1007,6 @@ const styles = StyleSheet.create({
   quickActionSlot: {
     minWidth: '48%',
     flex: 1,
-  },
-  pendingImageCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    padding: spacing.md,
-  },
-  pendingImage: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.md,
-  },
-  pendingImageCopy: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  pendingImageTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text,
-  },
-  pendingImageText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
-  pendingImageClear: {
-    height: 32,
-    width: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   messageList: {
     gap: spacing.sm,

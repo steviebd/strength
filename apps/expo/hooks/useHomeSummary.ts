@@ -7,7 +7,7 @@ type HomeScheduledWorkout = {
   workoutId: string | null;
   name: string;
   focus: string;
-  exercises: string[];
+  exercises: { name: string; count: number }[];
   programName: string;
   programCycleId: string;
   scheduledDate: string;

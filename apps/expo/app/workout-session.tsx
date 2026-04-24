@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
+import { Button } from '@/components/ui/Button';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
@@ -68,6 +69,7 @@ export default function WorkoutSessionScreen() {
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [exerciseLayouts, setExerciseLayouts] = useState<ExerciseLayout[]>([]);
+  const [headerHeight, setHeaderHeight] = useState(0);
   const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
@@ -126,17 +128,11 @@ export default function WorkoutSessionScreen() {
 
   const handleAddExercise = useCallback(
     async (exercisesList: ExerciseLibraryItem[]) => {
-      console.log(
-        '[DEBUG handleAddExercise] Received exercises:',
-        exercisesList.map((e) => e.name),
-      );
       for (const exercise of exercisesList) {
-        console.log('[DEBUG handleAddExercise] Calling addExercise for:', exercise.name);
         await addExercise(exercise);
       }
-      console.log('[DEBUG handleAddExercise] Done. Context exercises count:', exercises.length);
     },
-    [addExercise, exercises.length],
+    [addExercise],
   );
 
   const handleExerciseSetsUpdate = useCallback(
@@ -400,25 +396,14 @@ export default function WorkoutSessionScreen() {
     return (
       <View style={styles.actionButtonsRow}>
         {buttons.map((btn, idx) => (
-          <Pressable
+          <Button
             key={`workout-action:${btn.label}:${idx}`}
-            style={[
-              styles.actionButton,
-              btn.variant === 'primary' ? styles.actionButtonPrimary : styles.actionButtonSecondary,
-            ]}
+            label={btn.label}
+            variant={btn.variant}
             onPress={btn.onPress}
-          >
-            <Text
-              style={[
-                styles.actionButtonText,
-                btn.variant === 'primary'
-                  ? styles.actionButtonTextPrimary
-                  : styles.actionButtonTextSecondary,
-              ]}
-            >
-              {btn.label}
-            </Text>
-          </Pressable>
+            size="sm"
+            fullWidth
+          />
         ))}
       </View>
     );
@@ -431,7 +416,10 @@ export default function WorkoutSessionScreen() {
       style={{ flex: 1 }}
     >
       <ScrollProvider scrollViewRef={scrollViewRef}>
-        <View style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}>
+        <View
+          style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}
+          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        >
           <View style={styles.headerTop}>
             <View style={styles.headerLeft}>
               <Text style={styles.subtitle}>
@@ -455,7 +443,7 @@ export default function WorkoutSessionScreen() {
           scrollViewRef={scrollViewRef}
           screenScrollViewProps={{
             bottomInset: 400,
-            topPadding: 170 + insets.top,
+            topPadding: headerHeight + spacing.md,
             horizontalPadding: spacing.md,
             showsVerticalScrollIndicator: false,
             keyboardShouldPersistTaps: 'handled',
@@ -469,12 +457,6 @@ export default function WorkoutSessionScreen() {
                 weight: s.weight ?? 0,
                 completed: s.isComplete,
               }));
-              console.log(
-                '[DEBUG workout-session] rendering exercise:',
-                exercise.name,
-                'at idx:',
-                idx,
-              );
               return (
                 <View
                   key={`workout-exercise:${exercise.id ?? idx}`}

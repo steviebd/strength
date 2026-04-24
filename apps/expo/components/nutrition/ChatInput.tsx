@@ -6,7 +6,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
+  Pressable,
+  Text,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { MealImageCapture } from './MealImageCapture';
@@ -22,6 +26,8 @@ interface ChatInputProps {
   captureRequestKey?: number;
   onFocus?: () => void;
   inputRef?: RefObject<TextInput | null>;
+  pendingImageUri?: string | null;
+  onClearImage?: () => void;
 }
 
 export function ChatInput({
@@ -35,46 +41,75 @@ export function ChatInput({
   captureRequestKey,
   onFocus,
   inputRef,
+  pendingImageUri,
+  onClearImage,
 }: ChatInputProps) {
   const handleSend = () => {
     const trimmed = value.trim();
-    if (!trimmed) return;
-    onSend(trimmed);
+    if (!trimmed && !pendingImageUri) return;
+    onSend(trimmed || 'Estimate this meal from the photo.');
     onChangeText('');
   };
 
   const content = (
-    <View style={[styles.container, variant === 'embedded' ? styles.containerEmbedded : undefined]}>
-      <MealImageCapture
-        onImageCapture={onImageCapture}
-        disabled={isLoading}
-        captureRequestKey={captureRequestKey}
-      />
-      <View style={styles.inputWrapper}>
-        <TextInput
-          ref={inputRef}
-          style={styles.input}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textMuted}
-          editable={!isLoading}
-          returnKeyType="send"
-          onSubmitEditing={handleSend}
-          multiline
-          maxLength={2000}
-          onFocus={onFocus}
+    <View
+      style={[
+        styles.container,
+        variant === 'embedded' ? styles.containerEmbedded : undefined,
+        pendingImageUri ? styles.containerWithPreview : undefined,
+      ]}
+    >
+      {pendingImageUri ? (
+        <View style={styles.previewCard}>
+          <Image source={{ uri: pendingImageUri }} style={styles.previewImage} />
+          <View style={styles.previewCopy}>
+            <Text style={styles.previewTitle}>Photo attached</Text>
+            <Text style={styles.previewText}>
+              Add a note, then send it to the nutrition assistant.
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClearImage}
+            disabled={isLoading}
+            style={({ pressed }) => [styles.previewClear, pressed && styles.previewClearPressed]}
+          >
+            <Ionicons name="close" size={18} color={colors.textMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={styles.inputRow}>
+        <MealImageCapture
+          onImageCapture={onImageCapture}
+          disabled={isLoading}
+          captureRequestKey={captureRequestKey}
         />
+        <View style={styles.inputWrapper}>
+          <TextInput
+            ref={inputRef}
+            style={styles.input}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={colors.textMuted}
+            editable={!isLoading}
+            returnKeyType="send"
+            onSubmitEditing={handleSend}
+            multiline
+            maxLength={2000}
+            onFocus={onFocus}
+          />
+        </View>
+        <Button
+          onPress={handleSend}
+          disabled={(!value.trim() && !pendingImageUri) || isLoading}
+          style={styles.sendButton}
+          size="sm"
+          variant="default"
+        >
+          {isLoading ? <ActivityIndicator size="small" color="#ffffff" /> : '↑'}
+        </Button>
       </View>
-      <Button
-        onPress={handleSend}
-        disabled={!value.trim() || isLoading}
-        style={styles.sendButton}
-        size="sm"
-        variant="default"
-      >
-        {isLoading ? <ActivityIndicator size="small" color="#ffffff" /> : '↑'}
-      </Button>
     </View>
   );
 
@@ -91,8 +126,6 @@ export function ChatInput({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
     gap: spacing.sm,
     backgroundColor: colors.background,
     borderTopWidth: 1,
@@ -100,11 +133,60 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: 48,
   },
+  containerWithPreview: {
+    gap: spacing.md,
+  },
   containerEmbedded: {
     backgroundColor: 'transparent',
     borderTopWidth: 0,
     paddingHorizontal: 0,
     paddingBottom: 0,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  previewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+  },
+  previewImage: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.sm,
+  },
+  previewCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  previewTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  previewText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  previewClear: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceAlt,
+  },
+  previewClearPressed: {
+    opacity: 0.7,
   },
   inputWrapper: {
     flex: 1,

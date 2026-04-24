@@ -14,15 +14,6 @@ interface MealCardProps {
   carbs: number;
   fat: number;
   onDelete?: (id: string) => void;
-  onEdit?: (entry: {
-    id: string;
-    name: string;
-    mealType: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-  }) => void;
 }
 
 const mealTypeToneMap: Record<string, 'orange' | 'sky' | 'emerald' | 'rose'> = {
@@ -42,19 +33,27 @@ export function MealCard({
   carbs,
   fat,
   onDelete,
-  onEdit,
 }: MealCardProps) {
   const tone = mealTypeToneMap[mealType.toLowerCase()] ?? 'neutral';
 
   return (
     <Surface style={styles.container}>
-      <Pressable
-        onPress={() => onEdit?.({ id, name, mealType, calories, protein, carbs, fat })}
-        style={styles.cardPressable}
-      >
+      <View style={styles.cardBody}>
         <View style={styles.header}>
           <Badge label={mealType} tone={tone as 'orange' | 'sky' | 'emerald' | 'rose'} />
-          <Text style={styles.time}>{time}</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.time}>{time}</Text>
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                onDelete?.(id);
+              }}
+              hitSlop={10}
+              style={styles.deleteIcon}
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.name}>{name}</Text>
         <View style={styles.macros}>
@@ -66,10 +65,7 @@ export function MealCard({
           <Text style={styles.macroDivider}>|</Text>
           <Text style={styles.macroText}>F {fat}g</Text>
         </View>
-      </Pressable>
-      <Pressable onPress={() => onDelete?.(id)} style={styles.deleteIcon}>
-        <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
-      </Pressable>
+      </View>
     </Surface>
   );
 }
@@ -78,13 +74,18 @@ const styles = StyleSheet.create({
   container: {
     gap: spacing.sm,
   },
-  cardPressable: {
+  cardBody: {
     flex: 1,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   time: {
     fontSize: typography.fontSizes.sm,
@@ -114,8 +115,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   deleteIcon: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
+    padding: spacing.xs,
   },
 });

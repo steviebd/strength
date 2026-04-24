@@ -63,7 +63,7 @@ export default function AppLayout() {
       }),
   });
 
-  if (session.isPending || session.isRefetching) {
+  if (session.isPending && !session.data) {
     return null;
   }
 

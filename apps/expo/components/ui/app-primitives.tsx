@@ -1,21 +1,61 @@
 import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, typography } from '../../theme';
+import {
+  colors,
+  radius,
+  spacing,
+  typography,
+  surface as surfaceToken,
+  border,
+  textRoles,
+} from '../../theme';
 
-type BadgeTone = 'neutral' | 'orange' | 'emerald' | 'sky' | 'rose';
+type SurfaceTone = 'default' | 'muted' | 'inset' | 'selected' | 'success' | 'warning' | 'danger';
+type SurfacePadding = 'none' | 'sm' | 'md' | 'lg';
 
-const badgeTones: Record<BadgeTone, { border: string; bg: string; text: string }> = {
-  neutral: { border: 'rgba(255,255,255,0.1)', bg: 'rgba(255,255,255,0.05)', text: '#94a3b8' },
-  orange: {
-    border: 'rgba(251,146,60,0.2)',
-    bg: 'rgba(251,146,60,0.1)',
-    text: colors.accentSecondary,
-  },
-  emerald: { border: 'rgba(34,197,94,0.2)', bg: 'rgba(34,197,94,0.1)', text: colors.success },
-  sky: { border: 'rgba(56,189,248,0.2)', bg: 'rgba(56,189,248,0.1)', text: colors.sky },
-  rose: { border: 'rgba(251,113,133,0.2)', bg: 'rgba(251,113,133,0.1)', text: colors.error },
+const paddingMap: Record<SurfacePadding, number> = {
+  none: 0,
+  sm: 12,
+  md: 16,
+  lg: 20,
 };
+
+const toneStyles: Record<SurfaceTone, { bg: string; borderColor: string }> = {
+  default: { bg: surfaceToken.default, borderColor: border.default },
+  muted: { bg: surfaceToken.muted, borderColor: border.subtle },
+  inset: { bg: surfaceToken.inset, borderColor: border.subtle },
+  selected: { bg: surfaceToken.selected, borderColor: border.default },
+  success: { bg: surfaceToken.success, borderColor: 'rgba(34,197,94,0.3)' },
+  warning: { bg: surfaceToken.warning, borderColor: 'rgba(245,158,11,0.3)' },
+  danger: { bg: surfaceToken.danger, borderColor: 'rgba(239,68,68,0.3)' },
+};
+
+export interface SurfaceProps {
+  tone?: SurfaceTone;
+  padding?: SurfacePadding;
+  children: ReactNode;
+  style?: ViewStyle;
+}
+
+export function Surface({ tone = 'default', padding = 'md', style, children }: SurfaceProps) {
+  const t = toneStyles[tone];
+  return (
+    <View
+      style={[
+        styles.surface,
+        {
+          backgroundColor: t.bg,
+          borderColor: t.borderColor,
+          padding: paddingMap[padding],
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
 
 export function PageHeader({
   eyebrow,
@@ -40,10 +80,6 @@ export function PageHeader({
   );
 }
 
-export function Surface({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  return <View style={[styles.surface, style]}>{children}</View>;
-}
-
 export function SectionTitle({
   title,
   actionLabel,
@@ -64,6 +100,20 @@ export function SectionTitle({
     </View>
   );
 }
+
+type BadgeTone = 'neutral' | 'orange' | 'emerald' | 'sky' | 'rose';
+
+const badgeTones: Record<BadgeTone, { border: string; bg: string; text: string }> = {
+  neutral: { border: 'rgba(255,255,255,0.1)', bg: 'rgba(255,255,255,0.05)', text: '#94a3b8' },
+  orange: {
+    border: 'rgba(251,146,60,0.2)',
+    bg: 'rgba(251,146,60,0.1)',
+    text: colors.accentSecondary,
+  },
+  emerald: { border: 'rgba(34,197,94,0.2)', bg: 'rgba(34,197,94,0.1)', text: colors.success },
+  sky: { border: 'rgba(56,189,248,0.2)', bg: 'rgba(56,189,248,0.1)', text: colors.sky },
+  rose: { border: 'rgba(251,113,133,0.2)', bg: 'rgba(251,113,133,0.1)', text: colors.error },
+};
 
 export function Badge({
   label,
@@ -88,11 +138,13 @@ export function MetricTile({
   value,
   hint,
   tone = 'neutral',
+  style,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: BadgeTone;
+  style?: ViewStyle;
 }) {
   const accentColors: Record<BadgeTone, string> = {
     neutral: colors.text,
@@ -103,10 +155,26 @@ export function MetricTile({
   };
 
   return (
-    <View style={styles.metricTile}>
-      <Text style={styles.metricLabel}>{label}</Text>
+    <View style={[styles.metricTile, style]}>
+      <Text
+        style={styles.metricLabel}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.85}
+      >
+        {label}
+      </Text>
       <Text style={[styles.metricValue, { color: accentColors[tone] }]}>{value}</Text>
-      {hint ? <Text style={styles.metricHint}>{hint}</Text> : null}
+      {hint ? (
+        <Text
+          style={styles.metricHint}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+        >
+          {hint}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -190,17 +258,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   eyebrow: {
-    fontSize: 11,
+    fontSize: textRoles.eyebrow.fontSize,
     fontWeight: typography.fontWeights.semibold,
     letterSpacing: 2,
     color: colors.textMuted,
     textTransform: 'uppercase',
   },
   title: {
-    fontSize: 28,
+    fontSize: textRoles.screenTitle.fontSize,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    lineHeight: 28,
+    lineHeight: textRoles.screenTitle.lineHeight,
   },
   description: {
     fontSize: typography.fontSizes.base,
@@ -211,9 +279,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(24,24,27,0.8)',
-    padding: 20,
   },
   sectionTitle: {
     flexDirection: 'row',
@@ -250,17 +315,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(0,0,0,0.2)',
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
   },
   metricLabel: {
-    fontSize: 11,
+    fontSize: textRoles.metricLabel.fontSize,
     fontWeight: typography.fontWeights.medium,
-    letterSpacing: 1.6,
+    letterSpacing: 0.8,
     color: colors.textMuted,
     textTransform: 'uppercase',
   },
   metricValue: {
-    fontSize: 24,
+    fontSize: textRoles.metricValue.fontSize,
     fontWeight: typography.fontWeights.semibold,
     marginTop: 12,
   },

@@ -1,4 +1,12 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type TextStyle,
+} from 'react-native';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
@@ -315,6 +323,7 @@ export default function Profile() {
           <Text style={styles.rowLabel}>Weight ({weightUnit})</Text>
           <View style={styles.bodyweightInputRow}>
             <Input
+              containerStyle={styles.bodyweightInputContainer}
               style={styles.bodyweightInput}
               value={displayBodyweight}
               onChangeText={handleBodyweightChange}
@@ -771,16 +780,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   bodyweightInputRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
   },
-  bodyweightInput: {
-    width: 100,
-    height: 40,
+  bodyweightInputContainer: {
+    flex: 1,
+    maxWidth: 180,
   },
+  bodyweightInput: {
+    height: 40,
+    fontSize: 16,
+    textAlign: 'center',
+  } as TextStyle,
   saveButton: {
     backgroundColor: colors.accent,
     borderRadius: radius.md,

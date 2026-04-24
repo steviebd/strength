@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SetLogger } from './SetLogger';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -37,16 +37,6 @@ export function ExerciseLogger({
   weightUnit = 'kg',
   isEditMode = false,
 }: ExerciseLoggerProps) {
-  useEffect(() => {
-    console.log(
-      '[DEBUG ExerciseLogger] Rendered:',
-      exercise.name,
-      '| sets:',
-      sets.length,
-      '| isExpanded:',
-      true,
-    );
-  });
   const [isExpanded, setIsExpanded] = useState(true);
 
   const completedSets = sets.filter((s) => s.completed).length;

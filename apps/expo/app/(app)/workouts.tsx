@@ -6,14 +6,15 @@ import {
   RefreshControl,
   View,
   Text,
-  Pressable,
-  TextInput,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { TextField } from '@/components/ui/Input';
 import {
-  ActionButton,
   Badge,
   PageHeader,
   SectionTitle,
@@ -84,6 +85,8 @@ export default function WorkoutsIndex() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const queryClient = useQueryClient();
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 400;
 
   const loadPendingWorkouts = useCallback(async () => {
     const workouts = await getPendingWorkouts();
@@ -355,16 +358,17 @@ export default function WorkoutsIndex() {
                 </View>
 
                 <View style={styles.programActions}>
-                  <ActionButton
+                  <Button
                     label={isOpening ? 'Opening session...' : 'Start next session'}
                     icon="play"
                     onPress={() => void handleOpenCurrentProgramWorkout(program)}
                     disabled={isOpening || isDeleting}
+                    fullWidth
                   />
 
                   <View style={styles.programActionsRow}>
                     <View style={styles.flex1}>
-                      <ActionButton
+                      <Button
                         label="1RM Test"
                         icon="speedometer-outline"
                         variant="secondary"
@@ -372,7 +376,7 @@ export default function WorkoutsIndex() {
                         disabled={isOpening || isDeleting}
                       />
                     </View>
-                    <ActionButton
+                    <Button
                       label="View Schedule"
                       icon="calendar-outline"
                       variant="secondary"
@@ -440,21 +444,41 @@ export default function WorkoutsIndex() {
                   </Text>
                 </View>
                 <View style={styles.quickStartActions}>
-                  <View style={styles.flex1}>
-                    <ActionButton
-                      label="Start custom workout"
-                      icon="play"
-                      onPress={() => setShowStartWorkout(true)}
-                    />
-                  </View>
-                  <View style={styles.flex1}>
-                    <ActionButton
-                      label="New template"
-                      icon="add"
-                      variant="secondary"
-                      onPress={handleNewTemplate}
-                    />
-                  </View>
+                  {isNarrow ? (
+                    <>
+                      <Button
+                        label="Start custom workout"
+                        icon="play"
+                        onPress={() => setShowStartWorkout(true)}
+                        fullWidth
+                      />
+                      <Button
+                        label="New template"
+                        icon="add"
+                        variant="secondary"
+                        onPress={handleNewTemplate}
+                        fullWidth
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.flex1}>
+                        <Button
+                          label="Start custom workout"
+                          icon="play"
+                          onPress={() => setShowStartWorkout(true)}
+                        />
+                      </View>
+                      <View style={styles.flex1}>
+                        <Button
+                          label="New template"
+                          icon="add"
+                          variant="secondary"
+                          onPress={handleNewTemplate}
+                        />
+                      </View>
+                    </>
+                  )}
                 </View>
               </View>
             </Surface>
@@ -523,23 +547,25 @@ export default function WorkoutsIndex() {
         <View style={[styles.modalContent, { paddingTop: insets.top + 16 }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Start workout</Text>
-            <Pressable onPress={() => setShowStartWorkout(false)} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </Pressable>
+            <IconButton
+              icon="close"
+              label="Close"
+              variant="ghost"
+              size="sm"
+              onPress={() => setShowStartWorkout(false)}
+            />
           </View>
 
           <Surface style={styles.modalSurface}>
             <View style={styles.modalForm}>
-              <Text style={styles.inputLabel}>WORKOUT NAME</Text>
-              <TextInput
-                style={styles.textInput}
+              <TextField
+                label="WORKOUT NAME"
                 placeholder="e.g., Upper Body Day"
-                placeholderTextColor={colors.placeholderText}
                 value={workoutName}
                 onChangeText={setWorkoutName}
               />
 
-              <ActionButton
+              <Button
                 label={isLoading ? 'Starting...' : 'Start Empty Workout'}
                 icon="play"
                 onPress={handleStartWorkout}
@@ -746,33 +772,11 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
   },
-  closeButton: {
-    padding: spacing.sm,
-  },
-  closeButtonText: {
-    fontSize: typography.fontSizes.lg,
-    color: colors.textMuted,
-  },
+
   modalSurface: {
     backgroundColor: colors.surface,
   },
   modalForm: {
     gap: spacing.md,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: typography.fontWeights.semibold,
-    letterSpacing: 1.6,
-    color: colors.textMuted,
-  },
-  textInput: {
-    height: 56,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    paddingHorizontal: spacing.md,
-    fontSize: typography.fontSizes.lg,
-    color: colors.text,
   },
 });

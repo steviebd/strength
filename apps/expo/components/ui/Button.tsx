@@ -1,77 +1,183 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet, type PressableProps } from 'react-native';
-import { colors, radius, typography } from '@/theme';
+import {
+  Pressable,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  View,
+  type ViewStyle,
+  type TextStyle,
+  type StyleProp,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { accent, border, radius, text, textRoles, layout } from '@/theme';
 
-type ButtonVariant = 'default' | 'outline' | 'ghost';
-type ButtonSize = 'default' | 'sm' | 'lg';
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'default';
+type ButtonSize = 'sm' | 'md' | 'lg' | 'default';
 
-interface ButtonProps extends Omit<PressableProps, 'style'> {
+interface ButtonProps {
+  label?: string;
+  children?: React.ReactNode;
+  icon?: keyof typeof Ionicons.glyphMap;
+  rightIcon?: keyof typeof Ionicons.glyphMap;
   variant?: ButtonVariant;
   size?: ButtonSize;
-  children: React.ReactNode;
-  style?: object;
+  fullWidth?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+  numberOfLines?: number;
+  onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
 }
 
-const variantStyles = StyleSheet.create({
-  default: {
-    backgroundColor: colors.accent,
+const variantStyles: Record<
+  ButtonVariant,
+  { bg: string; bgPressed: string; textColor: string; borderColor: string; borderWidth: number }
+> = {
+  primary: {
+    bg: accent.primary,
+    bgPressed: accent.primaryPressed,
+    textColor: text.primary,
+    borderColor: 'transparent',
+    borderWidth: 0,
+  },
+  secondary: {
+    bg: '#27272a',
+    bgPressed: '#3f3f46',
+    textColor: text.primary,
+    borderColor: 'transparent',
+    borderWidth: 0,
   },
   outline: {
-    backgroundColor: 'transparent',
+    bg: 'transparent',
+    bgPressed: 'rgba(255,255,255,0.05)',
+    textColor: text.primary,
+    borderColor: border.default,
     borderWidth: 1,
-    borderColor: colors.border,
   },
   ghost: {
-    backgroundColor: 'transparent',
+    bg: 'transparent',
+    bgPressed: 'rgba(255,255,255,0.05)',
+    textColor: text.secondary,
+    borderColor: 'transparent',
+    borderWidth: 0,
   },
-});
-
-const sizeStyles = StyleSheet.create({
+  danger: {
+    bg: '#ef4444',
+    bgPressed: '#dc2626',
+    textColor: text.primary,
+    borderColor: 'transparent',
+    borderWidth: 0,
+  },
   default: {
-    height: 48,
-    paddingHorizontal: 16,
+    bg: accent.primary,
+    bgPressed: accent.primaryPressed,
+    textColor: text.primary,
+    borderColor: 'transparent',
+    borderWidth: 0,
   },
+};
+
+const sizeStyles: Record<
+  ButtonSize,
+  { height: number; paddingHorizontal: number; iconSize: number; textRole: typeof textRoles.button }
+> = {
   sm: {
-    height: 40,
+    height: layout.controlHeightSmall,
     paddingHorizontal: 12,
+    iconSize: 14,
+    textRole: textRoles.buttonSmall,
+  },
+  md: {
+    height: layout.controlHeight,
+    paddingHorizontal: 16,
+    iconSize: 16,
+    textRole: textRoles.button,
+  },
+  default: {
+    height: layout.controlHeight,
+    paddingHorizontal: 16,
+    iconSize: 16,
+    textRole: textRoles.button,
   },
   lg: {
     height: 56,
     paddingHorizontal: 24,
+    iconSize: 18,
+    textRole: textRoles.button,
   },
-});
-
-const textColors: Record<ButtonVariant, string> = {
-  default: colors.text,
-  outline: colors.text,
-  ghost: colors.textMuted,
 };
 
 export function Button({
-  variant = 'default',
-  size = 'default',
-  disabled,
-  onPress,
+  label,
   children,
+  icon,
+  rightIcon,
+  variant = 'primary',
+  size = 'md',
+  fullWidth = false,
+  disabled = false,
+  loading = false,
+  numberOfLines = 1,
+  onPress,
   style,
+  textStyle,
 }: ButtonProps) {
+  const v = variantStyles[variant];
+  const s = sizeStyles[size];
+  const content = label ?? children;
+  const rendersText =
+    typeof content === 'string' || typeof content === 'number' || typeof content === 'undefined';
+
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={disabled || loading}
       style={({ pressed }) => [
         styles.base,
-        variantStyles[variant],
-        sizeStyles[size],
+        {
+          backgroundColor: pressed ? v.bgPressed : v.bg,
+          borderColor: v.borderColor,
+          borderWidth: v.borderWidth,
+          minHeight: s.height,
+          paddingHorizontal: s.paddingHorizontal,
+        },
+        fullWidth && styles.fullWidth,
         disabled && styles.disabled,
-        pressed && styles.pressed,
         style,
       ]}
     >
-      {typeof children === 'string' ? (
-        <Text style={[styles.text, { color: textColors[variant] }]}>{children}</Text>
+      {(icon || loading) && (
+        <>
+          {icon && !loading && (
+            <Ionicons name={icon} size={s.iconSize} color={v.textColor} style={styles.icon} />
+          )}
+          {loading && <ActivityIndicator size="small" color={v.textColor} style={styles.loader} />}
+        </>
+      )}
+      {rendersText ? (
+        <Text
+          style={[
+            styles.text,
+            {
+              color: v.textColor,
+              fontSize: s.textRole.fontSize,
+              lineHeight: s.textRole.lineHeight,
+              fontWeight: s.textRole.fontWeight,
+            },
+            textStyle,
+          ]}
+          numberOfLines={numberOfLines}
+          ellipsizeMode="tail"
+        >
+          {content}
+        </Text>
       ) : (
-        children
+        <View style={styles.customContent}>{content}</View>
+      )}
+      {rightIcon && (
+        <Ionicons name={rightIcon} size={s.iconSize} color={v.textColor} style={styles.rightIcon} />
       )}
     </Pressable>
   );
@@ -79,18 +185,34 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radius.xl,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  fullWidth: {
+    width: '100%',
   },
   text: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  customContent: {
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  loader: {
+    marginLeft: 8,
+  },
+  icon: {
+    marginRight: 8,
+  },
+  rightIcon: {
+    marginLeft: 8,
   },
   disabled: {
     opacity: 0.5,
-  },
-  pressed: {
-    transform: [{ scale: 0.95 }],
   },
 });
