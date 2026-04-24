@@ -12,6 +12,7 @@ __unconfig*
 todos.json
 .expo/
 apps/expo/.expo/
+apps/expo/build*
 apps/worker/.dev.vars
 .infisical.json
 .agents/
