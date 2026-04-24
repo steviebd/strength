@@ -44,14 +44,19 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-if [[ -n "${CLOUDFLARE_TUNNEL_NAME:-}" || -n "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
-  if [[ -z "${CLOUDFLARE_TUNNEL_NAME:-}" || -z "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
-    echo "Set both CLOUDFLARE_TUNNEL_NAME and CLOUDFLARE_TUNNEL_HOSTNAME to auto-start Cloudflare Tunnel." >&2
+if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" || -n "${CLOUDFLARE_TUNNEL_NAME:-}" || -n "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
+  if [[ -z "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
+    echo "Set CLOUDFLARE_TUNNEL_HOSTNAME to auto-start Cloudflare Tunnel." >&2
+    exit 1
+  fi
+
+  if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" && -z "${CLOUDFLARE_TUNNEL_NAME:-}" ]]; then
+    echo "Set CLOUDFLARE_TUNNEL_TOKEN for a portable tunnel, or CLOUDFLARE_TUNNEL_NAME for a local named tunnel." >&2
     exit 1
   fi
 
   if ! command -v cloudflared >/dev/null 2>&1; then
-    echo "cloudflared is required for CLOUDFLARE_TUNNEL_NAME but was not found on PATH." >&2
+    echo "cloudflared is required for Cloudflare Tunnel but was not found on PATH." >&2
     exit 1
   fi
 
@@ -64,8 +69,12 @@ if [[ -n "${CLOUDFLARE_TUNNEL_NAME:-}" || -n "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]
     export BETTER_AUTH_TRUSTED_ORIGINS="$TUNNEL_ORIGIN"
   fi
 
-  echo "Starting Cloudflare Tunnel '${CLOUDFLARE_TUNNEL_NAME}' for ${TUNNEL_ORIGIN} -> http://localhost:8787"
-  cloudflared tunnel run --url http://localhost:8787 "$CLOUDFLARE_TUNNEL_NAME" &
+  echo "Starting Cloudflare Tunnel for ${TUNNEL_ORIGIN} -> http://localhost:8787"
+  if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]]; then
+    cloudflared tunnel run --token "$CLOUDFLARE_TUNNEL_TOKEN" &
+  else
+    cloudflared tunnel run --url http://localhost:8787 "$CLOUDFLARE_TUNNEL_NAME" &
+  fi
   TUNNEL_PID="$!"
 fi
 

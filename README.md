@@ -69,7 +69,7 @@ cloudflared tunnel route dns strength-dev strength-dev.your-domain.com
 Set these in Infisical `dev`:
 
 ```bash
-CLOUDFLARE_TUNNEL_NAME=strength-dev
+CLOUDFLARE_TUNNEL_TOKEN=<token from Cloudflare Zero Trust tunnel configuration>
 CLOUDFLARE_TUNNEL_HOSTNAME=strength-dev.your-domain.com
 WORKER_BASE_URL=https://strength-dev.your-domain.com
 ```
@@ -80,9 +80,11 @@ Then add this WHOOP redirect URI:
 https://strength-dev.your-domain.com/api/auth/whoop/callback
 ```
 
-With `CLOUDFLARE_TUNNEL_NAME` and `CLOUDFLARE_TUNNEL_HOSTNAME` set, `bun run dev` and `bun run dev:remote` automatically start the tunnel on the MacBook and point the worker config at the HTTPS hostname. `dev` uses local D1; `dev:remote` uses remote dev D1.
+Configure the tunnel's public hostname in Cloudflare Zero Trust to route `strength-dev.your-domain.com` to `http://localhost:8787`. With `CLOUDFLARE_TUNNEL_TOKEN` and `CLOUDFLARE_TUNNEL_HOSTNAME` set, `bun run dev` and `bun run dev:remote` automatically start the tunnel on whichever machine is running the Worker and point the worker config at the HTTPS hostname. `dev` uses local D1; `dev:remote` uses remote dev D1.
 
-The dev script runs `cloudflared tunnel run --url http://localhost:8787 strength-dev`, so this repo does not require a `~/.cloudflared/config.yml` file for local development. If you prefer to manage ingress in Cloudflare's dashboard or a local config file, keep it equivalent to `strength-dev.your-domain.com -> http://localhost:8787`.
+The dev script runs `cloudflared tunnel run --token "$CLOUDFLARE_TUNNEL_TOKEN"` as a child process of `bun run dev`, so the tunnel is stopped when the Worker dev process stops and no machine-specific `~/.cloudflared/*.json` credential file is required. Do not run the same tunnel as a login item, LaunchAgent, or systemd service for local development; it should only be active while `bun run dev` or `bun run dev:remote` is running.
+
+If you prefer local named-tunnel credentials instead of a token, set `CLOUDFLARE_TUNNEL_NAME=strength-dev` with `CLOUDFLARE_TUNNEL_HOSTNAME`. That fallback still depends on credentials in `~/.cloudflared`, so it is less portable across machines.
 
 This should be a public hostname, not a Cloudflare private hostname or private CIDR route. WHOOP's OAuth service must be able to call the redirect URI from the public internet, and it will not be on your Cloudflare WARP/private network. Keep the tunnel config in Infisical `dev` only, stop `bun run dev` when not testing, and rely on the worker's app auth for protected APIs. The OAuth callback path itself must remain publicly reachable for WHOOP to complete the flow.
 

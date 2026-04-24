@@ -9,6 +9,7 @@ const BUILD_ENV = {
   ...process.env,
   EAS_SKIP_AUTO_FINGERPRINT: process.env.EAS_SKIP_AUTO_FINGERPRINT ?? '1',
   NODE_ENV: process.env.NODE_ENV ?? 'production',
+  JAVA_HOME: '/usr/lib/jvm/java-17-openjdk',
 };
 
 function getNextBuildNumber(): number {
