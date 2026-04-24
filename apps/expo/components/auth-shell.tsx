@@ -118,17 +118,7 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
               {children}
             </View>
 
-            <Text
-              style={{
-                marginTop: 32,
-                textAlign: 'center',
-                fontSize: 12,
-                color: colors.textMuted,
-                opacity: 0.5,
-              }}
-            >
-              Powered by Better Auth + Cloudflare
-            </Text>
+
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
