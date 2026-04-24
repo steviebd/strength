@@ -6,9 +6,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, radius, spacing, typography, textRoles } from '@/theme';
+import { Button } from '@/components/ui/Button';
 import {
-  ActionButton,
   Badge,
   MetricTile,
   PageHeader,
@@ -138,8 +138,14 @@ export default function HomeScreen() {
                 <Badge label="Today" tone="orange" />
               )}
               <View style={styles.workoutTitleGroup}>
-                <Text style={styles.workoutTitle}>{workoutTitle}</Text>
-                {workoutSubtitle && <Text style={styles.workoutSubtitle}>{workoutSubtitle}</Text>}
+                <Text style={styles.workoutTitle} numberOfLines={1} ellipsizeMode="tail">
+                  {workoutTitle}
+                </Text>
+                {workoutSubtitle && (
+                  <Text style={styles.workoutSubtitle} numberOfLines={2} ellipsizeMode="tail">
+                    {workoutSubtitle}
+                  </Text>
+                )}
               </View>
             </View>
             <View style={styles.workoutIcon}>
@@ -167,7 +173,7 @@ export default function HomeScreen() {
           <View style={styles.workoutActions}>
             <View style={{ flex: 1 }}>
               {hasActiveProgram ? (
-                <ActionButton
+                <Button
                   label={
                     workout?.isComplete ? 'Completed' : isRestDay ? 'Start Next' : 'Start Workout'
                   }
@@ -176,7 +182,7 @@ export default function HomeScreen() {
                   disabled={workout?.isComplete}
                 />
               ) : (
-                <ActionButton
+                <Button
                   label="Start Workout"
                   icon="play"
                   onPress={() => router.push('/(app)/workouts')}
@@ -184,7 +190,7 @@ export default function HomeScreen() {
               )}
             </View>
             <View style={{ flex: 1 }}>
-              <ActionButton
+              <Button
                 label="Programs"
                 icon="layers-outline"
                 variant="secondary"
@@ -230,7 +236,7 @@ export default function HomeScreen() {
                   Log meals, track macros, and compare intake against recovery.
                 </Text>
               </View>
-              <ActionButton
+              <Button
                 label="Open"
                 icon="restaurant-outline"
                 variant="secondary"
@@ -248,7 +254,7 @@ export default function HomeScreen() {
                 Launch saved sessions fast or build a new training template.
               </Text>
             </View>
-            <ActionButton
+            <Button
               label="Manage"
               icon="albums-outline"
               variant="secondary"
@@ -358,10 +364,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   workoutTitle: {
-    fontSize: 24,
-    fontWeight: typography.fontWeights.bold,
+    fontSize: textRoles.screenTitle.fontSize,
+    fontWeight: textRoles.screenTitle.fontWeight,
     color: colors.text,
-    lineHeight: 28,
+    lineHeight: textRoles.screenTitle.lineHeight,
   },
   workoutSubtitle: {
     fontSize: 18,
@@ -376,8 +382,8 @@ const styles = StyleSheet.create({
   },
   workoutIcon: {
     borderRadius: 16,
-    backgroundColor: 'rgba(251,146,60,0.1)',
     padding: 12,
+    backgroundColor: 'rgba(251,146,60,0.1)',
   },
   exerciseList: {
     gap: 12,
@@ -423,9 +429,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: spacing.lg - 4,
   },
-  quickAccessCard: {
-    backgroundColor: 'rgba(24,24,27,0.7)',
-  },
+  quickAccessCard: {},
   quickAccessPressed: {
     opacity: 0.82,
   },
@@ -449,9 +453,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 24,
   },
-  recoveryCard: {
-    backgroundColor: 'rgba(24,24,27,0.7)',
-  },
+  recoveryCard: {},
   recoveryContent: {
     gap: 16,
   },

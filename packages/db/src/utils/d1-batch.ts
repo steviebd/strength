@@ -53,6 +53,7 @@ function getSafeInsertChunkSize(
   chunkSize: number,
   maxQueryParams: number,
 ): number {
+  const generatedColumnHeadroom = 4;
   const definedColumns = new Set<string>();
   for (const row of rows) {
     for (const [key, value] of Object.entries(row)) {
@@ -66,7 +67,8 @@ function getSafeInsertChunkSize(
     return chunkSize;
   }
 
-  return Math.max(1, Math.min(chunkSize, Math.floor(maxQueryParams / definedColumns.size)));
+  const estimatedParamsPerRow = definedColumns.size + generatedColumnHeadroom;
+  return Math.max(1, Math.min(chunkSize, Math.floor(maxQueryParams / estimatedParamsPerRow)));
 }
 
 export async function chunkedQuery<T>(
@@ -127,14 +129,13 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
   );
   const chunks = chunkArray(rows, safeChunkSize);
 
-  const chunkTasks = chunks.map((chunk) => async () => {
+  let insertedRows = 0;
+  for (const chunk of chunks) {
     const result = (await db.insert(table).values(chunk).run()) as unknown as {
       rowsAffected: number;
     };
-    return result.rowsAffected;
-  });
+    insertedRows += result.rowsAffected;
+  }
 
-  const results = await batchParallel(chunkTasks);
-
-  return results.reduce((sum, count) => sum + count, 0);
+  return insertedRows;
 }

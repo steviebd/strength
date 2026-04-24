@@ -763,10 +763,12 @@ async function createWorkoutFromProgramCycleWorkout(
   timezone: string,
 ) {
   const now = new Date();
+  let createdWorkoutId: string | null = null;
   const workout = await db
     .insert(schema.workouts)
     .values({
       userId,
+      programCycleId: cycleId,
       name: cycleWorkout.sessionName,
       notes: null,
       startedAt: now,
@@ -777,84 +779,107 @@ async function createWorkoutFromProgramCycleWorkout(
     })
     .returning()
     .get();
+  createdWorkoutId = workout.id;
 
-  const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
+  try {
+    const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
+    if (targetLifts.all.length === 0) {
+      throw new Error(`Program cycle workout ${cycleWorkout.id} has no target lifts`);
+    }
 
-  const exerciseIdList: {
-    exerciseId: string;
-    orderIndex: number;
-    isAmrap: boolean;
-    targetLift: any;
-  }[] = [];
-  for (let i = 0; i < targetLifts.all.length; i++) {
-    const targetLift = targetLifts.all[i];
-    const isAmrap = targetLift.isAmrap;
-    const exerciseId = await getOrCreateExerciseForUser(
-      db,
-      userId,
-      targetLift.name,
-      targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
-      targetLift.libraryId,
+    const exerciseIdList: {
+      workoutExerciseId: string;
+      exerciseId: string;
+      orderIndex: number;
+      isAmrap: boolean;
+      targetLift: any;
+    }[] = [];
+    for (let i = 0; i < targetLifts.all.length; i++) {
+      const targetLift = targetLifts.all[i];
+      const isAmrap = targetLift.isAmrap;
+      const exerciseId = await getOrCreateExerciseForUser(
+        db,
+        userId,
+        targetLift.name,
+        targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
+        targetLift.libraryId,
+      );
+      exerciseIdList.push({
+        workoutExerciseId: schema.generateId(),
+        exerciseId,
+        orderIndex: i,
+        isAmrap,
+        targetLift,
+      });
+    }
+
+    const workoutExerciseRows = exerciseIdList.map(
+      ({ workoutExerciseId, exerciseId, orderIndex, isAmrap }) => ({
+        id: workoutExerciseId,
+        workoutId: workout.id,
+        exerciseId,
+        orderIndex,
+        isAmrap,
+        updatedAt: now,
+      }),
     );
-    exerciseIdList.push({ exerciseId, orderIndex: i, isAmrap, targetLift });
+
+    await chunkedInsert(db, { table: schema.workoutExercises, rows: workoutExerciseRows });
+    const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
+
+    for (const { workoutExerciseId, isAmrap, targetLift } of exerciseIdList) {
+      const fallbackSetCount = normalizeProgramSetCount(targetLift.sets, 1);
+      const fallbackWeight =
+        typeof targetLift.targetWeight === 'number' && Number.isFinite(targetLift.targetWeight)
+          ? targetLift.targetWeight
+          : null;
+      const fallbackReps = isAmrap ? null : normalizeProgramReps(targetLift.reps);
+
+      const setRows = Array.from({ length: fallbackSetCount }, (_, index) => ({
+        workoutExerciseId,
+        setNumber: index + 1,
+        weight: fallbackWeight,
+        reps: fallbackReps,
+        rpe: null,
+        isComplete: false,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      allSetRows.push(...setRows);
+    }
+
+    if (allSetRows.length > 0) {
+      await chunkedInsert(db, { table: schema.workoutSets, rows: allSetRows });
+    }
+
+    await db
+      .update(schema.programCycleWorkouts)
+      .set({
+        workoutId: workout.id,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.programCycleWorkouts.id, cycleWorkout.id),
+          eq(schema.programCycleWorkouts.cycleId, cycleId),
+        ),
+      )
+      .run();
+
+    return workout;
+  } catch (e) {
+    if (createdWorkoutId) {
+      await db
+        .delete(schema.workouts)
+        .where(and(eq(schema.workouts.id, createdWorkoutId), eq(schema.workouts.userId, userId)))
+        .run()
+        .catch((cleanupError: unknown) => {
+          console.error('Failed to clean up partial program workout:', cleanupError);
+        });
+    }
+
+    throw e;
   }
-
-  const workoutExerciseRows = exerciseIdList.map(({ exerciseId, orderIndex, isAmrap }) => ({
-    workoutId: workout.id,
-    exerciseId,
-    orderIndex,
-    isAmrap,
-    updatedAt: now,
-  }));
-
-  const insertedWorkoutExercises = await db
-    .insert(schema.workoutExercises)
-    .values(workoutExerciseRows)
-    .returning();
-  const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
-
-  for (let i = 0; i < insertedWorkoutExercises.length; i++) {
-    const workoutExercise = insertedWorkoutExercises[i];
-    const { isAmrap, targetLift } = exerciseIdList[i];
-    const fallbackSetCount = normalizeProgramSetCount(targetLift.sets, 1);
-    const fallbackWeight =
-      typeof targetLift.targetWeight === 'number' && Number.isFinite(targetLift.targetWeight)
-        ? targetLift.targetWeight
-        : null;
-    const fallbackReps = isAmrap ? null : normalizeProgramReps(targetLift.reps);
-
-    const setRows = Array.from({ length: fallbackSetCount }, (_, index) => ({
-      workoutExerciseId: workoutExercise.id,
-      setNumber: index + 1,
-      weight: fallbackWeight,
-      reps: fallbackReps,
-      rpe: null,
-      isComplete: false,
-      createdAt: now,
-      updatedAt: now,
-    }));
-    allSetRows.push(...setRows);
-  }
-
-  if (allSetRows.length > 0) {
-    await chunkedInsert(db, { table: schema.workoutSets, rows: allSetRows });
-  }
-
-  await db
-    .update(schema.programCycleWorkouts)
-    .set({
-      workoutId: workout.id,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(schema.programCycleWorkouts.id, cycleWorkout.id),
-        eq(schema.programCycleWorkouts.cycleId, cycleId),
-      ),
-    )
-    .run();
-
-  return workout;
 }
 
 async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId: string) {
@@ -2829,7 +2854,8 @@ app.post(
         created: true,
         completed: false,
       });
-    } catch (_e) {
+    } catch (e) {
+      console.error('Failed to start current workout:', e);
       return c.json({ message: 'Failed to start current workout' }, 500);
     }
   }),
@@ -2893,7 +2919,8 @@ app.post(
         completed: false,
         programCycleId: cycleWorkout.cycleId,
       });
-    } catch (_e) {
+    } catch (e) {
+      console.error('Failed to start workout:', e);
       return c.json({ message: 'Failed to start workout' }, 500);
     }
   }),

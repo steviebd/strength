@@ -205,6 +205,31 @@ describe('chunkedInsert', () => {
     });
 
     expect(inserted).toBe(36);
-    expect(insertedChunks).toEqual([9, 9, 9, 9]);
+    expect(insertedChunks).toEqual([6, 6, 6, 6, 6, 6]);
+  });
+
+  it('should insert chunks sequentially', async () => {
+    const events: string[] = [];
+    const db = {
+      insert: () => ({
+        values: (chunk: Array<{ id: string }>) => ({
+          run: async () => {
+            events.push(`start:${chunk[0].id}`);
+            await new Promise((r) => setTimeout(r, chunk[0].id === 'row-0' ? 20 : 0));
+            events.push(`end:${chunk[0].id}`);
+            return { rowsAffected: chunk.length };
+          },
+        }),
+      }),
+    };
+
+    await chunkedInsert(db as any, {
+      table: {} as any,
+      rows: [{ id: 'row-0' }, { id: 'row-1' }],
+      chunkSize: 1,
+      maxQueryParams: 1,
+    });
+
+    expect(events).toEqual(['start:row-0', 'end:row-0', 'start:row-1', 'end:row-1']);
   });
 });

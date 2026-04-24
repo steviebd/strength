@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View, TextInput, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useScrollToInput } from '@/context/ScrollContext';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -52,6 +53,7 @@ export function SetLogger({
   const { width } = useWindowDimensions();
   const sizes = useMemo(() => getResponsiveSizes(width), [width]);
   const stepperSize = sizes.stepperSize;
+  const repsStepperSize = Math.max(28, stepperSize - 8);
   const inputHeight = sizes.inputHeight;
   const fontSize = sizes.fontSize;
 
@@ -149,142 +151,145 @@ export function SetLogger({
     height: stepperSize,
   };
 
+  const repsStepperStyle = {
+    width: repsStepperSize,
+    height: repsStepperSize,
+  };
+
   const inputStyle = {
     height: inputHeight,
-    minWidth: sizes.stepperSize * 2,
   };
 
   return (
     <View style={containerStyle}>
-      <View style={styles.contentRow}>
+      <View style={styles.headerRow}>
         <View style={numberBgStyle}>
           <Text style={[styles.numberText, { fontSize: fontSize }]}>{setNumber}</Text>
         </View>
+        <Text style={styles.setTitle}>Set {setNumber}</Text>
+      </View>
 
-        <View style={styles.inputsColumn}>
-          <View style={styles.inputRow}>
-            <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
-              Weight
-            </Text>
-            <View style={styles.stepperGroup}>
-              <Pressable
-                onPress={handleWeightDecrease}
-                disabled={!isEditMode}
-                style={({ pressed }) => [
-                  styles.stepperButton,
-                  stepperStyle,
-                  !isEditMode && styles.stepperDisabled,
-                  pressed && styles.stepperPressed,
-                ]}
-              >
-                <Text style={[styles.stepperText, { fontSize: fontSize + 4 }]}>−</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleWeightEditStart}
-                disabled={!isEditMode}
-                style={({ pressed }) => [
-                  styles.inputButton,
-                  inputStyle,
-                  !isEditMode && styles.inputButtonDisabled,
-                  pressed && styles.stepperPressed,
-                ]}
-              >
-                {isEditingWeight ? (
-                  <TextInput
-                    ref={weightInputRef}
-                    style={[styles.weightInput, { fontSize }]}
-                    value={editWeightValue}
-                    onChangeText={setEditWeightValue}
-                    onBlur={handleWeightEditEnd}
-                    onSubmitEditing={handleWeightEditEnd}
-                    keyboardType="decimal-pad"
-                    autoFocus
-                  />
-                ) : (
-                  <>
-                    <Text
-                      style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
-                    >
-                      {localWeight.toFixed(1)}
-                    </Text>
-                    <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }]}>{weightUnit}</Text>
-                  </>
-                )}
-              </Pressable>
-              <Pressable
-                onPress={handleWeightIncrease}
-                disabled={!isEditMode}
-                style={({ pressed }) => [
-                  styles.stepperButton,
-                  stepperStyle,
-                  !isEditMode && styles.stepperDisabled,
-                  pressed && styles.stepperPressed,
-                ]}
-              >
-                <Text style={[styles.stepperText, { fontSize: fontSize + 4 }]}>+</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.inputRow}>
-            <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
-              Reps
-            </Text>
-            <View style={styles.stepperGroup}>
-              <Pressable
-                onPress={handleRepsDecrease}
-                disabled={!isEditMode}
-                style={({ pressed }) => [
-                  styles.stepperButton,
-                  stepperStyle,
-                  !isEditMode && styles.stepperDisabled,
-                  pressed && styles.stepperPressed,
-                ]}
-              >
-                <Text style={[styles.stepperText, { fontSize: fontSize + 4 }]}>−</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleRepsEditStart}
-                disabled={!isEditMode}
-                style={({ pressed }) => [
-                  styles.inputButton,
-                  inputStyle,
-                  !isEditMode && styles.inputButtonDisabled,
-                  pressed && styles.stepperPressed,
-                ]}
-              >
-                {isRepsEditing ? (
-                  <TextInput
-                    ref={repsInputRef}
-                    style={[styles.repsInput, { fontSize }]}
-                    value={editRepsValue}
-                    onChangeText={setEditRepsValue}
-                    onBlur={handleRepsEditEnd}
-                    onSubmitEditing={handleRepsEditEnd}
-                    keyboardType="number-pad"
-                    autoFocus
-                  />
-                ) : (
+      <View style={styles.inputsRow}>
+        <View style={[styles.inputSection, styles.weightSection]}>
+          <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+            Weight
+          </Text>
+          <View style={styles.weightStepperGroup}>
+            <Pressable
+              onPress={handleWeightDecrease}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                stepperStyle,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
+            >
+              <Ionicons name="remove" size={fontSize + 4} color={colors.textMuted} />
+            </Pressable>
+            <Pressable
+              onPress={handleWeightEditStart}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.inputButton,
+                inputStyle,
+                !isEditMode && styles.inputButtonDisabled,
+                pressed && styles.stepperPressed,
+              ]}
+            >
+              {isEditingWeight ? (
+                <TextInput
+                  ref={weightInputRef}
+                  style={[styles.weightInput, { fontSize }]}
+                  value={editWeightValue}
+                  onChangeText={setEditWeightValue}
+                  onBlur={handleWeightEditEnd}
+                  onSubmitEditing={handleWeightEditEnd}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                />
+              ) : (
+                <>
                   <Text
                     style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
                   >
-                    {localReps}
+                    {localWeight.toFixed(1)}
                   </Text>
-                )}
-              </Pressable>
-              <Pressable
-                onPress={handleRepsIncrease}
-                disabled={!isEditMode}
-                style={({ pressed }) => [
-                  styles.stepperButton,
-                  stepperStyle,
-                  !isEditMode && styles.stepperDisabled,
-                  pressed && styles.stepperPressed,
-                ]}
-              >
-                <Text style={[styles.stepperText, { fontSize: fontSize + 4 }]}>+</Text>
-              </Pressable>
-            </View>
+                  <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }]}>{weightUnit}</Text>
+                </>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={handleWeightIncrease}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                stepperStyle,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
+            >
+              <Ionicons name="add" size={fontSize + 4} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={[styles.inputSection, styles.repsSection]}>
+          <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+            Reps
+          </Text>
+          <View style={styles.repsStepperGroup}>
+            <Pressable
+              onPress={handleRepsDecrease}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                repsStepperStyle,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
+            >
+              <Ionicons name="remove" size={fontSize + 4} color={colors.textMuted} />
+            </Pressable>
+            <Pressable
+              onPress={handleRepsEditStart}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.inputButton,
+                inputStyle,
+                !isEditMode && styles.inputButtonDisabled,
+                pressed && styles.stepperPressed,
+              ]}
+            >
+              {isRepsEditing ? (
+                <TextInput
+                  ref={repsInputRef}
+                  style={[styles.repsInput, { fontSize }]}
+                  value={editRepsValue}
+                  onChangeText={setEditRepsValue}
+                  onBlur={handleRepsEditEnd}
+                  onSubmitEditing={handleRepsEditEnd}
+                  keyboardType="number-pad"
+                  autoFocus
+                />
+              ) : (
+                <Text style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}>
+                  {localReps}
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={handleRepsIncrease}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.stepperButton,
+                repsStepperStyle,
+                !isEditMode && styles.stepperDisabled,
+                pressed && styles.stepperPressed,
+              ]}
+            >
+              <Ionicons name="add" size={fontSize + 4} color={colors.textMuted} />
+            </Pressable>
           </View>
         </View>
       </View>
@@ -299,13 +304,14 @@ export function SetLogger({
             pressed && styles.completePressed,
           ]}
         >
+          {set.completed ? <Ionicons name="checkmark" size={fontSize} color={colors.text} /> : null}
           <Text
             style={[
               set.completed ? styles.completeTextDone : styles.completeTextDefault,
               { fontSize: fontSize },
             ]}
           >
-            {set.completed ? '✓ Complete' : 'Mark Complete'}
+            {set.completed ? 'Complete' : 'Mark Complete'}
           </Text>
         </Pressable>
 
@@ -314,7 +320,7 @@ export function SetLogger({
             onPress={onDelete}
             style={({ pressed }) => [styles.deleteButton, pressed && styles.stepperPressed]}
           >
-            <Text style={styles.deleteText}>🗑</Text>
+            <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
           </Pressable>
         )}
       </View>
@@ -336,10 +342,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: 'rgba(24,24,27,0.4)',
   },
-  contentRow: {
+  headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  setTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
   },
   numberBg: {
     borderRadius: 9999,
@@ -356,30 +369,39 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
   },
-  inputsColumn: {
-    flex: 1,
+  inputsRow: {
+    flexDirection: 'row',
     gap: spacing.sm,
     minWidth: 0,
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  inputSection: {
     gap: spacing.sm,
+    minWidth: 0,
+  },
+  weightSection: {
+    flex: 2,
+    flexBasis: 0,
+  },
+  repsSection: {
+    flex: 1,
+    flexBasis: 0,
   },
   labelText: {
-    flex: 1,
     color: colors.textMuted,
     fontWeight: typography.fontWeights.medium,
     includeFontPadding: false,
-    minWidth: 64,
-    flexShrink: 0,
   },
-  stepperGroup: {
+  weightStepperGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    flexShrink: 0,
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  repsStepperGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minWidth: 0,
   },
   stepperButton: {
     borderRadius: 9999,
@@ -408,7 +430,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     overflow: 'hidden',
   },
   inputButtonDisabled: {
@@ -451,6 +474,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
