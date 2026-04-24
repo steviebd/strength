@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { platformStorage } from './platform-storage';
 
 const STORAGE_KEYS = {
@@ -8,6 +9,8 @@ const STORAGE_KEYS = {
     `nutrition_chat_messages_${timezone.replace(/\//g, '---')}_${date}`,
   NUTRITION_CHAT_DRAFT: (date: string, timezone: string) =>
     `nutrition_chat_draft_${timezone.replace(/\//g, '---')}_${date}`,
+  NUTRITION_PENDING_IMAGE: (date: string, timezone: string) =>
+    `nutrition_pending_image_${timezone.replace(/\//g, '---')}_${date}`,
 } as const;
 
 interface LastWorkoutData {
@@ -35,6 +38,11 @@ interface PendingWorkout {
 interface NutritionChatCache {
   messages: unknown[];
   cachedAt: string;
+}
+
+interface NutritionPendingImage {
+  base64: string;
+  uri: string;
 }
 
 async function getLastWorkout(exerciseId: string): Promise<LastWorkoutData | null> {
@@ -118,6 +126,37 @@ async function setNutritionChatDraft(date: string, timezone: string, draft: stri
   platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone), draft);
 }
 
+async function getNutritionPendingImage(
+  date: string,
+  timezone: string,
+): Promise<NutritionPendingImage | null> {
+  const data = await AsyncStorage.getItem(STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date, timezone));
+  if (!data) return null;
+
+  try {
+    const parsed = JSON.parse(data) as NutritionPendingImage;
+    if (!parsed.base64 || !parsed.uri) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function setNutritionPendingImage(
+  date: string,
+  timezone: string,
+  image: NutritionPendingImage | null,
+): Promise<void> {
+  const key = STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date, timezone);
+
+  if (!image) {
+    await AsyncStorage.removeItem(key);
+    return;
+  }
+
+  await AsyncStorage.setItem(key, JSON.stringify(image));
+}
+
 async function getDismissedDeviceTimezone(): Promise<string | null> {
   return platformStorage.getItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
 }
@@ -143,6 +182,8 @@ export {
   setNutritionChatMessages,
   getNutritionChatDraft,
   setNutritionChatDraft,
+  getNutritionPendingImage,
+  setNutritionPendingImage,
   getDismissedDeviceTimezone,
   setDismissedDeviceTimezone,
 };

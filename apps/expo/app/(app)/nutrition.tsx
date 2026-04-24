@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,8 +20,10 @@ import { apiFetch } from '@/lib/api';
 import {
   getNutritionChatDraft,
   getNutritionChatMessages,
+  getNutritionPendingImage,
   setNutritionChatDraft,
   setNutritionChatMessages,
+  setNutritionPendingImage,
 } from '@/lib/storage';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
@@ -252,7 +252,6 @@ export default function NutritionScreen() {
   const [editingEntry, setEditingEntry] = useState<MealEntry | null>(null);
   const [pendingImage, setPendingImage] = useState<{ base64: string; uri: string } | null>(null);
   const [captureRequestKey, setCaptureRequestKey] = useState(0);
-  const [queuedPromptAfterCapture, setQueuedPromptAfterCapture] = useState<string | null>(null);
   const [historyCursor, setHistoryCursor] = useState<number | null>(null);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
@@ -286,16 +285,17 @@ export default function NutritionScreen() {
     let isCancelled = false;
 
     async function restoreLocalState() {
-      const [cachedMessages, cachedDraft] = await Promise.all([
+      const [cachedMessages, cachedDraft, cachedPendingImage] = await Promise.all([
         getNutritionChatMessages<ChatMessageData>(date, timezone),
         getNutritionChatDraft(date, timezone),
+        getNutritionPendingImage(date, timezone),
       ]);
 
       if (isCancelled) return;
 
       setMessages(cachedMessages.map(normalizeMessage));
       setDraftText(cachedDraft);
-      setPendingImage(null);
+      setPendingImage(cachedPendingImage);
       setHistoryCursor(null);
       setHasMoreHistory(false);
       setExchangeExpansion({});
@@ -488,6 +488,7 @@ export default function NutritionScreen() {
 
       setMessages((prev) => [...prev, userMsg]);
       setPendingImage(null);
+      void setNutritionPendingImage(date, timezone, null);
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
@@ -627,20 +628,6 @@ export default function NutritionScreen() {
     }
   }, [date, historyCursor, isLoadingMoreHistory]);
 
-  const handleImageCapture = useCallback(
-    (base64: string, uri: string) => {
-      const image = { base64, uri };
-      setPendingImage(image);
-
-      if (queuedPromptAfterCapture) {
-        const prompt = queuedPromptAfterCapture;
-        setQueuedPromptAfterCapture(null);
-        void sendMessage(prompt, image);
-      }
-    },
-    [queuedPromptAfterCapture, sendMessage],
-  );
-
   const handleSaveFromAnalysis = useCallback(
     async (messageId: string, analysis: MealAnalysis, savedEntryId?: string | null) => {
       setSavingAnalysisMessageId(messageId);
@@ -729,7 +716,6 @@ export default function NutritionScreen() {
   const handleQuickPrompt = useCallback(
     (prompt: string) => {
       if (prompt === 'Estimate this meal from a photo' && !pendingImage) {
-        setQueuedPromptAfterCapture(prompt);
         setCaptureRequestKey((current) => current + 1);
         return;
       }
@@ -765,6 +751,16 @@ export default function NutritionScreen() {
   const handleInputFocus = useCallback(() => {
     scrollToChatInput(false);
   }, [scrollToChatInput]);
+
+  const handleImageCapture = useCallback(
+    (base64: string, uri: string) => {
+      const image = { base64, uri };
+      setPendingImage(image);
+      void setNutritionPendingImage(date, timezone, image);
+      scrollToChatInput(true, 0);
+    },
+    [date, scrollToChatInput, timezone],
+  );
 
   useEffect(() => {
     if (
@@ -870,21 +866,6 @@ export default function NutritionScreen() {
                 ))}
               </View>
 
-              {pendingImage ? (
-                <View style={styles.pendingImageCard}>
-                  <Image source={{ uri: pendingImage.uri }} style={styles.pendingImage} />
-                  <View style={styles.pendingImageCopy}>
-                    <Text style={styles.pendingImageTitle}>Photo ready</Text>
-                    <Text style={styles.pendingImageText}>
-                      Add a short message to estimate this meal and log it.
-                    </Text>
-                  </View>
-                  <Pressable onPress={() => setPendingImage(null)} style={styles.pendingImageClear}>
-                    <Ionicons name="close" size={18} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-              ) : null}
-
               <View style={styles.messageList}>
                 {messages.length === 0 ? (
                   <View style={styles.emptyChat}>
@@ -949,6 +930,11 @@ export default function NutritionScreen() {
                   captureRequestKey={captureRequestKey}
                   onFocus={handleInputFocus}
                   inputRef={chatInputRef}
+                  pendingImageUri={pendingImage?.uri ?? null}
+                  onClearImage={() => {
+                    setPendingImage(null);
+                    void setNutritionPendingImage(date, timezone, null);
+                  }}
                 />
               </View>
             </Surface>
@@ -993,43 +979,6 @@ const styles = StyleSheet.create({
   quickActionSlot: {
     minWidth: '48%',
     flex: 1,
-  },
-  pendingImageCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    padding: spacing.md,
-  },
-  pendingImage: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.md,
-  },
-  pendingImageCopy: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  pendingImageTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text,
-  },
-  pendingImageText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
-  pendingImageClear: {
-    height: 32,
-    width: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   messageList: {
     gap: spacing.sm,
