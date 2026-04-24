@@ -160,11 +160,14 @@ export default function HomeScreen() {
           {!isRestDay && workout?.exercises && workout.exercises.length > 0 && (
             <View style={styles.exerciseList}>
               {workout.exercises.map((exercise, index) => (
-                <View key={`${exercise}-${index}`} style={styles.exerciseRow}>
+                <View key={`${exercise.name}-${index}`} style={styles.exerciseRow}>
                   <View style={styles.exerciseNumber}>
                     <Text style={styles.exerciseNumberText}>{index + 1}</Text>
                   </View>
-                  <Text style={styles.exerciseText}>{exercise}</Text>
+                  <Text style={styles.exerciseText}>
+                    {exercise.name}
+                    {exercise.count > 1 ? ` x${exercise.count}` : ''}
+                  </Text>
                 </View>
               ))}
             </View>

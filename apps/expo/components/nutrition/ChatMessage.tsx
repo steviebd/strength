@@ -4,14 +4,11 @@ import type { NativeSyntheticEvent } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { Button } from '@/components/ui/Button';
 import { colors, radius, spacing, typography } from '@/theme';
-
-interface MealAnalysis {
-  name: string;
-  calories: number;
-  proteinG: number;
-  carbsG: number;
-  fatG: number;
-}
+import {
+  resolveMealTypeForAnalysis,
+  stripMachineJsonFromAssistantText,
+  type MealAnalysis,
+} from '@/lib/nutritionChat';
 
 interface ChatEntry {
   id: string;
@@ -42,9 +39,60 @@ interface ChatMessageProps {
 
 const COLLAPSED_USER_LINES = 1;
 const COLLAPSED_ASSISTANT_LINES = 2;
+const POWERLIFTING_STRATEGY_HEADING_PATTERN =
+  /^\*{0,2}Power\s*lifting Fuel Strategy\*{0,2}:?$|^\*{0,2}Powerlifting Fuel Strategy\*{0,2}:?$/i;
 
 function getLineCount(event: NativeSyntheticEvent<TextLayoutEventData>) {
   return event.nativeEvent.lines.length;
+}
+
+function cleanInlineFormatting(text: string): string {
+  return text.replace(/\*\*/g, '').trim();
+}
+
+function isBulletLine(text: string): boolean {
+  return /^[-*]\s+/.test(text.trim());
+}
+
+function getBulletText(text: string): string {
+  return cleanInlineFormatting(text.trim().replace(/^[-*]\s+/, ''));
+}
+
+function hasStructuredAssistantContent(content: string): boolean {
+  return content
+    .split('\n')
+    .some((line) => POWERLIFTING_STRATEGY_HEADING_PATTERN.test(line.trim()) || isBulletLine(line));
+}
+
+function renderStructuredAssistantContent(content: string) {
+  return content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      if (POWERLIFTING_STRATEGY_HEADING_PATTERN.test(line)) {
+        return (
+          <Text key={`assistant-heading:${index}`} style={styles.assistantHeading}>
+            Powerlifting Fuel Strategy
+          </Text>
+        );
+      }
+
+      if (isBulletLine(line)) {
+        return (
+          <View key={`assistant-bullet:${index}`} style={styles.bulletRow}>
+            <Text style={styles.bulletMarker}>•</Text>
+            <Text style={styles.bulletText}>{getBulletText(line)}</Text>
+          </View>
+        );
+      }
+
+      return (
+        <Text key={`assistant-line:${index}`} style={styles.assistantText}>
+          {cleanInlineFormatting(line)}
+        </Text>
+      );
+    });
 }
 
 export function ChatMessage({
@@ -59,6 +107,13 @@ export function ChatMessage({
   const userMessage = exchange.userMessage;
   const assistantMessage = exchange.assistantMessage;
   const analysis = assistantMessage?.analysis;
+  const resolvedMealType = analysis ? resolveMealTypeForAnalysis(analysis) : null;
+  const assistantDisplayContent = assistantMessage
+    ? stripMachineJsonFromAssistantText(assistantMessage.content)
+    : '';
+  const shouldRenderStructuredAssistantContent =
+    assistantDisplayContent.trim().length > 0 &&
+    hasStructuredAssistantContent(assistantDisplayContent);
   const isSaved = Boolean(assistantMessage?.savedEntryId);
 
   useEffect(() => {
@@ -110,24 +165,39 @@ export function ChatMessage({
               <Text style={styles.sectionLabel}>Coach</Text>
             </View>
             <View style={styles.assistantBubble}>
-              <Text
-                style={styles.assistantText}
-                numberOfLines={expanded ? undefined : COLLAPSED_ASSISTANT_LINES}
-                onTextLayout={(event) => {
-                  if (assistantNeedsToggle) return;
-                  if (getLineCount(event) > COLLAPSED_ASSISTANT_LINES) {
-                    setAssistantNeedsToggle(true);
-                  }
-                }}
-              >
-                {assistantMessage.content}
-              </Text>
+              {assistantDisplayContent ? (
+                shouldRenderStructuredAssistantContent ? (
+                  <View style={styles.structuredContent}>
+                    {renderStructuredAssistantContent(assistantDisplayContent)}
+                  </View>
+                ) : (
+                  <Text
+                    style={styles.assistantText}
+                    numberOfLines={expanded ? undefined : COLLAPSED_ASSISTANT_LINES}
+                    onTextLayout={(event) => {
+                      if (assistantNeedsToggle) return;
+                      if (getLineCount(event) > COLLAPSED_ASSISTANT_LINES) {
+                        setAssistantNeedsToggle(true);
+                      }
+                    }}
+                  >
+                    {cleanInlineFormatting(assistantDisplayContent)}
+                  </Text>
+                )
+              ) : null}
 
               {analysis ? (
                 <View style={styles.analysisCard}>
-                  <View style={styles.analysisHeader}>
+                  <View style={styles.mealTitleRow}>
                     <Text style={styles.analysisEmoji}>🍽️</Text>
                     <Text style={styles.mealName}>{analysis.name}</Text>
+                  </View>
+                  <View style={styles.analysisActionsRow}>
+                    {resolvedMealType ? (
+                      <View style={styles.mealTypeBadge}>
+                        <Text style={styles.mealTypeBadgeText}>{resolvedMealType}</Text>
+                      </View>
+                    ) : null}
                     {expanded ? (
                       <Button
                         size="sm"
@@ -147,11 +217,27 @@ export function ChatMessage({
                       </Button>
                     ) : null}
                   </View>
-                  <View style={styles.macroRow}>
-                    <Text style={styles.calories}>{analysis.calories} kcal</Text>
-                    <Text style={styles.macro}>P {analysis.proteinG}g</Text>
-                    <Text style={styles.macro}>C {analysis.carbsG}g</Text>
-                    <Text style={styles.macro}>F {analysis.fatG}g</Text>
+                  <View style={styles.macroGrid}>
+                    <View style={styles.macroPair}>
+                      <View style={styles.macroMetric}>
+                        <Text style={styles.metricValue}>{analysis.calories}</Text>
+                        <Text style={styles.metricLabel}>kcal</Text>
+                      </View>
+                      <View style={styles.macroMetric}>
+                        <Text style={styles.metricValue}>{analysis.proteinG}g</Text>
+                        <Text style={styles.metricLabel}>Protein</Text>
+                      </View>
+                    </View>
+                    <View style={styles.macroPair}>
+                      <View style={styles.macroMetric}>
+                        <Text style={styles.metricValue}>{analysis.carbsG}g</Text>
+                        <Text style={styles.metricLabel}>Carbs</Text>
+                      </View>
+                      <View style={styles.macroMetric}>
+                        <Text style={styles.metricValue}>{analysis.fatG}g</Text>
+                        <Text style={styles.metricLabel}>Fat</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
               ) : null}
@@ -224,6 +310,32 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     lineHeight: 22,
   },
+  structuredContent: {
+    gap: spacing.sm,
+  },
+  assistantHeading: {
+    color: colors.text,
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold,
+    lineHeight: 22,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  bulletMarker: {
+    color: colors.accent,
+    fontSize: typography.fontSizes.base,
+    lineHeight: 22,
+  },
+  bulletText: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: typography.fontSizes.base,
+    lineHeight: 22,
+  },
   thumbnail: {
     width: 40,
     height: 40,
@@ -237,11 +349,16 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
-  analysisHeader: {
+  mealTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
+  analysisActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   analysisEmoji: {
     fontSize: typography.fontSizes.base,
@@ -253,21 +370,44 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.bold,
   },
-  macroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+  mealTypeBadge: {
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  calories: {
-    color: colors.accent,
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold,
-  },
-  macro: {
+  mealTypeBadgeText: {
     color: colors.textMuted,
-    fontSize: typography.fontSizes.sm,
-    lineHeight: 18,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  macroGrid: {
+    gap: spacing.sm,
+  },
+  macroPair: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  macroMetric: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  metricValue: {
+    color: colors.accent,
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.bold,
+    lineHeight: 20,
+  },
+  metricLabel: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    lineHeight: 16,
+    marginTop: 2,
   },
   toggleRow: {
     alignItems: 'flex-start',

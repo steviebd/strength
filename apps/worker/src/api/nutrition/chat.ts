@@ -4,6 +4,7 @@ import { getModel } from '../../lib/ai';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
+  compactNutritionChatHistoryMessage,
   type SystemPromptContext,
   type NutritionAssistantContext,
   type TrainingContext,
@@ -308,10 +309,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     role: 'system' as const,
     content: structuredContextPrompt,
   };
-  const priorMessages = messages.slice(0, -1).map((m) => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content,
-  }));
+  const priorMessages = messages.slice(0, -1).map(compactNutritionChatHistoryMessage);
   const userMessage = { role: 'user' as const, content: userContent };
   const aiMessages = [systemMessage, structuredContextMessage, ...priorMessages, userMessage];
   const model = getModel(c.env);
@@ -330,6 +328,9 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
       try {
         for await (const delta of result.fullStream) {
           if (isClosed) break;
+          if (delta.type === 'error') {
+            throw delta.error instanceof Error ? delta.error : new Error(String(delta.error));
+          }
           if (delta.type === 'text-delta') {
             fullResponseText += delta.text;
           }

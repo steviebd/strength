@@ -46,7 +46,6 @@ interface NutritionDashboardProps {
   trainingType: TrainingType;
   onTrainingTypeChange: (type: TrainingType) => void;
   whoopData?: WhoopData | null;
-  onMealEdit: (entry: MealEntry) => void;
   onMealDelete: (entryId: string) => void;
 }
 
@@ -85,7 +84,6 @@ export function NutritionDashboard({
   trainingType,
   onTrainingTypeChange,
   whoopData,
-  onMealEdit,
   onMealDelete,
 }: NutritionDashboardProps) {
   const remainingCalories = Math.round(targets.calories - totals.calories);
@@ -240,7 +238,6 @@ export function NutritionDashboard({
                 protein={entry.proteinG ?? 0}
                 carbs={entry.carbsG ?? 0}
                 fat={entry.fatG ?? 0}
-                onEdit={() => onMealEdit(entry)}
                 onDelete={() => handleDeletePress(entry.id)}
               />
             ))}

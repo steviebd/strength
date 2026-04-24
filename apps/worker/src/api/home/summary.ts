@@ -71,6 +71,20 @@ function formatSleepDuration(milliseconds: number | null): string | null {
   return `${hours}h ${minutes}m`;
 }
 
+type GroupedExercise = { name: string; count: number };
+
+function groupConsecutiveExercises(names: string[]): GroupedExercise[] {
+  const grouped: GroupedExercise[] = [];
+  for (const name of names) {
+    if (grouped.length > 0 && grouped[grouped.length - 1].name === name) {
+      grouped[grouped.length - 1].count++;
+    } else {
+      grouped.push({ name, count: 1 });
+    }
+  }
+  return grouped;
+}
+
 type RecoveryStatus = 'green' | 'yellow' | 'red' | null;
 
 function getRecoveryStatusTone(recoveryScore: number | null): RecoveryStatus {
@@ -188,7 +202,7 @@ export async function homeSummaryHandler(c: any) {
         workoutId: string | null;
         name: string;
         focus: string;
-        exercises: string[];
+        exercises: GroupedExercise[];
         programName: string;
         programCycleId: string;
         scheduledDate: string;
@@ -215,7 +229,8 @@ export async function homeSummaryHandler(c: any) {
 
     if (todayScheduledWorkout && activeCycle) {
       const parsedTargetLifts = parseTargetLifts(todayScheduledWorkout.targetLifts);
-      const exercises = parsedTargetLifts.map((t: any) => t.name).filter(Boolean);
+      const exerciseNames = parsedTargetLifts.map((t: any) => t.name).filter(Boolean);
+      const exercises = groupConsecutiveExercises(exerciseNames);
 
       const cycleWorkout = todayScheduledWorkout;
       todayWorkoutOutput = {
@@ -223,7 +238,7 @@ export async function homeSummaryHandler(c: any) {
           cycleWorkoutId: cycleWorkout.id,
           workoutId: cycleWorkout.workoutId ?? null,
           name: cycleWorkout.sessionName,
-          focus: exercises.length > 0 ? exercises[0] : '',
+          focus: exercises.length > 0 ? exercises[0].name : '',
           exercises,
           programName: activeCycle.name,
           programCycleId: activeCycle.id,
