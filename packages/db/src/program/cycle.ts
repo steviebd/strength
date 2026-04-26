@@ -31,8 +31,8 @@ export interface UserProgramCycleRow {
   updatedAt?: Date | null;
   preferredGymDays?: string | null;
   preferredTimeOfDay?: string | null;
-  programStartDate?: string | null;
-  firstSessionDate?: string | null;
+  programStartAt?: number | null;
+  firstSessionAt?: number | null;
 }
 
 export interface ProgramCycleWorkoutRow {
@@ -47,9 +47,7 @@ export interface ProgramCycleWorkoutRow {
   workoutId?: string | null;
   createdAt?: Date | null;
   updatedAt?: Date | null;
-  scheduledDate?: string | null;
-  scheduledTime?: string | null;
-  scheduledTimezone?: string | null;
+  scheduledAt?: number | null;
 }
 
 export interface ProgramCycleWithWorkouts {
@@ -66,27 +64,29 @@ export async function createProgramCycle(
   const cycle = await db
     .insert(userProgramCycles)
     .values({
-      userId,
-      programSlug: data.programSlug,
-      name: data.name,
-      squat1rm: data.squat1rm,
-      bench1rm: data.bench1rm,
-      deadlift1rm: data.deadlift1rm,
-      ohp1rm: data.ohp1rm,
-      startingSquat1rm: data.squat1rm,
-      startingBench1rm: data.bench1rm,
-      startingDeadlift1rm: data.deadlift1rm,
-      startingOhp1rm: data.ohp1rm,
-      totalSessionsPlanned: data.totalSessionsPlanned,
-      estimatedWeeks: data.estimatedWeeks,
-      preferredGymDays: data.preferredGymDays ? JSON.stringify(data.preferredGymDays) : null,
-      preferredTimeOfDay: data.preferredTimeOfDay ?? null,
-      programStartDate: data.programStartDate ?? null,
-      firstSessionDate: data.firstSessionDate ?? null,
-      currentWeek: firstWorkout?.weekNumber ?? 1,
-      currentSession: firstWorkout?.sessionNumber ?? 1,
-      totalSessionsCompleted: 0,
-      status: 'active',
+      userId: userId as any,
+      programSlug: data.programSlug as any,
+      name: data.name as any,
+      squat1rm: data.squat1rm as any,
+      bench1rm: data.bench1rm as any,
+      deadlift1rm: data.deadlift1rm as any,
+      ohp1rm: data.ohp1rm as any,
+      startingSquat1rm: data.squat1rm as any,
+      startingBench1rm: data.bench1rm as any,
+      startingDeadlift1rm: data.deadlift1rm as any,
+      startingOhp1rm: data.ohp1rm as any,
+      totalSessionsPlanned: data.totalSessionsPlanned as any,
+      estimatedWeeks: data.estimatedWeeks as any,
+      preferredGymDays: (data.preferredGymDays
+        ? JSON.stringify(data.preferredGymDays)
+        : null) as any,
+      preferredTimeOfDay: (data.preferredTimeOfDay ?? null) as any,
+      programStartAt: data.programStartAt as any,
+      firstSessionAt: (data.firstSessionAt ?? null) as any,
+      currentWeek: (firstWorkout?.weekNumber ?? 1) as any,
+      currentSession: (firstWorkout?.sessionNumber ?? 1) as any,
+      totalSessionsCompleted: 0 as any,
+      status: 'active' as any,
     })
     .returning()
     .get();
@@ -102,9 +102,7 @@ export async function createProgramCycle(
       targetLifts: w.targetLifts ?? null,
       isComplete: false,
       workoutId: null,
-      scheduledDate: w.scheduledDate ?? null,
-      scheduledTime: w.scheduledTime ?? null,
-      scheduledTimezone: w.scheduledTimezone ?? null,
+      scheduledAt: w.scheduledAt ? new Date(w.scheduledAt) : null,
     }));
 
     await chunkedInsert(db, {

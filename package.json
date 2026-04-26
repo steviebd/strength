@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --filter @strength/worker dev",
+    "dev": "concurrently -n worker,expo -c blue,cyan \"bun run --filter @strength/worker dev\" \"bun run --filter @strength/expo dev\"",
     "dev:remote": "bun run --filter @strength/worker dev:remote",
     "dev:expo": "cd apps/expo && bun run dev",
     "dev:expo:staging": "infisical run --env=staging -- bun --filter @strength/expo dev",
@@ -49,6 +49,7 @@
     "vitest": "^4.1.5"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "typescript": "5.9.3",
     "vite-plus": "^0.1.19",
     "wrangler": "^4.84.1"

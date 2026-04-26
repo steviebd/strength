@@ -76,7 +76,7 @@ export default function WorkoutsIndex() {
   const [showStartWorkout, setShowStartWorkout] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const { startWorkout, isLoading } = useWorkoutSessionContext();
-  const { activeTimezone, weightUnit } = useUserPreferences();
+  const { weightUnit } = useUserPreferences();
 
   const [workoutName, setWorkoutName] = useState('');
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
@@ -186,7 +186,6 @@ export default function WorkoutsIndex() {
         body: JSON.stringify({
           name: template.name,
           templateId: template.id,
-          timezone: activeTimezone,
         }),
       });
       if (workout?.id) {
@@ -224,7 +223,7 @@ export default function WorkoutsIndex() {
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timezone: activeTimezone }),
+        body: JSON.stringify({}),
       });
 
       if (result.completed) {

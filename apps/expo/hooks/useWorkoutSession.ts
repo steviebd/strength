@@ -94,7 +94,7 @@ function logDuplicateWorkoutIds(exercises: WorkoutExercise[]) {
 
 export function useWorkoutSession(): UseWorkoutSessionReturn {
   const session = authClient.useSession();
-  const { activeTimezone, weightUnit } = useUserPreferences();
+  const { weightUnit } = useUserPreferences();
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -137,7 +137,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         const workoutData = await apiFetch<Workout>('/api/workouts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, timezone: activeTimezone }),
+          body: JSON.stringify({ name }),
         });
         setWorkout(workoutData);
         setExercises([]);
@@ -154,7 +154,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         setIsLoading(false);
       }
     },
-    [activeTimezone, session.data?.user],
+    [session.data?.user],
   );
 
   const loadWorkout = useCallback(
@@ -216,7 +216,6 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
                   reps: set.reps,
                   rpe: set.rpe,
                   isComplete: set.isComplete,
-                  timezone: activeTimezone,
                 }),
               });
             } else {
@@ -230,7 +229,6 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
                   reps: set.reps,
                   rpe: set.rpe,
                   isComplete: set.isComplete,
-                  timezone: activeTimezone,
                 }),
               });
             }
@@ -260,7 +258,6 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
                 reps: set.reps,
                 rpe: set.rpe,
                 isComplete: set.isComplete,
-                timezone: activeTimezone,
               }),
             });
           }
@@ -270,7 +267,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       await apiFetch(`/api/workouts/${workout.id}/complete`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timezone: activeTimezone }),
+        body: JSON.stringify({}),
       });
       for (const exercise of exercises) {
         const completedSets = exercise.sets.filter((s) => s.isComplete);
@@ -296,7 +293,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTimezone, workout, exercises]);
+  }, [workout, exercises]);
 
   const discardWorkout = useCallback(async () => {
     if (workout?.id) {
@@ -427,11 +424,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...updates, timezone: activeTimezone }),
+          body: JSON.stringify({ ...updates }),
         }).catch(console.error);
       }
     },
-    [activeTimezone, exercises],
+    [exercises],
   );
 
   const deleteSet = useCallback((setId: string) => {
@@ -467,11 +464,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ isComplete, timezone: activeTimezone }),
+          body: JSON.stringify({ isComplete }),
         }).catch(console.error);
       }
     },
-    [activeTimezone, exercises],
+    [exercises],
   );
 
   const getLastWorkoutData = useCallback(

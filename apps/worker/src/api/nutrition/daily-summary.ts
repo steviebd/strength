@@ -2,7 +2,7 @@ import { eq, and, gte, lt } from 'drizzle-orm';
 import type { TrainingContext, WhoopData, MacroTargets } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
-import { getDateRangeForTimezone, resolveUserTimezone } from '../../lib/timezone';
+import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
 
 type TargetStrategy = 'manual' | 'bodyweight' | 'default';
 
@@ -19,10 +19,15 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
       return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
     }
 
-    const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
+    const timezoneResult = await resolveUserTimezone(db, userId);
     if (timezoneResult.error || !timezoneResult.timezone) {
       return c.json({ error: timezoneResult.error }, 400);
     }
+
+    const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
+      date,
+      timezoneResult.timezone,
+    );
 
     const entries = await db
       .select()
@@ -30,7 +35,8 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
       .where(
         and(
           eq(schema.nutritionEntries.userId, userId),
-          eq(schema.nutritionEntries.date, date),
+          gte(schema.nutritionEntries.loggedAt, startOfDay),
+          lt(schema.nutritionEntries.loggedAt, endOfDay),
           eq(schema.nutritionEntries.isDeleted, false),
         ),
       )
@@ -49,7 +55,8 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
       .where(
         and(
           eq(schema.nutritionTrainingContext.userId, userId),
-          eq(schema.nutritionTrainingContext.date, date),
+          gte(schema.nutritionTrainingContext.createdAt, startOfDay),
+          lt(schema.nutritionTrainingContext.createdAt, endOfDay),
         ),
       )
       .get();
@@ -60,11 +67,6 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
           customLabel: trainingCtxRow.customLabel ?? undefined,
         }
       : null;
-
-    const { start: startOfDay, end: endOfDay } = getDateRangeForTimezone(
-      date,
-      timezoneResult.timezone,
-    );
 
     const recovery = await db
       .select()

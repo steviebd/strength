@@ -132,7 +132,7 @@ export default function ProgramOneRMTestScreen() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ timezone: activeTimezone }),
+          body: JSON.stringify({}),
         },
       );
       router.push(

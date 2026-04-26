@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { useUserPreferences } from '@/context/UserPreferencesContext';
 
 export type ProgramScheduleWorkout = {
   cycleWorkoutId: string;
@@ -9,16 +8,13 @@ export type ProgramScheduleWorkout = {
   sessionNumber: number;
   name: string;
   exercises: string[];
-  scheduledDate: string | null;
-  scheduledTime: string | null;
-  scheduledTimezone: string | null;
+  scheduledAt: number | null;
   status: 'today' | 'upcoming' | 'complete' | 'missed' | 'unscheduled';
 };
 
 type ProgramScheduleCycle = {
   id: string;
   name: string;
-  timezone: string;
   currentWeek: number | null;
   currentSession: number | null;
   totalSessionsCompleted: number;
@@ -33,13 +29,11 @@ type ProgramScheduleResponse = {
 };
 
 export function useProgramSchedule(cycleId: string) {
-  const { activeTimezone } = useUserPreferences();
-
   return useQuery({
-    queryKey: ['programSchedule', cycleId, activeTimezone],
+    queryKey: ['programSchedule', cycleId],
     queryFn: async () => {
       const response = await apiFetch<ProgramScheduleResponse>(
-        `/api/programs/cycles/${cycleId}/schedule?timezone=${encodeURIComponent(activeTimezone ?? '')}`,
+        `/api/programs/cycles/${cycleId}/schedule`,
       );
       return response;
     },
@@ -49,7 +43,6 @@ export function useProgramSchedule(cycleId: string) {
 
 export function useStartCycleWorkout() {
   const queryClient = useQueryClient();
-  const { activeTimezone } = useUserPreferences();
 
   return useMutation({
     mutationFn: async (cycleWorkoutId: string) => {
@@ -62,7 +55,7 @@ export function useStartCycleWorkout() {
       }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timezone: activeTimezone }),
+        body: JSON.stringify({}),
       });
       return response;
     },
@@ -75,17 +68,14 @@ export function useStartCycleWorkout() {
 
 export function useRescheduleWorkout() {
   const queryClient = useQueryClient();
-  const { activeTimezone } = useUserPreferences();
 
   return useMutation({
     mutationFn: async ({
       cycleWorkoutId,
-      scheduledDate,
-      scheduledTime,
+      scheduledAt,
     }: {
       cycleWorkoutId: string;
-      scheduledDate: string;
-      scheduledTime?: string | null;
+      scheduledAt: number;
     }) => {
       const response = await apiFetch<{
         workout: ProgramScheduleWorkout;
@@ -93,11 +83,7 @@ export function useRescheduleWorkout() {
       }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/schedule`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scheduledDate,
-          scheduledTime,
-          timezone: activeTimezone,
-        }),
+        body: JSON.stringify({ scheduledAt }),
       });
       return response;
     },

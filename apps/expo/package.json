@@ -3,12 +3,13 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "infisical run --env=dev -- expo start --clear",
+    "dev": "bun run dev:metro",
+    "dev:metro": "lsof -ti:8081 | xargs kill -9 2>/dev/null || true; expo start --clear -- --port 8081",
     "dev:staging": "infisical run --env=staging -- bun run dev",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "web:build": "expo export --platform web",
+    "web:build": "npx tsx scripts/web-build.ts",
     "typecheck": "tsc --noEmit",
     "build:android:staging": "bun run scripts/build-android-staging.ts"
   },

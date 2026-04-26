@@ -31,21 +31,49 @@ export type AuthContext = {
 export function getAuthHeaders(c: any) {
   const headers = new Headers(c.req.raw.headers);
   const expoOrigin = headers.get('expo-origin');
+  const originalOrigin = headers.get('origin');
 
-  if (!headers.get('origin') && expoOrigin) {
+  if (!originalOrigin && expoOrigin) {
     headers.set('origin', expoOrigin);
+    console.log('[AUTH getAuthHeaders] Set origin from expo-origin:', expoOrigin);
   }
+
+  console.log('[AUTH getAuthHeaders]', {
+    path: c.req.path,
+    originalOrigin,
+    expoOrigin,
+    finalOrigin: headers.get('origin'),
+    cookie: headers.get('cookie')?.slice(0, 50) ?? 'none',
+  });
 
   return headers;
 }
 
 export function getAuth(c: any) {
-  return createAuth(c.env as WorkerEnv, c.req.url, getAuthHeaders(c).get('origin') ?? undefined);
+  const headers = getAuthHeaders(c);
+  const origin = headers.get('origin') ?? undefined;
+  const xForwardedProto = headers.get('x-forwarded-proto');
+  console.log('[AUTH getAuth]', {
+    url: c.req.url,
+    origin,
+    xForwardedProto,
+  });
+  return createAuth(c.env as WorkerEnv, headers, origin);
 }
 
 export async function loadAuthSession(c: any) {
   const auth = getAuth(c);
-  return await auth.api.getSession({ headers: getAuthHeaders(c) });
+  const headers = getAuthHeaders(c);
+  console.log('[AUTH loadAuthSession] calling getSession for path:', c.req.path);
+  const session = await auth.api.getSession({ headers });
+  console.log('[AUTH loadAuthSession] result:', {
+    hasSession: !!session,
+    hasUser: !!session?.user,
+    hasSessionData: !!session?.session,
+    userId: session?.user?.id,
+    sessionId: session?.session?.id,
+  });
+  return session;
 }
 
 export async function populateAuthContext(c: any) {
@@ -56,22 +84,28 @@ export async function populateAuthContext(c: any) {
   c.set('user', user);
   c.set('session', session);
 
+  console.log('[AUTH populateAuthContext]', {
+    path: c.req.path,
+    hasUser: !!user,
+    hasSession: !!session,
+    userId: user?.id,
+  });
+
   return { user, session };
 }
 
 export async function requireAuth(c: any) {
-  const user = c.get('user');
-  const session = c.get('session');
-
-  if (user !== undefined && session !== undefined) {
-    return { user: user ?? null, session: session ?? null };
-  }
-
   const resolvedSession = await loadAuthSession(c);
 
   if (!resolvedSession) {
+    console.log('[AUTH requireAuth] No session resolved for path:', c.req.path);
     return { user: null, session: null };
   }
+
+  console.log('[AUTH requireAuth] Session resolved for path:', c.req.path, {
+    userId: resolvedSession.user?.id,
+    sessionId: resolvedSession.session?.id,
+  });
 
   return resolvedSession;
 }

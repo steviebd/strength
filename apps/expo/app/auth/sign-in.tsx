@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Link, router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
-import { authClient } from '@/lib/auth-client';
+import { authClient, debugAuthState } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
 import { colors } from '@/theme';
 
@@ -35,6 +35,7 @@ export default function SignInScreen() {
       }
 
       await waitForSessionReady();
+      debugAuthState();
       router.replace(redirectUrl as any);
     } catch (error) {
       setError(

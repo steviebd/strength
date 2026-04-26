@@ -73,16 +73,36 @@ function parseTrustedOrigins(value: string | undefined) {
     .filter((origin): origin is string => Boolean(origin));
 }
 
-function resolveCookiePolicy(baseURL: string | undefined): {
+function getClientProtocol(headers: Headers): 'https' | 'http' {
+  const forwardedProto = headers.get('x-forwarded-proto');
+  if (forwardedProto === 'https') {
+    return 'https';
+  }
+  return 'http';
+}
+
+function resolveCookiePolicy(
+  baseURL: string | undefined,
+  clientProtocol: 'https' | 'http',
+  appEnv?: string,
+): {
   secure: boolean;
   sameSite: SameSitePolicy;
 } {
-  const isHttps = baseURL?.startsWith('https://') ?? false;
+  const baseURLIsHttps = baseURL?.startsWith('https://');
+  const isDevMode = appEnv === 'development';
 
-  if (isHttps) {
+  if (clientProtocol === 'https' && baseURLIsHttps && !isDevMode) {
     return {
       secure: true,
       sameSite: 'strict',
+    };
+  }
+
+  if (isDevMode) {
+    return {
+      secure: false,
+      sameSite: 'lax',
     };
   }
 
@@ -113,22 +133,19 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
   };
 }
 
-export function resolveBaseURL(env: WorkerEnv, requestUrl?: string) {
+export function resolveBaseURL(env: WorkerEnv) {
   const resolvedEnv = resolveWorkerEnv(env);
   const configuredBaseURL = normalizeBaseURL(resolvedEnv.WORKER_BASE_URL);
 
-  if (configuredBaseURL) {
-    return configuredBaseURL;
-  }
-
-  return normalizeBaseURL(requestUrl);
+  return configuredBaseURL;
 }
 
-export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: string) {
+export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: string) {
   const resolvedEnv = resolveWorkerEnv(env);
   const db = drizzle(resolvedEnv.DB, { schema });
-  const baseURL = resolveBaseURL(resolvedEnv, requestUrl);
-  const cookiePolicy = resolveCookiePolicy(baseURL);
+  const clientProtocol = headers ? getClientProtocol(headers) : 'http';
+  const baseURL = resolveBaseURL(resolvedEnv);
+  const cookiePolicy = resolveCookiePolicy(baseURL, clientProtocol, resolvedEnv.APP_ENV);
   const trustedRequestOrigin =
     resolvedEnv.APP_ENV === 'development' ? normalizeTrustedOrigin(requestOrigin) : undefined;
   const trustedOrigins = [
@@ -139,6 +156,16 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
     ...(baseURL ? [baseURL] : []),
     ...(trustedRequestOrigin ? [trustedRequestOrigin] : []),
   ];
+
+  console.log('[AUTH createAuth]', {
+    clientProtocol,
+    xForwardedProto: headers?.get('x-forwarded-proto') ?? 'not present',
+    resolvedBaseURL: baseURL,
+    appEnv: resolvedEnv.APP_ENV,
+    cookiePolicy,
+    trustedOrigins: Array.from(new Set(trustedOrigins)),
+    isDevAuth: isDevAuthEnabled(env),
+  });
 
   return betterAuth({
     ...(baseURL ? { baseURL } : {}),
@@ -164,5 +191,5 @@ export function createAuth(env: WorkerEnv, requestUrl?: string, requestOrigin?: 
 }
 
 export function isDevAuthEnabled(env: WorkerEnv) {
-  return (resolveWorkerEnv(env).APP_ENV ?? 'development') === 'development';
+  return resolveWorkerEnv(env).APP_ENV === 'development';
 }

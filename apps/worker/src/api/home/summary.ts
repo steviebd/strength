@@ -2,7 +2,7 @@ import { eq, and, gte, lte, desc, isNotNull } from 'drizzle-orm';
 import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
 import { requireAuthContext } from '../auth';
-import { resolveUserTimezone, getDateRangeForTimezone } from '../../lib/timezone';
+import { resolveUserTimezone, getUtcRangeForLocalDate } from '../../lib/timezone';
 
 function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name: string }> {
   if (!targetLifts) return [];
@@ -100,7 +100,7 @@ export async function homeSummaryHandler(c: any) {
     if (auth instanceof Response) return auth;
     const { userId, db } = auth;
 
-    const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
+    const timezoneResult = await resolveUserTimezone(db, userId);
     if (timezoneResult.error || !timezoneResult.timezone) {
       return c.json({ error: timezoneResult.error }, 400);
     }
@@ -141,11 +141,11 @@ export async function homeSummaryHandler(c: any) {
       cycleWorkoutId: string;
       name: string;
       programName: string;
-      scheduledDate: string;
-      scheduledTime: string | null;
-      scheduledTimezone: string;
+      scheduledAt: Date | null;
     } | null = null;
     let isRestDay = false;
+
+    const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
     if (activeCycle) {
       const cycleWorkouts = await db
@@ -167,20 +167,29 @@ export async function homeSummaryHandler(c: any) {
 
       const incompleteScheduledToday =
         cycleWorkouts.find(
-          (workout) => !workout.isComplete && workout.scheduledDate === localDate,
+          (workout) =>
+            !workout.isComplete &&
+            workout.scheduledAt &&
+            workout.scheduledAt >= todayStart &&
+            workout.scheduledAt <= todayEnd,
         ) ?? null;
 
-      if (currentCycleWorkout?.scheduledDate === localDate) {
+      if (
+        currentCycleWorkout?.scheduledAt &&
+        currentCycleWorkout.scheduledAt >= todayStart &&
+        currentCycleWorkout.scheduledAt <= todayEnd
+      ) {
         todayScheduledWorkout = currentCycleWorkout;
       } else if (incompleteScheduledToday) {
         todayScheduledWorkout = incompleteScheduledToday;
       } else {
         isRestDay = true;
         const upcomingWorkout =
-          currentCycleWorkout && currentCycleWorkout.scheduledDate
+          currentCycleWorkout && currentCycleWorkout.scheduledAt
             ? currentCycleWorkout
             : (cycleWorkouts.find(
-                (workout) => !workout.isComplete && (workout.scheduledDate ?? '') >= localDate,
+                (workout) =>
+                  !workout.isComplete && workout.scheduledAt && workout.scheduledAt >= todayStart,
               ) ?? currentCycleWorkout);
 
         if (upcomingWorkout) {
@@ -188,9 +197,7 @@ export async function homeSummaryHandler(c: any) {
             cycleWorkoutId: upcomingWorkout.id,
             name: upcomingWorkout.sessionName,
             programName: activeCycle.name,
-            scheduledDate: upcomingWorkout.scheduledDate ?? '',
-            scheduledTime: upcomingWorkout.scheduledTime,
-            scheduledTimezone: upcomingWorkout.scheduledTimezone ?? timezone,
+            scheduledAt: upcomingWorkout.scheduledAt ?? null,
           };
         }
       }
@@ -205,18 +212,14 @@ export async function homeSummaryHandler(c: any) {
         exercises: GroupedExercise[];
         programName: string;
         programCycleId: string;
-        scheduledDate: string;
-        scheduledTime: string | null;
-        scheduledTimezone: string;
+        scheduledAt: Date | null;
         isComplete: boolean;
       } | null;
       nextWorkout: {
         cycleWorkoutId: string;
         name: string;
         programName: string;
-        scheduledDate: string;
-        scheduledTime: string | null;
-        scheduledTimezone: string;
+        scheduledAt: Date | null;
       } | null;
       hasActiveProgram: boolean;
       isRestDay: boolean;
@@ -242,9 +245,7 @@ export async function homeSummaryHandler(c: any) {
           exercises,
           programName: activeCycle.name,
           programCycleId: activeCycle.id,
-          scheduledDate: cycleWorkout.scheduledDate ?? localDate,
-          scheduledTime: cycleWorkout.scheduledTime ?? null,
-          scheduledTimezone: cycleWorkout.scheduledTimezone ?? timezone,
+          scheduledAt: cycleWorkout.scheduledAt ?? null,
           isComplete: cycleWorkout.isComplete ?? false,
         },
         nextWorkout: null,
@@ -259,11 +260,13 @@ export async function homeSummaryHandler(c: any) {
     }
 
     const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
+    const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
+    const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
 
     const weekCompletedWorkouts = await db
       .select({
         id: schema.workouts.id,
-        completedLocalDate: schema.workouts.completedLocalDate,
+        completedAt: schema.workouts.completedAt,
         totalVolume: schema.workouts.totalVolume,
       })
       .from(schema.workouts)
@@ -272,8 +275,8 @@ export async function homeSummaryHandler(c: any) {
           eq(schema.workouts.userId, userId),
           eq(schema.workouts.isDeleted, false),
           isNotNull(schema.workouts.completedAt),
-          gte(schema.workouts.completedLocalDate, weekStart),
-          lte(schema.workouts.completedLocalDate, weekEnd),
+          gte(schema.workouts.completedAt, weekStartUtc),
+          lte(schema.workouts.completedAt, weekEndUtcEnd),
         ),
       )
       .all();
@@ -288,8 +291,9 @@ export async function homeSummaryHandler(c: any) {
         .where(
           and(
             eq(schema.programCycleWorkouts.cycleId, activeCycle.id),
-            gte(schema.programCycleWorkouts.scheduledDate, weekStart),
-            lte(schema.programCycleWorkouts.scheduledDate, weekEnd),
+            isNotNull(schema.programCycleWorkouts.scheduledAt),
+            gte(schema.programCycleWorkouts.scheduledAt, weekStartUtc),
+            lte(schema.programCycleWorkouts.scheduledAt, weekEndUtcEnd),
           ),
         )
         .all();
@@ -305,9 +309,9 @@ export async function homeSummaryHandler(c: any) {
 
     let streakDays = 0;
     if (hasActiveProgram) {
-      const todayStr = localDate;
-      let checkDate = todayStr;
+      let checkDate = localDate;
       while (true) {
+        const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(checkDate, timezone);
         const dayWorkouts = await db
           .select({ id: schema.workouts.id })
           .from(schema.workouts)
@@ -316,7 +320,8 @@ export async function homeSummaryHandler(c: any) {
               eq(schema.workouts.userId, userId),
               eq(schema.workouts.isDeleted, false),
               isNotNull(schema.workouts.completedAt),
-              eq(schema.workouts.completedLocalDate, checkDate),
+              gte(schema.workouts.completedAt, dayStart),
+              lte(schema.workouts.completedAt, dayEnd),
             ),
           )
           .limit(1)
@@ -340,7 +345,7 @@ export async function homeSummaryHandler(c: any) {
       totalVolumeLabel,
     };
 
-    const { start: dayStart, end: dayEnd } = getDateRangeForTimezone(localDate, timezone);
+    const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
     const recovery = await db
       .select()

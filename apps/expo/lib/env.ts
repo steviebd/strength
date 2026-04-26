@@ -13,7 +13,11 @@ function getExpoHost() {
 }
 
 function resolveApiUrl() {
-  const configuredUrl = process.env.EXPO_PUBLIC_WORKER_BASE_URL || 'http://localhost:8787';
+  const configuredUrl = process.env.EXPO_PUBLIC_WORKER_BASE_URL;
+
+  if (!configuredUrl) {
+    throw new Error('[env] Missing required: EXPO_PUBLIC_WORKER_BASE_URL');
+  }
 
   if (Platform.OS === 'web') {
     const resolved = configuredUrl.replace(/\/$/, '');

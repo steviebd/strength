@@ -98,8 +98,6 @@ export async function requireOwnedWorkoutSet(
       rpe: schema.workoutSets.rpe,
       isComplete: schema.workoutSets.isComplete,
       completedAt: schema.workoutSets.completedAt,
-      completedTimezone: schema.workoutSets.completedTimezone,
-      completedLocalDate: schema.workoutSets.completedLocalDate,
       isDeleted: schema.workoutSets.isDeleted,
       createdAt: schema.workoutSets.createdAt,
       updatedAt: schema.workoutSets.updatedAt,
@@ -151,11 +149,9 @@ export async function requireOwnedProgramCycleWorkout(
       targetLifts: schema.programCycleWorkouts.targetLifts,
       isComplete: schema.programCycleWorkouts.isComplete,
       workoutId: schema.programCycleWorkouts.workoutId,
+      scheduledAt: schema.programCycleWorkouts.scheduledAt,
       createdAt: schema.programCycleWorkouts.createdAt,
       updatedAt: schema.programCycleWorkouts.updatedAt,
-      scheduledDate: schema.programCycleWorkouts.scheduledDate,
-      scheduledTime: schema.programCycleWorkouts.scheduledTime,
-      scheduledTimezone: schema.programCycleWorkouts.scheduledTimezone,
     })
     .from(schema.programCycleWorkouts)
     .innerJoin(

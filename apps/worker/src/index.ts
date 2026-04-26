@@ -24,8 +24,9 @@ import {
   exerciseLibrary,
   chunkedQuery,
   chunkedInsert,
-  formatLocalDate,
+  batchParallel,
   isValidTimeZone,
+  formatLocalDate,
   whoopRecovery,
   whoopSleep,
   whoopCycle,
@@ -52,9 +53,8 @@ import {
 } from './whoop/webhook';
 import { isWhoopConnected, getWhoopUserId, getWhoopProfileByUserId } from './whoop/user';
 import {
-  buildCompletedSetRecord,
-  buildLocalDateRecord,
-  getDateRangeForTimezone,
+  getStoredUserTimezone,
+  getUtcRangeForLocalDate,
   resolveUserTimezone,
 } from './lib/timezone';
 
@@ -66,13 +66,16 @@ type Variables = {
 const app = new Hono<{ Bindings: WorkerEnv; Variables: Variables }>();
 
 function isAllowedDevOrigin(origin: string) {
-  if (!origin) return true;
+  if (!origin) {
+    console.log('[CORS] No origin provided, allowing');
+    return true;
+  }
   const allowed =
     origin.startsWith('strength://') ||
     /^exp:\/\/.+/i.test(origin) ||
     /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
     /^http:\/\/(?:10|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))(?:\.\d{1,3}){2}(?::\d+)?$/i.test(origin);
-  console.log('CORS origin check:', origin?.slice(0, 50), 'allowed:', allowed);
+  console.log('[CORS] Origin check:', { origin: origin?.slice(0, 50), allowed });
   return allowed;
 }
 
@@ -104,6 +107,36 @@ app.get('/api/health', (c) => {
   return c.json({
     ok: true,
     authEnabled: true,
+  });
+});
+
+app.get('/api/debug/auth-check', async (c) => {
+  const db = createDb(c.env);
+  const users = await db.select().from(schema.user).all();
+  const sessions = await db.select().from(schema.session).all();
+  console.log(
+    '[DEBUG] Users in DB:',
+    users.length,
+    users.map((u) => ({ id: u.id, email: u.email })),
+  );
+  console.log(
+    '[DEBUG] Sessions in DB:',
+    sessions.length,
+    sessions.map((s) => ({
+      id: s.id,
+      userId: s.userId,
+      expiresAt: new Date(s.expiresAt).toISOString(),
+    })),
+  );
+  return c.json({
+    userCount: users.length,
+    sessionCount: sessions.length,
+    users: users.map((u) => ({ id: u.id, email: u.email, name: u.name })),
+    sessions: sessions.map((s) => ({
+      id: s.id,
+      userId: s.userId,
+      expiresAt: new Date(s.expiresAt).toISOString(),
+    })),
   });
 });
 
@@ -239,8 +272,44 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c, next) => {
     return;
   }
 
+  console.log('[AUTH handler] Incoming auth request:', {
+    path: c.req.path,
+    method: c.req.method,
+    origin: c.req.header('origin'),
+    expoOrigin: c.req.header('expo-origin'),
+  });
+
   const auth = getAuth(c);
-  return auth.handler(c.req.raw);
+  const response = await auth.handler(c.req.raw);
+
+  const setCookie = response.headers.get('set-cookie');
+  const contentType = response.headers.get('content-type');
+  console.log('[AUTH handler] Auth response:', {
+    path: c.req.path,
+    status: response.status,
+    setCookie: setCookie ? setCookie.slice(0, 200) : 'none',
+    contentType,
+  });
+
+  if (c.req.path === '/api/auth/sign-in/email' || c.req.path === '/api/auth/sign-up/email') {
+    const db = createDb(c.env);
+    const sessions = await db.select().from(schema.session).all();
+    const users = await db.select().from(schema.user).all();
+    console.log('[AUTH handler] After auth, DB state:', {
+      userCount: users.length,
+      sessionCount: sessions.length,
+      latestSession: sessions[sessions.length - 1]
+        ? {
+            id: sessions[sessions.length - 1].id,
+            userId: sessions[sessions.length - 1].userId,
+            token: sessions[sessions.length - 1].token.slice(0, 20) + '...',
+            expiresAt: new Date(sessions[sessions.length - 1].expiresAt).toISOString(),
+          }
+        : null,
+    });
+  }
+
+  return response;
 });
 
 function getDb(c: any) {
@@ -329,8 +398,6 @@ async function getLastCompletedExerciseSnapshot(db: any, userId: string, exercis
     .select({
       workoutExerciseId: schema.workoutExercises.id,
       workoutCompletedAt: schema.workouts.completedAt,
-      workoutCompletedLocalDate: schema.workouts.completedLocalDate,
-      workoutCompletedDate: schema.workouts.completedDate,
     })
     .from(schema.workoutExercises)
     .innerJoin(schema.workouts, eq(schema.workoutExercises.workoutId, schema.workouts.id))
@@ -363,12 +430,9 @@ async function getLastCompletedExerciseSnapshot(db: any, userId: string, exercis
 
   return {
     exerciseId: resolvedExerciseId,
-    workoutDate:
-      recentWorkoutExercise.workoutCompletedLocalDate ??
-      recentWorkoutExercise.workoutCompletedDate ??
-      (recentWorkoutExercise.workoutCompletedAt
-        ? formatLocalDate(recentWorkoutExercise.workoutCompletedAt, 'UTC')
-        : null),
+    workoutDate: recentWorkoutExercise.workoutCompletedAt
+      ? new Date(recentWorkoutExercise.workoutCompletedAt).toISOString().split('T')[0]
+      : null,
     sets: allSets.map(
       (s: {
         weight: number | null;
@@ -420,6 +484,7 @@ type SerializedProgramTargetLift = {
   isRequired?: unknown;
   isAmrap?: unknown;
   libraryId?: unknown;
+  exerciseId?: unknown;
 };
 
 type NormalizedProgramTargetLift = {
@@ -434,6 +499,7 @@ type NormalizedProgramTargetLift = {
   isRequired: boolean;
   isAmrap: boolean;
   libraryId?: string;
+  exerciseId?: string;
 };
 
 function isProgramAmrap(targetLift: { name?: unknown; reps?: unknown; isAmrap?: unknown }) {
@@ -487,6 +553,7 @@ function normalizeProgramTargetLift(
     isRequired,
     isAmrap,
     libraryId: typeof targetLift.libraryId === 'string' ? targetLift.libraryId : undefined,
+    exerciseId: typeof targetLift.exerciseId === 'string' ? targetLift.exerciseId : undefined,
   };
 }
 
@@ -564,9 +631,7 @@ function getCurrentCycleWorkout(
     isComplete?: boolean;
     targetLifts?: string | null;
     sessionName?: string;
-    scheduledDate?: string | null;
-    scheduledTime?: string | null;
-    scheduledTimezone?: string | null;
+    scheduledAt?: number | null;
     workoutId?: string | null;
   }>,
 ) {
@@ -645,12 +710,7 @@ async function getLatestOneRMTestWorkoutForCycle(db: any, userId: string, cycleI
     .get();
 }
 
-async function createOneRMTestWorkout(
-  db: any,
-  userId: string,
-  cycleId: string,
-  requestedTimezone?: string | null,
-) {
+async function createOneRMTestWorkout(db: any, userId: string, cycleId: string) {
   const cycle = await getProgramCycleById(db, cycleId, userId);
   if (!cycle) {
     return null;
@@ -662,10 +722,6 @@ async function createOneRMTestWorkout(
   }
 
   const now = new Date();
-  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
-  if (timezoneResult.error || !timezoneResult.timezone) {
-    throw new Error('Timezone is required');
-  }
 
   const workout = await db
     .insert(schema.workouts)
@@ -675,8 +731,6 @@ async function createOneRMTestWorkout(
       name: '1RM Test',
       notes: null,
       startedAt: now,
-      startedTimezone: timezoneResult.timezone,
-      startedLocalDate: formatLocalDate(now, timezoneResult.timezone),
       createdAt: now,
       updatedAt: now,
       startingSquat1rm: cycle.startingSquat1rm ?? cycle.squat1rm,
@@ -760,7 +814,6 @@ async function createWorkoutFromProgramCycleWorkout(
   userId: string,
   cycleId: string,
   cycleWorkout: any,
-  timezone: string,
 ) {
   const now = new Date();
   let createdWorkoutId: string | null = null;
@@ -772,8 +825,6 @@ async function createWorkoutFromProgramCycleWorkout(
       name: cycleWorkout.sessionName,
       notes: null,
       startedAt: now,
-      startedTimezone: timezone,
-      startedLocalDate: formatLocalDate(now, timezone),
       createdAt: now,
       updatedAt: now,
     })
@@ -797,13 +848,18 @@ async function createWorkoutFromProgramCycleWorkout(
     for (let i = 0; i < targetLifts.all.length; i++) {
       const targetLift = targetLifts.all[i];
       const isAmrap = targetLift.isAmrap;
-      const exerciseId = await getOrCreateExerciseForUser(
-        db,
-        userId,
-        targetLift.name,
-        targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
-        targetLift.libraryId,
-      );
+      let exerciseId: string;
+      if (targetLift.exerciseId) {
+        exerciseId = targetLift.exerciseId;
+      } else {
+        exerciseId = await getOrCreateExerciseForUser(
+          db,
+          userId,
+          targetLift.name,
+          targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
+          targetLift.libraryId,
+        );
+      }
       exerciseIdList.push({
         workoutExerciseId: schema.generateId(),
         exerciseId,
@@ -1702,13 +1758,9 @@ app.post(
   createHandler(async (c, { userId, db }) => {
     try {
       const body = await c.req.json();
-      const { name, templateId, notes, timezone: requestedTimezone } = body;
+      const { name, templateId, notes } = body;
       if (!name) {
         return c.json({ message: 'Name is required' }, 400);
-      }
-      const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
-      if (timezoneResult.error || !timezoneResult.timezone) {
-        return c.json({ message: timezoneResult.error }, 400);
       }
 
       const now = new Date();
@@ -1725,8 +1777,6 @@ app.post(
           templateId: templateId || null,
           notes: notes || null,
           startedAt: now,
-          startedTimezone: timezoneResult.timezone,
-          startedLocalDate: formatLocalDate(now, timezoneResult.timezone),
           createdAt: now,
           updatedAt: now,
         })
@@ -1937,12 +1987,6 @@ app.put(
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
     try {
-      const body = await c.req.json().catch(() => ({}));
-      const timezoneResult = await resolveUserTimezone(db, userId, body.timezone);
-      if (timezoneResult.error || !timezoneResult.timezone) {
-        return c.json({ message: timezoneResult.error }, 400);
-      }
-
       const workout = await db
         .select({ startedAt: schema.workouts.startedAt })
         .from(schema.workouts)
@@ -1972,9 +2016,6 @@ app.put(
         .update(schema.workouts)
         .set({
           completedAt: now,
-          completedTimezone: timezoneResult.timezone,
-          completedLocalDate: formatLocalDate(now, timezoneResult.timezone),
-          completedDate: formatLocalDate(now, timezoneResult.timezone),
           totalVolume: aggregates?.totalVolume ?? 0,
           totalSets: aggregates?.totalSets ?? 0,
           durationMinutes,
@@ -2052,16 +2093,12 @@ app.post(
   createHandler(async (c, { userId, db }) => {
     try {
       const body = await c.req.json();
-      const { workoutExerciseId, setNumber, weight, reps, rpe, isComplete, timezone } = body;
+      const { workoutExerciseId, setNumber, weight, reps, rpe, isComplete } = body;
       if (!workoutExerciseId || setNumber === undefined) {
         return c.json({ message: 'workoutExerciseId and setNumber are required' }, 400);
       }
       const we = await requireOwnedWorkoutExercise({ userId, db }, workoutExerciseId);
       if (we instanceof Response) return we;
-      const timezoneResult = await resolveUserTimezone(db, userId, timezone);
-      if (isComplete && (timezoneResult.error || !timezoneResult.timezone)) {
-        return c.json({ message: timezoneResult.error }, 400);
-      }
 
       const now = new Date();
       const result = await db
@@ -2073,9 +2110,7 @@ app.post(
           reps: reps || null,
           rpe: rpe || null,
           isComplete: isComplete || false,
-          ...(isComplete && timezoneResult.timezone
-            ? buildCompletedSetRecord(now, timezoneResult.timezone)
-            : {}),
+          ...(isComplete ? { completedAt: now } : {}),
           createdAt: now,
           updatedAt: now,
         })
@@ -2098,15 +2133,9 @@ app.put(
       const body = await c.req.json();
       const updateData: any = { ...body, updatedAt: new Date() };
       if (body.isComplete === true) {
-        const timezoneResult = await resolveUserTimezone(db, userId, body.timezone);
-        if (timezoneResult.error || !timezoneResult.timezone) {
-          return c.json({ message: timezoneResult.error }, 400);
-        }
-        Object.assign(updateData, buildCompletedSetRecord(new Date(), timezoneResult.timezone));
+        updateData.completedAt = new Date();
       } else if (body.isComplete === false) {
         updateData.completedAt = null;
-        updateData.completedTimezone = null;
-        updateData.completedLocalDate = null;
       }
       delete updateData.timezone;
       const result = await db
@@ -2208,7 +2237,6 @@ app.post(
         preferredTimeOfDay,
         programStartDate,
         firstSessionDate,
-        timezone: requestedTimezone,
       } = body;
       if (!programSlug || !name) {
         return c.json({ message: 'programSlug and name are required' }, 400);
@@ -2228,13 +2256,12 @@ app.post(
 
       const generatedWorkouts = programConfig.generateWorkouts(oneRMs);
 
-      const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
-      if (timezoneResult.error || !timezoneResult.timezone) {
-        return c.json({ message: timezoneResult.error }, 400);
-      }
+      const profileTimezone = await getStoredUserTimezone(db, userId);
+      const timezone = profileTimezone ?? 'UTC';
 
       const startDate = programStartDate ? new Date(programStartDate) : new Date();
       const firstDate = firstSessionDate ? new Date(firstSessionDate) : undefined;
+      const programStartAt = startDate.getTime();
 
       const scheduleOptions = {
         preferredDays: preferredGymDays || ['monday', 'wednesday', 'friday'],
@@ -2251,10 +2278,53 @@ app.post(
         { ...scheduleOptions, forceFirstSessionDate: firstDate },
       );
 
-      const workouts = generatedWorkouts.map((workout, index) => {
-        const scheduleEntry = schedule[index];
-        const allExercises = [
-          ...workout.exercises.map((e) => ({
+      const exerciseResolutionTasks: Array<{
+        workoutIndex: number;
+        exerciseIndex: number;
+        name: string;
+        lift?: string;
+        libraryId?: string;
+      }> = [];
+      for (let wi = 0; wi < generatedWorkouts.length; wi++) {
+        const workout = generatedWorkouts[wi];
+        for (let ei = 0; ei < (workout.exercises ?? []).length; ei++) {
+          const e = workout.exercises[ei];
+          if (e.libraryId) {
+            exerciseResolutionTasks.push({
+              workoutIndex: wi,
+              exerciseIndex: ei,
+              name: e.name,
+              lift: e.lift,
+              libraryId: e.libraryId,
+            });
+          }
+        }
+      }
+
+      const resolvedExercises = await batchParallel(
+        exerciseResolutionTasks.map(
+          (t) => () =>
+            getOrCreateExerciseForUser(
+              db,
+              userId,
+              t.name,
+              t.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
+              t.libraryId,
+            ),
+        ),
+      );
+
+      const exerciseIdMap: Map<string, string> = new Map();
+      for (let i = 0; i < exerciseResolutionTasks.length; i++) {
+        const key = `${exerciseResolutionTasks[i].workoutIndex}_${exerciseResolutionTasks[i].exerciseIndex}`;
+        exerciseIdMap.set(key, resolvedExercises[i]);
+      }
+
+      const workouts = generatedWorkouts.map((workout, workoutIndex) => {
+        const scheduleEntry = schedule[workoutIndex];
+        const exercises = (workout.exercises ?? []).map((e, exerciseIndex) => {
+          const key = `${workoutIndex}_${exerciseIndex}`;
+          return {
             name: e.name,
             lift: e.lift,
             targetWeight: e.targetWeight,
@@ -2262,29 +2332,33 @@ app.post(
             reps: e.reps,
             isAmrap: e.isAmrap ?? false,
             isAccessory: false,
-          })),
-          ...(workout.accessories || []).map((a) => ({
-            name: a.name,
-            accessoryId: a.accessoryId,
-            targetWeight: a.targetWeight,
-            sets: a.sets,
-            reps: a.reps,
-            isAmrap: a.isAmrap ?? false,
-            isAccessory: true,
-          })),
-        ];
+            libraryId: e.libraryId,
+            exerciseId: exerciseIdMap.get(key),
+          };
+        });
+        const accessories = (workout.accessories || []).map((a) => ({
+          name: a.name,
+          accessoryId: a.accessoryId,
+          targetWeight: a.targetWeight,
+          sets: a.sets,
+          reps: a.reps,
+          isAmrap: a.isAmrap ?? false,
+          isAccessory: true,
+        }));
         return {
           weekNumber: workout.weekNumber,
           sessionNumber: workout.sessionNumber,
           sessionName: workout.sessionName,
-          scheduledDate: scheduleEntry?.scheduledDate
-            ? formatLocalDate(scheduleEntry.scheduledDate, timezoneResult.timezone)
+          scheduledAt: scheduleEntry?.scheduledDate
+            ? new Date(
+                scheduleEntry.scheduledDate.getFullYear(),
+                scheduleEntry.scheduledDate.getMonth(),
+                scheduleEntry.scheduledDate.getDate(),
+              ).getTime()
             : undefined,
-          scheduledTime: scheduleEntry?.scheduledTime ?? undefined,
-          scheduledTimezone: timezoneResult.timezone,
           targetLifts: JSON.stringify({
-            exercises: allExercises.filter((exercise) => !exercise.isAccessory),
-            accessories: allExercises.filter((exercise) => exercise.isAccessory),
+            exercises,
+            accessories,
           }),
         };
       });
@@ -2303,8 +2377,8 @@ app.post(
         estimatedWeeks,
         preferredGymDays,
         preferredTimeOfDay,
-        programStartDate,
-        firstSessionDate,
+        programStartAt,
+        firstSessionAt: firstDate?.getTime(),
         workouts,
       });
 
@@ -2410,13 +2484,6 @@ app.get(
   '/api/programs/cycles/:id/schedule',
   createHandler(async (c, { userId, db }) => {
     const cycleId = c.req.param('id') as string;
-    const requestedTimezone = c.req.query('timezone');
-
-    const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
-    if (timezoneResult.error) {
-      return c.json({ message: timezoneResult.error }, 400);
-    }
-    const timezone = timezoneResult.timezone;
 
     try {
       const ownedCycle = await requireOwnedProgramCycle({ userId, db }, cycleId);
@@ -2428,7 +2495,12 @@ app.get(
       }
 
       const { cycle, workouts } = result;
-      const todayStr = formatLocalDate(new Date(), timezone);
+      const profileTimezone = await getStoredUserTimezone(db, userId);
+      const timezone = profileTimezone ?? 'UTC';
+      const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(
+        formatLocalDate(new Date(), timezone),
+        timezone,
+      );
 
       const workoutIds = workouts.filter((w) => w.workoutId).map((w) => w.workoutId as string);
 
@@ -2454,11 +2526,10 @@ app.get(
           ? linkedWorkoutMap.get(workout.workoutId)
           : undefined;
         const isWorkoutComplete = workout.isComplete || !!linkedWorkout?.completedAt;
-
         const parsedTargetLifts = parseProgramTargetLifts(workout.targetLifts);
         const exercises = parsedTargetLifts.all.map((l) => l.name);
 
-        if (!workout.scheduledDate) {
+        if (!workout.scheduledAt) {
           const scheduleWorkout = {
             cycleWorkoutId: workout.id,
             workoutId: workout.workoutId ?? null,
@@ -2466,9 +2537,7 @@ app.get(
             sessionNumber: workout.sessionNumber,
             name: workout.sessionName,
             exercises,
-            scheduledDate: null,
-            scheduledTime: workout.scheduledTime ?? null,
-            scheduledTimezone: workout.scheduledTimezone ?? null,
+            scheduledAt: null,
             status: isWorkoutComplete ? 'complete' : 'unscheduled',
           };
           if (isWorkoutComplete) {
@@ -2477,6 +2546,7 @@ app.get(
           continue;
         }
 
+        const scheduledTime = workout.scheduledAt;
         if (isWorkoutComplete) {
           completed.push({
             cycleWorkoutId: workout.id,
@@ -2485,12 +2555,10 @@ app.get(
             sessionNumber: workout.sessionNumber,
             name: workout.sessionName,
             exercises,
-            scheduledDate: workout.scheduledDate,
-            scheduledTime: workout.scheduledTime ?? null,
-            scheduledTimezone: workout.scheduledTimezone ?? null,
+            scheduledAt: scheduledTime,
             status: 'complete' as const,
           });
-        } else if (workout.scheduledDate === todayStr) {
+        } else if (scheduledTime >= todayStart.getTime() && scheduledTime < todayEnd.getTime()) {
           thisWeek.push({
             cycleWorkoutId: workout.id,
             workoutId: workout.workoutId ?? null,
@@ -2498,12 +2566,10 @@ app.get(
             sessionNumber: workout.sessionNumber,
             name: workout.sessionName,
             exercises,
-            scheduledDate: workout.scheduledDate,
-            scheduledTime: workout.scheduledTime ?? null,
-            scheduledTimezone: workout.scheduledTimezone ?? null,
+            scheduledAt: scheduledTime,
             status: 'today' as const,
           });
-        } else if (workout.scheduledDate > todayStr) {
+        } else if (scheduledTime >= todayEnd.getTime()) {
           upcoming.push({
             cycleWorkoutId: workout.id,
             workoutId: workout.workoutId ?? null,
@@ -2511,9 +2577,7 @@ app.get(
             sessionNumber: workout.sessionNumber,
             name: workout.sessionName,
             exercises,
-            scheduledDate: workout.scheduledDate,
-            scheduledTime: workout.scheduledTime ?? null,
-            scheduledTimezone: workout.scheduledTimezone ?? null,
+            scheduledAt: scheduledTime,
             status: 'upcoming' as const,
           });
         }
@@ -2651,8 +2715,7 @@ app.get(
         sessionNumber: currentWorkout.sessionNumber,
         sessionName: currentWorkout.sessionName,
         isComplete: currentWorkout.isComplete,
-        scheduledDate: currentWorkout.scheduledDate,
-        scheduledTime: currentWorkout.scheduledTime,
+        scheduledAt: currentWorkout.scheduledAt,
         exercises: parsedTargetLifts.all.map((exercise, index) => ({
           id: `${currentWorkout.id}:${index}`,
           orderIndex: index,
@@ -2688,7 +2751,7 @@ app.post(
       if (cycle instanceof Response) return cycle;
 
       const body = await c.req.json().catch(() => ({}));
-      const workout = await createOneRMTestWorkout(db, userId, cycleId, body.timezone ?? null);
+      const workout = await createOneRMTestWorkout(db, userId, cycleId);
       if (!workout) {
         return c.json({ message: 'Program cycle not found' }, 404);
       }
@@ -2831,21 +2894,11 @@ app.post(
         }
       }
 
-      const timezoneResult = await resolveUserTimezone(
-        db,
-        userId,
-        body.timezone ?? currentCycleWorkout.scheduledTimezone ?? null,
-      );
-      if (timezoneResult.error || !timezoneResult.timezone) {
-        return c.json({ message: timezoneResult.error }, 400);
-      }
-
       const workout = await createWorkoutFromProgramCycleWorkout(
         db,
         userId,
         cycleId,
         currentCycleWorkout,
-        timezoneResult.timezone,
       );
 
       return c.json({
@@ -2895,21 +2948,11 @@ app.post(
         }
       }
 
-      const timezoneResult = await resolveUserTimezone(
-        db,
-        userId,
-        body.timezone ?? cycleWorkout.scheduledTimezone ?? null,
-      );
-      if (timezoneResult.error || !timezoneResult.timezone) {
-        return c.json({ message: timezoneResult.error }, 400);
-      }
-
       const workout = await createWorkoutFromProgramCycleWorkout(
         db,
         userId,
         cycleWorkout.cycleId,
         cycleWorkout,
-        timezoneResult.timezone,
       );
 
       return c.json({
@@ -2991,39 +3034,32 @@ app.put(
 
     try {
       const body = await c.req.json();
-      const {
-        scheduledDate,
-        scheduledTime,
-        timezone: requestedTimezone,
-      } = body as {
-        scheduledDate: string;
-        scheduledTime?: string | null;
-        timezone?: string;
-      };
+      const { scheduledAt } = body as { scheduledAt?: number };
 
-      if (!scheduledDate || !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) {
-        return c.json({ message: 'Invalid scheduledDate. Must be YYYY-MM-DD' }, 400);
+      if (scheduledAt === undefined) {
+        return c.json({ message: 'scheduledAt is required' }, 400);
       }
 
-      if (
-        scheduledTime !== undefined &&
-        scheduledTime !== null &&
-        !/^\d{2}:\d{2}$/.test(scheduledTime)
-      ) {
-        return c.json({ message: 'Invalid scheduledTime. Must be HH:mm or null' }, 400);
+      if (typeof scheduledAt !== 'number' || !Number.isFinite(scheduledAt)) {
+        return c.json({ message: 'scheduledAt must be a valid timestamp' }, 400);
       }
-
-      const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
-      if (timezoneResult.error || !timezoneResult.timezone) {
-        return c.json({ message: timezoneResult.error || 'Timezone resolution failed' }, 400);
-      }
-      const resolvedTimezone = timezoneResult.timezone;
 
       const cycleWorkout = await requireOwnedProgramCycleWorkout({ userId, db }, cycleWorkoutId);
       if (cycleWorkout instanceof Response) return cycleWorkout;
 
+      const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(
+        formatLocalDate(new Date(), 'UTC'),
+        'UTC',
+      );
       let warning: 'date_collision' | undefined;
-      if (cycleWorkout.scheduledDate !== scheduledDate) {
+      const existingScheduledAt = cycleWorkout.scheduledAt;
+      if (
+        existingScheduledAt === null ||
+        existingScheduledAt === undefined ||
+        scheduledAt < dayStart.getTime() ||
+        scheduledAt >= dayEnd.getTime()
+      ) {
+      } else {
         const collision = await db
           .select({ id: schema.programCycleWorkouts.id })
           .from(schema.programCycleWorkouts)
@@ -3034,7 +3070,8 @@ app.put(
           .where(
             and(
               eq(schema.userProgramCycles.userId, userId),
-              eq(schema.programCycleWorkouts.scheduledDate, scheduledDate),
+              sql`${schema.programCycleWorkouts.scheduledAt} >= ${dayStart.getTime()}`,
+              sql`${schema.programCycleWorkouts.scheduledAt} < ${dayEnd.getTime()}`,
               sql`${schema.programCycleWorkouts.id} != ${cycleWorkoutId}`,
             ),
           )
@@ -3045,19 +3082,9 @@ app.put(
         }
       }
 
-      const updateValues: Record<string, unknown> = {
-        scheduledDate,
-        updatedAt: new Date(),
-      };
-
-      if (scheduledTime !== undefined) {
-        updateValues.scheduledTime = scheduledTime;
-        updateValues.scheduledTimezone = scheduledTime ? resolvedTimezone : null;
-      }
-
       const updated = await db
         .update(schema.programCycleWorkouts)
-        .set(updateValues)
+        .set({ scheduledAt: new Date(scheduledAt), updatedAt: new Date() })
         .where(eq(schema.programCycleWorkouts.id, cycleWorkoutId))
         .returning()
         .get();
@@ -3071,9 +3098,7 @@ app.put(
         targetLifts: updated.targetLifts,
         isComplete: updated.isComplete,
         workoutId: updated.workoutId,
-        scheduledDate: updated.scheduledDate,
-        scheduledTime: updated.scheduledTime,
-        scheduledTimezone: updated.scheduledTimezone,
+        scheduledAt: updated.scheduledAt,
       };
 
       return c.json({ workout, ...(warning ? { warning } : {}) });
@@ -3410,7 +3435,7 @@ function resolveWhoopRedirectBaseURL(env: WorkerEnv, requestUrl?: string) {
     return requestBaseURL;
   }
 
-  return resolveBaseURL(env, requestUrl);
+  return configuredBaseURL;
 }
 
 function isAllowedWhoopRedirectBaseURL(value: string) {

@@ -102,14 +102,19 @@ This should be a public hostname, not a Cloudflare private hostname or private C
 
 ## Development
 
-Run these in separate terminals:
-
 ```bash
 bun run dev
-bun run dev:expo
 ```
 
-`bun run dev` starts the worker against local persisted D1. Worker dev commands run through `infisical run`, then generate `apps/worker/wrangler.toml` before starting Wrangler.
+Starts both the worker and Expo app concurrently. Worker runs through `infisical run` with Cloudflare Tunnel if configured. Expo writes Infisical `dev` secrets to `.env.local` (gitignored) for Metro bundler to inline.
+
+Or run them separately:
+
+```bash
+bun run dev:expo  # Expo only
+```
+
+`.env.local` is gitignored (by `*.local` pattern). Use `.env.example` as a template for other environments.
 
 To run the worker against the remote dev D1 database instead of local persisted D1:
 

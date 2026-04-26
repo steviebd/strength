@@ -19,13 +19,15 @@ Note: `bun run check` exits 0 even with lint warnings (warnings are not errors).
 Worker config is generated from Infisical-injected environment variables. For local development, authenticate with `infisical login` and create/confirm the ignored local `.infisical.json` with `infisical init`; do not use Machine Identity client credentials for local commands.
 
 ```bash
-bun run dev         # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with local D1
-bun run dev:remote  # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with remote dev D1
-bun run dev:expo    # starts Expo dev server
+bun run web:build    # builds Expo web static assets to apps/expo/dist/ (run first, or after code changes)
+bun run dev          # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with local D1
+bun run dev:remote   # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with remote dev D1
 
 bun run db:generate   # generate Drizzle migrations (runs @strength/db)
 bun run db:apply:local # apply migrations to local D1 (runs @strength/worker)
 ```
+
+Note: Dev uses a static Expo web build (like staging), not Metro HMR. Run `bun run web:build` after any Expo code changes to update the static files. The worker serves these via `[assets]` at `strength-dev.stevenduong.com`.
 
 ## Architecture
 

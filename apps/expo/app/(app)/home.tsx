@@ -83,7 +83,7 @@ export default function HomeScreen() {
       }>(`/api/programs/cycle-workouts/${startableCycleWorkoutId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timezone: activeTimezone }),
+        body: JSON.stringify({}),
       });
 
       if (result.completed) {

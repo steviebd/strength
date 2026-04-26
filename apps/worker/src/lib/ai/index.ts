@@ -39,11 +39,10 @@ export function getModel(env: WorkerEnv) {
     apiKey: getAiGatewayApiKey(resolvedEnv),
   });
 
-  return aigateway(
-    unified(
-      normalizeAiModelName(
-        resolvedEnv.AI_MODEL_NAME ?? 'workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-      ),
-    ),
-  );
+  const modelName = resolvedEnv.AI_MODEL_NAME;
+  if (!modelName) {
+    throw new Error('[ai] Missing required environment variable: AI_MODEL_NAME');
+  }
+
+  return aigateway(unified(normalizeAiModelName(modelName)));
 }

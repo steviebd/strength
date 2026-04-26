@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import {
-  formatLocalDate,
-  getUtcRangeForLocalDate,
+  getUtcRangeForLocalDate as getUtcRangeForLocalDateFromDb,
   isValidTimeZone,
   resolveEffectiveTimezone,
 } from '@strength/db';
@@ -38,26 +37,6 @@ export async function resolveUserTimezone(
   return { timezone, error: null };
 }
 
-export function buildLocalDateRecord(
-  instant: Date,
-  timeZone: string,
-  prefix: 'started' | 'completed',
-) {
-  return {
-    [`${prefix}At`]: instant,
-    [`${prefix}Timezone`]: timeZone,
-    [`${prefix}LocalDate`]: formatLocalDate(instant, timeZone),
-  };
-}
-
-export function buildCompletedSetRecord(instant: Date, timeZone: string) {
-  return {
-    completedAt: instant,
-    completedTimezone: timeZone,
-    completedLocalDate: formatLocalDate(instant, timeZone),
-  };
-}
-
-export function getDateRangeForTimezone(localDate: string, timeZone: string) {
-  return getUtcRangeForLocalDate(localDate, timeZone);
+export function getUtcRangeForLocalDate(localDate: string, timeZone: string) {
+  return getUtcRangeForLocalDateFromDb(localDate, timeZone);
 }

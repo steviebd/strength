@@ -854,7 +854,6 @@ export default function ProgramsScreen() {
           preferredTimeOfDay: preferredTime,
           programStartDate: programStartDate.toISOString().split('T')[0],
           firstSessionDate: firstSessionDate.toISOString().split('T')[0],
-          timezone: activeTimezone,
         }),
       });
 
@@ -894,7 +893,7 @@ export default function ProgramsScreen() {
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timezone: activeTimezone }),
+        body: JSON.stringify({}),
       });
 
       if (result.completed) {

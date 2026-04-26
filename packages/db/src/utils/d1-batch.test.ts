@@ -193,8 +193,7 @@ describe('chunkedInsert', () => {
       targetLifts: '[]',
       isComplete: false,
       workoutId: null,
-      scheduledDate: '2026-04-20',
-      scheduledTime: '07:00',
+      scheduledAt: new Date('2026-04-20T07:00:00').getTime(),
     }));
 
     const inserted = await chunkedInsert(db as any, {
@@ -205,7 +204,7 @@ describe('chunkedInsert', () => {
     });
 
     expect(inserted).toBe(36);
-    expect(insertedChunks).toEqual([6, 6, 6, 6, 6, 6]);
+    expect(insertedChunks).toEqual([7, 7, 7, 7, 7, 1]);
   });
 
   it('should insert chunks sequentially', async () => {

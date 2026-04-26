@@ -70,14 +70,14 @@ export function useWhoopData(
 
   const fetchFreshData = useCallback(async (): Promise<WhoopCache> => {
     const response = await apiFetch<{ whoopRecovery: WhoopRecovery; whoopCycle: WhoopCycle }>(
-      `/api/nutrition/daily-summary?date=${date}&timezone=${encodeURIComponent(timezone)}`,
+      `/api/nutrition/daily-summary?date=${date}`,
     );
     return {
       recovery: response.whoopRecovery,
       cycle: response.whoopCycle,
       timestamp: Date.now(),
     };
-  }, [date, timezone]);
+  }, [date]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);

@@ -1,8 +1,6 @@
 import { eq, and } from 'drizzle-orm';
-import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
-import { resolveUserTimezone } from '../../lib/timezone';
 
 export const upsertTrainingContextHandler = createHandler(async (c, { userId, db }) => {
   let body: {
@@ -10,7 +8,6 @@ export const upsertTrainingContextHandler = createHandler(async (c, { userId, db
     type?: string;
     trainingType?: string;
     customLabel?: string;
-    timezone?: string;
   };
 
   try {
@@ -18,22 +15,6 @@ export const upsertTrainingContextHandler = createHandler(async (c, { userId, db
   } catch {
     return c.json({ error: 'Invalid request body' }, 400);
   }
-
-  const timezoneResult = await resolveUserTimezone(
-    db,
-    userId,
-    body.timezone ?? c.req.query('timezone'),
-  );
-  if (timezoneResult.error || !timezoneResult.timezone) {
-    return c.json({ error: timezoneResult.error }, 400);
-  }
-
-  const requestedDate = body.date ?? c.req.query('date');
-  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
-    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
-  }
-
-  const date = requestedDate ?? formatLocalDate(new Date(), timezoneResult.timezone);
 
   const trainingType = body.trainingType ?? body.type;
   const { customLabel } = body;
@@ -50,12 +31,7 @@ export const upsertTrainingContextHandler = createHandler(async (c, { userId, db
   const existing = await db
     .select()
     .from(schema.nutritionTrainingContext)
-    .where(
-      and(
-        eq(schema.nutritionTrainingContext.userId, userId),
-        eq(schema.nutritionTrainingContext.date, date),
-      ),
-    )
+    .where(eq(schema.nutritionTrainingContext.userId, userId))
     .get();
 
   const now = new Date();
@@ -67,7 +43,6 @@ export const upsertTrainingContextHandler = createHandler(async (c, { userId, db
       .set({
         trainingType,
         customLabel: customLabel ?? null,
-        eventTimezone: timezoneResult.timezone,
         updatedAt: now,
       })
       .where(
@@ -83,8 +58,6 @@ export const upsertTrainingContextHandler = createHandler(async (c, { userId, db
       .insert(schema.nutritionTrainingContext)
       .values({
         userId,
-        date,
-        eventTimezone: timezoneResult.timezone,
         trainingType,
         customLabel: customLabel ?? null,
         createdAt: now,

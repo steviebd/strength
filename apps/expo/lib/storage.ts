@@ -5,12 +5,9 @@ const STORAGE_KEYS = {
   LAST_WORKOUT: (exerciseId: string) => `lw_${exerciseId}`,
   PENDING_WORKOUTS: 'pending_workouts',
   DISMISSED_DEVICE_TIMEZONE: 'dismissed_device_timezone',
-  NUTRITION_CHAT_MESSAGES: (date: string, timezone: string) =>
-    `nutrition_chat_messages_${timezone.replace(/\//g, '---')}_${date}`,
-  NUTRITION_CHAT_DRAFT: (date: string, timezone: string) =>
-    `nutrition_chat_draft_${timezone.replace(/\//g, '---')}_${date}`,
-  NUTRITION_PENDING_IMAGE: (date: string, timezone: string) =>
-    `nutrition_pending_image_${timezone.replace(/\//g, '---')}_${date}`,
+  NUTRITION_CHAT_MESSAGES: (date: string) => `nutrition_chat_messages_${date}`,
+  NUTRITION_CHAT_DRAFT: (date: string) => `nutrition_chat_draft_${date}`,
+  NUTRITION_PENDING_IMAGE: (date: string) => `nutrition_pending_image_${date}`,
 } as const;
 
 interface LastWorkoutData {
@@ -87,8 +84,8 @@ async function clearPendingWorkouts(): Promise<void> {
   platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, '');
 }
 
-async function getNutritionChatMessages<T>(date: string, timezone: string): Promise<T[]> {
-  const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date, timezone));
+async function getNutritionChatMessages<T>(date: string): Promise<T[]> {
+  const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date));
   if (!data) return [];
   try {
     const parsed = JSON.parse(data) as NutritionChatCache;
@@ -98,39 +95,29 @@ async function getNutritionChatMessages<T>(date: string, timezone: string): Prom
   }
 }
 
-async function setNutritionChatMessages<T>(
-  date: string,
-  timezone: string,
-  messages: T[],
-): Promise<void> {
+async function setNutritionChatMessages<T>(date: string, messages: T[]): Promise<void> {
   const data: NutritionChatCache = {
     messages,
     cachedAt: new Date().toISOString(),
   };
-  platformStorage.setItem(
-    STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date, timezone),
-    JSON.stringify(data),
-  );
+  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date), JSON.stringify(data));
 }
 
-async function getNutritionChatDraft(date: string, timezone: string): Promise<string> {
-  return platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone)) ?? '';
+async function getNutritionChatDraft(date: string): Promise<string> {
+  return platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date)) ?? '';
 }
 
-async function setNutritionChatDraft(date: string, timezone: string, draft: string): Promise<void> {
+async function setNutritionChatDraft(date: string, draft: string): Promise<void> {
   if (!draft) {
-    platformStorage.removeItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone));
+    platformStorage.removeItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date));
     return;
   }
 
-  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date, timezone), draft);
+  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date), draft);
 }
 
-async function getNutritionPendingImage(
-  date: string,
-  timezone: string,
-): Promise<NutritionPendingImage | null> {
-  const data = await AsyncStorage.getItem(STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date, timezone));
+async function getNutritionPendingImage(date: string): Promise<NutritionPendingImage | null> {
+  const data = await AsyncStorage.getItem(STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date));
   if (!data) return null;
 
   try {
@@ -144,10 +131,9 @@ async function getNutritionPendingImage(
 
 async function setNutritionPendingImage(
   date: string,
-  timezone: string,
   image: NutritionPendingImage | null,
 ): Promise<void> {
-  const key = STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date, timezone);
+  const key = STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date);
 
   if (!image) {
     await AsyncStorage.removeItem(key);

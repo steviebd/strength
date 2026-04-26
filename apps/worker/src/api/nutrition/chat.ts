@@ -15,7 +15,7 @@ import {
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { formatLocalDate } from '@strength/db';
-import { getDateRangeForTimezone, resolveUserTimezone } from '../../lib/timezone';
+import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
 
 interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
@@ -37,7 +37,7 @@ async function getWhoopDataForDay(
   date: string,
   timezone: string,
 ): Promise<WhoopData> {
-  const { start: startOfDay, end: endOfDay } = getDateRangeForTimezone(date, timezone);
+  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
 
   const recovery = await db
     .select()
@@ -133,13 +133,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const {
-    messages,
-    date: requestedDate,
-    hasImage,
-    imageBase64,
-    timezone: requestedTimezone,
-  } = body;
+  const { messages, date: requestedDate, hasImage, imageBase64 } = body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return c.json({ error: 'Messages are required' }, 400);
@@ -186,7 +180,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
 
   const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
   const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
-  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
+  const timezoneResult = await resolveUserTimezone(db, userId);
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
   }
@@ -203,13 +197,16 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   const bodyweightKg = bodyStats?.bodyweightKg ?? null;
   const hasProgram = !!activeProgram;
 
+  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
+
   const entries = await db
     .select()
     .from(schema.nutritionEntries)
     .where(
       and(
         eq(schema.nutritionEntries.userId, userId),
-        eq(schema.nutritionEntries.date, date),
+        gte(schema.nutritionEntries.loggedAt, startOfDay),
+        lt(schema.nutritionEntries.loggedAt, endOfDay),
         eq(schema.nutritionEntries.isDeleted, false),
       ),
     )
@@ -226,7 +223,8 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     .where(
       and(
         eq(schema.nutritionTrainingContext.userId, userId),
-        eq(schema.nutritionTrainingContext.date, date),
+        gte(schema.nutritionTrainingContext.createdAt, startOfDay),
+        lt(schema.nutritionTrainingContext.createdAt, endOfDay),
       ),
     )
     .get();
@@ -284,8 +282,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
 
   await db.insert(schema.nutritionChatMessages).values({
     userId,
-    date,
-    eventTimezone: timezone,
     role: 'user',
     content: userMessageContent,
     hasImage: hasImageFlag,
@@ -347,8 +343,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
         if (fullResponseText.trim()) {
           await db.insert(schema.nutritionChatMessages).values({
             userId,
-            date,
-            eventTimezone: timezone,
             role: 'assistant',
             content: fullResponseText,
             hasImage: false,
@@ -378,7 +372,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
 
 export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => {
   const { date, limit: limitParam, before } = c.req.query() as unknown as ChatHistoryQuery;
-  const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
+  const timezoneResult = await resolveUserTimezone(db, userId);
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
   }
@@ -391,9 +385,15 @@ export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => 
   const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 20) : 5;
   const beforeTimestamp = before ? Number.parseInt(before, 10) : Number.NaN;
 
+  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
+    date,
+    timezoneResult.timezone,
+  );
+
   const filters = [
     eq(schema.nutritionChatMessages.userId, userId),
-    eq(schema.nutritionChatMessages.date, date),
+    gte(schema.nutritionChatMessages.createdAt, startOfDay),
+    lt(schema.nutritionChatMessages.createdAt, endOfDay),
   ];
 
   if (Number.isFinite(beforeTimestamp)) {

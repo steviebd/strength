@@ -267,12 +267,8 @@ export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
   const queryClient = useQueryClient();
   const { activeTimezone } = useUserPreferences();
-  const timezone = activeTimezone ?? 'UTC';
-  const date = getTodayLocalDate(timezone);
-  const dailySummaryQueryKey = useMemo(
-    () => ['nutrition-daily-summary', date, timezone],
-    [date, timezone],
-  );
+  const date = getTodayLocalDate(activeTimezone);
+  const dailySummaryQueryKey = useMemo(() => ['nutrition-daily-summary', date], [date]);
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [draftText, setDraftText] = useState('');
@@ -293,14 +289,11 @@ export default function NutritionScreen() {
   const [chatInputY, setChatInputY] = useState<number | null>(null);
   const savingAnalysisMessageIds = useRef(new Set<string>());
 
-  const { data: whoopData } = useWhoopData(date, timezone);
+  const { data: whoopData } = useWhoopData(date);
 
   const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
     queryKey: dailySummaryQueryKey,
-    queryFn: () =>
-      apiFetch(
-        `/api/nutrition/daily-summary?date=${date}&timezone=${encodeURIComponent(timezone)}`,
-      ),
+    queryFn: () => apiFetch(`/api/nutrition/daily-summary?date=${date}`),
   });
 
   useEffect(() => {
@@ -314,9 +307,9 @@ export default function NutritionScreen() {
 
     async function restoreLocalState() {
       const [cachedMessages, cachedDraft, cachedPendingImage] = await Promise.all([
-        getNutritionChatMessages<ChatMessageData>(date, timezone),
-        getNutritionChatDraft(date, timezone),
-        getNutritionPendingImage(date, timezone),
+        getNutritionChatMessages<ChatMessageData>(date),
+        getNutritionChatDraft(date),
+        getNutritionPendingImage(date),
       ]);
 
       if (isCancelled) return;
@@ -337,17 +330,17 @@ export default function NutritionScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [date, timezone]);
+  }, [date]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
-    void setNutritionChatMessages(date, timezone, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
-  }, [date, hasRestoredLocalState, messages, timezone]);
+    void setNutritionChatMessages(date, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
+  }, [date, hasRestoredLocalState, messages]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
-    void setNutritionChatDraft(date, timezone, draftText);
-  }, [date, draftText, hasRestoredLocalState, timezone]);
+    void setNutritionChatDraft(date, draftText);
+  }, [date, draftText, hasRestoredLocalState]);
 
   useEffect(() => {
     if (!summary) return;
@@ -396,12 +389,10 @@ export default function NutritionScreen() {
   const exchanges = useMemo(() => buildChatExchanges(messages), [messages]);
 
   const historyQuery = useQuery<ChatHistoryResponse>({
-    queryKey: ['nutrition-chat-history-initial', date, timezone],
+    queryKey: ['nutrition-chat-history-initial', date],
     enabled: hasRestoredLocalState,
     queryFn: () =>
-      apiFetch(
-        `/api/nutrition/chat/history?date=${date}&timezone=${encodeURIComponent(timezone)}&limit=${CHAT_HISTORY_PAGE_SIZE}`,
-      ),
+      apiFetch(`/api/nutrition/chat/history?date=${date}&limit=${CHAT_HISTORY_PAGE_SIZE}`),
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     staleTime: 0,
@@ -444,7 +435,6 @@ export default function NutritionScreen() {
         proteinG: data.protein,
         carbsG: data.carbs,
         fatG: data.fat,
-        timezone,
       };
 
       return apiFetch('/api/nutrition/entries', {
@@ -484,7 +474,7 @@ export default function NutritionScreen() {
     mutationFn: (type: TrainingType) =>
       apiFetch('/api/nutrition/training-context', {
         method: 'POST',
-        body: JSON.stringify({ trainingType: type, date, timezone }),
+        body: JSON.stringify({ trainingType: type, date }),
       }),
     onSuccess: () => {
       refetchSummary();
@@ -523,7 +513,7 @@ export default function NutritionScreen() {
 
       setMessages((prev) => [...prev, userMsg]);
       setPendingImage(null);
-      void setNutritionPendingImage(date, timezone, null);
+      void setNutritionPendingImage(date, null);
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
@@ -538,7 +528,6 @@ export default function NutritionScreen() {
             content: message.content,
           })),
           date,
-          timezone,
         };
 
         if (attachedImage) {
@@ -661,7 +650,7 @@ export default function NutritionScreen() {
         }
       }
     },
-    [date, messages, pendingImage, timezone],
+    [date, messages, pendingImage],
   );
 
   const loadOlderHistory = useCallback(async () => {
@@ -673,7 +662,7 @@ export default function NutritionScreen() {
 
     try {
       const response = await apiFetch<ChatHistoryResponse>(
-        `/api/nutrition/chat/history?date=${date}&timezone=${encodeURIComponent(timezone)}&limit=${CHAT_HISTORY_PAGE_SIZE}&before=${historyCursor}`,
+        `/api/nutrition/chat/history?date=${date}&limit=${CHAT_HISTORY_PAGE_SIZE}&before=${historyCursor}`,
       );
 
       const olderMessages = response.messages.map((message) =>
@@ -691,7 +680,7 @@ export default function NutritionScreen() {
     } finally {
       setIsLoadingMoreHistory(false);
     }
-  }, [date, historyCursor, isLoadingMoreHistory, timezone]);
+  }, [date, historyCursor, isLoadingMoreHistory]);
 
   const handleSaveFromAnalysis = useCallback(
     async (messageId: string, analysis: MealAnalysis, savedEntryId?: string | null) => {
@@ -798,10 +787,10 @@ export default function NutritionScreen() {
     (base64: string, uri: string) => {
       const image = { base64, uri };
       setPendingImage(image);
-      void setNutritionPendingImage(date, timezone, image);
+      void setNutritionPendingImage(date, image);
       scrollToChatInput(true, 0);
     },
-    [date, scrollToChatInput, timezone],
+    [date, scrollToChatInput],
   );
 
   useEffect(() => {
@@ -974,7 +963,7 @@ export default function NutritionScreen() {
                   pendingImageUri={pendingImage?.uri ?? null}
                   onClearImage={() => {
                     setPendingImage(null);
-                    void setNutritionPendingImage(date, timezone, null);
+                    void setNutritionPendingImage(date, null);
                   }}
                 />
               </View>

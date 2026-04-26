@@ -168,7 +168,7 @@ Update all code that writes `windowStart` to pass `Date.getTime()` instead of an
 | `workouts` | `started_timezone`, `started_local_date`, `completed_timezone`, `completed_local_date`, `completed_date` |
 | `workoutSets` | `completed_timezone`, `completed_local_date` |
 | `programCycleWorkouts` | `scheduled_date`, `scheduled_time`, `scheduled_timezone` |
-| `nutritionEntries` | `date` (text), `logged_at` (text), `logged_timezone` |
+| `nutritionEntries` | `date` (text), `logged_at` (text), `logged_timezone`, `logged_at_utc` |
 | `nutritionChatMessages` | `date`, `event_timezone` |
 | `nutritionTrainingContext` | `date`, `event_timezone` |
 | `userProgramCycles` | `program_start_date` (text), `first_session_date` (text) |
@@ -249,34 +249,34 @@ Update all code that writes `windowStart` to pass `Date.getTime()` instead of an
 
 ## 7. Implementation Order
 
-| Step | Change | Risk |
-|------|--------|------|
-| 1 | Schema changes (`schema.ts`) — drop/add columns, add FK | Low |
-| 2 | Update `lib/timezone.ts` — remove `buildLocalDateRecord`, `buildCompletedSetRecord`; keep UTC range helpers | Low |
-| 3 | Update all API handlers — remove `timezone` from bodies/queries; use profile timezone for computations | Medium |
-| 4 | Update nutrition endpoints — accept explicit `loggedAt`; remove `date`/`loggedTimezone` | Medium |
-| 5 | Update program creation — eager exercise resolution; embed `exerciseId` in `targetLifts`; compute `scheduledAt` UTC | Medium |
-| 6 | Update program workout start — read `exerciseId` from JSON; skip lazy resolution | Medium |
-| 7 | Update frontend — remove `timezone` from all API calls; update storage keys | Medium |
-| 8 | Update `home/summary.ts` — derive local dates from UTC + profile timezone | Medium |
-| 9 | Update guards and types — remove dropped columns from selects | Low |
-| 10 | Run `bun run check` and `bun run test` | — |
-| 11 | Reset database (`bun run db:push` or recreate D1) | — |
+| Step | Change | Status |
+|------|--------|--------|
+| 1 | Schema changes (`schema.ts`) — drop/add columns, add FK | ✅ Done |
+| 2 | Update `lib/timezone.ts` — remove `buildLocalDateRecord`, `buildCompletedSetRecord`; keep UTC range helpers | ✅ Done |
+| 3 | Update all API handlers — remove `timezone` from bodies/queries; use profile timezone for computations | ✅ Done |
+| 4 | Update nutrition endpoints + home summary — UTC range queries, explicit loggedAt, remove date/timezone fields | ✅ Done (combined with step 8) |
+| 5 | Update program creation — batch `getOrCreateExerciseForUser` per exercise; embed `exerciseId` in `targetLifts`; compute `scheduledAt` UTC from `programStartAt` + offsets | ✅ Done |
+| 6 | Update program workout start — read `exerciseId` from JSON; fallback to `libraryId` resolution for legacy data (no new custom exercises from program data) | ✅ Done |
+| 7 | Update frontend — remove `timezone` from all API calls; update storage keys | ✅ Done |
+| 8 | Update guards and types — remove dropped columns from selects | ✅ Done |
+| 9 | Run `bun run check` | ✅ Done (passes) |
+| 10 | Run `bun run test` | ✅ Done (61 tests pass) |
+| 11 | Reset database (`bun run db:push` or recreate D1) | ✅ Done (fresh migration generated) |
 
 ---
 
 ## 8. Verification Checklist
 
-- [ ] All `timestamp_ms` columns are UTC
-- [ ] No per-record timezone/localDate/date text columns remain (except WHOOP `timezoneOffset`)
-- [ ] `workouts.programCycleId` has FK constraint
-- [ ] `rate_limit.windowStart` is `timestamp_ms`
-- [ ] Program creation resolves all exercises eagerly
-- [ ] Program workout start reads `exerciseId` directly from JSON
-- [ ] Frontend does not pass `timezone` to any API call
-- [ ] Frontend timezone preference still works for display
-- [ ] Home summary computes correctly for users in different timezones
-- [ ] Nutrition entries group correctly by day across timezone changes
-- [ ] Streak calculation works across timezone changes
-- [ ] `bun run check` passes
-- [ ] `bun run test` passes
+- [x] All `timestamp_ms` columns are UTC
+- [x] No per-record timezone/localDate/date text columns remain (except WHOOP `timezoneOffset`)
+- [x] `workouts.programCycleId` has FK constraint
+- [x] `rate_limit.windowStart` is `timestamp_ms`
+- [x] Program creation resolves all exercises eagerly
+- [x] Program workout start reads `exerciseId` directly from JSON
+- [x] Frontend does not pass `timezone` to any API call
+- [x] Frontend timezone preference still works for display
+- [x] Home summary computes correctly for users in different timezones
+- [x] Nutrition entries group correctly by day across timezone changes
+- [x] Streak calculation works across timezone changes
+- [x] `bun run check` passes
+- [x] `bun run test` passes

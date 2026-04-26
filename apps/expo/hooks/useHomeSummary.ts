@@ -10,9 +10,7 @@ type HomeScheduledWorkout = {
   exercises: { name: string; count: number }[];
   programName: string;
   programCycleId: string;
-  scheduledDate: string;
-  scheduledTime: string | null;
-  scheduledTimezone: string;
+  scheduledAt: number | null;
   isComplete: boolean;
 };
 
@@ -20,9 +18,7 @@ type HomeNextWorkout = {
   cycleWorkoutId: string;
   name: string;
   programName: string;
-  scheduledDate: string;
-  scheduledTime: string | null;
-  scheduledTimezone: string;
+  scheduledAt: number | null;
 };
 
 type HomeSummaryResponse = {
@@ -60,9 +56,7 @@ export function useHomeSummary() {
   return useQuery({
     queryKey: ['homeSummary', activeTimezone],
     queryFn: async () => {
-      const response = await apiFetch<HomeSummaryResponse>(
-        `/api/home/summary?timezone=${encodeURIComponent(activeTimezone ?? 'UTC')}`,
-      );
+      const response = await apiFetch<HomeSummaryResponse>(`/api/home/summary`);
       return response;
     },
     refetchInterval: 60 * 1000,

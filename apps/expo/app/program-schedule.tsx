@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   ScrollView,
   View,
@@ -36,10 +36,6 @@ function getMondayOfWeek(date: Date): Date {
   d.setDate(diff);
   d.setHours(0, 0, 0, 0);
   return d;
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
 }
 
 function formatDisplayDate(date: Date): string {
@@ -111,8 +107,14 @@ function SessionRow({ workout, onStart, onOpen, onReschedule, isStarting }: Sess
           <Text style={styles.sessionName}>{workout.name}</Text>
           <View style={styles.sessionMeta}>
             <Badge label={badge.label} tone={badge.tone} />
-            {workout.scheduledTime ? (
-              <Text style={styles.sessionTime}>{workout.scheduledTime}</Text>
+            {workout.scheduledAt ? (
+              <Text style={styles.sessionTime}>
+                {new Date(workout.scheduledAt).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true,
+                })}
+              </Text>
             ) : null}
           </View>
           {workout.exercises.length > 0 && (
@@ -169,7 +171,7 @@ interface RescheduleModalProps {
   visible: boolean;
   workout: ProgramScheduleWorkout | null;
   onClose: () => void;
-  onSave: (cycleWorkoutId: string, date: string, time: string | null) => void;
+  onSave: (cycleWorkoutId: string, scheduledAt: number) => void;
   isSaving: boolean;
 }
 
@@ -180,6 +182,7 @@ function RescheduleModal({ visible, workout, onClose, onSave, isSaving }: Resche
   const dateOptions = useMemo(() => {
     const options: Date[] = [];
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     for (let i = 0; i < 60; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
@@ -188,11 +191,46 @@ function RescheduleModal({ visible, workout, onClose, onSave, isSaving }: Resche
     return options;
   }, []);
 
+  useEffect(() => {
+    if (!workout?.scheduledAt) {
+      setSelectedDateOffset(0);
+      setSelectedTime(null);
+      return;
+    }
+    const scheduled = new Date(workout.scheduledAt);
+    const scheduledDate = new Date(
+      scheduled.getFullYear(),
+      scheduled.getMonth(),
+      scheduled.getDate(),
+    );
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffMs = scheduledDate.getTime() - today.getTime();
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    setSelectedDateOffset(Math.max(0, Math.min(diffDays, 59)));
+
+    const hours = scheduled.getHours();
+    const minutes = scheduled.getMinutes();
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    setSelectedTime(
+      ['06:00', '07:00', '08:00', '09:00', '12:00', '17:00', '18:00', '19:00', '20:00'].includes(
+        timeStr,
+      )
+        ? timeStr
+        : null,
+    );
+  }, [workout, visible]);
+
   const handleSave = () => {
     if (!workout) return;
     const d = dateOptions[selectedDateOffset];
-    const dateStr = formatDate(d);
-    onSave(workout.cycleWorkoutId, dateStr, selectedTime);
+    if (selectedTime) {
+      const [hours, minutes] = selectedTime.split(':').map(Number);
+      d.setHours(hours, minutes, 0, 0);
+    } else {
+      d.setHours(0, 0, 0, 0);
+    }
+    onSave(workout.cycleWorkoutId, d.getTime());
   };
 
   const handleClose = () => {
@@ -334,8 +372,8 @@ export default function ProgramScheduleScreen() {
       const isToday = isSameDay(d, today);
 
       const matchingWorkout = schedule?.thisWeek.find((w) => {
-        if (!w.scheduledDate) return false;
-        const wDate = new Date(w.scheduledDate);
+        if (!w.scheduledAt) return false;
+        const wDate = new Date(w.scheduledAt);
         return isSameDay(wDate, d);
       });
 
@@ -420,12 +458,11 @@ export default function ProgramScheduleScreen() {
   }, []);
 
   const handleRescheduleSave = useCallback(
-    async (cycleWorkoutId: string, date: string, time: string | null) => {
+    async (cycleWorkoutId: string, scheduledAt: number) => {
       try {
         await rescheduleWorkout.mutateAsync({
           cycleWorkoutId,
-          scheduledDate: date,
-          scheduledTime: time,
+          scheduledAt,
         });
         setRescheduleModalWorkout(null);
       } catch (err) {

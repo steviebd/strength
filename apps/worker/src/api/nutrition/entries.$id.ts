@@ -1,9 +1,7 @@
 import { eq, and } from 'drizzle-orm';
-import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { requireOwnedNutritionEntry } from '../guards';
-import { resolveUserTimezone } from '../../lib/timezone';
 
 export const getEntryHandler = createHandler(async (c, { userId, db }) => {
   const id = c.req.param('id') as string;
@@ -28,7 +26,6 @@ export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
     carbsG?: number;
     fatG?: number;
     loggedAt?: string;
-    timezone?: string;
   };
 
   try {
@@ -37,26 +34,14 @@ export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  let nextLoggedAtUtc =
-    existing.loggedAtUtc ?? (existing.loggedAt ? new Date(existing.loggedAt) : null);
-  let nextTimezone = existing.loggedTimezone ?? null;
-  let nextDate = existing.date;
+  let nextLoggedAt: Date | undefined;
 
-  if (body.loggedAt !== undefined || body.timezone !== undefined) {
-    const timezoneResult = await resolveUserTimezone(db, userId, body.timezone ?? nextTimezone);
-    if (timezoneResult.error || !timezoneResult.timezone) {
-      return c.json({ error: timezoneResult.error }, 400);
-    }
+  if (body.loggedAt !== undefined) {
+    nextLoggedAt = new Date(body.loggedAt);
 
-    nextTimezone = timezoneResult.timezone;
-    nextLoggedAtUtc =
-      body.loggedAt !== undefined ? new Date(body.loggedAt) : (nextLoggedAtUtc ?? new Date());
-
-    if (Number.isNaN(nextLoggedAtUtc.getTime())) {
+    if (Number.isNaN(nextLoggedAt.getTime())) {
       return c.json({ error: 'Invalid loggedAt value' }, 400);
     }
-
-    nextDate = formatLocalDate(nextLoggedAtUtc, nextTimezone);
   }
 
   const updated = await db
@@ -68,12 +53,9 @@ export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
       ...(body.proteinG !== undefined && { proteinG: body.proteinG }),
       ...(body.carbsG !== undefined && { carbsG: body.carbsG }),
       ...(body.fatG !== undefined && { fatG: body.fatG }),
-      ...(body.loggedAt !== undefined || body.timezone !== undefined
+      ...(nextLoggedAt !== undefined
         ? {
-            loggedAt: nextLoggedAtUtc?.toISOString() ?? existing.loggedAt,
-            loggedAtUtc: nextLoggedAtUtc,
-            loggedTimezone: nextTimezone,
-            date: nextDate,
+            loggedAt: nextLoggedAt,
           }
         : {}),
       updatedAt: new Date(),

@@ -9,15 +9,13 @@ export interface CreateProgramCycleData {
   estimatedWeeks?: number;
   preferredGymDays?: string;
   preferredTimeOfDay?: string;
-  programStartDate?: string;
-  firstSessionDate?: string;
+  programStartAt: number;
+  firstSessionAt?: number;
   workouts: Array<{
     weekNumber: number;
     sessionNumber: number;
     sessionName: string;
-    scheduledDate?: string;
-    scheduledTime?: string;
-    scheduledTimezone?: string;
+    scheduledAt?: number;
     targetLifts?: string;
   }>;
 }

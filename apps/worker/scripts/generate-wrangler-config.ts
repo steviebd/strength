@@ -103,7 +103,11 @@ function getInfisicalVars(): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const key of INFISICAL_KEYS) {
     const value = process.env[key];
-    if (value) vars[key] = value;
+    if (!value) {
+      console.error(`Missing required Infisical variable '${key}'.`);
+      process.exit(1);
+    }
+    vars[key] = value;
   }
   return vars;
 }

@@ -134,15 +134,12 @@ export const workouts = sqliteTable('workouts', {
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
   templateId: text('template_id').references(() => templates.id, { onDelete: 'set null' }),
-  programCycleId: text('program_cycle_id'),
+  programCycleId: text('program_cycle_id').references(() => userProgramCycles.id, {
+    onDelete: 'set null',
+  }),
   name: text('name').notNull(),
   startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
-  startedTimezone: text('started_timezone'),
-  startedLocalDate: text('started_local_date'),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
-  completedTimezone: text('completed_timezone'),
-  completedLocalDate: text('completed_local_date'),
-  completedDate: text('completed_date'),
   notes: text('notes'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
@@ -191,8 +188,6 @@ export const workoutSets = sqliteTable('workout_sets', {
   rpe: real('rpe'),
   isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
-  completedTimezone: text('completed_timezone'),
-  completedLocalDate: text('completed_local_date'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -227,8 +222,8 @@ export const userProgramCycles = sqliteTable('user_program_cycles', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
   preferredGymDays: text('preferred_gym_days'),
   preferredTimeOfDay: text('preferred_time_of_day'),
-  programStartDate: text('program_start_date'),
-  firstSessionDate: text('first_session_date'),
+  programStartAt: integer('program_start_at', { mode: 'timestamp_ms' }),
+  firstSessionAt: integer('first_session_at', { mode: 'timestamp_ms' }),
 });
 
 export const programCycleWorkouts = sqliteTable('program_cycle_workouts', {
@@ -247,9 +242,7 @@ export const programCycleWorkouts = sqliteTable('program_cycle_workouts', {
   workoutId: text('workout_id'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
-  scheduledDate: text('scheduled_date'),
-  scheduledTime: text('scheduled_time'),
-  scheduledTimezone: text('scheduled_timezone'),
+  scheduledAt: integer('scheduled_at', { mode: 'timestamp_ms' }),
 });
 
 export const _exercisesUserIdUpdatedAtIdx = index('idx_exercises_user_id_updated_at').on(
@@ -294,9 +287,9 @@ export const _userProgramCyclesUserIdIdx = index('idx_user_program_cycles_user_i
 export const _programCycleWorkoutsCycleIdIdx = index('idx_program_cycle_workouts_cycle_id').on(
   programCycleWorkouts.cycleId,
 );
-export const _programCycleWorkoutsScheduledDateIdx = index(
-  'idx_program_cycle_workouts_scheduled_date',
-).on(programCycleWorkouts.scheduledDate);
+export const _programCycleWorkoutsScheduledAtIdx = index(
+  'idx_program_cycle_workouts_scheduled_at',
+).on(programCycleWorkouts.scheduledAt);
 
 export const _templateExercisesTemplateIdIdx = index('idx_template_exercises_template_id').on(
   templateExercises.templateId,
@@ -464,7 +457,7 @@ export const rateLimit = sqliteTable('rate_limit', {
   userId: text('user_id').notNull(),
   endpoint: text('endpoint').notNull(),
   requests: integer('requests').notNull().default(0),
-  windowStart: text('window_start').notNull(),
+  windowStart: integer('window_start', { mode: 'timestamp_ms' }).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
@@ -567,10 +560,7 @@ export const nutritionEntries = sqliteTable('nutrition_entries', {
   carbsG: real('carbs_g'),
   fatG: real('fat_g'),
   aiAnalysis: text('ai_analysis'),
-  loggedAt: text('logged_at').notNull(),
-  loggedAtUtc: integer('logged_at_utc', { mode: 'timestamp_ms' }),
-  loggedTimezone: text('logged_timezone'),
-  date: text('date').notNull(),
+  loggedAt: integer('logged_at', { mode: 'timestamp_ms' }).notNull(),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -583,8 +573,6 @@ export const nutritionChatMessages = sqliteTable('nutrition_chat_messages', {
   userId: text('user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  date: text('date').notNull(),
-  eventTimezone: text('event_timezone'),
   role: text('role').notNull(),
   content: text('content').notNull(),
   hasImage: integer('has_image', { mode: 'boolean' }).default(false),
@@ -617,27 +605,18 @@ export const nutritionTrainingContext = sqliteTable('nutrition_training_context'
   userId: text('user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  date: text('date').notNull(),
-  eventTimezone: text('event_timezone'),
   trainingType: text('training_type').notNull(),
   customLabel: text('custom_label'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-export const _nutritionEntriesUserDateIdx = index('idx_nutrition_entries_user_date').on(
+export const _nutritionEntriesUserLoggedAtIdx = index('idx_nutrition_entries_user_logged_at').on(
   nutritionEntries.userId,
-  nutritionEntries.date,
+  nutritionEntries.loggedAt,
 );
 export const _nutritionEntriesUserDeletedIdx = index('idx_nutrition_entries_user_deleted').on(
   nutritionEntries.userId,
   nutritionEntries.isDeleted,
 );
-export const _nutritionChatMessagesUserDateIdx = index('idx_nutrition_chat_messages_user_date').on(
-  nutritionChatMessages.userId,
-  nutritionChatMessages.date,
-);
 export const _userBodyStatsUserIdx = index('idx_user_body_stats_user').on(userBodyStats.userId);
-export const _nutritionTrainingContextUserDateIdx = index(
-  'idx_nutrition_training_context_user_date',
-).on(nutritionTrainingContext.userId, nutritionTrainingContext.date);
