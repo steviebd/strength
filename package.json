@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "bun run --filter @strength/worker dev",
     "dev:remote": "bun run --filter @strength/worker dev:remote",
-    "dev:expo": "infisical run --env=dev -- bun --filter @strength/expo dev",
+    "dev:expo": "cd apps/expo && bun run dev",
     "dev:expo:staging": "infisical run --env=staging -- bun --filter @strength/expo dev",
     "build:android:staging": "cd apps/expo && bun run build:android:staging",
     "serve:builds": "cd apps/expo/builds && ifconfig en0 | grep 'inet ' | awk '{print $2}' && python3 -m http.server 8080",

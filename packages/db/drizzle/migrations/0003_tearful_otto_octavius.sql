@@ -1,1 +1,0 @@
-ALTER TABLE `user_preferences` ADD `weight_prompted_at` integer;

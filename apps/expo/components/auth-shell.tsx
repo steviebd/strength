@@ -117,8 +117,6 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
               </View>
               {children}
             </View>
-
-
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

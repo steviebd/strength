@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, View } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { QueryProvider } from '@/providers/QueryProvider';
@@ -64,7 +65,18 @@ export default function AppLayout() {
   });
 
   if (session.isPending && !session.data) {
-    return null;
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.accentSecondary} />
+      </View>
+    );
   }
 
   if (!session.data) {
