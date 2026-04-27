@@ -58,6 +58,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(239,111,79,0.5)',
     backgroundColor: 'rgba(239,111,79,0.1)',
     padding: spacing.md,
+    overflow: 'hidden',
   },
   header: {
     marginBottom: spacing.md,

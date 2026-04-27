@@ -634,6 +634,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.background,
     zIndex: 10,
+    overflow: 'hidden',
   },
   headerTop: {
     flexDirection: 'row',
@@ -675,6 +676,7 @@ const styles = StyleSheet.create({
   actionButtonsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+    overflow: 'hidden',
   },
   actionButton: {
     flex: 1,

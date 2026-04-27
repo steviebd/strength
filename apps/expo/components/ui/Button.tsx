@@ -160,7 +160,7 @@ export function Button({
   }));
 
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View style={[animatedStyle, { minWidth: 0, flexShrink: 1 }]}>
       <Pressable
         onPress={onPress}
         disabled={disabled || loading}
