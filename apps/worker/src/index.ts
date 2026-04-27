@@ -96,7 +96,12 @@ app.use(
   cors({
     origin: (origin, c) => {
       if (!origin) return '*';
-      const allowedOrigins = getAllowedOrigins(c.env as WorkerEnv);
+      const env = c.env as WorkerEnv;
+      console.log('[CORS DEBUG] env keys:', Object.keys(env));
+      console.log('[CORS DEBUG] WORKER_BASE_URL:', env.WORKER_BASE_URL);
+      console.log('[CORS DEBUG] APP_SCHEME:', env.APP_SCHEME);
+      const allowedOrigins = getAllowedOrigins(env);
+      console.log('[CORS DEBUG] allowedOrigins:', allowedOrigins);
       if (isAllowedDevOrigin(origin, allowedOrigins)) return origin;
       return '*';
     },
@@ -204,7 +209,9 @@ app.put(
   '/api/profile/preferences',
   createHandler(async (c, { userId, db }) => {
     try {
-      const body = await c.req.json();
+      const rawBody = await c.req.text();
+      console.log('[PREF DEBUG] raw body:', rawBody);
+      const body = JSON.parse(rawBody);
       const { weightUnit, timezone, weightPromptedAt } = body as {
         weightUnit?: string;
         timezone?: string | null;

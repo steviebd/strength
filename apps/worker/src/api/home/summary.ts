@@ -100,7 +100,9 @@ export async function homeSummaryHandler(c: any) {
     if (auth instanceof Response) return auth;
     const { userId, db } = auth;
 
+    console.log('[HOME DEBUG] userId:', userId);
     const timezoneResult = await resolveUserTimezone(db, userId);
+    console.log('[HOME DEBUG] timezoneResult:', timezoneResult);
     if (timezoneResult.error || !timezoneResult.timezone) {
       return c.json({ error: timezoneResult.error }, 400);
     }

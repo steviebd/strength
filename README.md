@@ -1,142 +1,132 @@
 # strength
 
-Greenfield Expo + Cloudflare Worker starter with:
+Fitness tracking app with WHOOP sync, structured training programs, and nutrition logging.
 
-- Expo Router
-- Tailwind CSS via NativeWind
-- Infisical for local secret injection
-- Cloudflare Worker + D1
-- Drizzle for database access
-- Better Auth for development-only signup and login
-- Bun workspaces
+## Stack
 
-The Expo app is currently pinned to SDK 54 so it works with the Expo Go version available on the target Android device during development.
+- **Expo Router** (SDK 55) — cross-platform app
+- **Cloudflare Worker + D1** — backend API
+- **Drizzle ORM** — database access
+- **Better Auth** — email/password authentication
+- **Bun workspaces** — monorepo package management
 
-## What is implemented
+## Quick Start
 
-- Email/password sign up and sign in in the Expo app
-- Better Auth mounted on a Hono Worker
-- D1-backed Better Auth tables defined in Drizzle
-- Auth intentionally enabled only when `APP_ENV=development`
-- No local `.env` file; worker config is generated from Infisical-injected runtime environment variables
+1. `bun install`
+2. `infisical login && infisical init` — select the strength project
+3. `cd apps/worker && wrangler d1 create strength-db-dev-remote`
+4. Store the D1 UUID in Infisical `dev` as `CLOUDFLARE_D1_ID`
+5. `bun run db:apply:local`
+6. `bun run dev`
 
-## Secrets to create in Infisical
-
-Store these in the `dev` environment for this project:
-
-- `APP_ENV=development`
-- `BETTER_AUTH_SECRET=<generate a long random secret>`
-- `WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
-- `EXPO_PUBLIC_WORKER_BASE_URL=http://<your-machine-lan-ip>:8787`
-- `CLOUDFLARE_ACCOUNT_ID=<your Cloudflare account id>`
-- `AI_GATEWAY_NAME=<your AI Gateway id>`
-- `CF_AI_GATEWAY_TOKEN=<your AI Gateway run token if gateway auth is enabled>`
-- `CLOUDFLARE_API_TOKEN=<optional fallback account token>`
-- `CLOUDFLARE_D1_ID=<remote dev D1 database UUID used by bun run dev:remote>`
-- `AI_MODEL_NAME=<optional model, defaults in worker if omitted>`
-- `WHOOP_CLIENT_ID=<from Whoop developer portal>`
-- `WHOOP_CLIENT_SECRET=<from Whoop developer portal>`
-
-This repo uses its own Infisical project. The local `strength/.infisical.json` file is gitignored and should point at the strength Infisical project, so secrets added only to another project are not visible here.
-
-### WHOOP OAuth Setup
-
-In the [Whoop Developer Portal](https://developer.whoop.com), set your OAuth Redirect URI to:
+## Project Structure
 
 ```
-${WORKER_BASE_URL}/api/auth/whoop/callback
+apps/
+├── expo/           # Expo Router app (SDK 55)
+│   ├── app/        # Routes (tabs, modals, etc.)
+│   └── lib/        # Auth client, API helpers
+└── worker/         # Cloudflare Worker (Hono)
+    └── src/
+        ├── api/           # REST endpoints
+        │   ├── auth.ts
+        │   ├── home/
+        │   └── nutrition/
+        ├── auth.ts        # Better Auth setup
+        ├── programs/      # Training programs
+        │   ├── wendler531.ts
+        │   ├── stronglifts.ts
+        │   ├── nuckols.ts
+        │   └── ...
+        ├── whoop/         # WHOOP OAuth + webhooks
+        │   ├── auth.ts
+        │   ├── sync.ts
+        │   └── webhook.ts
+        └── lib/
+packages/
+└── db/             # Drizzle schema + migrations
+    └── src/schema.ts
 ```
 
-For local development with the iOS simulator on the same Mac, this would be:
+## Features
 
-```
-http://localhost:8787/api/auth/whoop/callback
-```
+### Auth
 
-If you are only using an iOS simulator on the same Mac, loopback works. For Expo Go on a physical device, Android emulator, or standalone APK, `EXPO_PUBLIC_WORKER_BASE_URL` must be reachable from that device. `127.0.0.1` points at the device itself and auth requests will fail.
+Email/password sign up and sign in via Better Auth, mounted on the Worker at `/api/auth/*`. Auth is **enabled only when `APP_ENV=development`**.
 
-WHOOP requires HTTPS redirect URIs unless the host ends in `localhost`, so physical-device Expo Go OAuth should use a Cloudflare Tunnel instead of a LAN HTTP URL.
+### WHOOP Sync
 
-One-time Cloudflare Tunnel setup:
+OAuth flow connects your WHOOP account. Syncs recovery, workouts, and cycles via webhooks. Requires HTTPS redirect URIs (loopback `localhost` only works for iOS simulator on the same Mac; physical devices need a Cloudflare Tunnel).
 
-```bash
-brew install cloudflared
-cloudflared tunnel login
-cloudflared tunnel create strength-dev
-cloudflared tunnel route dns strength-dev strength-dev.your-domain.com
-```
+### Training Programs
 
-Set these in Infisical `dev`:
+Structured programs with periodization:
 
-```bash
-CLOUDFLARE_TUNNEL_TOKEN=<token from Cloudflare Zero Trust tunnel configuration>
-CLOUDFLARE_TUNNEL_HOSTNAME=strength-dev.your-domain.com
-WORKER_BASE_URL=https://strength-dev.your-domain.com
-```
+- Wendler 5/5/1
+- Stronglifts 5x5
+- Greg Nuckols 28 Programs
+- NSuns LP
+- And more
 
-Then add this WHOOP redirect URI:
+Programs generate workouts based on your training max, preferred days, and schedule.
 
-```text
-https://strength-dev.your-domain.com/api/auth/whoop/callback
-```
+### Nutrition Logging
 
-Configure the tunnel's public hostname in Cloudflare Zero Trust to route `strength-dev.your-domain.com` to `http://localhost:8787`. With `CLOUDFLARE_TUNNEL_TOKEN` and `CLOUDFLARE_TUNNEL_HOSTNAME` set, `bun run dev` and `bun run dev:remote` automatically start the tunnel on whichever machine is running the Worker and point the worker config at the HTTPS hostname. `dev` uses local D1; `dev:remote` uses remote dev D1.
+Log meals, track macros, and get AI-assisted nutrition chat. Daily summaries aggregate intake with training context.
 
-The dev script runs `cloudflared tunnel run --token "$CLOUDFLARE_TUNNEL_TOKEN"` as a child process of `bun run dev`, so the tunnel is stopped when the Worker dev process stops and no machine-specific `~/.cloudflared/*.json` credential file is required. Do not run the same tunnel as a login item, LaunchAgent, or systemd service for local development; it should only be active while `bun run dev` or `bun run dev:remote` is running.
+## Configuration
 
-If you prefer local named-tunnel credentials instead of a token, set `CLOUDFLARE_TUNNEL_NAME=strength-dev` with `CLOUDFLARE_TUNNEL_HOSTNAME`. That fallback still depends on credentials in `~/.cloudflared`, so it is less portable across machines.
+Secrets are injected by Infisical at runtime. No `.env` file.
 
-This should be a public hostname, not a Cloudflare private hostname or private CIDR route. WHOOP's OAuth service must be able to call the redirect URI from the public internet, and it will not be on your Cloudflare WARP/private network. Keep the tunnel config in Infisical `dev` only, stop `bun run dev` when not testing, and rely on the worker's app auth for protected APIs. The OAuth callback path itself must remain publicly reachable for WHOOP to complete the flow.
+**Required in Infisical `dev`:**
 
-## Local setup
+| Secret | Notes |
+|--------|-------|
+| `APP_ENV` | `development` |
+| `BETTER_AUTH_SECRET` | Generate a long random string |
+| `WORKER_BASE_URL` | `http://<lan-ip>:8787` (local dev) |
+| `EXPO_PUBLIC_WORKER_BASE_URL` | Same as `WORKER_BASE_URL` |
+| `CLOUDFLARE_D1_ID` | Remote dev D1 UUID |
+| `WHOOP_CLIENT_ID` | From Whoop Developer Portal |
+| `WHOOP_CLIENT_SECRET` | From Whoop Developer Portal |
 
-1. Install the Infisical CLI.
-2. Authenticate locally with `infisical login`.
-3. Create or confirm the ignored local project config with `infisical init`.
-4. Install dependencies with `bun install`.
-5. Create a remote dev D1 database with `cd apps/worker && wrangler d1 create strength-db-dev-remote`.
-6. Store the returned database UUID in Infisical `dev` as `CLOUDFLARE_D1_ID`.
-7. Apply the local migration with `bun run db:push:dev`.
+**Optional:**
 
-`apps/worker/wrangler.toml` is generated at runtime from [apps/worker/wrangler.template.toml](/Users/steven/strength/apps/worker/wrangler.template.toml:1). It contains plaintext secret values, is gitignored, and should never be committed.
+| Secret | Notes |
+|--------|-------|
+| `AI_GATEWAY_NAME` | Cloudflare AI Gateway ID |
+| `AI_MODEL_NAME` | Model name (defaults in worker) |
 
 ## Development
 
 ```bash
-bun run dev
+bun run dev              # Worker + Expo concurrently (local D1)
+bun run dev:remote       # Worker against remote dev D1
+bun run dev:expo         # Expo only
+
+bun run db:apply:local   # Push migrations to local D1
+bun run db:apply:remote   # Push migrations to remote dev D1
+bun run db:generate       # Generate new migration
 ```
 
-Starts both the worker and Expo app concurrently. Worker runs through `infisical run` with Cloudflare Tunnel if configured. Expo writes Infisical `dev` secrets to `.env.local` (gitignored) for Metro bundler to inline.
+### Testing Physical Devices
 
-Or run them separately:
+`WORKER_BASE_URL` must point to your machine's LAN IP (not `127.0.0.1`) when testing from a physical device or emulator. Find it with `ifconfig`.
+
+For WHOOP OAuth on physical devices, use a Cloudflare Tunnel instead of LAN HTTP. See `AGENTS.md` for tunnel setup.
+
+## Deployment
+
+GitHub Actions deploys via Infisical OIDC — no long-lived credentials stored as secrets.
 
 ```bash
-bun run dev:expo  # Expo only
+bun run check   # lint + typecheck + tests
 ```
 
-`.env.local` is gitignored (by `*.local` pattern). Use `.env.example` as a template for other environments.
+## Packages
 
-To run the worker against the remote dev D1 database instead of local persisted D1:
-
-```bash
-bun run dev:remote
-```
-
-The Worker serves Better Auth at `/api/auth/*`, and Expo talks to it using the Better Auth Expo client plugin with SecureStore-backed cookie handling.
-
-## GitHub Actions OIDC
-
-GitHub Actions fetches deployment secrets from Infisical at runtime using OIDC. The Infisical machine identity should be configured with:
-
-- Identity ID: `78fef9da-6701-477e-940b-2960913a7252`
-- OIDC Discovery URL: `https://token.actions.githubusercontent.com`
-- Issuer: `https://token.actions.githubusercontent.com`
-- Subject: `repo:steviebd/strength:*`
-- Audience: `https://github.com/steviebd`
-
-Set `INFISICAL_PROJECT_SLUG` as a GitHub repository or organization secret. Do not store `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, or `INFISICAL_PROJECT_ID` as GitHub secrets; deploy workflows use short-lived OIDC tokens instead.
-
-## Notes
-
-- This starter is intentionally small and only solves the auth bootstrap flow.
-- `APP_ENV` gates auth so production deploys do not accidentally expose unfinished auth behavior.
+| Package | Purpose |
+|---------|---------|
+| `@strength/expo` | Expo Router app |
+| `@strength/worker` | Cloudflare Worker API |
+| `@strength/db` | Drizzle schema + migrations |

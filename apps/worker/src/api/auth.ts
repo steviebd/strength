@@ -94,8 +94,15 @@ export function createHandler<R = Response>(
   handler: SecuredHandler<R>,
 ): (c: AppContext) => Promise<Response | R> {
   return async (c: AppContext) => {
+    console.log('[AUTH DEBUG] path:', c.req.path, 'method:', c.req.method);
+    console.log('[AUTH DEBUG] session from context:', c.get('session')?.id ?? 'null');
+    console.log('[AUTH DEBUG] user from context:', c.get('user')?.id ?? 'null');
     const auth = await requireAuthContext(c);
-    if (auth instanceof Response) return auth;
+    if (auth instanceof Response) {
+      console.log('[AUTH DEBUG] auth failed, returning', auth.status);
+      return auth;
+    }
+    console.log('[AUTH DEBUG] auth success, userId:', auth.userId);
     return handler(c, { userId: auth.userId, db: auth.db });
   };
 }
