@@ -33,7 +33,7 @@ jobs:
         run: bun install
 
       - name: Fetch staging secrets from Infisical
-        uses: Infisical/secrets-action@v1.2.3
+        uses: Infisical/secrets-action@v1.0.16
         with:
           method: oidc
           identity-id: 78fef9da-6701-477e-940b-2960913a7252
@@ -69,7 +69,7 @@ jobs:
         run: bun install
 
       - name: Fetch production secrets from Infisical
-        uses: Infisical/secrets-action@v1.2.3
+        uses: Infisical/secrets-action@v1.0.16
         with:
           method: oidc
           identity-id: 78fef9da-6701-477e-940b-2960913a7252
