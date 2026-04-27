@@ -2011,9 +2011,9 @@ app.put(
         )
         .where(eq(schema.workoutExercises.workoutId, id))
         .get();
-      const durationMinutes = workout.startedAt
-        ? Math.round((now.getTime() - new Date(workout.startedAt).getTime()) / 60000)
-        : 0;
+      const elapsedMs = now.getTime() - new Date(workout.startedAt).getTime();
+      const rawMinutes = Math.round(elapsedMs / 60000);
+      const durationMinutes = rawMinutes > 0 && rawMinutes <= 1440 ? rawMinutes : null;
       const result = await db
         .update(schema.workouts)
         .set({
