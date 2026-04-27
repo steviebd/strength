@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type RefObject } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SetLogger } from './SetLogger';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -26,6 +26,7 @@ interface ExerciseLoggerProps {
   onDeleteSet?: (exerciseId: string, setId: string) => void;
   weightUnit?: 'kg' | 'lbs';
   isEditMode?: boolean;
+  getSetRef?: (setId: string) => RefObject<View | null>;
 }
 
 export function ExerciseLogger({
@@ -36,6 +37,7 @@ export function ExerciseLogger({
   onDeleteSet,
   weightUnit = 'kg',
   isEditMode = false,
+  getSetRef,
 }: ExerciseLoggerProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -115,6 +117,7 @@ export function ExerciseLogger({
         <View style={styles.setsContainer}>
           {sets.map((set, index) => (
             <SetLogger
+              ref={getSetRef?.(set.id)}
               key={`${set.id}-${index}`}
               setNumber={index + 1}
               set={set}

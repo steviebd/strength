@@ -10,7 +10,7 @@ export const authClient = createAuthClient({
   baseURL: env.apiUrl,
   plugins: [
     expoClient({
-      scheme: 'strength',
+      scheme: env.appScheme,
       storagePrefix: 'strength',
       storage: platformStorage,
       cookiePrefix: 'better-auth',

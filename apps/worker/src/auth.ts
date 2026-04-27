@@ -11,6 +11,7 @@ export interface WorkerEnv {
   WORKER_BASE_URL: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
   APP_ENV?: string;
+  APP_SCHEME?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   AI_GATEWAY_NAME?: string;
   AI_MODEL_NAME?: string;
@@ -118,7 +119,7 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
   return {
     ...env,
     APP_ENV: env.APP_ENV ?? processEnv.APP_ENV,
-    BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET ?? processEnv.BETTER_AUTH_SECRET ?? '',
+    APP_SCHEME: env.APP_SCHEME ?? processEnv.APP_SCHEME,
     WORKER_BASE_URL: env.WORKER_BASE_URL ?? processEnv.WORKER_BASE_URL ?? '',
     BETTER_AUTH_TRUSTED_ORIGINS:
       env.BETTER_AUTH_TRUSTED_ORIGINS ?? processEnv.BETTER_AUTH_TRUSTED_ORIGINS,
@@ -148,9 +149,11 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
   const cookiePolicy = resolveCookiePolicy(baseURL, clientProtocol, resolvedEnv.APP_ENV);
   const trustedRequestOrigin =
     resolvedEnv.APP_ENV === 'development' ? normalizeTrustedOrigin(requestOrigin) : undefined;
+  const appScheme = resolvedEnv.APP_SCHEME ?? 'strength';
   const trustedOrigins = [
-    'strength://',
-    'strength://*',
+    `${appScheme}://`,
+    `${appScheme}://*`,
+    'exp://',
     ...(resolvedEnv.APP_ENV === 'development' ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
     ...parseTrustedOrigins(resolvedEnv.BETTER_AUTH_TRUSTED_ORIGINS),
     ...(baseURL ? [baseURL] : []),

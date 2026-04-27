@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View, TextInput, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScrollToInput } from '@/context/ScrollContext';
@@ -42,14 +42,10 @@ function getResponsiveSizes(width: number) {
   return { stepperSize: 40, inputHeight: 44, fontSize: 18 };
 }
 
-export function SetLogger({
-  setNumber,
-  set,
-  onUpdate,
-  onDelete,
-  weightUnit = 'kg',
-  isEditMode = false,
-}: SetLoggerProps) {
+export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
+  { setNumber, set, onUpdate, onDelete, weightUnit = 'kg', isEditMode = false },
+  ref,
+) {
   const { width } = useWindowDimensions();
   const sizes = useMemo(() => getResponsiveSizes(width), [width]);
   const stepperSize = sizes.stepperSize;
@@ -161,7 +157,7 @@ export function SetLogger({
   };
 
   return (
-    <View style={containerStyle}>
+    <View ref={ref} style={containerStyle}>
       <View style={styles.headerRow}>
         <View style={numberBgStyle}>
           <Text style={[styles.numberText, { fontSize: fontSize }]}>{setNumber}</Text>
@@ -326,7 +322,7 @@ export function SetLogger({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createRef } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -75,7 +75,8 @@ export default function WorkoutSessionScreen() {
   const scrollViewRef = useRef<any>(null);
   const { weightUnit: userWeightUnit } = useUserPreferences();
 
-  const SET_HEIGHT = 120;
+  const scrollYRef = useRef(0);
+  const setRefsRef = useRef(new Map<string, React.RefObject<View | null>>());
 
   const {
     data: loadedWorkout,
@@ -93,6 +94,38 @@ export default function WorkoutSessionScreen() {
       loadWorkout(loadedWorkout);
     }
   }, [loadedWorkout, loadWorkout]);
+
+  const getSetRef = useCallback((setId: string) => {
+    if (!setRefsRef.current.has(setId)) {
+      setRefsRef.current.set(setId, createRef<View>());
+    }
+    return setRefsRef.current.get(setId)!;
+  }, []);
+
+  const scrollToSet = useCallback(
+    (setId: string, options?: { direction?: 'down'; offset?: number }) => {
+      const ref = setRefsRef.current.get(setId);
+      if (!ref?.current || !scrollViewRef.current) return;
+
+      (ref.current as any).measure(
+        (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+          if (options?.direction === 'down') {
+            const targetScrollY = scrollYRef.current + (options.offset ?? 120);
+            scrollViewRef.current.scrollTo({ y: targetScrollY, animated: true });
+          } else {
+            const targetPageY = headerHeight + 120;
+            const targetScrollY = scrollYRef.current + pageY - targetPageY;
+            scrollViewRef.current.scrollTo({ y: Math.max(0, targetScrollY), animated: true });
+          }
+        },
+      );
+    },
+    [headerHeight],
+  );
+
+  const handleScroll = useCallback((event: any) => {
+    scrollYRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
 
   const KG_TO_LBS = 2.20462;
 
@@ -164,37 +197,20 @@ export default function WorkoutSessionScreen() {
         if (nextSetIndex < sets.length) {
           setCurrentSetIndex(nextSetIndex);
           setCurrentExerciseIndex(exerciseIndex);
-          const layout = exerciseLayouts.find((l) => l.id === workoutExerciseId);
-          if (layout && scrollViewRef.current) {
-            scrollViewRef.current.scrollTo({
-              y: layout.y + justCompletedIndex * SET_HEIGHT + 80,
-              animated: true,
-            });
-          }
+          scrollToSet(sets[nextSetIndex].id);
         } else if (nextSetIndex === sets.length) {
           const nextExerciseIndex = exerciseIndex + 1;
           if (nextExerciseIndex < exercises.length) {
             setCurrentExerciseIndex(nextExerciseIndex);
             setCurrentSetIndex(0);
-            const nextLayout = exerciseLayouts.find(
-              (l) => l.id === exercises[nextExerciseIndex].id,
-            );
-            if (nextLayout && scrollViewRef.current) {
-              scrollViewRef.current.scrollTo({
-                y: nextLayout.y - 80,
-                animated: true,
-              });
+            const nextSetId = exercises[nextExerciseIndex].sets[0]?.id;
+            if (nextSetId) {
+              scrollToSet(nextSetId);
             }
           } else {
             setCurrentExerciseIndex(exerciseIndex);
             setCurrentSetIndex(justCompletedIndex);
-            const currentLayout = exerciseLayouts.find((l) => l.id === exercises[exerciseIndex].id);
-            if (currentLayout && scrollViewRef.current) {
-              scrollViewRef.current.scrollTo({
-                y: currentLayout.y - 80,
-                animated: true,
-              });
-            }
+            scrollToSet(sets[justCompletedIndex].id, { direction: 'down', offset: 120 });
           }
         }
       }
@@ -202,7 +218,7 @@ export default function WorkoutSessionScreen() {
       const anyIncomplete = exercises.some((e) => e.sets.some((s) => !s.isComplete));
       setShowFloatingPill(anyIncomplete);
     },
-    [exercises, updateSet, exerciseLayouts],
+    [exercises, updateSet, scrollToSet],
   );
 
   const handleDeleteSet = useCallback(
@@ -238,7 +254,16 @@ export default function WorkoutSessionScreen() {
   }, [exerciseLayouts, exercises, currentExerciseIndex]);
 
   const scrollToExerciseIndex = useCallback(
-    (exerciseIndex: number) => {
+    (exerciseIndex: number, setIndex?: number) => {
+      if (setIndex !== undefined) {
+        const setId = exercises[exerciseIndex]?.sets[setIndex]?.id;
+        if (setId) {
+          scrollToSet(setId);
+          setCurrentExerciseIndex(exerciseIndex);
+          setCurrentSetIndex(setIndex);
+          return;
+        }
+      }
       const layout = exerciseLayouts.find((l) => l.id === exercises[exerciseIndex]?.id);
       if (layout && scrollViewRef.current) {
         scrollViewRef.current.scrollTo({
@@ -248,7 +273,7 @@ export default function WorkoutSessionScreen() {
         setCurrentExerciseIndex(exerciseIndex);
       }
     },
-    [exerciseLayouts, exercises],
+    [exerciseLayouts, exercises, scrollToSet],
   );
 
   const findFirstIncompleteSet = useCallback(() => {
@@ -296,7 +321,10 @@ export default function WorkoutSessionScreen() {
         'Incomplete Set',
         "You have at least one set that isn't marked complete. Complete it or continue anyway.",
         [
-          { text: 'Go to Set', onPress: () => scrollToExerciseIndex(incomplete.exerciseIndex) },
+          {
+            text: 'Go to Set',
+            onPress: () => scrollToExerciseIndex(incomplete.exerciseIndex, incomplete.setIndex),
+          },
           { text: 'Continue', onPress: executeCompleteWorkout },
         ],
       );
@@ -447,6 +475,8 @@ export default function WorkoutSessionScreen() {
             horizontalPadding: spacing.md,
             showsVerticalScrollIndicator: false,
             keyboardShouldPersistTaps: 'handled',
+            onScroll: handleScroll,
+            scrollEventThrottle: 16,
           }}
         >
           <View style={styles.exerciseList}>
@@ -476,6 +506,7 @@ export default function WorkoutSessionScreen() {
                     onDeleteSet={handleDeleteSet}
                     weightUnit={weightUnit}
                     isEditMode={isViewingCompleted ? isEditing : true}
+                    getSetRef={getSetRef}
                   />
                 </View>
               );

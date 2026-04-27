@@ -50,4 +50,5 @@ function resolveApiUrl() {
 
 export const env = {
   apiUrl: resolveApiUrl(),
+  appScheme: process.env.EXPO_PUBLIC_APP_SCHEME ?? 'strength',
 };

@@ -66,14 +66,25 @@ type Variables = {
 
 const app = new Hono<{ Bindings: WorkerEnv; Variables: Variables }>();
 
-function isAllowedDevOrigin(origin: string) {
+function getAllowedOrigins(env: WorkerEnv): string[] {
+  const appScheme = env.APP_SCHEME ?? 'strength';
+  const origins: string[] = [`${appScheme}://`, 'exp://'];
+  const baseURL = env.WORKER_BASE_URL;
+  if (baseURL) {
+    try {
+      origins.push(new URL(baseURL).origin);
+    } catch {}
+  }
+  return origins;
+}
+
+function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
   if (!origin) {
     console.log('[CORS] No origin provided, allowing');
     return true;
   }
   const allowed =
-    origin.startsWith('strength://') ||
-    /^exp:\/\/.+/i.test(origin) ||
+    allowedOrigins.some((o) => origin.startsWith(o)) ||
     /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
     /^http:\/\/(?:10|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))(?:\.\d{1,3}){2}(?::\d+)?$/i.test(origin);
   console.log('[CORS] Origin check:', { origin: origin?.slice(0, 50), allowed });
@@ -83,9 +94,10 @@ function isAllowedDevOrigin(origin: string) {
 app.use(
   '/api/*',
   cors({
-    origin: (origin) => {
+    origin: (origin, c) => {
       if (!origin) return '*';
-      if (isAllowedDevOrigin(origin)) return origin;
+      const allowedOrigins = getAllowedOrigins(c.env as WorkerEnv);
+      if (isAllowedDevOrigin(origin, allowedOrigins)) return origin;
       return '*';
     },
     allowHeaders: ['Content-Type', 'Authorization', 'Cookie'],
