@@ -1407,7 +1407,7 @@ export default function ProgramsScreen() {
                           value={programStartDate}
                           mode="date"
                           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                          onValueChange={(_event, selectedDate) => {
+                          onChange={(_event: any, selectedDate: any) => {
                             if (Platform.OS === 'android') {
                               setShowDatePicker(false);
                             }
