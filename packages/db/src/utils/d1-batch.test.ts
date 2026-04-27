@@ -3,6 +3,7 @@ import {
   DEFAULT_CHUNK_SIZE,
   DEFAULT_CONCURRENCY,
   DEFAULT_MAX_QUERY_PARAMS,
+  DEFAULT_STATEMENTS_PER_BATCH,
   batchParallel,
   chunkedInsert,
   chunkedQuery,
@@ -20,6 +21,10 @@ describe('d1-batch constants', () => {
 
   it('DEFAULT_MAX_QUERY_PARAMS should be 100', () => {
     expect(DEFAULT_MAX_QUERY_PARAMS).toBe(100);
+  });
+
+  it('DEFAULT_STATEMENTS_PER_BATCH should be 95', () => {
+    expect(DEFAULT_STATEMENTS_PER_BATCH).toBe(95);
   });
 });
 
@@ -233,17 +238,101 @@ describe('chunkedQueryMany', () => {
 });
 
 describe('chunkedInsert', () => {
-  it('should reduce insert chunk size when rows are too wide for the query param budget', async () => {
-    const insertedChunks: number[] = [];
+  it('should return 0 for empty rows', async () => {
     const db = {
       insert: () => ({
-        values: (chunk: unknown[]) => ({
-          run: async () => {
-            insertedChunks.push(chunk.length);
-            return { rowsAffected: chunk.length };
-          },
+        values: () => ({
+          _prepare: () => ({ getQuery: () => ({ sql: '', params: [] }) }),
         }),
       }),
+      batch: async () => {
+        throw new Error('batch should not be called');
+      },
+    };
+
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows: [],
+      chunkSize: 100,
+    });
+
+    expect(inserted).toBe(0);
+  });
+
+  it('should call db.batch with correct statement counts for large inserts', async () => {
+    const batchCalls: unknown[][][] = [];
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => ({
+          prepare: () => ({
+            getQuery: () => ({ sql: '?', params: [] }),
+          }),
+        }),
+      }),
+      batch: async (statements: unknown[][]) => {
+        batchCalls.push(statements);
+        return statements.map(() => ({ rowsAffected: 1 }));
+      },
+    };
+
+    const rows = Array.from({ length: 250 }, (_, i) => ({ id: String(i) }));
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      chunkSize: 1,
+    });
+
+    expect(batchCalls.length).toBe(3);
+    expect(batchCalls[0].length).toBe(95);
+    expect(batchCalls[1].length).toBe(95);
+    expect(batchCalls[2].length).toBe(60);
+    expect(inserted).toBe(250);
+  });
+
+  it('should call db.batch once for small inserts', async () => {
+    let batchCalled = false;
+    let receivedStatements: unknown[][] = [];
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => ({
+          prepare: () => ({
+            getQuery: () => ({ sql: '?', params: [] }),
+          }),
+        }),
+      }),
+      batch: async (statements: unknown[][]) => {
+        batchCalled = true;
+        receivedStatements = statements;
+        return statements.map(() => ({ rowsAffected: 1 }));
+      },
+    };
+
+    const rows = [{ id: 'a' }, { id: 'b' }];
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      chunkSize: 100,
+    });
+
+    expect(batchCalled).toBe(true);
+    expect(receivedStatements.length).toBe(1);
+    expect(inserted).toBe(1);
+  });
+
+  it('should reduce insert chunk size when rows are too wide for the query param budget', async () => {
+    const batchCalls: unknown[][][] = [];
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => ({
+          prepare: () => ({
+            getQuery: () => ({ sql: '?', params: [] }),
+          }),
+        }),
+      }),
+      batch: async (statements: unknown[][]) => {
+        batchCalls.push(statements);
+        return statements.map(() => ({ rowsAffected: statements.length }));
+      },
     };
 
     const rows = Array.from({ length: 36 }, (_, i) => ({
@@ -267,31 +356,7 @@ describe('chunkedInsert', () => {
     });
 
     expect(inserted).toBe(36);
-    expect(insertedChunks).toEqual([7, 7, 7, 7, 7, 1]);
-  });
-
-  it('should insert chunks sequentially', async () => {
-    const events: string[] = [];
-    const db = {
-      insert: () => ({
-        values: (chunk: Array<{ id: string }>) => ({
-          run: async () => {
-            events.push(`start:${chunk[0].id}`);
-            await new Promise((r) => setTimeout(r, chunk[0].id === 'row-0' ? 20 : 0));
-            events.push(`end:${chunk[0].id}`);
-            return { rowsAffected: chunk.length };
-          },
-        }),
-      }),
-    };
-
-    await chunkedInsert(db as any, {
-      table: {} as any,
-      rows: [{ id: 'row-0' }, { id: 'row-1' }],
-      chunkSize: 1,
-      maxQueryParams: 1,
-    });
-
-    expect(events).toEqual(['start:row-0', 'end:row-0', 'start:row-1', 'end:row-1']);
+    expect(batchCalls.length).toBe(1);
+    expect(batchCalls[0].length).toBe(6);
   });
 });

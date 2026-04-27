@@ -6,6 +6,7 @@ type DbClient = DrizzleD1Database<Record<string, unknown>>;
 export const DEFAULT_CHUNK_SIZE = 100;
 export const DEFAULT_CONCURRENCY = 8;
 export const DEFAULT_MAX_QUERY_PARAMS = 100;
+export const DEFAULT_STATEMENTS_PER_BATCH = 95;
 
 export async function batchParallel<T>(
   tasks: (() => Promise<T>)[],
@@ -147,12 +148,14 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
   );
   const chunks = chunkArray(rows, safeChunkSize);
 
+  const STATEMENTS_PER_BATCH = DEFAULT_STATEMENTS_PER_BATCH;
   let insertedRows = 0;
-  for (const chunk of chunks) {
-    const result = (await db.insert(table).values(chunk).run()) as unknown as {
-      rowsAffected: number;
-    };
-    insertedRows += result.rowsAffected;
+
+  for (let i = 0; i < chunks.length; i += STATEMENTS_PER_BATCH) {
+    const batchChunks = chunks.slice(i, i + STATEMENTS_PER_BATCH);
+    const statements = batchChunks.map((chunk) => db.insert(table).values(chunk));
+    const results = await db.batch(statements as any);
+    insertedRows += results.reduce((sum, r) => sum + r.rowsAffected, 0);
   }
 
   return insertedRows;
