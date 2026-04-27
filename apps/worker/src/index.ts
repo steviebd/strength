@@ -96,12 +96,7 @@ app.use(
   cors({
     origin: (origin, c) => {
       if (!origin) return '*';
-      const env = c.env as WorkerEnv;
-      console.log('[CORS DEBUG] env keys:', Object.keys(env));
-      console.log('[CORS DEBUG] WORKER_BASE_URL:', env.WORKER_BASE_URL);
-      console.log('[CORS DEBUG] APP_SCHEME:', env.APP_SCHEME);
-      const allowedOrigins = getAllowedOrigins(env);
-      console.log('[CORS DEBUG] allowedOrigins:', allowedOrigins);
+      const allowedOrigins = getAllowedOrigins(c.env as WorkerEnv);
       if (isAllowedDevOrigin(origin, allowedOrigins)) return origin;
       return '*';
     },
@@ -209,14 +204,31 @@ app.put(
   '/api/profile/preferences',
   createHandler(async (c, { userId, db }) => {
     try {
-      const rawBody = await c.req.text();
-      console.log('[PREF DEBUG] raw body:', rawBody);
-      const body = JSON.parse(rawBody);
-      const { weightUnit, timezone, weightPromptedAt } = body as {
-        weightUnit?: string;
-        timezone?: string | null;
-        weightPromptedAt?: string | null;
-      };
+      let body: Record<string, unknown> = {};
+      try {
+        const rawBody = await c.req.text();
+        console.log('[PREF DEBUG] raw body:', rawBody, 'length:', rawBody.length);
+        if (rawBody.trim()) {
+          body = JSON.parse(rawBody) as Record<string, unknown>;
+        }
+      } catch (parseErr) {
+        console.log('[PREF DEBUG] JSON parse error:', parseErr);
+      }
+
+      console.log('[PREF DEBUG] parsed body:', body);
+      const weightUnit = typeof body.weightUnit === 'string' ? body.weightUnit : undefined;
+      const timezone =
+        body.timezone === null
+          ? null
+          : typeof body.timezone === 'string'
+            ? body.timezone
+            : undefined;
+      const weightPromptedAt =
+        body.weightPromptedAt === null
+          ? null
+          : typeof body.weightPromptedAt === 'string'
+            ? body.weightPromptedAt
+            : undefined;
 
       if (weightUnit !== undefined && !['kg', 'lbs'].includes(weightUnit)) {
         return c.json({ message: 'Invalid weight unit' }, 400);
@@ -226,9 +238,7 @@ app.put(
         return c.json({ message: 'Invalid timezone' }, 400);
       }
 
-      if (weightUnit === undefined && timezone === undefined && weightPromptedAt === undefined) {
-        return c.json({ message: 'No preferences provided' }, 400);
-      }
+      console.log('[PREF DEBUG] extracted fields:', { weightUnit, timezone, weightPromptedAt });
 
       const existing = await db
         .select()
