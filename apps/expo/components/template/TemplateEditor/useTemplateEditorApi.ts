@@ -59,12 +59,11 @@ export function useTemplateEditorApi({
         isNew ? '/api/templates' : `/api/templates/${templateId}`,
         {
           method: isNew ? 'POST' : 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             name: formData.name,
             description: formData.description || undefined,
             notes: formData.notes || undefined,
-          }),
+          },
         },
       );
 
@@ -75,8 +74,7 @@ export function useTemplateEditorApi({
           const ex = selectedExercises[i];
           await apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: {
               exerciseId: ex.exerciseId,
               orderIndex: i,
               isAccessory: ex.isAccessory ?? false,
@@ -85,7 +83,7 @@ export function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
-            }),
+            },
           });
         }
       }
@@ -125,8 +123,7 @@ export function useTemplateEditorApi({
         addPromises.push(
           apiFetch(`/api/templates/${currentTemplateId}/exercises`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: {
               exerciseId: ex.exerciseId,
               orderIndex: i,
               isAccessory: ex.isAccessory ?? false,
@@ -135,7 +132,7 @@ export function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
-            }),
+            },
           }),
         );
       }

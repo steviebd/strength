@@ -25,8 +25,7 @@ export function useTemplates() {
     mutationFn: async (data: { name: string; description?: string; notes?: string }) => {
       return apiFetch<Template>('/api/templates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: data,
       });
     },
     onSuccess: () => {
@@ -46,8 +45,7 @@ export function useTemplates() {
     }) => {
       return apiFetch<Template>(`/api/templates/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: data,
       });
     },
     onSuccess: () => {

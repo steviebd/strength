@@ -112,12 +112,11 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
         isNew ? '/api/templates' : `/api/templates/${template.id}`,
         {
           method: isNew ? 'POST' : 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             name: templateNameRef.current,
             description: templateDescriptionRef.current || undefined,
             notes: templateNotesRef.current || undefined,
-          }),
+          },
         },
       );
 
@@ -128,8 +127,7 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
           const ex = exercises[i];
           await apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: {
               exerciseId: ex.exerciseId,
               orderIndex: i,
               isAccessory: ex.isAccessory,
@@ -138,7 +136,7 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
               reps: ex.reps,
               targetWeight: ex.targetWeight,
               isAmrap: ex.isAmrap,
-            }),
+            },
           });
         }
       }
@@ -171,8 +169,7 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
       const ex = exercises[i];
       await apiFetch(`/api/templates/${currentTemplateId}/exercises`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           exerciseId: ex.exerciseId,
           orderIndex: i,
           isAccessory: ex.isAccessory,
@@ -181,7 +178,7 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
           reps: ex.reps,
           targetWeight: ex.targetWeight,
           isAmrap: ex.isAmrap,
-        }),
+        },
       });
     }
   };

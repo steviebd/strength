@@ -182,11 +182,10 @@ export default function WorkoutsIndex() {
     try {
       const workout = await apiFetch<{ id: string }>('/api/workouts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           name: template.name,
           templateId: template.id,
-        }),
+        },
       });
       if (workout?.id) {
         router.push(`/workout-session?workoutId=${workout.id}`);
@@ -222,8 +221,7 @@ export default function WorkoutsIndex() {
         completed: boolean;
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: {},
       });
 
       if (result.completed) {

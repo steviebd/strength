@@ -842,8 +842,7 @@ export default function ProgramsScreen() {
 
       const cycle = await apiFetch<{ id: string }>('/api/programs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           programSlug: selectedProgram.slug,
           name: selectedProgram.name,
           squat1rm: convertToKg(parseFloat(values.squat)),
@@ -854,7 +853,7 @@ export default function ProgramsScreen() {
           preferredTimeOfDay: preferredTime,
           programStartDate: programStartDate.toISOString().split('T')[0],
           firstSessionDate: firstSessionDate.toISOString().split('T')[0],
-        }),
+        },
       });
 
       setShowStartModal(false);
@@ -892,8 +891,7 @@ export default function ProgramsScreen() {
         completed: boolean;
       }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: {},
       });
 
       if (result.completed) {

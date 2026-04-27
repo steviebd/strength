@@ -131,8 +131,7 @@ export default function ProgramOneRMTestScreen() {
         `/api/programs/cycles/${cycleId}/create-1rm-test-workout`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: {},
         },
       );
       router.push(
@@ -164,15 +163,13 @@ export default function ProgramOneRMTestScreen() {
     try {
       await apiFetch(`/api/programs/cycles/${cycleId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: payload,
       });
 
       try {
         await apiFetch(`/api/programs/cycles/${cycleId}/1rm-test-workout`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: payload,
         });
       } catch {
         // Saving cycle data is still useful if a test workout was not created yet.

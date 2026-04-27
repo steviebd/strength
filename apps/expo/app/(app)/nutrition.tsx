@@ -439,7 +439,7 @@ export default function NutritionScreen() {
 
       return apiFetch('/api/nutrition/entries', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: payload,
       });
     },
     onSuccess: () => {
@@ -474,7 +474,7 @@ export default function NutritionScreen() {
     mutationFn: (type: TrainingType) =>
       apiFetch('/api/nutrition/training-context', {
         method: 'POST',
-        body: JSON.stringify({ trainingType: type, date }),
+        body: { trainingType: type, date },
       }),
     onSuccess: () => {
       refetchSummary();
@@ -537,7 +537,7 @@ export default function NutritionScreen() {
 
         const response = await apiFetch<globalThis.Response>('/api/nutrition/chat', {
           method: 'POST',
-          body: JSON.stringify(requestBody),
+          body: requestBody,
           __stream: true,
         } as never);
 

@@ -136,8 +136,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       try {
         const workoutData = await apiFetch<Workout>('/api/workouts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: { name },
         });
         setWorkout(workoutData);
         setExercises([]);
@@ -210,26 +209,24 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
             if (isServerId(set.id)) {
               await apiFetch(`/api/workouts/sets/${set.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+                body: {
                   weight: set.weight,
                   reps: set.reps,
                   rpe: set.rpe,
                   isComplete: set.isComplete,
-                }),
+                },
               });
             } else {
               await apiFetch('/api/workouts/sets', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+                body: {
                   workoutExerciseId: existingWorkoutExercise.id,
                   setNumber: j + 1,
                   weight: set.weight,
                   reps: set.reps,
                   rpe: set.rpe,
                   isComplete: set.isComplete,
-                }),
+                },
               });
             }
           }
@@ -238,11 +235,10 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
             `/api/workouts/${workout.id}/exercises`,
             {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+              body: {
                 exerciseId: exercise.exerciseId,
                 orderIndex: i,
-              }),
+              },
             },
           );
 
@@ -250,15 +246,14 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
             const set = exercise.sets[j];
             await apiFetch('/api/workouts/sets', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+              body: {
                 workoutExerciseId: workoutExercise.id,
                 setNumber: j + 1,
                 weight: set.weight,
                 reps: set.reps,
                 rpe: set.rpe,
                 isComplete: set.isComplete,
-              }),
+              },
             });
           }
         }
@@ -266,8 +261,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
 
       await apiFetch(`/api/workouts/${workout.id}/complete`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: {},
       });
       for (const exercise of exercises) {
         const completedSets = exercise.sets.filter((s) => s.isComplete);
@@ -423,8 +417,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       if (isServerId(set?.id)) {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...updates }),
+          body: updates,
         }).catch(console.error);
       }
     },
@@ -463,8 +456,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       if (isServerId(set?.id)) {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ isComplete }),
+          body: { isComplete },
         }).catch(console.error);
       }
     },

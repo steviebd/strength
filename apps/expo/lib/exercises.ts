@@ -26,24 +26,22 @@ export async function listUserExercises(search?: string, signal?: AbortSignal) {
 export async function createCustomExercise(input: CreateExerciseInput) {
   return apiFetch<UserExercise>('/api/exercises', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    body: {
       name: input.name.trim(),
       muscleGroup: input.muscleGroup,
       description: input.description?.trim() || null,
-    }),
+    },
   });
 }
 
 export async function ensurePersistedExercise(exercise: ExerciseLibraryItem) {
   return apiFetch<UserExercise>('/api/exercises', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    body: {
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
       description: exercise.description || null,
       libraryId: exercise.id,
-    }),
+    },
   });
 }

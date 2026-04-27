@@ -181,11 +181,11 @@ function useTemplateEditorApi({
 
       const savedTemplate = await apiFetch<Template>(url, {
         method,
-        body: JSON.stringify({
+        body: {
           name: formData.name,
           description: formData.description || undefined,
           notes: formData.notes || undefined,
-        }),
+        },
       });
 
       if (!isNew && templateId && savedTemplate.id) {
@@ -195,7 +195,7 @@ function useTemplateEditorApi({
           const ex = selectedExercises[i];
           await apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
             method: 'POST',
-            body: JSON.stringify({
+            body: {
               exerciseId: ex.exerciseId,
               orderIndex: i,
               isAccessory: ex.isAccessory ?? false,
@@ -204,7 +204,7 @@ function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
-            }),
+            },
           });
         }
       }
@@ -248,7 +248,7 @@ function useTemplateEditorApi({
         addPromises.push(
           apiFetch(`/api/templates/${newTemplateId}/exercises`, {
             method: 'POST',
-            body: JSON.stringify({
+            body: {
               exerciseId: ex.exerciseId,
               orderIndex: i,
               isAccessory: ex.isAccessory ?? false,
@@ -257,7 +257,7 @@ function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
-            }),
+            },
           }),
         );
       }

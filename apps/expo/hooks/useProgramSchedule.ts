@@ -54,8 +54,7 @@ export function useStartCycleWorkout() {
         programCycleId: string;
       }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: {},
       });
       return response;
     },
@@ -82,8 +81,7 @@ export function useRescheduleWorkout() {
         warning?: 'date_collision';
       }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/schedule`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scheduledAt }),
+        body: { scheduledAt },
       });
       return response;
     },
