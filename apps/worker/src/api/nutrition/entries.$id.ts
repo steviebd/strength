@@ -74,18 +74,8 @@ export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
 export const deleteEntryHandler = createHandler(async (c, { userId, db }) => {
   const id = c.req.param('id') as string;
 
-  const existing = await db
-    .select({
-      id: schema.nutritionEntries.id,
-      isDeleted: schema.nutritionEntries.isDeleted,
-    })
-    .from(schema.nutritionEntries)
-    .where(and(eq(schema.nutritionEntries.id, id), eq(schema.nutritionEntries.userId, userId)))
-    .get();
-
-  if (!existing) {
-    return c.json({ error: 'Nutrition entry not found' }, 404);
-  }
+  const existing = await requireOwnedNutritionEntry({ db, userId }, id);
+  if (existing instanceof Response) return existing;
 
   if (existing.isDeleted) {
     return c.body(null, 204);
@@ -97,7 +87,7 @@ export const deleteEntryHandler = createHandler(async (c, { userId, db }) => {
       isDeleted: true,
       updatedAt: new Date(),
     })
-    .where(and(eq(schema.nutritionEntries.id, id), eq(schema.nutritionEntries.userId, userId)))
+    .where(eq(schema.nutritionEntries.id, id))
     .run();
 
   return c.body(null, 204);

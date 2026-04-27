@@ -180,6 +180,18 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
+            name="(program-detail)"
+            options={{
+              href: null,
+            }}
+          />
+          <Tabs.Screen
+            name="(workout-detail)"
+            options={{
+              href: null,
+            }}
+          />
+          <Tabs.Screen
             name="whoop"
             options={{
               href: null,
