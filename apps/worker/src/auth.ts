@@ -1,5 +1,5 @@
 import { expo } from '@better-auth/expo';
-import { betterAuth } from 'better-auth';
+import { betterAuth } from 'better-auth/minimal';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
@@ -169,6 +169,12 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
       password: {
         hash: hashPassword,
         verify: verifyPassword,
+      },
+    },
+    session: {
+      cookieCache: {
+        enabled: true,
+        maxAge: 5 * 60,
       },
     },
     trustedOrigins: Array.from(new Set(trustedOrigins)),
