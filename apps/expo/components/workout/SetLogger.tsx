@@ -379,11 +379,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   weightSection: {
-    flex: 2,
+    flex: 3,
     flexBasis: 0,
   },
   repsSection: {
-    flex: 1,
+    flex: 2,
     flexBasis: 0,
   },
   labelText: {
@@ -451,6 +451,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     minWidth: 40,
     flexShrink: 1,
+    height: '100%',
+    paddingVertical: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   unitLabel: {
     color: colors.textMuted,
@@ -461,6 +465,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     minWidth: 40,
+    height: '100%',
+    paddingVertical: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   footer: {
     marginTop: spacing.md,

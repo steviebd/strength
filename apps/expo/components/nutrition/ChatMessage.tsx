@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type TextLayoutEventData } from 'react-native';
 import type { NativeSyntheticEvent } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { CoachTypingIndicator } from './CoachTypingIndicator';
 import { Button } from '@/components/ui/Button';
 import { colors, radius, spacing, typography } from '@/theme';
 import {
@@ -165,27 +166,6 @@ export function ChatMessage({
               <Text style={styles.sectionLabel}>Coach</Text>
             </View>
             <View style={styles.assistantBubble}>
-              {assistantDisplayContent ? (
-                shouldRenderStructuredAssistantContent ? (
-                  <View style={styles.structuredContent}>
-                    {renderStructuredAssistantContent(assistantDisplayContent)}
-                  </View>
-                ) : (
-                  <Text
-                    style={styles.assistantText}
-                    numberOfLines={expanded ? undefined : COLLAPSED_ASSISTANT_LINES}
-                    onTextLayout={(event) => {
-                      if (assistantNeedsToggle) return;
-                      if (getLineCount(event) > COLLAPSED_ASSISTANT_LINES) {
-                        setAssistantNeedsToggle(true);
-                      }
-                    }}
-                  >
-                    {cleanInlineFormatting(assistantDisplayContent)}
-                  </Text>
-                )
-              ) : null}
-
               {analysis ? (
                 <View style={styles.analysisCard}>
                   <View style={styles.mealTitleRow}>
@@ -202,6 +182,7 @@ export function ChatMessage({
                       <Button
                         size="sm"
                         variant={isSaved ? 'default' : 'ghost'}
+                        style={{ backgroundColor: isSaved ? undefined : '#1c1c1f' }}
                         onPress={() =>
                           assistantMessage
                             ? onSaveAnalysis?.(
@@ -212,6 +193,7 @@ export function ChatMessage({
                             : undefined
                         }
                         disabled={isSavingAnalysis}
+                        attention={!isSaved && !isSavingAnalysis}
                       >
                         {isSavingAnalysis ? 'Saving...' : isSaved ? 'Saved' : 'Save'}
                       </Button>
@@ -241,6 +223,28 @@ export function ChatMessage({
                   </View>
                 </View>
               ) : null}
+              {assistantDisplayContent ? (
+                shouldRenderStructuredAssistantContent ? (
+                  <View style={styles.structuredContent}>
+                    {renderStructuredAssistantContent(assistantDisplayContent)}
+                  </View>
+                ) : (
+                  <Text
+                    style={styles.assistantText}
+                    numberOfLines={expanded ? undefined : COLLAPSED_ASSISTANT_LINES}
+                    onTextLayout={(event) => {
+                      if (assistantNeedsToggle) return;
+                      if (getLineCount(event) > COLLAPSED_ASSISTANT_LINES) {
+                        setAssistantNeedsToggle(true);
+                      }
+                    }}
+                  >
+                    {cleanInlineFormatting(assistantDisplayContent)}
+                  </Text>
+                )
+              ) : (
+                <CoachTypingIndicator />
+              )}
             </View>
           </View>
         ) : null}

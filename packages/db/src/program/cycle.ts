@@ -81,8 +81,8 @@ export async function createProgramCycle(
         ? JSON.stringify(data.preferredGymDays)
         : null) as any,
       preferredTimeOfDay: (data.preferredTimeOfDay ?? null) as any,
-      programStartAt: data.programStartAt as any,
-      firstSessionAt: (data.firstSessionAt ?? null) as any,
+      programStartAt: new Date(data.programStartAt),
+      firstSessionAt: data.firstSessionAt ? new Date(data.firstSessionAt) : null,
       currentWeek: (firstWorkout?.weekNumber ?? 1) as any,
       currentSession: (firstWorkout?.sessionNumber ?? 1) as any,
       totalSessionsCompleted: 0 as any,
@@ -102,7 +102,7 @@ export async function createProgramCycle(
       targetLifts: w.targetLifts ?? null,
       isComplete: false,
       workoutId: null,
-      scheduledAt: w.scheduledAt ? new Date(w.scheduledAt) : null,
+      scheduledAt: w.scheduledAt != null && !isNaN(w.scheduledAt) ? new Date(w.scheduledAt) : null,
     }));
 
     await chunkedInsert(db, {

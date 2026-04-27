@@ -104,6 +104,24 @@ export async function chunkedQuery<T>(
   return ordered;
 }
 
+export async function chunkedQueryMany<T>(
+  db: DbClient,
+  config: {
+    ids: string[];
+    chunkSize?: number;
+    builder: (chunk: string[]) => Promise<T[]>;
+  },
+): Promise<T[]> {
+  const { ids, chunkSize = DEFAULT_CHUNK_SIZE, builder } = config;
+
+  if (ids.length === 0) return [];
+
+  const chunks = chunkArray(ids, chunkSize);
+  const tasks = chunks.map((chunk) => () => builder(chunk));
+  const results = await batchParallel(tasks);
+  return results.flat();
+}
+
 export async function chunkedInsert<T extends AnySQLiteTable>(
   db: DbClient,
   config: {

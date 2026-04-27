@@ -23,6 +23,7 @@ import * as schema from '@strength/db';
 import {
   exerciseLibrary,
   chunkedQuery,
+  chunkedQueryMany,
   chunkedInsert,
   batchParallel,
   isValidTimeZone,
@@ -272,42 +273,8 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c, next) => {
     return;
   }
 
-  console.log('[AUTH handler] Incoming auth request:', {
-    path: c.req.path,
-    method: c.req.method,
-    origin: c.req.header('origin'),
-    expoOrigin: c.req.header('expo-origin'),
-  });
-
   const auth = getAuth(c);
   const response = await auth.handler(c.req.raw);
-
-  const setCookie = response.headers.get('set-cookie');
-  const contentType = response.headers.get('content-type');
-  console.log('[AUTH handler] Auth response:', {
-    path: c.req.path,
-    status: response.status,
-    setCookie: setCookie ? setCookie.slice(0, 200) : 'none',
-    contentType,
-  });
-
-  if (c.req.path === '/api/auth/sign-in/email' || c.req.path === '/api/auth/sign-up/email') {
-    const db = createDb(c.env);
-    const sessions = await db.select().from(schema.session).all();
-    const users = await db.select().from(schema.user).all();
-    console.log('[AUTH handler] After auth, DB state:', {
-      userCount: users.length,
-      sessionCount: sessions.length,
-      latestSession: sessions[sessions.length - 1]
-        ? {
-            id: sessions[sessions.length - 1].id,
-            userId: sessions[sessions.length - 1].userId,
-            token: sessions[sessions.length - 1].token.slice(0, 20) + '...',
-            expiresAt: new Date(sessions[sessions.length - 1].expiresAt).toISOString(),
-          }
-        : null,
-    });
-  }
 
   return response;
 });
@@ -372,15 +339,17 @@ function withWhoopFallbacks<T extends Record<string, unknown>, U extends Record<
 }
 
 async function getLastCompletedExerciseSnapshot(db: any, userId: string, exerciseId: string) {
-  let resolvedExerciseId = exerciseId;
+  let resolvedExerciseId: string | null = null;
 
-  const existingUserExercise = await db
-    .select({ id: schema.exercises.id })
+  const directExercise = await db
+    .select({ id: schema.exercises.id, libraryId: schema.exercises.libraryId })
     .from(schema.exercises)
     .where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.userId, userId)))
     .get();
 
-  if (!existingUserExercise) {
+  if (directExercise) {
+    resolvedExerciseId = directExercise.id;
+  } else {
     const byLibraryId = await db
       .select({ id: schema.exercises.id })
       .from(schema.exercises)
@@ -390,8 +359,10 @@ async function getLastCompletedExerciseSnapshot(db: any, userId: string, exercis
     if (byLibraryId) {
       resolvedExerciseId = byLibraryId.id;
     }
-  } else {
-    resolvedExerciseId = existingUserExercise.id;
+  }
+
+  if (!resolvedExerciseId) {
+    return null;
   }
 
   const recentWorkoutExercise = await db
@@ -1284,9 +1255,8 @@ app.get(
       }
 
       const templateIds = results.map((template) => template.id);
-      const templateExercises = await chunkedQuery(db, {
+      const templateExercises = await chunkedQueryMany(db, {
         ids: templateIds,
-        mergeKey: 'templateId',
         builder: (chunk) =>
           db
             .select({
@@ -1680,9 +1650,13 @@ app.post(
             exerciseId: te.exerciseId,
             orderIndex: te.orderIndex,
             targetWeight: te.targetWeight,
+            addedWeight: te.addedWeight,
             sets: te.sets,
             reps: te.reps,
+            repsRaw: te.repsRaw,
             isAmrap: te.isAmrap,
+            isAccessory: te.isAccessory,
+            isRequired: te.isRequired,
             setNumber: te.setNumber,
           })),
         });
@@ -1883,10 +1857,9 @@ app.get(
         .all();
 
       const exerciseIds = exercisesResult.map((e: any) => e.id);
-      const allSets = await chunkedQuery(db, {
+      const allSets = await chunkedQueryMany(db, {
         ids: exerciseIds,
         chunkSize: 100,
-        mergeKey: 'workoutExerciseId',
         builder: (chunk) =>
           db
             .select({
@@ -2349,13 +2322,11 @@ app.post(
           weekNumber: workout.weekNumber,
           sessionNumber: workout.sessionNumber,
           sessionName: workout.sessionName,
-          scheduledAt: scheduleEntry?.scheduledDate
-            ? new Date(
-                scheduleEntry.scheduledDate.getFullYear(),
-                scheduleEntry.scheduledDate.getMonth(),
-                scheduleEntry.scheduledDate.getDate(),
-              ).getTime()
-            : undefined,
+          scheduledAt:
+            scheduleEntry?.scheduledDate instanceof Date &&
+            !isNaN(scheduleEntry.scheduledDate.getTime())
+              ? scheduleEntry.scheduledDate.getTime()
+              : undefined,
           targetLifts: JSON.stringify({
             exercises,
             accessories,

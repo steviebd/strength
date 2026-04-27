@@ -6,6 +6,7 @@ import {
   batchParallel,
   chunkedInsert,
   chunkedQuery,
+  chunkedQueryMany,
 } from './d1-batch';
 
 describe('d1-batch constants', () => {
@@ -166,6 +167,68 @@ describe('chunkedQuery ordering', () => {
 
     expect(callCount).toBe(3);
     expect(results.map((r) => r.id)).toEqual(ids);
+  });
+});
+
+describe('chunkedQueryMany', () => {
+  it('should return all rows without deduplicating by merge key', async () => {
+    const allRows = [
+      { workoutExerciseId: 'A', setNumber: 1 },
+      { workoutExerciseId: 'A', setNumber: 2 },
+      { workoutExerciseId: 'A', setNumber: 3 },
+      { workoutExerciseId: 'B', setNumber: 1 },
+    ];
+
+    const builder = async (chunk: string[]) => {
+      return allRows.filter((r) => chunk.includes(r.workoutExerciseId));
+    };
+
+    const results = await chunkedQueryMany<(typeof allRows)[number]>(undefined as any, {
+      ids: ['A', 'B'],
+      builder,
+    });
+
+    expect(results).toHaveLength(4);
+    expect(results.map((r) => r.setNumber)).toEqual([1, 2, 3, 1]);
+  });
+
+  it('should chunk large arrays and preserve all rows', async () => {
+    const allRows = Array.from({ length: 250 }, (_, i) => ({
+      templateId: String(Math.floor(i / 3)),
+      orderIndex: i,
+    }));
+
+    let callCount = 0;
+    const builder = async (chunk: string[]) => {
+      callCount++;
+      return allRows.filter((r) => chunk.includes(r.templateId));
+    };
+
+    const ids = Array.from({ length: 100 }, (_, i) => String(i));
+    const results = await chunkedQueryMany<(typeof allRows)[number]>(undefined as any, {
+      ids,
+      chunkSize: 50,
+      builder,
+    });
+
+    expect(callCount).toBe(2);
+    expect(results).toHaveLength(allRows.filter((r) => ids.includes(r.templateId)).length);
+  });
+
+  it('should return empty array for empty ids', async () => {
+    let called = false;
+    const builder = async (): Promise<any[]> => {
+      called = true;
+      return [];
+    };
+
+    const results = await chunkedQueryMany(undefined as any, {
+      ids: [],
+      builder,
+    });
+
+    expect(results).toEqual([]);
+    expect(called).toBe(false);
   });
 });
 

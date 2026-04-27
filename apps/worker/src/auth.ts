@@ -157,16 +157,6 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
     ...(trustedRequestOrigin ? [trustedRequestOrigin] : []),
   ];
 
-  console.log('[AUTH createAuth]', {
-    clientProtocol,
-    xForwardedProto: headers?.get('x-forwarded-proto') ?? 'not present',
-    resolvedBaseURL: baseURL,
-    appEnv: resolvedEnv.APP_ENV,
-    cookiePolicy,
-    trustedOrigins: Array.from(new Set(trustedOrigins)),
-    isDevAuth: isDevAuthEnabled(env),
-  });
-
   return betterAuth({
     ...(baseURL ? { baseURL } : {}),
     secret: resolvedEnv.BETTER_AUTH_SECRET,

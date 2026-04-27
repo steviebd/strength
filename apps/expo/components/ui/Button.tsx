@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Pressable,
   Text,
@@ -9,6 +9,14 @@ import {
   type TextStyle,
   type StyleProp,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { accent, border, radius, text, textRoles, layout } from '@/theme';
 
@@ -29,6 +37,7 @@ interface ButtonProps {
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  attention?: boolean;
 }
 
 const variantStyles: Record<
@@ -123,6 +132,7 @@ export function Button({
   onPress,
   style,
   textStyle,
+  attention = false,
 }: ButtonProps) {
   const v = variantStyles[variant];
   const s = sizeStyles[size];
@@ -130,56 +140,84 @@ export function Button({
   const rendersText =
     typeof content === 'string' || typeof content === 'number' || typeof content === 'undefined';
 
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (attention && !disabled && !loading) {
+      scale.value = withRepeat(
+        withSequence(withTiming(1.05, { duration: 600 }), withTiming(1, { duration: 600 })),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(scale);
+      scale.value = withTiming(1, { duration: 150 });
+    }
+  }, [attention, disabled, loading, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || loading}
-      style={({ pressed }) => [
-        styles.base,
-        {
-          backgroundColor: pressed ? v.bgPressed : v.bg,
-          borderColor: v.borderColor,
-          borderWidth: v.borderWidth,
-          minHeight: s.height,
-          paddingHorizontal: s.paddingHorizontal,
-        },
-        fullWidth && styles.fullWidth,
-        disabled && styles.disabled,
-        style,
-      ]}
-    >
-      {(icon || loading) && (
-        <>
-          {icon && !loading && (
-            <Ionicons name={icon} size={s.iconSize} color={v.textColor} style={styles.icon} />
-          )}
-          {loading && <ActivityIndicator size="small" color={v.textColor} style={styles.loader} />}
-        </>
-      )}
-      {rendersText ? (
-        <Text
-          style={[
-            styles.text,
-            {
-              color: v.textColor,
-              fontSize: s.textRole.fontSize,
-              lineHeight: s.textRole.lineHeight,
-              fontWeight: s.textRole.fontWeight,
-            },
-            textStyle,
-          ]}
-          numberOfLines={numberOfLines}
-          ellipsizeMode="tail"
-        >
-          {content}
-        </Text>
-      ) : (
-        <View style={styles.customContent}>{content}</View>
-      )}
-      {rightIcon && (
-        <Ionicons name={rightIcon} size={s.iconSize} color={v.textColor} style={styles.rightIcon} />
-      )}
-    </Pressable>
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={({ pressed }) => [
+          styles.base,
+          {
+            backgroundColor: pressed ? v.bgPressed : v.bg,
+            borderColor: v.borderColor,
+            borderWidth: v.borderWidth,
+            minHeight: s.height,
+            paddingHorizontal: s.paddingHorizontal,
+          },
+          fullWidth && styles.fullWidth,
+          disabled && styles.disabled,
+          style,
+        ]}
+      >
+        {(icon || loading) && (
+          <>
+            {icon && !loading && (
+              <Ionicons name={icon} size={s.iconSize} color={v.textColor} style={styles.icon} />
+            )}
+            {loading && (
+              <ActivityIndicator size="small" color={v.textColor} style={styles.loader} />
+            )}
+          </>
+        )}
+        {rendersText ? (
+          <Text
+            style={[
+              styles.text,
+              {
+                color: v.textColor,
+                fontSize: s.textRole.fontSize,
+                lineHeight: s.textRole.lineHeight,
+                fontWeight: s.textRole.fontWeight,
+              },
+              textStyle,
+            ]}
+            numberOfLines={numberOfLines}
+            ellipsizeMode="tail"
+          >
+            {content}
+          </Text>
+        ) : (
+          <View style={styles.customContent}>{content}</View>
+        )}
+        {rightIcon && (
+          <Ionicons
+            name={rightIcon}
+            size={s.iconSize}
+            color={v.textColor}
+            style={styles.rightIcon}
+          />
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 
