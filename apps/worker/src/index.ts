@@ -52,7 +52,12 @@ import {
   normalizeWhoopWebhookPayload,
   verifyWebhookSignature,
 } from './whoop/webhook';
-import { isWhoopConnected, getWhoopUserId, getWhoopProfileByUserId } from './whoop/user';
+import {
+  isWhoopConnected,
+  whoopIntegrationExists,
+  getWhoopUserId,
+  getWhoopProfileByUserId,
+} from './whoop/user';
 import {
   getStoredUserTimezone,
   getUtcRangeForLocalDate,
@@ -3466,10 +3471,21 @@ app.post(
   createHandler(async (c, { userId, db }) => {
     const connected = await isWhoopConnected(db, userId);
     if (!connected) {
+      const integrationExists = await whoopIntegrationExists(db, userId);
+      if (!integrationExists) {
+        return c.json(
+          {
+            error: 'WHOOP_NOT_CONNECTED',
+            message: 'WHOOP not connected. Please connect your account.',
+            reauthUrl: null,
+          },
+          401,
+        );
+      }
       return c.json(
         {
           error: 'WHOOP_SESSION_EXPIRED',
-          message: 'WHOOP not connected. Please reconnect your account.',
+          message: 'WHOOP session has expired. Please reconnect your account.',
           reauthUrl: null,
         },
         401,
@@ -3555,10 +3571,21 @@ app.get(
   createHandler(async (c, { userId, db }) => {
     const connected = await isWhoopConnected(db, userId);
     if (!connected) {
+      const integrationExists = await whoopIntegrationExists(db, userId);
+      if (!integrationExists) {
+        return c.json(
+          {
+            error: 'WHOOP_NOT_CONNECTED',
+            message: 'WHOOP not connected. Please connect your account.',
+            reauthUrl: null,
+          },
+          401,
+        );
+      }
       return c.json(
         {
           error: 'WHOOP_SESSION_EXPIRED',
-          message: 'WHOOP not connected. Please reconnect your account.',
+          message: 'WHOOP session has expired. Please reconnect your account.',
           reauthUrl: null,
         },
         401,

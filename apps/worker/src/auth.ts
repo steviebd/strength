@@ -1,4 +1,5 @@
 import { expo } from '@better-auth/expo';
+import { dash } from '@better-auth/infra';
 import { betterAuth } from 'better-auth/minimal';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
@@ -12,6 +13,7 @@ export interface WorkerEnv {
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
   APP_ENV?: string;
   APP_SCHEME?: string;
+  BETTER_AUTH_API_KEY?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   AI_GATEWAY_NAME?: string;
   AI_MODEL_NAME?: string;
@@ -131,6 +133,7 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
     WHOOP_CLIENT_ID: env.WHOOP_CLIENT_ID ?? processEnv.WHOOP_CLIENT_ID,
     WHOOP_CLIENT_SECRET: env.WHOOP_CLIENT_SECRET ?? processEnv.WHOOP_CLIENT_SECRET,
     ENCRYPTION_MASTER_KEY: env.ENCRYPTION_MASTER_KEY ?? processEnv.ENCRYPTION_MASTER_KEY,
+    BETTER_AUTH_API_KEY: env.BETTER_AUTH_API_KEY ?? processEnv.BETTER_AUTH_API_KEY,
   };
 }
 
@@ -185,7 +188,7 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
       secure: cookiePolicy.secure,
       sameSite: cookiePolicy.sameSite,
     },
-    plugins: [expo()],
+    plugins: [expo(), dash({ apiKey: resolvedEnv.BETTER_AUTH_API_KEY })],
   });
 }
 

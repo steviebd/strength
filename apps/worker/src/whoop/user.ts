@@ -41,6 +41,19 @@ export async function isWhoopConnected(
   return !!integration[0];
 }
 
+export async function whoopIntegrationExists(
+  db: DrizzleD1Database<typeof schema>,
+  userId: string,
+): Promise<boolean> {
+  const integration = await db
+    .select()
+    .from(userIntegration)
+    .where(and(eq(userIntegration.userId, userId), eq(userIntegration.provider, 'whoop')))
+    .limit(1);
+
+  return !!integration[0];
+}
+
 export async function getWhoopProfileByUserId(
   db: DrizzleD1Database<typeof schema>,
   userId: string,

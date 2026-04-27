@@ -10,6 +10,17 @@ export class WhoopSessionExpiredError extends Error {
 
 type WhoopReauthCause = 'token_revoked' | 'refresh_failed' | 'no_refresh_token';
 
+export class WhoopNotConnectedError extends Error {
+  code = 'WHOOP_NOT_CONNECTED' as const;
+  message = 'WHOOP not connected. Please connect your account.';
+  reauthUrl: string | null = null;
+
+  constructor() {
+    super('WHOOP not connected. Please connect your account.');
+    this.name = 'WhoopNotConnectedError';
+  }
+}
+
 export class WhoopReauthRequiredError extends Error {
   code = 'WHOOP_REAUTH_REQUIRED' as const;
 
@@ -24,18 +35,30 @@ export class WhoopReauthRequiredError extends Error {
 
 export function isWhoopAuthError(
   error: unknown,
-): error is WhoopSessionExpiredError | WhoopReauthRequiredError {
-  return error instanceof WhoopSessionExpiredError || error instanceof WhoopReauthRequiredError;
+): error is WhoopSessionExpiredError | WhoopReauthRequiredError | WhoopNotConnectedError {
+  return (
+    error instanceof WhoopSessionExpiredError ||
+    error instanceof WhoopReauthRequiredError ||
+    error instanceof WhoopNotConnectedError
+  );
 }
 
 export function toWhoopAuthErrorResponse(
-  error: WhoopSessionExpiredError | WhoopReauthRequiredError,
+  error: WhoopSessionExpiredError | WhoopReauthRequiredError | WhoopNotConnectedError,
 ) {
   if (error instanceof WhoopReauthRequiredError) {
     return {
       error: error.code,
       message: error.message,
       cause: error.cause,
+    };
+  }
+
+  if (error instanceof WhoopNotConnectedError) {
+    return {
+      error: error.code,
+      message: error.message,
+      reauthUrl: error.reauthUrl,
     };
   }
 
