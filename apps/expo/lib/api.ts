@@ -1,10 +1,5 @@
-import { Platform } from 'react-native';
+import { authClient } from './auth-client';
 import { env } from './env';
-import { applyAuthRequestHeaders } from './auth-transport';
-
-type ApiFetchOptions = RequestInit & {
-  __stream?: boolean;
-};
 
 export class ApiError extends Error {
   constructor(
@@ -17,51 +12,38 @@ export class ApiError extends Error {
   }
 }
 
-export function apiFetch<T = unknown>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
-  const url = endpoint.startsWith('http')
-    ? endpoint
-    : `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-  const isNative = Platform.OS !== 'web';
+type ApiFetchOptions = Omit<RequestInit, 'body'> & {
+  __stream?: boolean;
+  body?: BodyInit | Record<string, unknown>;
+};
 
-  const headers = applyAuthRequestHeaders(new Headers(options?.headers));
+export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
+  const isRelative = !endpoint.startsWith('http');
+  const url = isRelative
+    ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
+    : endpoint;
 
-  if (!headers.has('Content-Type') && options?.body) {
-    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-    if (!isFormData) {
-      headers.set('Content-Type', 'application/json');
-    }
+  if (options?.__stream) {
+    return authClient.$fetch(url, options as RequestInit) as Promise<T>;
   }
 
-  return fetch(url, {
-    ...options,
-    headers,
-    credentials: isNative ? 'omit' : 'include',
-  }).then(async (res) => {
-    if (!res.ok) {
-      let details: unknown = null;
-      try {
-        details = await res.json();
-      } catch {}
+  const result = await authClient.$fetch(url, options as RequestInit);
 
-      const message =
-        details && typeof details === 'object' && 'message' in details
-          ? String((details as { message?: unknown }).message)
-          : `Request failed: ${res.status}`;
+  if (result.error) {
+    const message =
+      'message' in result.error
+        ? String(result.error.message)
+        : (result.error.statusText ?? `Request failed: ${result.error.status}`);
+    throw new ApiError(message, result.error.status, result.error.statusText);
+  }
 
-      throw new ApiError(message, res.status, details);
-    }
-    if (options?.__stream) {
-      return res as unknown as Promise<T>;
-    }
-    if (res.status === 204) {
-      return undefined as T;
-    }
+  if (result.data === null && result.error === null) {
+    return undefined as T;
+  }
 
-    const text = await res.text();
-    if (!text.trim()) {
-      return undefined as T;
-    }
+  if (!result.data || (typeof result.data === 'string' && !result.data.trim())) {
+    return undefined as T;
+  }
 
-    return JSON.parse(text) as T;
-  });
+  return result.data as T;
 }
