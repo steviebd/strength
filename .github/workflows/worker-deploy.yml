@@ -47,7 +47,6 @@ jobs:
         working-directory: apps/worker
         run: |
           bun run generate:wrangler --env staging --d1-mode remote
-          bunx wrangler d1 migrations apply strength-db-staging --remote --env staging
           bunx wrangler deploy --env staging
 
   deploy-production:
@@ -84,5 +83,4 @@ jobs:
         working-directory: apps/worker
         run: |
           bun run generate:wrangler --env prod --d1-mode remote
-          bunx wrangler d1 migrations apply strength-db-prod --remote --env prod
           bunx wrangler deploy --env prod
