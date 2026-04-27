@@ -12,7 +12,7 @@
     "deploy:staging": "infisical run --env=staging --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env staging --d1-mode remote -- wrangler deploy --env staging",
     "deploy:prod": "infisical run --env=prod --project-config-dir ../.. -- bash ./scripts/with-generated-wrangler.sh --env prod --d1-mode remote -- wrangler deploy --env prod",
     "generate:wrangler": "tsx scripts/generate-wrangler-config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.5",
