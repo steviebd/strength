@@ -114,7 +114,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       try {
         await apiFetch('/api/profile/preferences', {
           method: 'PUT',
-          body: JSON.stringify({ weightUnit: unit }),
+          body: { weightUnit: unit },
         });
       } catch (error) {
         setWeightUnitState(previousUnit);
@@ -141,7 +141,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       try {
         await apiFetch('/api/profile/preferences', {
           method: 'PUT',
-          body: JSON.stringify({ timezone: nextTimezone }),
+          body: { timezone: nextTimezone },
         });
       } catch (error) {
         setTimezoneState(previousTimezone);
@@ -168,7 +168,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     try {
       await apiFetch('/api/profile/preferences', {
         method: 'PUT',
-        body: JSON.stringify({ weightPromptedAt: now }),
+        body: { weightPromptedAt: now },
       });
     } catch (error) {
       setWeightPromptedAtState(null);

@@ -60,7 +60,7 @@ export default function AppLayout() {
     mutationFn: (bodyweightKg: number) =>
       apiFetch('/api/nutrition/body-stats', {
         method: 'POST',
-        body: JSON.stringify({ bodyweightKg }),
+        body: { bodyweightKg },
       }),
   });
 

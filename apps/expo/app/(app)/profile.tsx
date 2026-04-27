@@ -39,7 +39,7 @@ async function fetchWhoopStatus(): Promise<WhoopStatus> {
 async function connectWhoop(returnTo: string): Promise<{ authUrl?: string; error?: string }> {
   return apiFetch<{ authUrl?: string; error?: string; message?: string }>('/api/whoop/auth', {
     method: 'POST',
-    body: JSON.stringify({ returnTo }),
+    body: { returnTo },
   }).catch(() => ({ error: 'Failed to connect' }));
 }
 
@@ -94,7 +94,7 @@ export default function Profile() {
     mutationFn: (bodyweightKg: number) =>
       apiFetch('/api/nutrition/body-stats', {
         method: 'POST',
-        body: JSON.stringify({ bodyweightKg }),
+        body: { bodyweightKg },
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['body-stats'] });

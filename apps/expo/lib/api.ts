@@ -17,17 +17,30 @@ type ApiFetchOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown>;
 };
 
+function normalizeBody(body: ApiFetchOptions['body']): ApiFetchOptions['body'] {
+  if (typeof body === 'string') {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return body;
+    }
+  }
+  return body;
+}
+
 export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
   const isRelative = !endpoint.startsWith('http');
   const url = isRelative
     ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
     : endpoint;
 
-  if (options?.__stream) {
-    return authClient.$fetch(url, options as RequestInit) as Promise<T>;
+  const normalizedOptions = options ? { ...options, body: normalizeBody(options.body) } : options;
+
+  if (normalizedOptions?.__stream) {
+    return authClient.$fetch(url, normalizedOptions as RequestInit) as Promise<T>;
   }
 
-  const result = await authClient.$fetch(url, options as RequestInit);
+  const result = await authClient.$fetch(url, normalizedOptions as RequestInit);
 
   if (result.error) {
     const message =
