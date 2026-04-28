@@ -192,16 +192,15 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
       secure: cookiePolicy.secure,
       sameSite: cookiePolicy.sameSite,
     },
-    socialProviders: {
-      ...(resolvedEnv.GOOGLE_CLIENT_ID && resolvedEnv.GOOGLE_CLIENT_SECRET
+    socialProviders:
+      resolvedEnv.GOOGLE_CLIENT_ID && resolvedEnv.GOOGLE_CLIENT_SECRET
         ? {
             google: {
               clientId: resolvedEnv.GOOGLE_CLIENT_ID,
               clientSecret: resolvedEnv.GOOGLE_CLIENT_SECRET,
             },
           }
-        : {}),
-    },
+        : {},
     plugins: [expo(), dash({ apiKey: resolvedEnv.BETTER_AUTH_API_KEY })],
   });
 }

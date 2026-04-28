@@ -75,7 +75,7 @@ router.get(
           ),
         })),
       );
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch templates' }, 500);
     }
   }),
@@ -142,7 +142,7 @@ router.get(
         .orderBy(schema.templateExercises.orderIndex)
         .all();
       return c.json({ ...template, exercises: templateExercisesResult });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch template' }, 500);
     }
   }),
@@ -204,7 +204,7 @@ router.delete(
         .where(and(eq(schema.templates.id, id), eq(schema.templates.userId, userId)))
         .run();
       return c.json({ success: result.success });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to delete template' }, 500);
     }
   }),
@@ -240,7 +240,7 @@ router.get(
         .all();
 
       return c.json(exercises);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch template exercises' }, 500);
     }
   }),
@@ -377,7 +377,7 @@ router.delete(
         )
         .run();
       return c.json({ success: result.success });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to remove exercise from template' }, 500);
     }
   }),
@@ -429,7 +429,7 @@ router.post(
         });
       }
       return c.json(newTemplate, 201);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to copy template' }, 500);
     }
   }),

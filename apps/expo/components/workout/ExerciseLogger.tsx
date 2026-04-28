@@ -1,5 +1,5 @@
-import { useState, useCallback, type RefObject } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState, useCallback, useRef, type RefObject } from 'react';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { SetLogger } from './SetLogger';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -27,6 +27,7 @@ interface ExerciseLoggerProps {
   weightUnit?: 'kg' | 'lbs';
   isEditMode?: boolean;
   getSetRef?: (setId: string) => RefObject<View | null>;
+  onSetLayout?: (setId: string, layout: { y: number; height: number }) => void;
 }
 
 export function ExerciseLogger({
@@ -38,8 +39,11 @@ export function ExerciseLogger({
   weightUnit = 'kg',
   isEditMode = false,
   getSetRef,
+  onSetLayout,
 }: ExerciseLoggerProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const setsContainerYRef = useRef(0);
+  const setLocalLayoutsRef = useRef(new Map<string, { y: number; height: number }>());
 
   const completedSets = sets.filter((s) => s.completed).length;
   const totalSets = sets.length;
@@ -71,6 +75,34 @@ export function ExerciseLogger({
       onSetsUpdate([...sets, newSet]);
     }
   }, [exercise.id, onAddSet, onSetsUpdate, sets]);
+
+  const handleSetLayout = useCallback(
+    (setId: string, event: LayoutChangeEvent) => {
+      const localLayout = {
+        y: event.nativeEvent.layout.y,
+        height: event.nativeEvent.layout.height,
+      };
+      setLocalLayoutsRef.current.set(setId, localLayout);
+      onSetLayout?.(setId, {
+        y: setsContainerYRef.current + localLayout.y,
+        height: localLayout.height,
+      });
+    },
+    [onSetLayout],
+  );
+
+  const handleSetsContainerLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      setsContainerYRef.current = event.nativeEvent.layout.y;
+      setLocalLayoutsRef.current.forEach((layout, setId) => {
+        onSetLayout?.(setId, {
+          y: setsContainerYRef.current + layout.y,
+          height: layout.height,
+        });
+      });
+    },
+    [onSetLayout],
+  );
 
   const containerStyle = [
     styles.container,
@@ -114,18 +146,19 @@ export function ExerciseLogger({
       </Pressable>
 
       {isExpanded && (
-        <View style={styles.setsContainer}>
+        <View style={styles.setsContainer} onLayout={handleSetsContainerLayout}>
           {sets.map((set, index) => (
-            <SetLogger
-              ref={getSetRef?.(set.id)}
-              key={`${set.id}-${index}`}
-              setNumber={index + 1}
-              set={set}
-              onUpdate={(updatedSet) => handleSetUpdate(index, updatedSet)}
-              onDelete={onDeleteSet ? () => onDeleteSet(exercise.id, set.id) : undefined}
-              weightUnit={weightUnit}
-              isEditMode={isEditMode}
-            />
+            <View key={`${set.id}-${index}`} onLayout={(event) => handleSetLayout(set.id, event)}>
+              <SetLogger
+                ref={getSetRef?.(set.id)}
+                setNumber={index + 1}
+                set={set}
+                onUpdate={(updatedSet) => handleSetUpdate(index, updatedSet)}
+                onDelete={onDeleteSet ? () => onDeleteSet(exercise.id, set.id) : undefined}
+                weightUnit={weightUnit}
+                isEditMode={isEditMode}
+              />
+            </View>
           ))}
 
           {isEditMode && (

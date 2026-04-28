@@ -324,17 +324,28 @@ export async function updateProgramCycleOneRMs(
   db: any,
   userId: string,
   cycleId: string,
-  data: { squat1rm?: number; bench1rm?: number; deadlift1rm?: number; ohp1rm?: number },
+  data: {
+    squat1rm?: number | null;
+    bench1rm?: number | null;
+    deadlift1rm?: number | null;
+    ohp1rm?: number | null;
+  },
 ) {
   const existingCycle = await getProgramCycleById(db, cycleId, userId);
   if (!existingCycle) {
     return null;
   }
 
+  const oneRMUpdates: Record<string, number> = {};
+  if (data.squat1rm != null) oneRMUpdates.squat1rm = data.squat1rm;
+  if (data.bench1rm != null) oneRMUpdates.bench1rm = data.bench1rm;
+  if (data.deadlift1rm != null) oneRMUpdates.deadlift1rm = data.deadlift1rm;
+  if (data.ohp1rm != null) oneRMUpdates.ohp1rm = data.ohp1rm;
+
   return db
     .update(schema.userProgramCycles)
     .set({
-      ...data,
+      ...oneRMUpdates,
       startingSquat1rm: existingCycle.startingSquat1rm ?? existingCycle.squat1rm,
       startingBench1rm: existingCycle.startingBench1rm ?? existingCycle.bench1rm,
       startingDeadlift1rm: existingCycle.startingDeadlift1rm ?? existingCycle.deadlift1rm,

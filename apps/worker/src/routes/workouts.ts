@@ -69,7 +69,7 @@ router.get(
           exerciseCount: exerciseCountMap.get(w.id) ?? 0,
         })),
       );
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch workouts' }, 500);
     }
   }),
@@ -163,7 +163,7 @@ router.post(
         }
       }
       return c.json(workout, 201);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to create workout' }, 500);
     }
   }),
@@ -248,7 +248,7 @@ router.get(
         exerciseCount: aggregates?.exerciseCount ?? 0,
         exercises: exercisesWithSets,
       });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch workout' }, 500);
     }
   }),
@@ -270,7 +270,7 @@ router.put(
         return c.json({ message: 'Workout not found' }, 404);
       }
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to update workout' }, 500);
     }
   }),
@@ -298,7 +298,7 @@ router.delete(
         .run();
 
       return c.json({ success: result.success });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to delete workout' }, 500);
     }
   }),
@@ -350,7 +350,7 @@ router.put(
       await advanceProgramCycleForWorkout(db, userId, id);
 
       return c.json({ ...result, exerciseCount: aggregates?.exerciseCount ?? 0 });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to complete workout' }, 500);
     }
   }),
@@ -381,7 +381,7 @@ router.post(
         .returning()
         .get();
       return c.json(result, 201);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to add exercise to workout' }, 500);
     }
   }),
@@ -404,7 +404,7 @@ router.delete(
         )
         .run();
       return c.json({ success: result.success });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to remove exercise from workout' }, 500);
     }
   }),
@@ -439,7 +439,7 @@ router.post(
         .returning()
         .get();
       return c.json(result, 201);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to create set' }, 500);
     }
   }),
@@ -467,7 +467,7 @@ router.put(
         .returning()
         .get();
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to update set' }, 500);
     }
   }),
@@ -482,7 +482,7 @@ router.delete(
       if (set instanceof Response) return set;
       const result = await db.delete(schema.workoutSets).where(eq(schema.workoutSets.id, id)).run();
       return c.json({ success: result.success });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to delete set' }, 500);
     }
   }),
@@ -510,7 +510,7 @@ router.get(
           }),
         ),
       });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch last workout data' }, 500);
     }
   }),

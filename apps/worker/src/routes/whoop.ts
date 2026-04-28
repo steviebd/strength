@@ -1,5 +1,4 @@
 import { eq, and, gt, desc } from 'drizzle-orm';
-import * as schema from '@strength/db';
 import { whoopRecovery, whoopSleep, whoopCycle, whoopWorkout } from '@strength/db';
 import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';

@@ -11,6 +11,7 @@ import {
   TextInput,
   StyleSheet,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +24,7 @@ import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
+import { resolveSetCompletionNavigation } from '@/lib/workoutSetNavigation';
 import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
 import { ScrollProvider } from '@/context/ScrollContext';
 import { colors, spacing, radius, typography } from '@/theme';
@@ -33,6 +35,21 @@ interface ExerciseLayout {
   height: number;
 }
 
+interface SetLayout {
+  exerciseId: string;
+  y: number;
+  height: number;
+}
+
+type ScrollToSetOptions = { direction?: 'down'; offset?: number };
+
+interface PendingSetScroll {
+  setId: string;
+  exerciseIndex: number;
+  setIndex: number;
+  options?: ScrollToSetOptions;
+}
+
 async function fetchWorkout(workoutId: string): Promise<Workout> {
   return apiFetch<Workout>(`/api/workouts/${workoutId}`);
 }
@@ -40,10 +57,13 @@ async function fetchWorkout(workoutId: string): Promise<Workout> {
 export default function WorkoutSessionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { workoutId, source, cycleId } = useLocalSearchParams<{
+  const { width: windowWidth } = useWindowDimensions();
+  const isNarrowHeader = windowWidth < 400;
+  const { workoutId, source, cycleId, programName } = useLocalSearchParams<{
     workoutId?: string;
     source?: string;
     cycleId?: string;
+    programName?: string;
   }>();
   const {
     workout,
@@ -70,6 +90,7 @@ export default function WorkoutSessionScreen() {
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [exerciseLayouts, setExerciseLayouts] = useState<ExerciseLayout[]>([]);
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [pendingSetScroll, setPendingSetScroll] = useState<PendingSetScroll | null>(null);
   const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
@@ -77,6 +98,7 @@ export default function WorkoutSessionScreen() {
 
   const scrollYRef = useRef(0);
   const setRefsRef = useRef(new Map<string, React.RefObject<View | null>>());
+  const setLayoutsRef = useRef(new Map<string, SetLayout>());
 
   const {
     data: loadedWorkout,
@@ -102,26 +124,59 @@ export default function WorkoutSessionScreen() {
     return setRefsRef.current.get(setId)!;
   }, []);
 
-  const scrollToSet = useCallback(
-    (setId: string, options?: { direction?: 'down'; offset?: number }) => {
-      const ref = setRefsRef.current.get(setId);
-      if (!ref?.current || !scrollViewRef.current) return;
+  const scrollToSetNow = useCallback(
+    (setId: string, options?: ScrollToSetOptions) => {
+      if (!scrollViewRef.current) return false;
 
-      (ref.current as any).measure(
-        (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-          if (options?.direction === 'down') {
-            const targetScrollY = scrollYRef.current + (options.offset ?? 120);
-            scrollViewRef.current.scrollTo({ y: targetScrollY, animated: true });
-          } else {
-            const targetPageY = headerHeight + 120;
-            const targetScrollY = scrollYRef.current + pageY - targetPageY;
-            scrollViewRef.current.scrollTo({ y: Math.max(0, targetScrollY), animated: true });
-          }
-        },
-      );
+      if (options?.direction === 'down') {
+        const targetScrollY = scrollYRef.current + (options.offset ?? 120);
+        scrollViewRef.current.scrollTo({ y: targetScrollY, animated: true });
+        return true;
+      }
+
+      const setLayout = setLayoutsRef.current.get(setId);
+      const exerciseLayout = setLayout
+        ? exerciseLayouts.find((layout) => layout.id === setLayout.exerciseId)
+        : null;
+
+      if (!setLayout || !exerciseLayout) return false;
+
+      const targetScrollY = exerciseLayout.y + setLayout.y + spacing.md - 120;
+      scrollViewRef.current.scrollTo({ y: Math.max(0, targetScrollY), animated: true });
+      return true;
     },
-    [headerHeight],
+    [exerciseLayouts],
   );
+
+  const queueScrollToSet = useCallback((target: PendingSetScroll) => {
+    setCurrentExerciseIndex(target.exerciseIndex);
+    setCurrentSetIndex(target.setIndex);
+    setPendingSetScroll(target);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingSetScroll) return;
+
+    let animationFrame: number | null = null;
+    let attempts = 0;
+    const scrollWhenLayoutIsReady = () => {
+      const didScroll = scrollToSetNow(pendingSetScroll.setId, pendingSetScroll.options);
+      if (didScroll || attempts >= 4) {
+        setPendingSetScroll(null);
+        return;
+      }
+      attempts++;
+      animationFrame = requestAnimationFrame(scrollWhenLayoutIsReady);
+    };
+
+    animationFrame = requestAnimationFrame(scrollWhenLayoutIsReady);
+
+    return () => {
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [pendingSetScroll, scrollToSetNow]);
 
   const handleScroll = useCallback((event: any) => {
     scrollYRef.current = event.nativeEvent.contentOffset.y;
@@ -185,40 +240,41 @@ export default function WorkoutSessionScreen() {
           }
         });
 
-      const wasSetComplete = prevSets.map((s) => s.isComplete);
       const isSetComplete = sets.map((s: any) => s.completed);
 
-      const justCompletedIndex = isSetComplete.findIndex(
-        (completed: boolean, idx: number) => completed && !wasSetComplete[idx],
+      const navigationTarget = resolveSetCompletionNavigation(
+        exercises,
+        exerciseIndex,
+        sets.map((set: any, idx: number) => ({
+          id: set.id ?? prevSets[idx]?.id,
+          isComplete: set.completed,
+        })),
       );
 
-      if (justCompletedIndex >= 0) {
-        const nextSetIndex = justCompletedIndex + 1;
-        if (nextSetIndex < sets.length) {
-          setCurrentSetIndex(nextSetIndex);
-          setCurrentExerciseIndex(exerciseIndex);
-          scrollToSet(sets[nextSetIndex].id);
-        } else if (nextSetIndex === sets.length) {
-          const nextExerciseIndex = exerciseIndex + 1;
-          if (nextExerciseIndex < exercises.length) {
-            setCurrentExerciseIndex(nextExerciseIndex);
-            setCurrentSetIndex(0);
-            const nextSetId = exercises[nextExerciseIndex].sets[0]?.id;
-            if (nextSetId) {
-              scrollToSet(nextSetId);
-            }
-          } else {
-            setCurrentExerciseIndex(exerciseIndex);
-            setCurrentSetIndex(justCompletedIndex);
-            scrollToSet(sets[justCompletedIndex].id, { direction: 'down', offset: 120 });
-          }
-        }
+      if (navigationTarget?.type === 'next') {
+        queueScrollToSet({
+          setId: navigationTarget.setId,
+          exerciseIndex: navigationTarget.exerciseIndex,
+          setIndex: navigationTarget.setIndex,
+        });
+      } else if (navigationTarget?.type === 'final') {
+        queueScrollToSet({
+          setId: navigationTarget.setId,
+          exerciseIndex: navigationTarget.exerciseIndex,
+          setIndex: navigationTarget.setIndex,
+          options: { direction: 'down', offset: 120 },
+        });
       }
 
-      const anyIncomplete = exercises.some((e) => e.sets.some((s) => !s.isComplete));
+      const anyIncomplete = exercises.some((exercise, idx) => {
+        if (idx === exerciseIndex) {
+          return isSetComplete.some((completed: boolean) => !completed);
+        }
+        return exercise.sets.some((s) => !s.isComplete);
+      });
       setShowFloatingPill(anyIncomplete);
     },
-    [exercises, updateSet, scrollToSet],
+    [exercises, queueScrollToSet, updateSet],
   );
 
   const handleDeleteSet = useCallback(
@@ -243,6 +299,13 @@ export default function WorkoutSessionScreen() {
     [exercises],
   );
 
+  const handleSetLayout = useCallback(
+    (exerciseId: string, setId: string, layout: { y: number; height: number }) => {
+      setLayoutsRef.current.set(setId, { exerciseId, ...layout });
+    },
+    [],
+  );
+
   const scrollToCurrentExercise = useCallback(() => {
     const layout = exerciseLayouts.find((l) => l.id === exercises[currentExerciseIndex]?.id);
     if (layout && scrollViewRef.current) {
@@ -258,9 +321,7 @@ export default function WorkoutSessionScreen() {
       if (setIndex !== undefined) {
         const setId = exercises[exerciseIndex]?.sets[setIndex]?.id;
         if (setId) {
-          scrollToSet(setId);
-          setCurrentExerciseIndex(exerciseIndex);
-          setCurrentSetIndex(setIndex);
+          queueScrollToSet({ setId, exerciseIndex, setIndex });
           return;
         }
       }
@@ -273,7 +334,7 @@ export default function WorkoutSessionScreen() {
         setCurrentExerciseIndex(exerciseIndex);
       }
     },
-    [exerciseLayouts, exercises, scrollToSet],
+    [exerciseLayouts, exercises, queueScrollToSet],
   );
 
   const findFirstIncompleteSet = useCallback(() => {
@@ -299,13 +360,41 @@ export default function WorkoutSessionScreen() {
     }
     queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     if (isProgramOneRMTest && typeof cycleId === 'string') {
-      router.push(`/program-1rm-test?cycleId=${cycleId}`);
+      const liftMaxes: Record<string, number | null> = {
+        squat: null,
+        bench: null,
+        deadlift: null,
+        ohp: null,
+      };
+      const nameToKey: Record<string, string> = {
+        squat: 'squat',
+        'bench press': 'bench',
+        deadlift: 'deadlift',
+        'overhead press': 'ohp',
+      };
+      for (const exercise of exercises) {
+        const key = nameToKey[exercise.name.toLowerCase()];
+        if (!key) continue;
+        const maxWeight = exercise.sets
+          .filter((s) => s.isComplete && s.weight !== null)
+          .reduce((max, s) => Math.max(max, s.weight ?? 0), 0);
+        if (maxWeight > 0) {
+          liftMaxes[key] = maxWeight;
+        }
+      }
+      const params = new URLSearchParams({ cycleId });
+      if (liftMaxes.squat !== null) params.set('squatMax', String(liftMaxes.squat));
+      if (liftMaxes.bench !== null) params.set('benchMax', String(liftMaxes.bench));
+      if (liftMaxes.deadlift !== null) params.set('deadliftMax', String(liftMaxes.deadlift));
+      if (liftMaxes.ohp !== null) params.set('ohpMax', String(liftMaxes.ohp));
+      router.push(`/program-1rm-test?${params.toString()}`);
       return;
     }
     router.push('/(app)/home');
   }, [
     completeWorkout,
     cycleId,
+    exercises,
     isProgramOneRMTest,
     isProgramSession,
     queryClient,
@@ -410,12 +499,25 @@ export default function WorkoutSessionScreen() {
             label: 'Discard',
             variant: 'secondary' as const,
             onPress: async () => {
-              await discardWorkout();
-              if (isProgramOneRMTest && typeof cycleId === 'string') {
-                router.push(`/program-1rm-test?cycleId=${cycleId}`);
+              const hasEnteredData = exercises.some((e) =>
+                e.sets.some((s) => (s.weight !== null && s.weight > 0) || s.isComplete),
+              );
+              const doDiscard = async () => {
+                await discardWorkout();
+                router.push('/(app)/workouts');
+              };
+              if (isProgramOneRMTest && hasEnteredData) {
+                Alert.alert(
+                  'Discard 1RM Test?',
+                  'You have entered set data. Are you sure you want to discard this 1RM test?',
+                  [
+                    { text: 'Keep', style: 'cancel' },
+                    { text: 'Discard', style: 'destructive', onPress: doDiscard },
+                  ],
+                );
                 return;
               }
-              router.push('/(app)/workouts');
+              await doDiscard();
             },
           },
           { label: 'Complete', variant: 'primary' as const, onPress: handleCompleteWorkout },
@@ -451,9 +553,19 @@ export default function WorkoutSessionScreen() {
           <View style={styles.headerTop}>
             <View style={styles.headerLeft}>
               <Text style={styles.subtitle}>
-                {isViewingCompleted ? 'Completed Workout' : 'Active Workout'}
+                {isProgramOneRMTest
+                  ? '1RM Test'
+                  : isViewingCompleted
+                    ? 'Completed Workout'
+                    : 'Active Workout'}
               </Text>
-              <Text style={styles.title}>{workout?.name || 'Workout'}</Text>
+              <Text
+                style={[styles.title, isProgramOneRMTest && isNarrowHeader && styles.titleNarrow]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {isProgramOneRMTest && programName ? programName : workout?.name || 'Workout'}
+              </Text>
             </View>
             <View style={styles.headerRight}>
               <Text style={styles.durationPrimary}>{formattedDuration}</Text>
@@ -507,6 +619,7 @@ export default function WorkoutSessionScreen() {
                     weightUnit={weightUnit}
                     isEditMode={isViewingCompleted ? isEditing : true}
                     getSetRef={getSetRef}
+                    onSetLayout={(setId, layout) => handleSetLayout(exercise.id, setId, layout)}
                   />
                 </View>
               );
@@ -691,6 +804,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.xxl,
     fontWeight: typography.fontWeights.bold,
+  },
+  titleNarrow: {
+    fontSize: typography.fontSizes.lg,
   },
   durationPrimary: {
     color: colors.text,

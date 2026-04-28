@@ -8,9 +8,7 @@ import {
   type SystemPromptContext,
   type NutritionAssistantContext,
   type TrainingContext,
-  type WhoopData,
   type DailyIntake,
-  type MacroTargets,
 } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';

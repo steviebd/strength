@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { ScreenScrollView } from '@/components/ui/Screen';
-import { exerciseLibrary, type ExerciseLibraryItem } from '@strength/db';
+import { exerciseLibrary } from '@strength/db';
 import { ensurePersistedExercise } from '@/lib/exercises';
 import { colors, spacing, radius } from '@/theme';
 import {

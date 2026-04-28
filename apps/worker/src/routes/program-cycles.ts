@@ -1,33 +1,8 @@
-import { eq, and, or, gt, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
-import { whoopRecovery, whoopSleep, whoopCycle, whoopWorkout, formatLocalDate } from '@strength/db';
+import { formatLocalDate } from '@strength/db';
 import { createRouter } from '../lib/router';
-import { createHandler, createDb } from '../api/auth';
-import { buildWhoopAuthorizationUrl, exchangeCodeForTokens } from '../whoop/auth';
-import { storeWhoopTokens, revokeWhoopIntegration } from '../whoop/token-rotation';
-import { getWhoopProfile } from '../whoop/api';
-import { syncAllWhoopData, upsertWhoopProfile } from '../whoop/sync';
-import { isWhoopAuthError, toWhoopAuthErrorResponse } from '../whoop/errors';
-import { getValidWhoopToken } from '../whoop/token-manager';
-import {
-  handleWebhookEvent,
-  normalizeWhoopWebhookPayload,
-  verifyWebhookSignature,
-} from '../whoop/webhook';
-import {
-  isWhoopConnected,
-  whoopIntegrationExists,
-  getWhoopUserId,
-  getWhoopProfileByUserId,
-} from '../whoop/user';
-import { resolveWorkerEnv } from '../auth';
-import {
-  encodeWhoopOAuthState,
-  decodeWhoopOAuthState,
-  buildWhoopCallbackRedirect,
-  resolveWhoopRedirectBaseURL,
-  isAllowedWhoopRedirectBaseURL,
-} from '../lib/whoop-oauth';
+import { createHandler } from '../api/auth';
 import { requireOwnedProgramCycle, requireOwnedProgramCycleWorkout } from '../api/guards';
 import {
   parseProgramTargetLifts,
@@ -40,7 +15,6 @@ import {
 } from '../lib/program-helpers';
 import { getProgramCycleWithWorkouts, getProgramCycleById } from '@strength/db';
 import { getUtcRangeForLocalDate } from '../lib/timezone';
-import { parseJsonObject, getObject, getNumber } from '../lib/parsing';
 
 const router = createRouter();
 
@@ -110,6 +84,8 @@ router.get(
           };
           if (isWorkoutComplete) {
             completed.push(scheduleWorkout);
+          } else {
+            upcoming.push(scheduleWorkout);
           }
           continue;
         }
@@ -147,6 +123,17 @@ router.get(
             exercises,
             scheduledAt: scheduledTime,
             status: 'upcoming' as const,
+          });
+        } else {
+          thisWeek.push({
+            cycleWorkoutId: workout.id,
+            workoutId: workout.workoutId ?? null,
+            weekNumber: workout.weekNumber,
+            sessionNumber: workout.sessionNumber,
+            name: workout.sessionName,
+            exercises,
+            scheduledAt: scheduledTime,
+            status: 'missed' as const,
           });
         }
       }
@@ -233,7 +220,7 @@ router.put(
       }
 
       return c.json(updated);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to update program cycle' }, 500);
     }
   }),
@@ -252,7 +239,7 @@ router.get(
         return c.json({ message: 'Program cycle not found' }, 404);
       }
       return c.json(result.workouts);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch workouts' }, 500);
     }
   }),
@@ -302,7 +289,7 @@ router.get(
           },
         })),
       });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch current workout' }, 500);
     }
   }),
@@ -323,7 +310,7 @@ router.post(
       }
 
       return c.json({ workoutId: workout.id, workoutName: workout.name }, 201);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to create 1RM test workout' }, 500);
     }
   }),
@@ -344,7 +331,7 @@ router.get(
       }
 
       return c.json(workout);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch 1RM test workout' }, 500);
     }
   }),
@@ -409,7 +396,7 @@ router.put(
       }
 
       return c.json(updatedWorkout);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to update 1RM test workout' }, 500);
     }
   }),
@@ -583,7 +570,7 @@ router.post(
         return c.json({ message: 'Failed to update program cycle' }, 500);
       }
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to complete session' }, 500);
     }
   }),
@@ -609,9 +596,15 @@ router.put(
       const cycleWorkout = await requireOwnedProgramCycleWorkout({ userId, db }, cycleWorkoutId);
       if (cycleWorkout instanceof Response) return cycleWorkout;
 
+      const profileTimezone = await db
+        .select({ timezone: schema.userPreferences.timezone })
+        .from(schema.userPreferences)
+        .where(eq(schema.userPreferences.userId, userId))
+        .get();
+      const timezone = profileTimezone?.timezone ?? 'UTC';
       const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(
-        formatLocalDate(new Date(), 'UTC'),
-        'UTC',
+        formatLocalDate(new Date(), timezone),
+        timezone,
       );
       let warning: 'date_collision' | undefined;
       const existingScheduledAt = cycleWorkout.scheduledAt;

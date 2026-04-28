@@ -81,13 +81,6 @@ function getStatusBadge(
   }
 }
 
-interface DaySchedule {
-  date: Date;
-  workout: ProgramScheduleWorkout | null;
-  isRestDay: boolean;
-  isToday: boolean;
-}
-
 interface SessionRowProps {
   workout: ProgramScheduleWorkout;
   onStart: (cycleWorkoutId: string) => void;
@@ -99,9 +92,10 @@ interface SessionRowProps {
 function SessionRow({ workout, onStart, onOpen, onReschedule, isStarting }: SessionRowProps) {
   const badge = getStatusBadge(workout, false, false);
   const canOpen = workout.workoutId != null;
+  const isComplete = workout.status === 'complete';
 
   return (
-    <Surface style={styles.sessionSurface}>
+    <View style={styles.sessionContainer}>
       <View style={styles.sessionHeader}>
         <View style={styles.sessionInfo}>
           <Text style={styles.sessionName}>{workout.name}</Text>
@@ -126,12 +120,14 @@ function SessionRow({ workout, onStart, onOpen, onReschedule, isStarting }: Sess
         </View>
       </View>
       <View style={styles.sessionActions}>
-        <ActionButton
-          label={isStarting ? 'Starting...' : 'Start'}
-          icon="play"
-          onPress={() => onStart(workout.cycleWorkoutId)}
-          disabled={isStarting}
-        />
+        {!isComplete && (
+          <ActionButton
+            label={isStarting ? 'Starting...' : 'Start'}
+            icon="play"
+            onPress={() => onStart(workout.cycleWorkoutId)}
+            disabled={isStarting}
+          />
+        )}
         {canOpen && (
           <ActionButton
             label="Open"
@@ -140,30 +136,16 @@ function SessionRow({ workout, onStart, onOpen, onReschedule, isStarting }: Sess
             onPress={() => onOpen(workout.workoutId!, workout.cycleWorkoutId)}
           />
         )}
-        <ActionButton
-          label="Reschedule"
-          icon="calendar-outline"
-          variant="ghost"
-          onPress={() => onReschedule(workout)}
-        />
+        {!isComplete && (
+          <ActionButton
+            label="Reschedule"
+            icon="calendar-outline"
+            variant="ghost"
+            onPress={() => onReschedule(workout)}
+          />
+        )}
       </View>
-    </Surface>
-  );
-}
-
-interface RestDayRowProps {
-  date: Date;
-}
-
-function RestDayRow({ date }: RestDayRowProps) {
-  return (
-    <Surface style={styles.restDaySurface}>
-      <View style={styles.restDayContent}>
-        <Text style={styles.restDayLabel}>Rest Day</Text>
-        <Text style={styles.restDayDate}>{formatDisplayDate(date)}</Text>
-      </View>
-      <Badge label="Rest Day" tone="neutral" />
-    </Surface>
+    </View>
   );
 }
 
@@ -338,58 +320,45 @@ export default function ProgramScheduleScreen() {
   const startWorkout = useStartCycleWorkout();
   const rescheduleWorkout = useRescheduleWorkout();
 
-  const [displayWeekStart, setDisplayWeekStart] = useState<Date>(() => getMondayOfWeek(new Date()));
+  const [daysToShow, setDaysToShow] = useState(14);
   const [startingWorkoutId, setStartingWorkoutId] = useState<string | null>(null);
   const [rescheduleModalWorkout, setRescheduleModalWorkout] =
     useState<ProgramScheduleWorkout | null>(null);
 
-  const goToPreviousWeek = useCallback(() => {
-    setDisplayWeekStart((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() - 7);
-      return d;
-    });
-  }, []);
+  const allWorkouts = useMemo(() => {
+    if (!schedule) return [];
+    return [...schedule.thisWeek, ...schedule.upcoming, ...schedule.completed];
+  }, [schedule]);
 
-  const goToNextWeek = useCallback(() => {
-    setDisplayWeekStart((prev) => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + 7);
-      return d;
-    });
-  }, []);
+  const unscheduledWorkouts = useMemo(() => {
+    return allWorkouts.filter((w) => w.status === 'unscheduled');
+  }, [allWorkouts]);
 
-  const goToToday = useCallback(() => {
-    setDisplayWeekStart(getMondayOfWeek(new Date()));
-  }, []);
-
-  const weekDays = useMemo<DaySchedule[]>(() => {
-    const days: DaySchedule[] = [];
+  const timelineDays = useMemo(() => {
+    const days: {
+      date: Date;
+      isToday: boolean;
+      workout: ProgramScheduleWorkout | null;
+    }[] = [];
     const today = new Date();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(displayWeekStart);
-      d.setDate(d.getDate() + i);
-      const isToday = isSameDay(d, today);
+    today.setHours(0, 0, 0, 0);
 
-      const matchingWorkout = schedule?.thisWeek.find((w) => {
-        if (!w.scheduledAt) return false;
-        const wDate = new Date(w.scheduledAt);
-        return isSameDay(wDate, d);
-      });
+    for (let i = 0; i < daysToShow; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const isToday = i === 0;
 
-      days.push({
-        date: d,
-        workout: matchingWorkout ?? null,
-        isRestDay: false,
-        isToday,
-      });
+      const workout =
+        allWorkouts.find((w) => {
+          if (!w.scheduledAt) return false;
+          const wDate = new Date(w.scheduledAt);
+          return isSameDay(wDate, d);
+        }) ?? null;
+
+      days.push({ date: d, isToday, workout });
     }
     return days;
-  }, [displayWeekStart, schedule?.thisWeek]);
-
-  const allWeekWorkouts = useMemo(() => {
-    return weekDays.map((d) => d.workout).filter((w): w is ProgramScheduleWorkout => w !== null);
-  }, [weekDays]);
+  }, [daysToShow, allWorkouts]);
 
   const completedCount = useMemo(() => {
     return schedule?.completed.length ?? 0;
@@ -401,17 +370,19 @@ export default function ProgramScheduleScreen() {
     );
   }, [schedule?.cycle.totalSessionsPlanned, schedule?.cycle.totalSessionsCompleted]);
 
-  const thisWeekWorkouts = useMemo(() => {
-    return allWeekWorkouts.filter((w) => w.status !== 'complete');
-  }, [allWeekWorkouts]);
+  const thisWeekCount = useMemo(() => {
+    if (!schedule) return 0;
+    const today = new Date();
+    const monday = getMondayOfWeek(today);
+    const nextMonday = new Date(monday);
+    nextMonday.setDate(monday.getDate() + 7);
 
-  const upcomingWorkouts = useMemo(() => {
-    return schedule?.upcoming ?? [];
-  }, [schedule?.upcoming]);
-
-  const completedWorkouts = useMemo(() => {
-    return schedule?.completed ?? [];
-  }, [schedule?.completed]);
+    return allWorkouts.filter((w) => {
+      if (w.status === 'complete' || !w.scheduledAt) return false;
+      const d = new Date(w.scheduledAt);
+      return d >= monday && d < nextMonday;
+    }).length;
+  }, [schedule, allWorkouts]);
 
   const handleStartWorkout = useCallback(
     async (cycleWorkoutId: string) => {
@@ -426,7 +397,7 @@ export default function ProgramScheduleScreen() {
             completedAt: null,
             source: 'program',
             programCycleId: cycleId ?? '',
-            cycleWorkoutId: result.workoutId,
+            cycleWorkoutId: cycleWorkoutId,
             exercises: [],
             exerciseCount: 0,
             durationMinutes: null,
@@ -472,19 +443,6 @@ export default function ProgramScheduleScreen() {
     [rescheduleWorkout],
   );
 
-  const weekRangeLabel = useMemo(() => {
-    const start = displayWeekStart;
-    const end = new Date(displayWeekStart);
-    end.setDate(end.getDate() + 6);
-    const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const endStr = end.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    return `${startStr} - ${endStr}`;
-  }, [displayWeekStart]);
-
   if (isLoading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -509,96 +467,66 @@ export default function ProgramScheduleScreen() {
       <View style={styles.metricsRow}>
         <MetricTile label="Completed" value={String(completedCount)} tone="emerald" />
         <MetricTile label="Remaining" value={String(remainingCount)} tone="orange" />
-        <MetricTile label="This Week" value={String(thisWeekWorkouts.length)} tone="sky" />
+        <MetricTile label="This Week" value={String(thisWeekCount)} tone="sky" />
       </View>
 
-      <View style={styles.weekNavigation}>
-        <Pressable onPress={goToPreviousWeek} style={styles.navButton}>
-          <Ionicons name="chevron-back" size={20} color={colors.text} />
-        </Pressable>
-        <Pressable onPress={goToToday} style={styles.todayButton}>
-          <Text style={styles.todayButtonText}>Today</Text>
-        </Pressable>
-        <Text style={styles.weekRange}>{weekRangeLabel}</Text>
-        <Pressable onPress={goToNextWeek} style={styles.navButton}>
-          <Ionicons name="chevron-forward" size={20} color={colors.text} />
-        </Pressable>
-      </View>
+      {unscheduledWorkouts.length > 0 && (
+        <>
+          <SectionTitle title="Unscheduled" />
+          {unscheduledWorkouts.map((workout) => (
+            <Surface key={`unsched:${workout.cycleWorkoutId}`} style={styles.dayCard}>
+              <SessionRow
+                workout={workout}
+                onStart={handleStartWorkout}
+                onOpen={handleOpenWorkout}
+                onReschedule={handleReschedule}
+                isStarting={startingWorkoutId === workout.cycleWorkoutId}
+              />
+            </Surface>
+          ))}
+        </>
+      )}
 
-      <View style={styles.weekGrid}>
-        {weekDays.map((day, idx) => {
-          return (
-            <Surface
-              key={`day:${idx}`}
-              style={{ ...styles.dayCard, ...(day.isToday ? styles.dayCardToday : {}) }}
-            >
-              <View style={styles.dayHeader}>
+      <SectionTitle title="Upcoming Schedule" />
+      {timelineDays.map((day, idx) => {
+        const badge = getStatusBadge(day.workout, !day.workout, day.isToday);
+        return (
+          <Surface
+            key={`day:${idx}`}
+            style={{ ...styles.dayCard, ...(day.isToday ? styles.dayCardToday : {}) }}
+          >
+            <View style={styles.dayHeader}>
+              <View style={styles.dayHeaderLeft}>
                 <Text style={styles.dayName}>{formatDayName(day.date)}</Text>
                 <Text style={styles.dayDate}>{formatDisplayDate(day.date)}</Text>
               </View>
-              {day.workout ? (
-                <SessionRow
-                  workout={day.workout}
-                  onStart={handleStartWorkout}
-                  onOpen={handleOpenWorkout}
-                  onReschedule={handleReschedule}
-                  isStarting={startingWorkoutId === day.workout.cycleWorkoutId}
-                />
-              ) : (
-                <RestDayRow date={day.date} />
-              )}
-            </Surface>
-          );
-        })}
+              <Badge label={badge.label} tone={badge.tone} />
+            </View>
+            {day.workout ? (
+              <SessionRow
+                workout={day.workout}
+                onStart={handleStartWorkout}
+                onOpen={handleOpenWorkout}
+                onReschedule={handleReschedule}
+                isStarting={startingWorkoutId === day.workout.cycleWorkoutId}
+              />
+            ) : (
+              <View style={styles.restDayRow}>
+                <Text style={styles.restDayLabel}>Rest Day</Text>
+              </View>
+            )}
+          </Surface>
+        );
+      })}
+
+      <View style={styles.loadMoreContainer}>
+        <ActionButton
+          label="Load 14 more days"
+          icon="add"
+          variant="secondary"
+          onPress={() => setDaysToShow((d) => d + 14)}
+        />
       </View>
-
-      {thisWeekWorkouts.length > 0 && (
-        <>
-          <SectionTitle title="This Week" />
-          {thisWeekWorkouts.map((workout) => (
-            <SessionRow
-              key={`tw:${workout.cycleWorkoutId}`}
-              workout={workout}
-              onStart={handleStartWorkout}
-              onOpen={handleOpenWorkout}
-              onReschedule={handleReschedule}
-              isStarting={startingWorkoutId === workout.cycleWorkoutId}
-            />
-          ))}
-        </>
-      )}
-
-      {upcomingWorkouts.length > 0 && (
-        <>
-          <SectionTitle title="Upcoming" />
-          {upcomingWorkouts.map((workout) => (
-            <SessionRow
-              key={`up:${workout.cycleWorkoutId}`}
-              workout={workout}
-              onStart={handleStartWorkout}
-              onOpen={handleOpenWorkout}
-              onReschedule={handleReschedule}
-              isStarting={startingWorkoutId === workout.cycleWorkoutId}
-            />
-          ))}
-        </>
-      )}
-
-      {completedWorkouts.length > 0 && (
-        <>
-          <SectionTitle title="Completed" />
-          {completedWorkouts.map((workout) => (
-            <SessionRow
-              key={`comp:${workout.cycleWorkoutId}`}
-              workout={workout}
-              onStart={handleStartWorkout}
-              onOpen={handleOpenWorkout}
-              onReschedule={handleReschedule}
-              isStarting={startingWorkoutId === workout.cycleWorkoutId}
-            />
-          ))}
-        </>
-      )}
 
       <View style={{ height: spacing.xxl }} />
 
@@ -631,38 +559,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  weekNavigation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.xs,
-  },
-  navButton: {
-    padding: spacing.sm,
-  },
-  todayButton: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  todayButtonText: {
-    color: colors.accentSecondary,
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold,
-  },
-  weekRange: {
-    color: colors.text,
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.medium,
-  },
-  weekGrid: {
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
   dayCard: {
     padding: spacing.md,
+    marginBottom: spacing.md,
   },
   dayCardToday: {
     borderColor: colors.accentSecondary,
@@ -674,6 +573,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
   },
+  dayHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   dayName: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
@@ -683,15 +587,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
   },
-  sessionSurface: {
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+  sessionContainer: {
+    gap: spacing.sm,
   },
   sessionHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
   },
   sessionInfo: {
     flex: 1,
@@ -721,23 +623,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  restDaySurface: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-  },
-  restDayContent: {
-    gap: spacing.xs,
+  restDayRow: {
+    paddingVertical: spacing.sm,
   },
   restDayLabel: {
-    color: colors.text,
+    color: colors.textMuted,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
   },
-  restDayDate: {
-    color: colors.textMuted,
-    fontSize: typography.fontSizes.sm,
+  loadMoreContainer: {
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
   },
   modalContainer: {
     flex: 1,

@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { isValidTimeZone } from '@strength/db';
 import { createRouter } from '../lib/router';

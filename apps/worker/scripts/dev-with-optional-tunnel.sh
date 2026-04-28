@@ -60,7 +60,16 @@ if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" || -n "${CLOUDFLARE_TUNNEL_NAME:-}" || -
     exit 1
   fi
 
-  TUNNEL_ORIGIN="https://${CLOUDFLARE_TUNNEL_HOSTNAME}"
+  TUNNEL_HOSTNAME="${CLOUDFLARE_TUNNEL_HOSTNAME#https://}"
+  TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME#http://}"
+  TUNNEL_HOSTNAME="${TUNNEL_HOSTNAME%%/*}"
+  TUNNEL_ORIGIN="https://${TUNNEL_HOSTNAME}"
+
+  if [[ "$TUNNEL_HOSTNAME" != *.* && "${WORKER_BASE_URL:-}" == https://*.* ]]; then
+    TUNNEL_ORIGIN="${WORKER_BASE_URL%/}"
+    echo "Using WORKER_BASE_URL for tunnel origin because CLOUDFLARE_TUNNEL_HOSTNAME is not fully qualified: ${TUNNEL_HOSTNAME}"
+  fi
+
   export WORKER_BASE_URL="$TUNNEL_ORIGIN"
 
   if [[ -n "${BETTER_AUTH_TRUSTED_ORIGINS:-}" ]]; then

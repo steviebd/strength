@@ -33,7 +33,7 @@ router.get(
         .orderBy(desc(schema.exercises.createdAt))
         .all();
       return c.json(results);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch exercises' }, 500);
     }
   }),
@@ -102,7 +102,7 @@ router.post(
         .returning()
         .get();
       return c.json(result, 201);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to create exercise' }, 500);
     }
   }),
@@ -122,7 +122,7 @@ router.get(
         return c.json({ message: 'Exercise not found' }, 404);
       }
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch exercise' }, 500);
     }
   }),
@@ -147,7 +147,7 @@ router.put(
         return c.json({ message: 'Exercise not found' }, 404);
       }
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to update exercise' }, 500);
     }
   }),
@@ -164,7 +164,7 @@ router.delete(
         .where(and(eq(schema.exercises.id, id), eq(schema.exercises.userId, userId)))
         .run();
       return c.json({ success: result.success });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to delete exercise' }, 500);
     }
   }),

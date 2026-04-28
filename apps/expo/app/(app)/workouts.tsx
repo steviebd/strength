@@ -81,6 +81,7 @@ export default function WorkoutsIndex() {
 
   const [workoutName, setWorkoutName] = useState('');
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
+  const [opening1RMTestId, setOpening1RMTestId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -272,6 +273,26 @@ export default function WorkoutsIndex() {
     }
   };
 
+  const handleOpen1RMTest = async (program: ActiveProgram) => {
+    setOpening1RMTestId(program.id);
+    try {
+      const result = await apiFetch<{ workoutId: string; workoutName: string }>(
+        `/api/programs/cycles/${program.id}/create-1rm-test-workout`,
+        {
+          method: 'POST',
+          body: {},
+        },
+      );
+      router.push(
+        `/workout-session?workoutId=${result.workoutId}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
+      );
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open 1RM test');
+    } finally {
+      setOpening1RMTestId(null);
+    }
+  };
+
   const handleDeletePendingWorkout = async (workoutId: string) => {
     await removePendingWorkout(workoutId);
     setPendingWorkouts((prev) => prev.filter((p) => p.id !== workoutId));
@@ -367,11 +388,11 @@ export default function WorkoutsIndex() {
                   <View style={styles.programActionsRow}>
                     <View style={styles.flex1}>
                       <Button
-                        label="1RM Test"
+                        label={opening1RMTestId === program.id ? 'Opening...' : '1RM Test'}
                         icon="speedometer-outline"
                         variant="secondary"
-                        onPress={() => router.push(`/program-1rm-test?cycleId=${program.id}`)}
-                        disabled={isOpening || isDeleting}
+                        onPress={() => void handleOpen1RMTest(program)}
+                        disabled={isOpening || isDeleting || opening1RMTestId !== null}
                       />
                     </View>
                     <Button
@@ -379,7 +400,7 @@ export default function WorkoutsIndex() {
                       icon="calendar-outline"
                       variant="secondary"
                       onPress={() => router.push(`/program-schedule?cycleId=${program.id}`)}
-                      disabled={isOpening || isDeleting}
+                      disabled={isOpening || isDeleting || opening1RMTestId !== null}
                     />
                   </View>
                 </View>

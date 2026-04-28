@@ -4,6 +4,7 @@ import { Link, router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
+import { buildAuthCallbackURL } from '@/lib/auth-callback-url';
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
 import { colors } from '@/theme';
@@ -83,7 +84,7 @@ export default function SignUpScreen() {
     setIsGoogleSubmitting(true);
 
     try {
-      const callbackURL = `/auth/callback?returnTo=${encodeURIComponent(redirectUrl)}`;
+      const callbackURL = buildAuthCallbackURL(redirectUrl);
       const result = await authClient.signIn.social({
         provider: 'google',
         callbackURL,

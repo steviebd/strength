@@ -7,6 +7,7 @@ import {
   createProgramCycle,
   getProgramCycleWithWorkouts,
   softDeleteProgramCycle,
+  zonedDateTimeToUtc,
 } from '@strength/db';
 import { getLatestOneRMsForUser } from '../lib/program-helpers';
 import { getStoredUserTimezone } from '../lib/timezone';
@@ -36,7 +37,7 @@ router.get(
     try {
       const latestOneRMs = await getLatestOneRMsForUser(db, userId);
       return c.json(latestOneRMs);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch latest 1RMs' }, 500);
     }
   }),
@@ -80,8 +81,12 @@ router.post(
       const profileTimezone = await getStoredUserTimezone(db, userId);
       const timezone = profileTimezone ?? 'UTC';
 
-      const startDate = programStartDate ? new Date(programStartDate) : new Date();
-      const firstDate = firstSessionDate ? new Date(firstSessionDate) : undefined;
+      const startDate = programStartDate
+        ? zonedDateTimeToUtc(programStartDate, timezone, '00:00:00')
+        : new Date();
+      const firstDate = firstSessionDate
+        ? zonedDateTimeToUtc(firstSessionDate, timezone, '00:00:00')
+        : undefined;
       const programStartAt = startDate.getTime();
 
       const scheduleOptions = {
@@ -224,7 +229,7 @@ router.get(
         .orderBy(desc(schema.userProgramCycles.startedAt))
         .all();
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch active program' }, 500);
     }
   }),
@@ -255,7 +260,7 @@ router.put(
         return c.json({ message: 'No active program found' }, 404);
       }
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to update program cycle' }, 500);
     }
   }),
@@ -273,7 +278,7 @@ router.delete(
       }
 
       return c.json({ success: true });
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to delete program cycle' }, 500);
     }
   }),
@@ -293,7 +298,7 @@ router.get(
         return c.json({ message: 'Program cycle not found' }, 404);
       }
       return c.json(result);
-    } catch (_e) {
+    } catch {
       return c.json({ message: 'Failed to fetch program cycle' }, 500);
     }
   }),

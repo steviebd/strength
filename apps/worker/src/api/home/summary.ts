@@ -25,8 +25,7 @@ function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name:
   }
 }
 
-function getMondayOfWeek(date: Date, timezone: string): string {
-  const localDateStr = formatLocalDate(date, timezone);
+function getMondayOfWeek(localDateStr: string): string {
   const { year, month, day } = parseLocalDate(localDateStr);
   const d = new Date(Date.UTC(year, month - 1, day));
   const dayOfWeek = d.getUTCDay();
@@ -55,8 +54,11 @@ function addDays(localDate: string, days: number): string {
   return formatDateParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
 
-function getWeekRange(localDate: string, timezone: string): { weekStart: string; weekEnd: string } {
-  const mondayStr = getMondayOfWeek(new Date(localDate), timezone);
+function getWeekRange(
+  localDate: string,
+  _timezone: string,
+): { weekStart: string; weekEnd: string } {
+  const mondayStr = getMondayOfWeek(localDate);
   const sundayStr = addDays(mondayStr, 6);
   return { weekStart: mondayStr, weekEnd: sundayStr };
 }
@@ -95,322 +97,316 @@ function getRecoveryStatusTone(recoveryScore: number | null): RecoveryStatus {
 }
 
 export async function homeSummaryHandler(c: any) {
-  try {
-    const auth = await requireAuthContext(c);
-    if (auth instanceof Response) return auth;
-    const { userId, db } = auth;
+  const auth = await requireAuthContext(c);
+  if (auth instanceof Response) return auth;
+  const { userId, db } = auth;
 
-    const timezoneResult = await resolveUserTimezone(db, userId);
-    const timezone = timezoneResult.timezone ?? 'UTC';
-    const now = new Date();
-    const localDate = formatLocalDate(now, timezone);
+  const timezoneResult = await resolveUserTimezone(db, userId);
+  const timezone = timezoneResult.timezone ?? 'UTC';
+  const now = new Date();
+  const localDate = formatLocalDate(now, timezone);
 
-    const dateInfo = {
-      localDate,
-      timezone,
-      formatted: new Date(localDate + 'T12:00:00Z').toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        timeZone: timezone,
-      }),
-    };
+  const dateInfo = {
+    localDate,
+    timezone,
+    formatted: new Date(localDate + 'T12:00:00Z').toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      timeZone: timezone,
+    }),
+  };
 
-    const activeCycles = await db
+  const activeCycles = await db
+    .select()
+    .from(schema.userProgramCycles)
+    .where(
+      and(
+        eq(schema.userProgramCycles.userId, userId),
+        eq(schema.userProgramCycles.status, 'active'),
+        eq(schema.userProgramCycles.isComplete, false),
+      ),
+    )
+    .orderBy(desc(schema.userProgramCycles.startedAt))
+    .all();
+
+  const hasActiveProgram = activeCycles.length > 0;
+  const activeCycle = activeCycles[0] ?? null;
+
+  let todayScheduledWorkout: typeof schema.programCycleWorkouts.$inferSelect | null = null;
+  let nextWorkout: {
+    cycleWorkoutId: string;
+    name: string;
+    programName: string;
+    scheduledAt: Date | null;
+  } | null = null;
+  let isRestDay = false;
+
+  const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
+
+  if (activeCycle) {
+    const cycleWorkouts = await db
       .select()
-      .from(schema.userProgramCycles)
-      .where(
-        and(
-          eq(schema.userProgramCycles.userId, userId),
-          eq(schema.userProgramCycles.status, 'active'),
-          eq(schema.userProgramCycles.isComplete, false),
-        ),
-      )
-      .orderBy(desc(schema.userProgramCycles.startedAt))
+      .from(schema.programCycleWorkouts)
+      .where(eq(schema.programCycleWorkouts.cycleId, activeCycle.id))
+      .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
       .all();
 
-    const hasActiveProgram = activeCycles.length > 0;
-    const activeCycle = activeCycles[0] ?? null;
+    const currentCycleWorkout =
+      cycleWorkouts.find(
+        (workout) =>
+          !workout.isComplete &&
+          workout.weekNumber === activeCycle.currentWeek &&
+          workout.sessionNumber === activeCycle.currentSession,
+      ) ??
+      cycleWorkouts.find((workout) => !workout.isComplete) ??
+      null;
 
-    let todayScheduledWorkout: typeof schema.programCycleWorkouts.$inferSelect | null = null;
-    let nextWorkout: {
+    const incompleteScheduledToday =
+      cycleWorkouts.find(
+        (workout) =>
+          !workout.isComplete &&
+          workout.scheduledAt &&
+          workout.scheduledAt >= todayStart &&
+          workout.scheduledAt <= todayEnd,
+      ) ?? null;
+
+    if (
+      currentCycleWorkout?.scheduledAt &&
+      currentCycleWorkout.scheduledAt >= todayStart &&
+      currentCycleWorkout.scheduledAt <= todayEnd
+    ) {
+      todayScheduledWorkout = currentCycleWorkout;
+    } else if (incompleteScheduledToday) {
+      todayScheduledWorkout = incompleteScheduledToday;
+    } else {
+      isRestDay = true;
+      const upcomingWorkout =
+        currentCycleWorkout && currentCycleWorkout.scheduledAt
+          ? currentCycleWorkout
+          : (cycleWorkouts.find(
+              (workout) =>
+                !workout.isComplete && workout.scheduledAt && workout.scheduledAt >= todayStart,
+            ) ?? currentCycleWorkout);
+
+      if (upcomingWorkout) {
+        nextWorkout = {
+          cycleWorkoutId: upcomingWorkout.id,
+          name: upcomingWorkout.sessionName,
+          programName: activeCycle.name,
+          scheduledAt: upcomingWorkout.scheduledAt ?? null,
+        };
+      }
+    }
+  }
+
+  let todayWorkoutOutput: {
+    workout: {
+      cycleWorkoutId: string;
+      workoutId: string | null;
+      name: string;
+      focus: string;
+      exercises: GroupedExercise[];
+      programName: string;
+      programCycleId: string;
+      scheduledAt: Date | null;
+      isComplete: boolean;
+    } | null;
+    nextWorkout: {
       cycleWorkoutId: string;
       name: string;
       programName: string;
       scheduledAt: Date | null;
-    } | null = null;
-    let isRestDay = false;
+    } | null;
+    hasActiveProgram: boolean;
+    isRestDay: boolean;
+  } = {
+    workout: null,
+    nextWorkout: null,
+    hasActiveProgram,
+    isRestDay,
+  };
 
-    const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
+  if (todayScheduledWorkout && activeCycle) {
+    const parsedTargetLifts = parseTargetLifts(todayScheduledWorkout.targetLifts);
+    const exerciseNames = parsedTargetLifts.map((t: any) => t.name).filter(Boolean);
+    const exercises = groupConsecutiveExercises(exerciseNames);
 
-    if (activeCycle) {
-      const cycleWorkouts = await db
-        .select()
-        .from(schema.programCycleWorkouts)
-        .where(eq(schema.programCycleWorkouts.cycleId, activeCycle.id))
-        .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
-        .all();
-
-      const currentCycleWorkout =
-        cycleWorkouts.find(
-          (workout) =>
-            !workout.isComplete &&
-            workout.weekNumber === activeCycle.currentWeek &&
-            workout.sessionNumber === activeCycle.currentSession,
-        ) ??
-        cycleWorkouts.find((workout) => !workout.isComplete) ??
-        null;
-
-      const incompleteScheduledToday =
-        cycleWorkouts.find(
-          (workout) =>
-            !workout.isComplete &&
-            workout.scheduledAt &&
-            workout.scheduledAt >= todayStart &&
-            workout.scheduledAt <= todayEnd,
-        ) ?? null;
-
-      if (
-        currentCycleWorkout?.scheduledAt &&
-        currentCycleWorkout.scheduledAt >= todayStart &&
-        currentCycleWorkout.scheduledAt <= todayEnd
-      ) {
-        todayScheduledWorkout = currentCycleWorkout;
-      } else if (incompleteScheduledToday) {
-        todayScheduledWorkout = incompleteScheduledToday;
-      } else {
-        isRestDay = true;
-        const upcomingWorkout =
-          currentCycleWorkout && currentCycleWorkout.scheduledAt
-            ? currentCycleWorkout
-            : (cycleWorkouts.find(
-                (workout) =>
-                  !workout.isComplete && workout.scheduledAt && workout.scheduledAt >= todayStart,
-              ) ?? currentCycleWorkout);
-
-        if (upcomingWorkout) {
-          nextWorkout = {
-            cycleWorkoutId: upcomingWorkout.id,
-            name: upcomingWorkout.sessionName,
-            programName: activeCycle.name,
-            scheduledAt: upcomingWorkout.scheduledAt ?? null,
-          };
-        }
-      }
-    }
-
-    let todayWorkoutOutput: {
+    const cycleWorkout = todayScheduledWorkout;
+    todayWorkoutOutput = {
       workout: {
-        cycleWorkoutId: string;
-        workoutId: string | null;
-        name: string;
-        focus: string;
-        exercises: GroupedExercise[];
-        programName: string;
-        programCycleId: string;
-        scheduledAt: Date | null;
-        isComplete: boolean;
-      } | null;
-      nextWorkout: {
-        cycleWorkoutId: string;
-        name: string;
-        programName: string;
-        scheduledAt: Date | null;
-      } | null;
-      hasActiveProgram: boolean;
-      isRestDay: boolean;
-    } = {
-      workout: null,
+        cycleWorkoutId: cycleWorkout.id,
+        workoutId: cycleWorkout.workoutId ?? null,
+        name: cycleWorkout.sessionName,
+        focus: exercises.length > 0 ? exercises[0].name : '',
+        exercises,
+        programName: activeCycle.name,
+        programCycleId: activeCycle.id,
+        scheduledAt: cycleWorkout.scheduledAt ?? null,
+        isComplete: cycleWorkout.isComplete ?? false,
+      },
       nextWorkout: null,
       hasActiveProgram,
-      isRestDay,
+      isRestDay: false,
     };
+  } else if (isRestDay && nextWorkout) {
+    todayWorkoutOutput = {
+      ...todayWorkoutOutput,
+      nextWorkout,
+    };
+  }
 
-    if (todayScheduledWorkout && activeCycle) {
-      const parsedTargetLifts = parseTargetLifts(todayScheduledWorkout.targetLifts);
-      const exerciseNames = parsedTargetLifts.map((t: any) => t.name).filter(Boolean);
-      const exercises = groupConsecutiveExercises(exerciseNames);
+  const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
+  const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
+  const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
 
-      const cycleWorkout = todayScheduledWorkout;
-      todayWorkoutOutput = {
-        workout: {
-          cycleWorkoutId: cycleWorkout.id,
-          workoutId: cycleWorkout.workoutId ?? null,
-          name: cycleWorkout.sessionName,
-          focus: exercises.length > 0 ? exercises[0].name : '',
-          exercises,
-          programName: activeCycle.name,
-          programCycleId: activeCycle.id,
-          scheduledAt: cycleWorkout.scheduledAt ?? null,
-          isComplete: cycleWorkout.isComplete ?? false,
-        },
-        nextWorkout: null,
-        hasActiveProgram,
-        isRestDay: false,
-      };
-    } else if (isRestDay && nextWorkout) {
-      todayWorkoutOutput = {
-        ...todayWorkoutOutput,
-        nextWorkout,
-      };
-    }
+  const weekCompletedWorkouts = await db
+    .select({
+      id: schema.workouts.id,
+      completedAt: schema.workouts.completedAt,
+      totalVolume: schema.workouts.totalVolume,
+    })
+    .from(schema.workouts)
+    .where(
+      and(
+        eq(schema.workouts.userId, userId),
+        eq(schema.workouts.isDeleted, false),
+        isNotNull(schema.workouts.completedAt),
+        gte(schema.workouts.completedAt, weekStartUtc),
+        lte(schema.workouts.completedAt, weekEndUtcEnd),
+      ),
+    )
+    .all();
 
-    const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
-    const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
-    const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
+  const workoutsCompleted = weekCompletedWorkouts.length;
 
-    const weekCompletedWorkouts = await db
-      .select({
-        id: schema.workouts.id,
-        completedAt: schema.workouts.completedAt,
-        totalVolume: schema.workouts.totalVolume,
-      })
-      .from(schema.workouts)
+  let workoutsTarget = 3;
+  if (activeCycle) {
+    const scheduledInWeek = await db
+      .select({ id: schema.programCycleWorkouts.id })
+      .from(schema.programCycleWorkouts)
       .where(
         and(
-          eq(schema.workouts.userId, userId),
-          eq(schema.workouts.isDeleted, false),
-          isNotNull(schema.workouts.completedAt),
-          gte(schema.workouts.completedAt, weekStartUtc),
-          lte(schema.workouts.completedAt, weekEndUtcEnd),
+          eq(schema.programCycleWorkouts.cycleId, activeCycle.id),
+          isNotNull(schema.programCycleWorkouts.scheduledAt),
+          gte(schema.programCycleWorkouts.scheduledAt, weekStartUtc),
+          lte(schema.programCycleWorkouts.scheduledAt, weekEndUtcEnd),
         ),
       )
       .all();
+    workoutsTarget = scheduledInWeek.length;
+  }
 
-    const workoutsCompleted = weekCompletedWorkouts.length;
+  const totalVolume = weekCompletedWorkouts.reduce((sum, w) => sum + (w.totalVolume ?? 0), 0);
 
-    let workoutsTarget = 3;
-    if (activeCycle) {
-      const scheduledInWeek = await db
-        .select({ id: schema.programCycleWorkouts.id })
-        .from(schema.programCycleWorkouts)
+  const totalVolumeLabel =
+    totalVolume > 1000 ? `${Math.round(totalVolume / 1000)}k kg` : `${Math.round(totalVolume)} kg`;
+
+  let streakDays = 0;
+  if (hasActiveProgram) {
+    let checkDate = localDate;
+    while (true) {
+      const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(checkDate, timezone);
+      const dayWorkouts = await db
+        .select({ id: schema.workouts.id })
+        .from(schema.workouts)
         .where(
           and(
-            eq(schema.programCycleWorkouts.cycleId, activeCycle.id),
-            isNotNull(schema.programCycleWorkouts.scheduledAt),
-            gte(schema.programCycleWorkouts.scheduledAt, weekStartUtc),
-            lte(schema.programCycleWorkouts.scheduledAt, weekEndUtcEnd),
+            eq(schema.workouts.userId, userId),
+            eq(schema.workouts.isDeleted, false),
+            isNotNull(schema.workouts.completedAt),
+            gte(schema.workouts.completedAt, dayStart),
+            lte(schema.workouts.completedAt, dayEnd),
           ),
         )
-        .all();
-      workoutsTarget = scheduledInWeek.length;
-    }
+        .limit(1)
+        .get();
 
-    const totalVolume = weekCompletedWorkouts.reduce((sum, w) => sum + (w.totalVolume ?? 0), 0);
-
-    const totalVolumeLabel =
-      totalVolume > 1000
-        ? `${Math.round(totalVolume / 1000)}k kg`
-        : `${Math.round(totalVolume)} kg`;
-
-    let streakDays = 0;
-    if (hasActiveProgram) {
-      let checkDate = localDate;
-      while (true) {
-        const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(checkDate, timezone);
-        const dayWorkouts = await db
-          .select({ id: schema.workouts.id })
-          .from(schema.workouts)
-          .where(
-            and(
-              eq(schema.workouts.userId, userId),
-              eq(schema.workouts.isDeleted, false),
-              isNotNull(schema.workouts.completedAt),
-              gte(schema.workouts.completedAt, dayStart),
-              lte(schema.workouts.completedAt, dayEnd),
-            ),
-          )
-          .limit(1)
-          .get();
-
-        if (dayWorkouts) {
-          streakDays++;
-          const prevDate = addDays(checkDate, -1);
-          checkDate = prevDate;
-        } else {
-          break;
-        }
+      if (dayWorkouts) {
+        streakDays++;
+        const prevDate = addDays(checkDate, -1);
+        checkDate = prevDate;
+      } else {
+        break;
       }
     }
-
-    const weeklyStats = {
-      workoutsCompleted,
-      workoutsTarget,
-      streakDays,
-      totalVolume,
-      totalVolumeLabel,
-    };
-
-    const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(localDate, timezone);
-
-    const recovery = await db
-      .select()
-      .from(schema.whoopRecovery)
-      .where(
-        and(
-          eq(schema.whoopRecovery.userId, userId),
-          gte(schema.whoopRecovery.date, dayStart),
-          lte(schema.whoopRecovery.date, dayEnd),
-        ),
-      )
-      .get();
-
-    const cycles = await db
-      .select()
-      .from(schema.whoopCycle)
-      .where(
-        and(
-          eq(schema.whoopCycle.userId, userId),
-          gte(schema.whoopCycle.start, dayStart),
-          lte(schema.whoopCycle.start, dayEnd),
-        ),
-      )
-      .all();
-
-    const sleepRecords = await db
-      .select()
-      .from(schema.whoopSleep)
-      .where(and(eq(schema.whoopSleep.userId, userId), lte(schema.whoopSleep.start, dayEnd)))
-      .orderBy(desc(schema.whoopSleep.end))
-      .limit(10)
-      .all();
-
-    const mostRecentSleep =
-      sleepRecords.find((s) => {
-        const sleepEnd = new Date(s.end);
-        const rangeStart = new Date(dayStart);
-        const rangeEnd = new Date(dayEnd);
-        return sleepEnd >= rangeStart && sleepEnd <= rangeEnd;
-      }) ?? null;
-
-    const whoopProfile = await db
-      .select()
-      .from(schema.whoopProfile)
-      .where(eq(schema.whoopProfile.userId, userId))
-      .get();
-
-    const isWhoopConnected = !!whoopProfile;
-
-    const strain = cycles.length > 0 ? (cycles[0].dayStrain ?? null) : null;
-
-    const recoverySnapshot = {
-      sleepDurationLabel: mostRecentSleep
-        ? formatSleepDuration(mostRecentSleep.totalSleepTimeMilli)
-        : null,
-      sleepPerformancePercentage: mostRecentSleep?.sleepPerformancePercentage ?? null,
-      recoveryScore: recovery?.recoveryScore ?? null,
-      recoveryStatus: getRecoveryStatusTone(recovery?.recoveryScore ?? null),
-      strain,
-      isWhoopConnected,
-    };
-
-    return c.json({
-      date: dateInfo,
-      todayWorkout: todayWorkoutOutput,
-      weeklyStats,
-      recoverySnapshot,
-    });
-  } catch (e) {
-    throw e;
   }
+
+  const weeklyStats = {
+    workoutsCompleted,
+    workoutsTarget,
+    streakDays,
+    totalVolume,
+    totalVolumeLabel,
+  };
+
+  const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(localDate, timezone);
+
+  const recovery = await db
+    .select()
+    .from(schema.whoopRecovery)
+    .where(
+      and(
+        eq(schema.whoopRecovery.userId, userId),
+        gte(schema.whoopRecovery.date, dayStart),
+        lte(schema.whoopRecovery.date, dayEnd),
+      ),
+    )
+    .get();
+
+  const cycles = await db
+    .select()
+    .from(schema.whoopCycle)
+    .where(
+      and(
+        eq(schema.whoopCycle.userId, userId),
+        gte(schema.whoopCycle.start, dayStart),
+        lte(schema.whoopCycle.start, dayEnd),
+      ),
+    )
+    .all();
+
+  const sleepRecords = await db
+    .select()
+    .from(schema.whoopSleep)
+    .where(and(eq(schema.whoopSleep.userId, userId), lte(schema.whoopSleep.start, dayEnd)))
+    .orderBy(desc(schema.whoopSleep.end))
+    .limit(10)
+    .all();
+
+  const mostRecentSleep =
+    sleepRecords.find((s) => {
+      const sleepEnd = new Date(s.end);
+      const rangeStart = new Date(dayStart);
+      const rangeEnd = new Date(dayEnd);
+      return sleepEnd >= rangeStart && sleepEnd <= rangeEnd;
+    }) ?? null;
+
+  const whoopProfile = await db
+    .select()
+    .from(schema.whoopProfile)
+    .where(eq(schema.whoopProfile.userId, userId))
+    .get();
+
+  const isWhoopConnected = !!whoopProfile;
+
+  const strain = cycles.length > 0 ? (cycles[0].dayStrain ?? null) : null;
+
+  const recoverySnapshot = {
+    sleepDurationLabel: mostRecentSleep
+      ? formatSleepDuration(mostRecentSleep.totalSleepTimeMilli)
+      : null,
+    sleepPerformancePercentage: mostRecentSleep?.sleepPerformancePercentage ?? null,
+    recoveryScore: recovery?.recoveryScore ?? null,
+    recoveryStatus: getRecoveryStatusTone(recovery?.recoveryScore ?? null),
+    strain,
+    isWhoopConnected,
+  };
+
+  return c.json({
+    date: dateInfo,
+    todayWorkout: todayWorkoutOutput,
+    weeklyStats,
+    recoverySnapshot,
+  });
 }
