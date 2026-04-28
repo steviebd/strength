@@ -108,7 +108,7 @@ export function ExercisePicker({
         setUserExercises(data);
       } catch (e) {
         if (e instanceof Error && e.name !== 'AbortError') {
-          console.error('Failed to fetch user exercises:', e);
+          // no-op
         }
       } finally {
         setLoading(false);
@@ -167,7 +167,6 @@ export function ExercisePicker({
       setShowCreateForm(false);
       setCreateForm({ name: '', muscleGroup: '', description: '' });
     } catch (e) {
-      console.error('Create exercise error:', e);
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
       setCreating(false);
@@ -259,7 +258,6 @@ export function ExercisePicker({
             muscleGroup: persistedExercise.muscleGroup,
           });
         } catch (e) {
-          console.error('Failed to persist library exercise:', e);
           setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
         }
       }

@@ -23,6 +23,8 @@ export interface WorkerEnv {
   WHOOP_CLIENT_SECRET?: string;
   WHOOP_WEBHOOK_SECRET?: string;
   ENCRYPTION_MASTER_KEY?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 type SameSitePolicy = 'strict' | 'lax' | 'none';
@@ -134,6 +136,8 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
     WHOOP_CLIENT_SECRET: env.WHOOP_CLIENT_SECRET ?? processEnv.WHOOP_CLIENT_SECRET,
     ENCRYPTION_MASTER_KEY: env.ENCRYPTION_MASTER_KEY ?? processEnv.ENCRYPTION_MASTER_KEY,
     BETTER_AUTH_API_KEY: env.BETTER_AUTH_API_KEY ?? processEnv.BETTER_AUTH_API_KEY,
+    GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? processEnv.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? processEnv.GOOGLE_CLIENT_SECRET,
   };
 }
 
@@ -187,6 +191,16 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
     cookies: {
       secure: cookiePolicy.secure,
       sameSite: cookiePolicy.sameSite,
+    },
+    socialProviders: {
+      ...(resolvedEnv.GOOGLE_CLIENT_ID && resolvedEnv.GOOGLE_CLIENT_SECRET
+        ? {
+            google: {
+              clientId: resolvedEnv.GOOGLE_CLIENT_ID,
+              clientSecret: resolvedEnv.GOOGLE_CLIENT_SECRET,
+            },
+          }
+        : {}),
     },
     plugins: [expo(), dash({ apiKey: resolvedEnv.BETTER_AUTH_API_KEY })],
   });

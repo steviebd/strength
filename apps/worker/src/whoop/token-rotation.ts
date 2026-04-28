@@ -140,7 +140,6 @@ export async function getValidAccessToken(
     );
 
     if (await shouldRotate(integration)) {
-      console.log('[WHOOP Token] Token needs rotation, refreshing...');
       const token = await refreshWithLock(integration.id, () =>
         refreshWhoopAccessToken(db, resolvedEnv, integration, refreshToken),
       );
@@ -149,7 +148,6 @@ export async function getValidAccessToken(
 
     return { token: accessToken };
   } catch (error) {
-    console.error('[WHOOP Token] Error getting valid access token:', error);
     return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
@@ -180,7 +178,6 @@ export async function forceRefreshAccessToken(
     );
     return { token };
   } catch (error) {
-    console.error('[WHOOP Token] Error force-refreshing access token:', error);
     return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }

@@ -21,14 +21,12 @@ function resolveApiUrl() {
 
   if (Platform.OS === 'web') {
     const resolved = configuredUrl.replace(/\/$/, '');
-    console.log('API URL (web):', resolved);
     return resolved;
   }
 
   const expoHost = getExpoHost();
 
   if (!expoHost) {
-    console.log('API URL (no expo host):', configuredUrl);
     return configuredUrl;
   }
 
@@ -40,10 +38,8 @@ function resolveApiUrl() {
     }
 
     const resolved = url.toString().replace(/\/$/, '');
-    console.log('API URL (resolved):', resolved, 'expoHost:', expoHost);
     return resolved;
-  } catch (_e) {
-    console.log('API URL (fallback):', configuredUrl);
+  } catch {
     return configuredUrl;
   }
 }

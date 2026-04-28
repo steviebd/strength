@@ -53,7 +53,6 @@ export async function verifyWebhookSignature(
 ): Promise<boolean> {
   const webhookSecret = env.WHOOP_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('[WHOOP Webhook] No webhook secret configured');
     return false;
   }
 
@@ -65,7 +64,6 @@ export async function verifyWebhookSignature(
       : numericTimestamp;
 
   if (Number.isNaN(timestampMs) || Math.abs(now - timestampMs) > 5 * 60 * 1000) {
-    console.error('[WHOOP Webhook] Timestamp too old or invalid');
     return false;
   }
 
@@ -138,13 +136,8 @@ export async function handleWebhookEvent(
   env: WorkerEnv,
   event: WhoopWebhookEvent,
 ): Promise<{ success: boolean; error?: string; ignored?: boolean }> {
-  console.log(
-    `[WHOOP Webhook] Handling ${event.eventType} for WHOOP user ${event.userId} object ${event.objectId}`,
-  );
-
   const userId = await resolveWhoopUserId(db, event.userId);
   if (!userId) {
-    console.warn(`[WHOOP Webhook] No local integration for WHOOP user ${event.userId}`);
     return { success: true, ignored: true };
   }
 
@@ -184,19 +177,14 @@ export async function handleWebhookEvent(
       }
 
       default: {
-        console.log(`[WHOOP Webhook] Ignoring unsupported event type ${event.eventType}`);
         return { success: true, ignored: true };
       }
     }
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && e.status === 404) {
-      console.warn(
-        `[WHOOP Webhook] WHOOP resource missing for ${event.eventType} ${event.objectId}; treating as no-op`,
-      );
       return { success: true, ignored: true };
     }
 
-    console.error('[WHOOP Webhook] Error handling event:', e);
     return { success: false, error: e instanceof Error ? e.message : 'Unknown error' };
   }
 }

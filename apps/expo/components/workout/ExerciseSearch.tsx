@@ -88,7 +88,6 @@ export function ExerciseSearch({
   const scrollViewportHeight = useRef(0);
 
   const handleClose = () => {
-    console.log('[DEBUG ExerciseSearch handleClose]');
     setPendingSelection([]);
     onClose();
   };
@@ -106,7 +105,7 @@ export function ExerciseSearch({
         setUserExercises(data);
       } catch (e) {
         if (e instanceof Error && e.name !== 'AbortError') {
-          console.error('Failed to fetch user exercises:', e);
+          // no-op
         }
       } finally {
         setLoading(false);
@@ -149,7 +148,6 @@ export function ExerciseSearch({
       setShowCreateForm(false);
       setCreateForm({ name: '', muscleGroup: '', description: '' });
     } catch (e) {
-      console.error('Create exercise error:', e);
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
       setCreating(false);
@@ -197,8 +195,8 @@ export function ExerciseSearch({
             muscleGroup: persistedExercise.muscleGroup ?? '',
             description: persistedExercise.description ?? '',
           });
-        } catch (e) {
-          console.error('Failed to persist library exercise:', e);
+        } catch {
+          // no-op
         }
       }
 

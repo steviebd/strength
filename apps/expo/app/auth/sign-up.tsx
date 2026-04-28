@@ -1,7 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link, router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
@@ -13,7 +14,8 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEmailSubmitting, setIsEmailSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const searchParams = useLocalSearchParams();
   const authShellRef = useRef<AuthShellHandle>(null);
   const emailRef = useRef<any>(null);
@@ -24,6 +26,12 @@ export default function SignUpScreen() {
   const passwordInputRef = useRef<any>(null);
   const confirmPasswordInputRef = useRef<any>(null);
   const redirectUrl = (searchParams.returnTo as string) || '/';
+
+  useFocusEffect(
+    useCallback(() => {
+      setIsGoogleSubmitting(false);
+    }, []),
+  );
 
   async function handleSubmit() {
     if (password !== confirmPassword) {
@@ -37,7 +45,7 @@ export default function SignUpScreen() {
     }
 
     setError(null);
-    setIsSubmitting(true);
+    setIsEmailSubmitting(true);
 
     try {
       const result = await authClient.signUp.email({
@@ -51,7 +59,11 @@ export default function SignUpScreen() {
         return;
       }
 
-      await waitForSessionReady();
+      const ready = await waitForSessionReady();
+      if (!ready) {
+        setError('Unable to establish session. Please try again.');
+        return;
+      }
       router.replace(redirectUrl as any);
     } catch (error) {
       setError(
@@ -62,7 +74,43 @@ export default function SignUpScreen() {
             : 'Unable to create account.',
       );
     } finally {
-      setIsSubmitting(false);
+      setIsEmailSubmitting(false);
+    }
+  }
+
+  async function handleGoogleSignUp() {
+    setError(null);
+    setIsGoogleSubmitting(true);
+
+    try {
+      const callbackURL = `/auth/callback?returnTo=${encodeURIComponent(redirectUrl)}`;
+      const result = await authClient.signIn.social({
+        provider: 'google',
+        callbackURL,
+        errorCallbackURL: callbackURL,
+      });
+
+      if (result.error) {
+        setError(result.error.message ?? 'Unable to sign up with Google.');
+        return;
+      }
+
+      const ready = await waitForSessionReady();
+      if (!ready) {
+        setError('Sign-in was not completed. Please try again.');
+        return;
+      }
+      router.replace(redirectUrl as any);
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === 'Network request failed'
+          ? 'Unable to reach the auth server. Confirm the Worker is running and EXPO_PUBLIC_WORKER_BASE_URL points at a reachable host.'
+          : error instanceof Error
+            ? error.message
+            : 'Unable to sign up.',
+      );
+    } finally {
+      setIsGoogleSubmitting(false);
     }
   }
 
@@ -253,6 +301,32 @@ export default function SignUpScreen() {
           </View>
         ) : null}
 
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>or</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+        </View>
+
+        <Pressable
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            backgroundColor: '#4285F4',
+            borderRadius: 12,
+            paddingVertical: 16,
+            opacity: isGoogleSubmitting ? 0.6 : 1,
+          }}
+          disabled={isGoogleSubmitting}
+          onPress={handleGoogleSignUp}
+        >
+          {isGoogleSubmitting && <ActivityIndicator size="small" color="#ffffff" />}
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#ffffff' }}>
+            {isGoogleSubmitting ? 'Signing up...' : 'Continue with Google'}
+          </Text>
+        </Pressable>
+
         <Pressable
           style={{
             flexDirection: 'row',
@@ -263,14 +337,14 @@ export default function SignUpScreen() {
             borderRadius: 12,
             paddingVertical: 16,
             marginTop: 8,
-            opacity: isSubmitting ? 0.6 : 1,
+            opacity: isEmailSubmitting ? 0.6 : 1,
           }}
-          disabled={isSubmitting}
+          disabled={isEmailSubmitting}
           onPress={handleSubmit}
         >
-          {isSubmitting && <ActivityIndicator size="small" color="#ffffff" />}
+          {isEmailSubmitting && <ActivityIndicator size="small" color="#ffffff" />}
           <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>
-            {isSubmitting ? 'Creating account...' : 'Create account'}
+            {isEmailSubmitting ? 'Creating account...' : 'Create account'}
           </Text>
         </Pressable>
 

@@ -87,10 +87,8 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
           setShowTimezoneMismatchModal(false);
         }
       })
-      .catch((error) => {
-        if (isActive) {
-          console.error(error);
-        }
+      .catch(() => {
+        // no-op
       })
       .finally(() => {
         if (isActive) {
@@ -116,9 +114,8 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
           method: 'PUT',
           body: { weightUnit: unit },
         });
-      } catch (error) {
+      } catch {
         setWeightUnitState(previousUnit);
-        console.error(error);
       }
     },
     [session.data?.user, weightUnit],
@@ -143,10 +140,9 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
           method: 'PUT',
           body: { timezone: nextTimezone },
         });
-      } catch (error) {
+      } catch {
         setTimezoneState(previousTimezone);
         setHasPersistedTimezone(previousPersistedState);
-        console.error(error);
       }
     },
     [hasPersistedTimezone, session.data?.user, timezone],
@@ -170,9 +166,8 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
         method: 'PUT',
         body: { weightPromptedAt: now },
       });
-    } catch (error) {
+    } catch {
       setWeightPromptedAtState(null);
-      console.error(error);
     }
   }, [session.data?.user]);
 

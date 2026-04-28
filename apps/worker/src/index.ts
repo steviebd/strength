@@ -85,14 +85,12 @@ function getAllowedOrigins(env: WorkerEnv): string[] {
 
 function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
   if (!origin) {
-    console.log('[CORS] No origin provided, allowing');
     return true;
   }
   const allowed =
     allowedOrigins.some((o) => origin.startsWith(o)) ||
     /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
     /^http:\/\/(?:10|192\.168|172\.(?:1[6-9]|2\d|3[0-1]))(?:\.\d{1,3}){2}(?::\d+)?$/i.test(origin);
-  console.log('[CORS] Origin check:', { origin: origin?.slice(0, 50), allowed });
   return allowed;
 }
 
@@ -132,20 +130,6 @@ app.get('/api/debug/auth-check', async (c) => {
   const db = createDb(c.env);
   const users = await db.select().from(schema.user).all();
   const sessions = await db.select().from(schema.session).all();
-  console.log(
-    '[DEBUG] Users in DB:',
-    users.length,
-    users.map((u) => ({ id: u.id, email: u.email })),
-  );
-  console.log(
-    '[DEBUG] Sessions in DB:',
-    sessions.length,
-    sessions.map((s) => ({
-      id: s.id,
-      userId: s.userId,
-      expiresAt: new Date(s.expiresAt).toISOString(),
-    })),
-  );
   return c.json({
     userCount: users.length,
     sessionCount: sessions.length,
@@ -198,8 +182,7 @@ app.get(
         timezone: prefs.timezone ?? null,
         weightPromptedAt: prefs.weightPromptedAt ?? null,
       });
-    } catch (e) {
-      console.log('DEBUG getPreferences error:', e);
+    } catch {
       return c.json({ message: 'Failed to fetch preferences' }, 500);
     }
   }),
@@ -212,15 +195,13 @@ app.put(
       let body: Record<string, unknown> = {};
       try {
         const rawBody = await c.req.text();
-        console.log('[PREF DEBUG] raw body:', rawBody, 'length:', rawBody.length);
         if (rawBody.trim()) {
           body = JSON.parse(rawBody) as Record<string, unknown>;
         }
-      } catch (parseErr) {
-        console.log('[PREF DEBUG] JSON parse error:', parseErr);
+      } catch {
+        // no-op
       }
 
-      console.log('[PREF DEBUG] parsed body:', body);
       const weightUnit = typeof body.weightUnit === 'string' ? body.weightUnit : undefined;
       const timezone =
         body.timezone === null
@@ -242,8 +223,6 @@ app.put(
       if (timezone !== undefined && timezone !== null && !isValidTimeZone(timezone)) {
         return c.json({ message: 'Invalid timezone' }, 400);
       }
-
-      console.log('[PREF DEBUG] extracted fields:', { weightUnit, timezone, weightPromptedAt });
 
       const existing = await db
         .select()
@@ -294,8 +273,7 @@ app.put(
         timezone: result.timezone ?? null,
         weightPromptedAt: result.weightPromptedAt ?? null,
       });
-    } catch (e) {
-      console.log('DEBUG updatePreferences error:', e);
+    } catch {
       return c.json({ message: 'Failed to update preferences' }, 500);
     }
   }),
@@ -934,9 +912,7 @@ async function createWorkoutFromProgramCycleWorkout(
         .delete(schema.workouts)
         .where(and(eq(schema.workouts.id, createdWorkoutId), eq(schema.workouts.userId, userId)))
         .run()
-        .catch((cleanupError: unknown) => {
-          console.error('Failed to clean up partial program workout:', cleanupError);
-        });
+        .catch(() => {});
     }
 
     throw e;
@@ -1347,7 +1323,6 @@ app.post(
       if (!name) {
         return c.json({ message: 'Name is required' }, 400);
       }
-      console.log('DEBUG createTemplate:', { userId, name, description, notes });
       const now = new Date();
       const result = await db
         .insert(schema.templates)
@@ -1361,10 +1336,8 @@ app.post(
         })
         .returning()
         .get();
-      console.log('DEBUG createTemplate result:', JSON.stringify(result));
       return c.json(result, 201);
-    } catch (e) {
-      console.log('DEBUG createTemplate error:', e);
+    } catch {
       return c.json({ message: 'Failed to create template' }, 500);
     }
   }),
@@ -1412,10 +1385,8 @@ app.put(
   '/api/templates/:id',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    console.log('DEBUG updateTemplate:', { id, userId });
     try {
       const body = await c.req.json();
-      console.log('DEBUG updateTemplate body:', JSON.stringify(body));
       const existingTemplate = await db
         .select({ id: schema.templates.id })
         .from(schema.templates)
@@ -1429,7 +1400,6 @@ app.put(
         .get();
 
       if (!existingTemplate) {
-        console.log('DEBUG updateTemplate result: template not found');
         return c.json({ message: 'Template not found' }, 404);
       }
 
@@ -1445,15 +1415,12 @@ app.put(
         .where(and(eq(schema.templates.id, id), eq(schema.templates.userId, userId)))
         .get();
 
-      console.log('DEBUG updateTemplate result:', JSON.stringify(updatedTemplate));
-
       if (!updatedTemplate) {
         return c.json({ message: 'Failed to update template' }, 500);
       }
 
       return c.json(updatedTemplate);
-    } catch (e) {
-      console.log('DEBUG updateTemplate error:', e);
+    } catch {
       return c.json({ message: 'Failed to update template' }, 500);
     }
   }),
@@ -1620,8 +1587,7 @@ app.post(
         .returning()
         .get();
       return c.json(result, 201);
-    } catch (e) {
-      console.log('DEBUG addTemplateExercise error:', e);
+    } catch {
       return c.json({ message: 'Failed to add exercise to template' }, 500);
     }
   }),
@@ -2388,8 +2354,7 @@ app.post(
       });
 
       return c.json(cycle, 201);
-    } catch (_e) {
-      console.error('Failed to start program:', _e);
+    } catch {
       return c.json({ message: 'Failed to start program' }, 500);
     }
   }),
@@ -2602,8 +2567,7 @@ app.get(
         upcoming,
         completed,
       });
-    } catch (_e) {
-      console.error('Failed to fetch program cycle schedule:', _e);
+    } catch {
       return c.json({ message: 'Failed to fetch program cycle schedule' }, 500);
     }
   }),
@@ -2912,8 +2876,7 @@ app.post(
         created: true,
         completed: false,
       });
-    } catch (e) {
-      console.error('Failed to start current workout:', e);
+    } catch {
       return c.json({ message: 'Failed to start current workout' }, 500);
     }
   }),
@@ -2967,8 +2930,7 @@ app.post(
         completed: false,
         programCycleId: cycleWorkout.cycleId,
       });
-    } catch (e) {
-      console.error('Failed to start workout:', e);
+    } catch {
       return c.json({ message: 'Failed to start workout' }, 500);
     }
   }),
@@ -3107,8 +3069,7 @@ app.put(
       };
 
       return c.json({ workout, ...(warning ? { warning } : {}) });
-    } catch (_e) {
-      console.log('DEBUG scheduleCycleWorkout error:', _e);
+    } catch {
       return c.json({ message: 'Failed to schedule workout' }, 500);
     }
   }),
@@ -3184,7 +3145,6 @@ app.post(
     }
 
     if (!resolvedEnv.WHOOP_CLIENT_ID) {
-      console.error('[WHOOP] Missing WHOOP_CLIENT_ID in worker environment');
       return c.json({ error: 'WHOOP_CLIENT_ID is missing from the worker environment' }, 500);
     }
 
@@ -3226,12 +3186,6 @@ app.post(
     });
 
     const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri);
-    console.info('[WHOOP] Authorization URL generated', {
-      redirectUri,
-      requestUrl: c.req.url,
-      configuredBaseURL: resolveBaseURL(resolvedEnv),
-      returnTo,
-    });
 
     return c.json({ authUrl, state });
   }),
@@ -3249,12 +3203,6 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const deepLink = decodedState.returnTo ?? 'strength://whoop-callback';
 
   if (error) {
-    console.warn('[WHOOP] Callback returned OAuth error', {
-      error,
-      errorDescription,
-      errorUri,
-      requestUrl: c.req.url,
-    });
     return c.redirect(
       buildWhoopCallbackRedirect(deepLink, {
         error: errorDescription ?? error,
@@ -3263,15 +3211,10 @@ app.get('/api/auth/whoop/callback', async (c) => {
   }
 
   if (!code) {
-    console.warn('[WHOOP] Callback missing code');
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'no_code' }));
   }
 
   if (!decodedState.userId) {
-    console.error('[WHOOP] Callback missing userId in state', {
-      hasState: Boolean(state),
-      hasSecret: Boolean(resolvedEnv.BETTER_AUTH_SECRET),
-    });
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'invalid_state' }));
   }
 
@@ -3304,13 +3247,8 @@ app.get('/api/auth/whoop/callback', async (c) => {
 
     await upsertWhoopProfile(db, userId, whoopProfile);
 
-    console.info('[WHOOP] Callback completed successfully', {
-      hasUserId: Boolean(userId),
-      hasWhoopUserId: Boolean(whoopProfile.user_id),
-    });
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { success: 'true' }));
   } catch (e) {
-    console.error('[WHOOP] Callback error:', e);
     return c.redirect(
       buildWhoopCallbackRedirect(deepLink, {
         error: e instanceof Error ? e.message : 'unknown',
@@ -3516,7 +3454,6 @@ app.post(
         ...result,
       });
     } catch (e) {
-      console.error('[WHOOP] Sync error:', e);
       return c.json(
         { message: 'Sync failed', error: e instanceof Error ? e.message : 'Unknown' },
         500,
@@ -3559,7 +3496,6 @@ app.get(
         });
       }
 
-      console.error('[WHOOP] Status error:', e);
       return c.json({ message: 'Failed to check WHOOP status' }, 500);
     }
   }),
@@ -3732,7 +3668,6 @@ app.get(
         return c.json(toWhoopAuthErrorResponse(e), 401);
       }
 
-      console.error('[WHOOP] Data fetch error:', e);
       return c.json({ message: 'Failed to fetch WHOOP data' }, 500);
     }
   }),
@@ -3745,8 +3680,7 @@ app.post(
     try {
       await revokeWhoopIntegration(db, userId);
       return c.json({ success: true });
-    } catch (e) {
-      console.error('[WHOOP] Disconnect error:', e);
+    } catch {
       return c.json({ message: 'Disconnect failed' }, 500);
     }
   }),
@@ -3760,7 +3694,6 @@ app.post('/api/webhooks/whoop', async (c) => {
 
   const isValid = await verifyWebhookSignature(c.env, timestamp, signature, rawBody);
   if (!isValid) {
-    console.error('[WHOOP Webhook] Invalid signature');
     return c.json({ error: 'Invalid signature' }, 401);
   }
 
@@ -3783,8 +3716,7 @@ app.post('/api/webhooks/whoop', async (c) => {
 
       return c.json({ error: result.error }, 500);
     }
-  } catch (e) {
-    console.error('[WHOOP Webhook] Error:', e);
+  } catch {
     return c.json({ error: 'Webhook processing failed' }, 500);
   }
 });

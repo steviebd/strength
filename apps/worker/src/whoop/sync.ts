@@ -501,7 +501,7 @@ export async function syncAllWhoopData(
     } catch (e) {
       const msg = formatSyncError(e);
       if (e && typeof e === 'object' && 'status' in e && e.status === 403) {
-        console.log('[WHOOP Sync] Cycles scope not granted, skipping');
+        // no-op
       } else {
         result.errors.push(`Cycles: ${msg}`);
       }

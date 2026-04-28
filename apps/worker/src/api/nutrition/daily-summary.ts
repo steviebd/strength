@@ -206,7 +206,6 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
       programSession: null,
     });
   } catch (e) {
-    console.error(e);
     throw e;
   }
 });

@@ -52,7 +52,17 @@ packages/
 
 ### Auth
 
-Email/password sign up and sign in via Better Auth, mounted on the Worker at `/api/auth/*`. Auth is **enabled only when `APP_ENV=development`**.
+Email/password and Google sign up/sign in via Better Auth, mounted on the Worker at `/api/auth/*`. Auth is **enabled only when `APP_ENV=development`**.
+
+#### Google OAuth Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create an OAuth client ID (Web application)
+2. Add authorized redirect URIs:
+   - `https://<your-worker-domain>/api/auth/callback/google`
+   - For local dev: `http://localhost:8787/api/auth/callback/google`
+3. Add to Infisical `dev`:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
 
 ### WHOOP Sync
 

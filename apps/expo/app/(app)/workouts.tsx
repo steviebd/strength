@@ -190,8 +190,8 @@ export default function WorkoutsIndex() {
       if (workout?.id) {
         router.push(`/workout-session?workoutId=${workout.id}`);
       }
-    } catch (err) {
-      console.error('Failed to start workout from template:', err);
+    } catch {
+      // no-op
     }
   };
 

@@ -96,7 +96,6 @@ export function createHandler<R = Response>(
   return async (c: AppContext) => {
     const auth = await requireAuthContext(c);
     if (auth instanceof Response) {
-      console.log('[AUTH DEBUG] auth failed:', c.req.path, 'status:', auth.status);
       return auth;
     }
     return handler(c, { userId: auth.userId, db: auth.db });

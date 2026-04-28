@@ -350,7 +350,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
           });
         }
       } catch (err) {
-        console.error('Stream error:', err);
         if (!isClosed) {
           controller.error(err);
         }

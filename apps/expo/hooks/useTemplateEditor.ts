@@ -210,8 +210,8 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
         historyDefaults = await apiFetch<LastWorkoutResponse | null>(
           `/api/workouts/last/${exercise.id}`,
         );
-      } catch (err) {
-        console.error('Failed to load history defaults for template exercise:', err);
+      } catch {
+        // no-op
       }
 
       const firstSetWithValues = historyDefaults?.sets.find(

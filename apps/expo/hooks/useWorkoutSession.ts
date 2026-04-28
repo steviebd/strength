@@ -85,11 +85,6 @@ function logDuplicateWorkoutIds(exercises: WorkoutExercise[]) {
   if (duplicateExerciseIds.size === 0 && duplicateSetIds.size === 0) {
     return;
   }
-
-  console.error('[workout-session] Duplicate ids detected in workout state', {
-    duplicateExerciseIds: [...duplicateExerciseIds],
-    duplicateSetIds: [...duplicateSetIds],
-  });
 }
 
 export function useWorkoutSession(): UseWorkoutSessionReturn {
@@ -294,8 +289,8 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       try {
         await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
         await removePendingWorkout(workout.id);
-      } catch (err) {
-        console.error('Failed to delete workout:', err);
+      } catch {
+        // no-op
       }
     }
     if (timerRef.current) {
@@ -352,20 +347,12 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           notes: null,
           isAmrap: exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'),
         };
-        console.log('[DEBUG addExercise] Adding exercise:', JSON.stringify(newWorkoutExercise));
         setExercises((prev) => {
-          console.log(
-            '[DEBUG addExercise] setExercises callback, prev length:',
-            prev.length,
-            'new exercise:',
-            newWorkoutExercise.name,
-          );
           const next = [...prev, newWorkoutExercise];
-          console.log('[DEBUG addExercise] new state length:', next.length);
           return next;
         });
-      } catch (err) {
-        console.error('[DEBUG addExercise] ERROR:', err);
+      } catch {
+        // no-op
       }
     },
     [exercises.length],
@@ -418,7 +405,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
           body: updates,
-        }).catch(console.error);
+        }).catch(() => {});
       }
     },
     [exercises],
@@ -457,7 +444,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         apiFetch(`/api/workouts/sets/${setId}`, {
           method: 'PUT',
           body: { isComplete },
-        }).catch(console.error);
+        }).catch(() => {});
       }
     },
     [exercises],

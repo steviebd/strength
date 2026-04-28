@@ -172,12 +172,10 @@ function useTemplateEditorApi({
   const saveTemplate = useCallback(async (): Promise<Template | null> => {
     setIsSaving(true);
     setAutoSaveStatus('saving');
-    console.log('Saving template:', { mode, templateId, formData });
     try {
       const isNew = mode === 'create';
       const url = isNew ? '/api/templates' : `/api/templates/${templateId}`;
       const method = isNew ? 'POST' : 'PUT';
-      console.log('Fetch config:', { url, method });
 
       const savedTemplate = await apiFetch<Template>(url, {
         method,
@@ -213,9 +211,7 @@ function useTemplateEditorApi({
       setTimeout(() => setAutoSaveStatus('idle'), 2000);
       onSaved?.(savedTemplate);
       return savedTemplate;
-    } catch (err) {
-      console.error('Failed to save template:', err);
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save template');
+    } catch {
       setAutoSaveStatus('idle');
       return null;
     } finally {

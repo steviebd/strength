@@ -411,7 +411,6 @@ export async function homeSummaryHandler(c: any) {
       recoverySnapshot,
     });
   } catch (e) {
-    console.error(e);
     throw e;
   }
 }

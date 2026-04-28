@@ -130,8 +130,8 @@ export default function Profile() {
     try {
       const status = await fetchWhoopStatus();
       setWhoopStatus(status);
-    } catch (e) {
-      console.error('Failed to load WHOOP status:', e);
+    } catch {
+      // no-op
     } finally {
       setWhoopLoading(false);
     }

@@ -437,8 +437,8 @@ export default function ProgramScheduleScreen() {
             `/workout-session?workoutId=${result.workoutId}&source=program&cycleId=${cycleId}`,
           );
         }
-      } catch (err) {
-        console.error('Failed to start workout:', err);
+      } catch {
+        // no-op
       } finally {
         setStartingWorkoutId(null);
       }
@@ -465,8 +465,8 @@ export default function ProgramScheduleScreen() {
           scheduledAt,
         });
         setRescheduleModalWorkout(null);
-      } catch (err) {
-        console.error('Failed to reschedule workout:', err);
+      } catch {
+        // no-op
       }
     },
     [rescheduleWorkout],
