@@ -677,6 +677,8 @@ export default function NutritionScreen() {
       setMessages((prev) => dedupeMessages([...mergeSavedEntryIds(olderMessages, prev), ...prev]));
       setHistoryCursor(response.nextCursor);
       setHasMoreHistory(response.hasMore);
+    } catch {
+      // silently ignore — chat history load failure is non-critical
     } finally {
       setIsLoadingMoreHistory(false);
     }

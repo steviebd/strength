@@ -3,7 +3,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, View } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
-import { QueryProvider } from '@/providers/QueryProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
@@ -84,155 +83,153 @@ export default function AppLayout() {
   }
 
   return (
-    <QueryProvider>
-      <>
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-            sceneStyle: {
-              backgroundColor: colors.background,
-            },
-            tabBarHideOnKeyboard: true,
-            tabBarActiveTintColor: colors.accentSecondary,
-            tabBarInactiveTintColor: colors.textMuted,
-            tabBarLabelStyle: {
-              fontSize: 12,
-              fontWeight: '600',
-              marginTop: 2,
-            },
-            tabBarItemStyle: {
-              paddingTop: 4,
-            },
-            tabBarStyle: {
-              backgroundColor: colors.surface,
-              borderTopColor: colors.border,
-              borderTopWidth: 1,
-              height: insets.bottom + 72,
-              paddingTop: 8,
-              paddingBottom: Math.max(insets.bottom, 10),
-              paddingHorizontal: 10,
-            },
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          sceneStyle: {
+            backgroundColor: colors.background,
+          },
+          tabBarHideOnKeyboard: true,
+          tabBarActiveTintColor: colors.accentSecondary,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '600',
+            marginTop: 2,
+          },
+          tabBarItemStyle: {
+            paddingTop: 4,
+          },
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            height: insets.bottom + 56,
+            paddingTop: 4,
+            paddingBottom: Math.max(insets.bottom, 8),
+            paddingHorizontal: 10,
+          },
+        }}
+      >
+        <Tabs.Screen
+          name="home"
+          options={{
+            title: TAB_ICONS.home.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.home.active : TAB_ICONS.home.inactive}
+                size={22}
+              />
+            ),
           }}
-        >
-          <Tabs.Screen
-            name="home"
-            options={{
-              title: TAB_ICONS.home.title,
-              tabBarIcon: ({ color, focused }) => (
-                <Ionicons
-                  color={color}
-                  name={focused ? TAB_ICONS.home.active : TAB_ICONS.home.inactive}
-                  size={22}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="workouts"
-            options={{
-              title: TAB_ICONS.workouts.title,
-              tabBarIcon: ({ color, focused }) => (
-                <Ionicons
-                  color={color}
-                  name={focused ? TAB_ICONS.workouts.active : TAB_ICONS.workouts.inactive}
-                  size={22}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="programs"
-            options={{
-              title: TAB_ICONS.programs.title,
-              tabBarIcon: ({ color, focused }) => (
-                <Ionicons
-                  color={color}
-                  name={focused ? TAB_ICONS.programs.active : TAB_ICONS.programs.inactive}
-                  size={22}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="nutrition"
-            options={{
-              title: TAB_ICONS.nutrition.title,
-              tabBarIcon: ({ color, focused }) => (
-                <Ionicons
-                  color={color}
-                  name={focused ? TAB_ICONS.nutrition.active : TAB_ICONS.nutrition.inactive}
-                  size={22}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="profile"
-            options={{
-              title: TAB_ICONS.profile.title,
-              tabBarIcon: ({ color, focused }) => (
-                <Ionicons
-                  color={color}
-                  name={focused ? TAB_ICONS.profile.active : TAB_ICONS.profile.inactive}
-                  size={22}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="(program-detail)"
-            options={{
-              href: null,
-            }}
-          />
-          <Tabs.Screen
-            name="(workout-detail)"
-            options={{
-              href: null,
-            }}
-          />
-          <Tabs.Screen
-            name="whoop"
-            options={{
-              href: null,
-            }}
-          />
-        </Tabs>
-
-        <TimezonePickerModal
-          visible={!isLoading && needsTimezoneSelection}
-          title="Set your timezone"
-          description="Choose the timezone your workouts, meals, and daily summaries should follow."
-          confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
-          selectedTimezone={deviceTimezone ?? timezone}
-          onClose={() => {}}
-          onConfirm={setTimezone}
-          dismissLocked
-          acceptFirst={Boolean(deviceTimezone)}
         />
-
-        <TimezonePickerModal
-          visible={showTimezoneMismatchModal}
-          title="Timezone changed?"
-          description="Your device timezone is different from your saved preference. Would you like to update it?"
-          confirmLabel="Update timezone"
-          selectedTimezone={deviceTimezone}
-          onClose={dismissTimezoneMismatchModal}
-          onConfirm={setTimezone}
-          acceptFirst={true}
-        />
-
-        <WeightPickerModal
-          visible={!isLoading && needsWeightSelection}
-          weightUnit={weightUnit}
-          onSave={async (bodyweightKg) => {
-            await saveBodyweightMutation.mutateAsync(bodyweightKg);
-            await markWeightAsPrompted();
+        <Tabs.Screen
+          name="workouts"
+          options={{
+            title: TAB_ICONS.workouts.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.workouts.active : TAB_ICONS.workouts.inactive}
+                size={22}
+              />
+            ),
           }}
-          onSkip={markWeightAsPrompted}
-          isSaving={saveBodyweightMutation.isPending}
         />
-      </>
-    </QueryProvider>
+        <Tabs.Screen
+          name="programs"
+          options={{
+            title: TAB_ICONS.programs.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.programs.active : TAB_ICONS.programs.inactive}
+                size={22}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="nutrition"
+          options={{
+            title: TAB_ICONS.nutrition.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.nutrition.active : TAB_ICONS.nutrition.inactive}
+                size={22}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: TAB_ICONS.profile.title,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                color={color}
+                name={focused ? TAB_ICONS.profile.active : TAB_ICONS.profile.inactive}
+                size={22}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="(program-detail)"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="(workout-detail)"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="whoop"
+          options={{
+            href: null,
+          }}
+        />
+      </Tabs>
+
+      <TimezonePickerModal
+        visible={!isLoading && needsTimezoneSelection}
+        title="Set your timezone"
+        description="Choose the timezone your workouts, meals, and daily summaries should follow."
+        confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
+        selectedTimezone={deviceTimezone ?? timezone}
+        onClose={() => {}}
+        onConfirm={setTimezone}
+        dismissLocked
+        acceptFirst={Boolean(deviceTimezone)}
+      />
+
+      <TimezonePickerModal
+        visible={showTimezoneMismatchModal}
+        title="Timezone changed?"
+        description="Your device timezone is different from your saved preference. Would you like to update it?"
+        confirmLabel="Update timezone"
+        selectedTimezone={deviceTimezone}
+        onClose={dismissTimezoneMismatchModal}
+        onConfirm={setTimezone}
+        acceptFirst={true}
+      />
+
+      <WeightPickerModal
+        visible={!isLoading && needsWeightSelection}
+        weightUnit={weightUnit}
+        onSave={async (bodyweightKg) => {
+          await saveBodyweightMutation.mutateAsync(bodyweightKg);
+          await markWeightAsPrompted();
+        }}
+        onSkip={markWeightAsPrompted}
+        isSaving={saveBodyweightMutation.isPending}
+      />
+    </>
   );
 }

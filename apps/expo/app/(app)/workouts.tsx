@@ -33,6 +33,7 @@ import { apiFetch } from '@/lib/api';
 import { getPendingWorkouts, addPendingWorkout, removePendingWorkout } from '@/lib/storage';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
 import type { Template } from '@/hooks/useTemplateEditor';
+import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
 import { colors, radius, spacing, typography } from '@/theme';
 
 interface WorkoutHistoryItem {
@@ -582,6 +583,16 @@ export default function WorkoutsIndex() {
         <TemplateEditor
           mode={editingTemplate ? 'edit' : 'create'}
           templateId={editingTemplate?.id}
+          initialData={
+            editingTemplate
+              ? {
+                  name: editingTemplate.name,
+                  description: editingTemplate.description ?? undefined,
+                  notes: editingTemplate.notes ?? undefined,
+                  exercises: editingTemplate.exercises as unknown as SelectedExercise[],
+                }
+              : undefined
+          }
           onClose={() => {
             setShowTemplateEditor(false);
             setEditingTemplate(null);

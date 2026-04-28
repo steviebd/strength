@@ -9,6 +9,7 @@ import {
   View,
   LayoutChangeEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db';
 import {
   createCustomExercise,
@@ -73,6 +74,7 @@ export function ExerciseSearch({
   excludeIds = [],
   visible = true,
 }: ExerciseSearchProps) {
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [userExercises, setUserExercises] = useState<UserExercise[]>([]);
   const [loading, setLoading] = useState(false);
@@ -301,7 +303,7 @@ export function ExerciseSearch({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.headerTop}>
           <Text style={styles.headerTitle}>
             {showCreateForm ? 'Create Exercise' : 'Add Exercise'}
@@ -429,7 +431,7 @@ export function ExerciseSearch({
           <FlatList
             data={listData}
             keyExtractor={(item) => getListItemKey(item)}
-            contentContainerStyle={{ paddingBottom: 100 }}
+            contentContainerStyle={{ paddingBottom: 140 }}
             renderItem={renderItem}
             ListEmptyComponent={
               <View style={styles.emptyState}>
@@ -442,7 +444,7 @@ export function ExerciseSearch({
           />
 
           {pendingSelection.length > 0 && (
-            <View style={styles.selectionBar}>
+            <View style={[styles.selectionBar, { paddingBottom: insets.bottom + spacing.md }]}>
               <Text style={styles.selectionText}>{pendingSelection.length} selected</Text>
               <Pressable onPress={handleConfirm} style={styles.confirmButton}>
                 <Text style={styles.confirmButtonText}>

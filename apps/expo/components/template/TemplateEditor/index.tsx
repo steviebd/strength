@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Pressable, ActivityIndicator, Alert, Modal, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -277,6 +278,7 @@ export function TemplateEditor({
   onSaved,
   onClose,
 }: TemplateEditorProps) {
+  const insets = useSafeAreaInsets();
   const [showExerciseSearch, setShowExerciseSearch] = useState(false);
 
   const initialFormData = {
@@ -302,13 +304,9 @@ export function TemplateEditor({
     updateExercise,
     reorderExercises,
     pushUndo,
-    canUndo,
-    canRedo,
-    handleUndo,
-    handleRedo,
   } = useTemplateEditorState(initialFormData, initialExercises);
 
-  const { saveTemplate, isSaving, autoSaveStatus } = useTemplateEditorApi({
+  const { saveTemplate, isSaving } = useTemplateEditorApi({
     mode,
     templateId,
     formData,
@@ -406,55 +404,7 @@ export function TemplateEditor({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={handleCancel}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-        >
-          <Text style={styles.iconButtonText}>←</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>
-          {mode === 'create' ? 'Create Template' : 'Edit Template'}
-        </Text>
-        <View style={styles.headerActions}>
-          <Pressable
-            onPress={handleUndo}
-            disabled={!canUndo}
-            style={[
-              styles.iconButton,
-              !canUndo ? styles.iconButtonDisabled : styles.iconButtonActive,
-            ]}
-          >
-            <Text style={styles.iconButtonText}>↩</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleRedo}
-            disabled={!canRedo}
-            style={[
-              styles.iconButton,
-              !canRedo ? styles.iconButtonDisabled : styles.iconButtonActive,
-            ]}
-          >
-            <Text style={styles.iconButtonText}>↪</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {mode === 'edit' && (
-        <View style={styles.statusBar}>
-          <View style={styles.statusBarContent}>
-            {autoSaveStatus === 'saving' && (
-              <>
-                <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={styles.statusBarText}>Saving...</Text>
-              </>
-            )}
-            {autoSaveStatus === 'saved' && <Text style={styles.statusBarSaved}>Saved</Text>}
-          </View>
-        </View>
-      )}
-
-      <ScreenScrollView bottomInset={48} horizontalPadding={16}>
+      <ScreenScrollView bottomInset={160} horizontalPadding={16} topPadding={insets.top + 16}>
         <View style={styles.section}>
           <Text style={styles.label}>Template Name *</Text>
           <Input
@@ -728,17 +678,21 @@ export function TemplateEditor({
         </View>
       </ScreenScrollView>
 
-      <View style={styles.footer}>
-        <Button variant="outline" onPress={handleCancel} style={styles.footerButton}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </Button>
-        <Button onPress={handleSave} disabled={isSaving} style={styles.footerButton}>
-          {isSaving ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Template</Text>
-          )}
-        </Button>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={styles.footerButton}>
+          <Button variant="outline" size="lg" onPress={handleCancel} fullWidth>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </Button>
+        </View>
+        <View style={styles.footerButton}>
+          <Button size="lg" onPress={handleSave} disabled={isSaving} fullWidth>
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Template</Text>
+            )}
+          </Button>
+        </View>
       </View>
 
       <Modal
@@ -763,66 +717,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerTitle: {
-    fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.text,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  iconButton: {
-    height: 40,
-    width: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-  },
-  iconButtonActive: {
-    backgroundColor: colors.border,
-  },
-  iconButtonPressed: {
-    opacity: 0.7,
-  },
-  iconButtonDisabled: {
-    opacity: 0.3,
-  },
-  iconButtonText: {
-    fontSize: 20,
-    color: colors.text,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  statusBarContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statusBarText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textMuted,
-  },
-  statusBarSaved: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.success,
-  },
+
   section: {
     marginBottom: 16,
   },
@@ -1026,12 +921,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     gap: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
-    padding: 16,
+    padding: 20,
   },
   footerButton: {
     flex: 1,
