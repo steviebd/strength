@@ -70,8 +70,16 @@ export default function Profile() {
   const searchParams = useLocalSearchParams<{ whoop?: string; error?: string; focus?: string }>();
   const queryClient = useQueryClient();
   const { data: session, isPending } = authClient.useSession();
-  const { weightUnit, timezone, deviceTimezone, setWeightUnit, setTimezone, isLoading } =
-    useUserPreferences();
+  const {
+    weightUnit,
+    timezone,
+    deviceTimezone,
+    setWeightUnit,
+    setTimezone,
+    recordBodyweight,
+    bodyweightKg,
+    isLoading,
+  } = useUserPreferences();
   const scrollViewRef = useRef<ScrollView>(null);
   const whoopSectionY = useRef(0);
 
@@ -96,7 +104,8 @@ export default function Profile() {
         method: 'POST',
         body: { bodyweightKg },
       }),
-    onSuccess: () => {
+    onSuccess: async (_data, bodyweightKg) => {
+      await recordBodyweight(bodyweightKg);
       queryClient.invalidateQueries({ queryKey: ['body-stats'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
     },
@@ -106,8 +115,11 @@ export default function Profile() {
     if (bodyStats?.bodyweightKg !== undefined && bodyStats?.bodyweightKg !== null) {
       const display = convertToDisplayWeight(bodyStats.bodyweightKg, weightUnit);
       setDisplayBodyweight(display.toFixed(1));
+      if (bodyStats.bodyweightKg !== bodyweightKg) {
+        void recordBodyweight(bodyStats.bodyweightKg);
+      }
     }
-  }, [bodyStats, weightUnit]);
+  }, [bodyStats, bodyweightKg, recordBodyweight, weightUnit]);
 
   const handleBodyweightChange = useCallback((text: string) => {
     setDisplayBodyweight(text);

@@ -6,6 +6,19 @@ import { createHandler } from '../api/auth';
 
 const router = createRouter();
 
+export function serializePreferences(
+  prefs: typeof schema.userPreferences.$inferSelect,
+  bodyStats: typeof schema.userBodyStats.$inferSelect | null,
+) {
+  return {
+    weightUnit: prefs.weightUnit ?? 'kg',
+    timezone: prefs.timezone ?? null,
+    weightPromptedAt: prefs.weightPromptedAt ?? null,
+    bodyweightKg: bodyStats?.bodyweightKg ?? null,
+    updatedAt: prefs.updatedAt,
+  };
+}
+
 router.get(
   '/preferences',
   createHandler(async (c, { userId, db }) => {
@@ -32,11 +45,13 @@ router.get(
         prefs = result;
       }
 
-      return c.json({
-        weightUnit: prefs.weightUnit ?? 'kg',
-        timezone: prefs.timezone ?? null,
-        weightPromptedAt: prefs.weightPromptedAt ?? null,
-      });
+      const bodyStats = await db
+        .select()
+        .from(schema.userBodyStats)
+        .where(eq(schema.userBodyStats.userId, userId))
+        .get();
+
+      return c.json(serializePreferences(prefs, bodyStats ?? null));
     } catch {
       return c.json({ message: 'Failed to fetch preferences' }, 500);
     }
@@ -123,10 +138,14 @@ router.put(
           .get();
       }
 
+      const bodyStats = await db
+        .select()
+        .from(schema.userBodyStats)
+        .where(eq(schema.userBodyStats.userId, userId))
+        .get();
+
       return c.json({
-        weightUnit: result.weightUnit ?? 'kg',
-        timezone: result.timezone ?? null,
-        weightPromptedAt: result.weightPromptedAt ?? null,
+        ...serializePreferences(result, bodyStats ?? null),
       });
     } catch {
       return c.json({ message: 'Failed to update preferences' }, 500);

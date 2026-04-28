@@ -53,6 +53,7 @@ export default function AppLayout() {
     dismissTimezoneMismatchModal,
     weightUnit,
     markWeightAsPrompted,
+    recordBodyweight,
   } = useUserPreferences();
 
   const saveBodyweightMutation = useMutation({
@@ -225,6 +226,7 @@ export default function AppLayout() {
         weightUnit={weightUnit}
         onSave={async (bodyweightKg) => {
           await saveBodyweightMutation.mutateAsync(bodyweightKg);
+          await recordBodyweight(bodyweightKg);
           await markWeightAsPrompted();
         }}
         onSkip={markWeightAsPrompted}
