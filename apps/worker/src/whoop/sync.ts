@@ -1,4 +1,3 @@
-/* oxlint-disable no-unused-vars */
 import type { WorkerEnv } from '../auth';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';

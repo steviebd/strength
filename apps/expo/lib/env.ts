@@ -1,4 +1,3 @@
-/* oxlint-disable no-unused-vars */
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
