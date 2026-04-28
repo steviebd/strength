@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const megsquatsInfo: ProgramInfo = {
+export const megsquatsInfo: ProgramInfo = createProgramInfo({
   slug: 'stronger-by-the-day',
   name: 'Stronger by the Day (Megsquats)',
   description:
     'A 12-week upper/lower split program designed specifically for women, featuring training max progression and glute-focused accessories.',
-  difficulty: 'beginner' as const,
+  difficulty: 'beginner',
   daysPerWeek: 3,
   estimatedWeeks: 12,
   totalSessions: 36,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: "women's" as const,
-};
+  category: "women's",
+});
 
 export const megsquatsAccessories: ProgramAccessory[] = [
   { accessoryId: 'hip-thrust', sets: 3, reps: 10, isRequired: true },

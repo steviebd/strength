@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const nuckolsInfo: ProgramInfo = {
+export const nuckolsInfo: ProgramInfo = createProgramInfo({
   slug: 'nuckols-28-programs',
   name: 'Greg Nuckols 28 Programs',
   description:
     'Science-backed programming with 4-week wave periodization. Evidence-based progression for intermediate lifters.',
-  difficulty: 'intermediate' as const,
+  difficulty: 'intermediate',
   daysPerWeek: 4,
   estimatedWeeks: 8,
   totalSessions: 32,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: 'general-strength' as const,
-};
+  category: 'general-strength',
+});
 
 export const WAVE_1 = {
   week1: { t1: [0.7, 0.8, 0.9], t2: [0.6, 0.7, 0.8] },

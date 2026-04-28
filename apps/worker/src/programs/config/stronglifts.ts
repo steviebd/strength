@@ -1,17 +1,18 @@
 import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const strongliftsInfo: ProgramInfo = {
+export const strongliftsInfo: ProgramInfo = createProgramInfo({
   slug: 'stronglifts-5x5',
   name: 'StrongLifts 5×5',
   description:
     'The classic beginner program that has helped millions get stronger. Simple, effective, and proven.',
-  difficulty: 'beginner' as const,
+  difficulty: 'beginner',
   daysPerWeek: 3,
   estimatedWeeks: 8,
   totalSessions: 24,
   mainLifts: ['squat', 'bench', 'deadlift', 'ohp', 'row'] as LiftType[],
-  category: 'general-strength' as const,
-};
+  category: 'general-strength',
+});
 
 export const strongliftsAccessories: ProgramAccessory[] = [
   { accessoryId: 'pullups', sets: 3, reps: 8, isRequired: false },

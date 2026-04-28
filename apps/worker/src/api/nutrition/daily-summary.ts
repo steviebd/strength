@@ -1,8 +1,10 @@
 import { eq, and, gte, lt } from 'drizzle-orm';
-import type { TrainingContext, WhoopData, MacroTargets } from '../../lib/ai/nutrition-prompts';
+import type { TrainingContext, MacroTargets } from '../../lib/ai/nutrition-prompts';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
+import { getWhoopDataForDay } from '../../lib/whoop-queries';
+import { calculateMacroTargets } from '../../lib/nutrition';
 
 type TargetStrategy = 'manual' | 'bodyweight' | 'default';
 
@@ -68,51 +70,31 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
         }
       : null;
 
-    const recovery = await db
-      .select()
-      .from(schema.whoopRecovery)
-      .where(
-        and(
-          eq(schema.whoopRecovery.userId, userId),
-          gte(schema.whoopRecovery.date, startOfDay),
-          lt(schema.whoopRecovery.date, endOfDay),
-        ),
-      )
-      .get();
+    const whoopData = await getWhoopDataForDay(db, userId, date, timezoneResult.timezone);
 
-    const cycle = await db
-      .select()
-      .from(schema.whoopCycle)
-      .where(
-        and(
-          eq(schema.whoopCycle.userId, userId),
-          gte(schema.whoopCycle.start, startOfDay),
-          lt(schema.whoopCycle.start, endOfDay),
-        ),
-      )
-      .get();
+    const whoopRecovery =
+      whoopData.recoveryScore !== null
+        ? {
+            recoveryScore: whoopData.recoveryScore,
+            recoveryStatus: whoopData.recoveryStatus,
+            hrv: whoopData.hrv,
+            restingHeartRate: whoopData.restingHeartRate,
+            caloriesBurned: null,
+            totalStrain: null,
+          }
+        : null;
 
-    const whoopRecovery: WhoopData | null = recovery
-      ? {
-          recoveryScore: recovery.recoveryScore ?? null,
-          recoveryStatus: recovery.recoveryScoreTier ?? null,
-          hrv: recovery.hrvRmssdMilli ?? null,
-          restingHeartRate: recovery.restingHeartRate ?? null,
-          caloriesBurned: null,
-          totalStrain: null,
-        }
-      : null;
-
-    const whoopCycle = cycle
-      ? {
-          recoveryScore: null,
-          recoveryStatus: null,
-          hrv: null,
-          restingHeartRate: null,
-          caloriesBurned: cycle.dayStrain ? Math.round(cycle.dayStrain * 10) : null,
-          totalStrain: cycle.dayStrain ?? null,
-        }
-      : null;
+    const whoopCycle =
+      whoopData.totalStrain !== null
+        ? {
+            recoveryScore: null,
+            recoveryStatus: null,
+            hrv: null,
+            restingHeartRate: null,
+            caloriesBurned: whoopData.caloriesBurned,
+            totalStrain: whoopData.totalStrain,
+          }
+        : null;
 
     const totalCalories = entries.reduce((sum, e) => sum + (e.calories ?? 0), 0);
     const totalProteinG = entries.reduce((sum, e) => sum + (e.proteinG ?? 0), 0);
@@ -149,19 +131,7 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
       targetStrategy = 'manual';
       targetExplanation = 'Targets are using the manual nutrition values saved in your profile.';
     } else if (bodyStats?.bodyweightKg) {
-      const estimatedCalories = Math.round(2500 * calorieMultiplier);
-      const proteinG = Math.round(bodyStats.bodyweightKg * 2);
-      const fatG = Math.round(bodyStats.bodyweightKg * 0.8);
-      const proteinCals = proteinG * 4;
-      const fatCals = fatG * 9;
-      const carbsG = Math.max(0, Math.round((estimatedCalories - proteinCals - fatCals) / 4));
-
-      targets = {
-        calories: estimatedCalories,
-        proteinG,
-        carbsG,
-        fatG,
-      };
+      targets = calculateMacroTargets(bodyStats.bodyweightKg, trainingContext?.type ?? null, 2500);
       targetStrategy = 'bodyweight';
       targetExplanation = `Targets are estimated from ${bodyStats.bodyweightKg} kg bodyweight, with protein at 2.0 g/kg, fat at 0.8 g/kg, and carbs using the remaining calories.`;
     } else {

@@ -40,3 +40,18 @@ export async function resolveUserTimezone(
 export function getUtcRangeForLocalDate(localDate: string, timeZone: string) {
   return getUtcRangeForLocalDateFromDb(localDate, timeZone);
 }
+
+export async function requireDateRange(
+  c: any,
+  db: any,
+  userId: string,
+  date: string,
+): Promise<{ start: Date; end: Date; timezone: string } | Response> {
+  const timezoneResult = await resolveUserTimezone(db, userId);
+  if (timezoneResult.error || !timezoneResult.timezone) {
+    return c.json({ error: timezoneResult.error }, 400);
+  }
+
+  const { start, end } = getUtcRangeForLocalDate(date, timezoneResult.timezone);
+  return { start, end, timezone: timezoneResult.timezone };
+}

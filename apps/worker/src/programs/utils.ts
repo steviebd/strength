@@ -61,7 +61,9 @@ export function getLiftIndex(lift: LiftType): number {
   return lifts.indexOf(lift);
 }
 
-export function getDayLifts(day: number): { t1: LiftType; t2: LiftType } {
+type DayLiftPair = 'squat' | 'bench' | 'deadlift' | 'ohp';
+
+export function getDayLifts(day: number): { t1: DayLiftPair; t2: DayLiftPair } {
   const dayConfigs = [
     { t1: 'squat' as const, t2: 'bench' as const },
     { t1: 'bench' as const, t2: 'squat' as const },

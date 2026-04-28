@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const nsunsInfo: ProgramInfo = {
+export const nsunsInfo: ProgramInfo = createProgramInfo({
   slug: 'nsuns-lp',
   name: 'nSuns LP',
   description:
     'High volume linear progression. Excellent for building base strength with paired T1/T2 lifts.',
-  difficulty: 'intermediate' as const,
+  difficulty: 'intermediate',
   daysPerWeek: 4,
   estimatedWeeks: 8,
   totalSessions: 32,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: 'powerlifting' as const,
-};
+  category: 'powerlifting',
+});
 
 export const nsunsRequiredAccessories: ProgramAccessory[] = [
   { accessoryId: 'rows', sets: 3, reps: '8-12', isRequired: true },

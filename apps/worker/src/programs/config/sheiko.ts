@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const sheikoInfo: ProgramInfo = {
+export const sheikoInfo: ProgramInfo = createProgramInfo({
   slug: 'sheiko',
   name: 'Sheiko',
   description:
     'Russian-style high volume programming at moderate intensity. Excellent for technique work and building work capacity.',
-  difficulty: 'advanced' as const,
+  difficulty: 'advanced',
   daysPerWeek: 4,
   estimatedWeeks: 8,
   totalSessions: 32,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: 'powerlifting' as const,
-};
+  category: 'powerlifting',
+});
 
 export const VOLUME_DAY = {
   squat: { sets: 6, reps: 3, percentage: 0.75 },

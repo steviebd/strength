@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api';
 import { getLastWorkout, setLastWorkout, removePendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { generateId } from '@strength/db';
+import { exerciseLibrary } from '@strength/db';
 import type {
   Workout,
   WorkoutExercise,
@@ -481,168 +482,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     deleteSet,
     toggleSetComplete,
     getLastWorkoutData,
-    availableExercises: [
-      {
-        id: 'barbell-bench-press',
-        name: 'Bench Press',
-        muscleGroup: 'Chest',
-        description:
-          'A compound exercise where you lie on a bench and press a barbell up from chest level, primarily targeting the pectoralis major.',
-      },
-      {
-        id: 'dumbbell-bench-press',
-        name: 'Dumbbell Bench Press',
-        muscleGroup: 'Chest',
-        description:
-          'A compound chest exercise performed on a bench using dumbbells, allowing for a greater range of motion and independent arm movement.',
-      },
-      {
-        id: 'incline-dumbbell-press',
-        name: 'Incline Dumbbell Press',
-        muscleGroup: 'Chest',
-        description:
-          'A variation of the bench press performed on an incline bench, emphasizing the upper portion of the pectoralis major.',
-      },
-      {
-        id: 'barbell-row',
-        name: 'Barbell Row',
-        muscleGroup: 'Back',
-        description:
-          'A compound back exercise where you bend over and pull a barbell toward your lower chest, targeting the latissimus dorsi and rhomboids.',
-      },
-      {
-        id: 'deadlift',
-        name: 'Deadlift',
-        muscleGroup: 'Back',
-        description:
-          'A compound exercise lifting a barbell from the floor to hip level, working the entire posterior chain including back, glutes, and hamstrings.',
-      },
-      {
-        id: 'lat-pulldown',
-        name: 'Lat Pulldown',
-        muscleGroup: 'Back',
-        description:
-          'A cable exercise pulling a bar down to chest level while seated, effectively targeting the latissimus dorsi and upper back muscles.',
-      },
-      {
-        id: 'pull-ups',
-        name: 'Pull-ups',
-        muscleGroup: 'Back',
-        description:
-          'A bodyweight exercise hanging from a bar and pulling yourself up, primarily working the lats with secondary engagement of biceps and rear delts.',
-      },
-      {
-        id: 'seated-cable-row',
-        name: 'Seated Cable Row',
-        muscleGroup: 'Back',
-        description:
-          'A compound back exercise performed sitting, pulling a handle toward the abdomen while keeping the back straight, targeting the middle back.',
-      },
-      {
-        id: 'dumbbell-row',
-        name: 'Dumbbell Row',
-        muscleGroup: 'Back',
-        description:
-          'A unilateral back exercise bent over with one hand supporting, pulling a dumbbell up to the hip to target the lat and upper back.',
-      },
-      {
-        id: 'overhead-press',
-        name: 'Overhead Press',
-        muscleGroup: 'Shoulders',
-        description:
-          'A compound shoulder exercise pressing a barbell from shoulders to overhead, primarily targeting the anterior and lateral deltoids.',
-      },
-      {
-        id: 'dumbbell-shoulder-press',
-        name: 'Dumbbell Shoulder Press',
-        muscleGroup: 'Shoulders',
-        description:
-          'A shoulder exercise pressing dumbbells from shoulder height to overhead, allowing greater shoulder stabilization and range of motion.',
-      },
-      {
-        id: 'lateral-raises',
-        name: 'Lateral Raises',
-        muscleGroup: 'Shoulders',
-        description:
-          'An isolation exercise raising dumbbells to the sides to target the lateral deltoid muscles, creating shoulder width and definition.',
-      },
-      {
-        id: 'barbell-curl',
-        name: 'Barbell Curl',
-        muscleGroup: 'Biceps',
-        description:
-          'The classic biceps exercise curling a barbell from hip level to the shoulders, primarily targeting the biceps brachii.',
-      },
-      {
-        id: 'dumbbell-curl',
-        name: 'Dumbbell Curl',
-        muscleGroup: 'Biceps',
-        description:
-          'A fundamental bicep curl using individual dumbbells, allowing each arm to work independently with a full range of motion.',
-      },
-      {
-        id: 'tricep-pushdown',
-        name: 'Tricep Pushdowns',
-        muscleGroup: 'Triceps',
-        description:
-          'A cable exercise pushing a bar down by extending the elbows, one of the most effective exercises for targeting the triceps.',
-      },
-      {
-        id: 'skull-crushers',
-        name: 'Skull Crushers',
-        muscleGroup: 'Triceps',
-        description:
-          'An isolation exercise lowering a weight to the forehead while lying on a bench, then extending the arms to work the triceps.',
-      },
-      {
-        id: 'barbell-squat',
-        name: 'Squat',
-        muscleGroup: 'Quads',
-        description:
-          'The king of leg exercises, squatting with a barbell on the back to build overall leg mass and strength, primarily targeting quads.',
-      },
-      {
-        id: 'leg-press',
-        name: 'Leg Press',
-        muscleGroup: 'Quads',
-        description:
-          'A machine-based compound exercise pushing a platform away while seated, targeting the quadriceps with less spinal loading than squats.',
-      },
-      {
-        id: 'lunges',
-        name: 'Walking Lunges',
-        muscleGroup: 'Quads',
-        description:
-          'A unilateral leg exercise stepping forward and lowering the body, targeting quads, glutes, and hamstrings while improving balance.',
-      },
-      {
-        id: 'romanian-deadlift',
-        name: 'Romanian Deadlift',
-        muscleGroup: 'Hamstrings',
-        description:
-          'A hip-hinge movement lowering a barbell while keeping legs slightly bent, intensely targeting the hamstrings and glutes.',
-      },
-      {
-        id: 'leg-curl',
-        name: 'Leg Curl',
-        muscleGroup: 'Hamstrings',
-        description:
-          'A machine isolation exercise curling the legs against resistance while lying down, directly targeting the hamstring muscles.',
-      },
-      {
-        id: 'hip-thrust',
-        name: 'Hip Thrust',
-        muscleGroup: 'Glutes',
-        description:
-          'A glute isolation exercise thrusting hips upward with weight on the pelvis, one of the most effective movements for glute development.',
-      },
-      {
-        id: 'plank',
-        name: 'Plank',
-        muscleGroup: 'Core',
-        description:
-          'An isometric core exercise holding a push-up position, engaging the entire midsection including abs, obliques, and lower back.',
-      },
-    ],
+    availableExercises: exerciseLibrary.map((item) => ({
+      id: item.id,
+      name: item.name,
+      muscleGroup: item.muscleGroup,
+      description: item.description,
+    })),
   };
 }

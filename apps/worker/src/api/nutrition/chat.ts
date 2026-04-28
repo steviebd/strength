@@ -16,6 +16,8 @@ import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { formatLocalDate } from '@strength/db';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
+import { getWhoopDataForDay } from '../../lib/whoop-queries';
+import { calculateMacroTargets } from '../../lib/nutrition';
 
 interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
@@ -29,100 +31,6 @@ interface ChatHistoryQuery {
   date: string;
   limit?: string;
   before?: string;
-}
-
-async function getWhoopDataForDay(
-  db: any,
-  userId: string,
-  date: string,
-  timezone: string,
-): Promise<WhoopData> {
-  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
-
-  const recovery = await db
-    .select()
-    .from(schema.whoopRecovery)
-    .where(
-      and(
-        eq(schema.whoopRecovery.userId, userId),
-        gte(schema.whoopRecovery.date, startOfDay),
-        lt(schema.whoopRecovery.date, endOfDay),
-      ),
-    )
-    .get();
-
-  const cycle = await db
-    .select()
-    .from(schema.whoopCycle)
-    .where(
-      and(
-        eq(schema.whoopCycle.userId, userId),
-        gte(schema.whoopCycle.start, startOfDay),
-        lt(schema.whoopCycle.start, endOfDay),
-      ),
-    )
-    .get();
-
-  const recoveryScore = recovery?.recoveryScore ?? null;
-  const recoveryStatus = recovery?.recoveryScoreTier ?? null;
-  const hrv = recovery?.hrvRmssdMilli ?? null;
-  const restingHeartRate = recovery?.restingHeartRate ?? null;
-  const caloriesBurned = cycle?.dayStrain ? Math.round(cycle.dayStrain * 10) : null;
-  const totalStrain = cycle?.dayStrain ?? null;
-
-  return {
-    recoveryScore,
-    recoveryStatus,
-    hrv,
-    restingHeartRate,
-    caloriesBurned,
-    totalStrain,
-  };
-}
-
-function calculateMacroTargets(
-  bodyweightKg: number,
-  trainingType: string | null,
-  hasProgram: boolean,
-  fallbackCalories: number,
-  customTargets?: {
-    targetCalories?: number;
-    targetProteinG?: number;
-    targetCarbsG?: number;
-    targetFatG?: number;
-  },
-): MacroTargets {
-  if (customTargets?.targetCalories) {
-    return {
-      calories: customTargets.targetCalories,
-      proteinG: customTargets.targetProteinG ?? Math.round(bodyweightKg * 2),
-      carbsG: customTargets.targetCarbsG ?? Math.round(bodyweightKg * 3),
-      fatG: customTargets.targetFatG ?? Math.round(bodyweightKg * 0.8),
-    };
-  }
-
-  const proteinG = Math.round(bodyweightKg * 2);
-  const fatG = Math.round(bodyweightKg * 0.8);
-  const proteinCals = proteinG * 4;
-  const fatCals = fatG * 9;
-  const remainingCals = fallbackCalories - proteinCals - fatCals;
-  const carbsG = Math.round(remainingCals / 4);
-
-  let multiplier = 1;
-  if (trainingType === 'powerlifting') {
-    multiplier = 1.1;
-  } else if (trainingType === 'cardio') {
-    multiplier = 1.05;
-  } else if (trainingType === 'rest_day') {
-    multiplier = 0.95;
-  }
-
-  return {
-    calories: Math.round(fallbackCalories * multiplier),
-    proteinG,
-    carbsG,
-    fatG,
-  };
 }
 
 export const chatHandler = createHandler(async (c, { userId, db }) => {
@@ -241,7 +149,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   const macroTargets = calculateMacroTargets(
     bodyweightKg ?? 80,
     trainingCtx?.type ?? null,
-    hasProgram,
     bodyStats?.targetCalories ?? 2500,
     {
       targetCalories: bodyStats?.targetCalories ?? undefined,

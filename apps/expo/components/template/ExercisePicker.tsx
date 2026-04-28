@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,14 @@ import {
   StyleSheet,
 } from 'react-native';
 import { ScreenScrollView } from '@/components/ui/Screen';
-import {
-  exerciseLibrary,
-  type ExerciseLibraryItem,
-} from '../../../../packages/db/src/exercise-library';
-import {
-  createCustomExercise,
-  ensurePersistedExercise,
-  listUserExercises,
-  type UserExercise,
-} from '@/lib/exercises';
+import { exerciseLibrary, type ExerciseLibraryItem } from '@strength/db';
+import { ensurePersistedExercise } from '@/lib/exercises';
 import { colors, spacing, radius } from '@/theme';
+import {
+  useExerciseSearch,
+  getUserSelectionKey,
+  getLibrarySelectionKey,
+} from '@/hooks/useExerciseSearch';
 
 interface ExercisePickerProps {
   visible: boolean;
@@ -61,159 +58,47 @@ const CREATE_MUSCLE_GROUPS = [
   'Cardio',
 ];
 
-interface CreateFormState {
-  name: string;
-  muscleGroup: string;
-  description: string;
-}
-
-function getUserSelectionKey(id: string) {
-  return `user:${id}`;
-}
-
-function getLibrarySelectionKey(id: string) {
-  return `library:${id}`;
-}
-
 export function ExercisePicker({
   visible,
   onClose,
   onSelect,
   selectedIds = [],
 }: ExercisePickerProps) {
-  const [searchQuery, setSearchQuery] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState('All');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateFormState>({
-    name: '',
-    muscleGroup: '',
-    description: '',
+
+  const {
+    searchQuery,
+    setSearchQuery,
+    userExercises,
+    loading,
+    pendingSelection,
+    setPendingSelection,
+    showCreateForm,
+    setShowCreateForm,
+    createForm,
+    setCreateForm,
+    creating,
+    createError,
+    setCreateError,
+    filteredUserExercises,
+    filteredLibraryExercises,
+    handleCreateExercise,
+    toggleSelection,
+  } = useExerciseSearch({
+    visible,
+    excludeIds: selectedIds,
+    filterMuscleGroup: selectedMuscleGroup,
   });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [userExercises, setUserExercises] = useState<UserExercise[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [pendingSelection, setPendingSelection] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-
-    const controller = new AbortController();
-    async function fetchUserExercises(search: string) {
-      setLoading(true);
-      try {
-        const data = await listUserExercises(search, controller.signal);
-        setUserExercises(data);
-      } catch (e) {
-        if (e instanceof Error && e.name !== 'AbortError') {
-          // no-op
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-    const timeoutId = setTimeout(() => fetchUserExercises(searchQuery), 300);
-    return () => {
-      clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [searchQuery, visible]);
-
-  useEffect(() => {
-    if (!visible) {
-      setPendingSelection([]);
-    }
-  }, [visible]);
-
-  const filteredUserExercises = useMemo(() => {
-    return userExercises.filter((ex) => {
-      const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesMuscle = selectedMuscleGroup === 'All' || ex.muscleGroup === selectedMuscleGroup;
-      return (
-        ex.libraryId === null && matchesSearch && matchesMuscle && !selectedIds.includes(ex.id)
-      );
-    });
-  }, [userExercises, searchQuery, selectedMuscleGroup, selectedIds]);
-
-  async function handleCreateExercise() {
-    if (!createForm.name.trim()) {
-      setCreateError('Name is required');
-      return;
-    }
-    if (!createForm.muscleGroup) {
-      setCreateError('Muscle group is required');
-      return;
-    }
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const newExercise = await createCustomExercise(createForm);
-      setUserExercises((prev) => [
-        {
-          id: newExercise.id,
-          name: newExercise.name,
-          muscleGroup: newExercise.muscleGroup,
-          description: newExercise.description,
-          libraryId: newExercise.libraryId,
-        },
-        ...prev,
-      ]);
-      setPendingSelection((prev) => {
-        const selectionKey = getUserSelectionKey(newExercise.id);
-        return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
-      });
-      setShowCreateForm(false);
-      setCreateForm({ name: '', muscleGroup: '', description: '' });
-    } catch (e) {
-      setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  const filteredLibraryExercises = useMemo(() => {
-    return exerciseLibrary.filter((ex) => {
-      const matchesSearch =
-        ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ex.description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesMuscle = selectedMuscleGroup === 'All' || ex.muscleGroup === selectedMuscleGroup;
-      const isAlreadySelectedByPersistedId = userExercises.some((userExercise) => {
-        return userExercise.libraryId === ex.id && selectedIds.includes(userExercise.id);
-      });
-
-      return (
-        matchesSearch &&
-        matchesMuscle &&
-        !selectedIds.includes(ex.id) &&
-        !isAlreadySelectedByPersistedId
-      );
-    });
-  }, [searchQuery, selectedMuscleGroup, selectedIds, userExercises]);
-
-  const handleToggleUser = (exercise: UserExercise) => {
-    const selectionKey = getUserSelectionKey(exercise.id);
-    setPendingSelection((prev) => {
-      if (prev.includes(selectionKey)) {
-        return prev.filter((id) => id !== selectionKey);
-      }
-      return [...prev, selectionKey];
-    });
+  const handleToggleUser = (exerciseId: string) => {
+    toggleSelection(getUserSelectionKey(exerciseId));
   };
 
-  const handleToggleLibrary = (exercise: ExerciseLibraryItem) => {
-    const selectionKey = getLibrarySelectionKey(exercise.id);
-    if (selectedIds.includes(exercise.id)) {
+  const handleToggleLibrary = (exerciseId: string) => {
+    if (selectedIds.includes(exerciseId)) {
       return;
     }
-
-    setPendingSelection((prev) => {
-      if (prev.includes(selectionKey)) {
-        return prev.filter((id) => id !== selectionKey);
-      }
-      return [...prev, selectionKey];
-    });
+    toggleSelection(getLibrarySelectionKey(exerciseId));
   };
 
   const handleConfirm = () => {
@@ -442,7 +327,7 @@ export function ExercisePicker({
                         return (
                           <Pressable
                             key={`user:${exercise.id}`}
-                            onPress={() => handleToggleUser(exercise)}
+                            onPress={() => handleToggleUser(exercise.id)}
                             style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
                           >
                             <View style={styles.exerciseInfo}>
@@ -471,7 +356,7 @@ export function ExercisePicker({
                         return (
                           <Pressable
                             key={`library:${exercise.id}`}
-                            onPress={() => handleToggleLibrary(exercise)}
+                            onPress={() => handleToggleLibrary(exercise.id)}
                             style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
                           >
                             <View style={styles.exerciseInfo}>

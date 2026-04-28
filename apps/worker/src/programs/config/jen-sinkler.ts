@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const jenSinklerInfo: ProgramInfo = {
+export const jenSinklerInfo: ProgramInfo = createProgramInfo({
   slug: 'unapologetically-strong',
   name: 'Unapologetically Strong (Jen Sinkler)',
   description:
     'An 8-week full body strength program designed to build a solid foundation of power and confidence.',
-  difficulty: 'intermediate' as const,
+  difficulty: 'intermediate',
   daysPerWeek: 3,
   estimatedWeeks: 8,
   totalSessions: 24,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: "women's" as const,
-};
+  category: "women's",
+});
 
 export const fullBodyAccessories: ProgramAccessory[] = [
   { accessoryId: 'planks', sets: 3, reps: '45 sec', isRequired: false, notes: 'Core finisher' },

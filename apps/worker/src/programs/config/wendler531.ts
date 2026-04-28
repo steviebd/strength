@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const wendler531Info: ProgramInfo = {
+export const wendler531Info: ProgramInfo = createProgramInfo({
   slug: '531',
   name: '5/3/1 (Wendler)',
   description:
     'The most popular strength program ever created. Flexible, sustainable, and proven to work.',
-  difficulty: 'intermediate' as const,
+  difficulty: 'intermediate',
   daysPerWeek: 4,
   estimatedWeeks: 12,
   totalSessions: 48,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: 'powerlifting' as const,
-};
+  category: 'powerlifting',
+});
 
 export const WAVE_PERCENTAGES = {
   1: { sets: [0.65, 0.75, 0.85], reps: [5, 5, 5] },

@@ -1,4 +1,4 @@
-import { TRAINING_MAX_PERCENTAGE, roundToPlate } from './utils';
+import { TRAINING_MAX_PERCENTAGE, roundToPlate, getDayLifts } from './utils';
 import { generateWorkoutAccessories } from './accessory-data';
 import { nuckolsInfo, WAVE_1, WAVE_2, getNuckolsAccessories } from './config/nuckols';
 import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
@@ -24,17 +24,10 @@ function calculateTargetWeight(
 export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
 
-  const dayConfigs = [
-    { t1: 'squat' as const, t2: 'bench' as const },
-    { t1: 'bench' as const, t2: 'squat' as const },
-    { t1: 'deadlift' as const, t2: 'ohp' as const },
-    { t1: 'ohp' as const, t2: 'deadlift' as const },
-  ];
-
   for (let wave = 1; wave <= 2; wave++) {
     for (let week = 1; week <= 4; week++) {
       for (let day = 1; day <= 4; day++) {
-        const config = dayConfigs[day - 1];
+        const config = getDayLifts(day);
         const t1OneRM = oneRMs[config.t1];
         const t2OneRM = oneRMs[config.t2];
 

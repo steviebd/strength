@@ -1,16 +1,16 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const madcowInfo: ProgramInfo = {
+export const madcowInfo: ProgramInfo = createProgramInfo({
   slug: 'madcow-5x5',
   name: 'Madcow 5×5',
   description: 'Bridge from beginner to advanced. Built-in deloads and weekly weight increases.',
-  difficulty: 'intermediate' as const,
+  difficulty: 'intermediate',
   daysPerWeek: 3,
   estimatedWeeks: 8,
   totalSessions: 24,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: 'powerlifting' as const,
-};
+  category: 'powerlifting',
+});
 
 export const WEEK_PERCENTAGES = [
   { squat: 1.025, bench: 1.025, deadlift: 1.025, ohp: 1.025 },

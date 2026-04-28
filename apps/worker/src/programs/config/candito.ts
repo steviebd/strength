@@ -1,17 +1,17 @@
-import type { LiftType, ProgramInfo, ProgramAccessory } from '../types';
+import type { ProgramInfo, ProgramAccessory } from '../types';
+import { createProgramInfo } from './factory';
 
-export const canditoInfo: ProgramInfo = {
+export const canditoInfo: ProgramInfo = createProgramInfo({
   slug: 'candito-6-week',
   name: 'Candito 6 Week',
   description:
     'Block periodization with 3-week strength block followed by 3-week peaking block. Great for meet preparation.',
-  difficulty: 'advanced' as const,
+  difficulty: 'advanced',
   daysPerWeek: 4,
   estimatedWeeks: 6,
   totalSessions: 24,
-  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'] as LiftType[],
-  category: 'powerlifting' as const,
-};
+  category: 'powerlifting',
+});
 
 export const STRENGTH_BLOCK = [
   {
