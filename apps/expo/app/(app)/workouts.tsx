@@ -31,6 +31,15 @@ import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
 import { getPendingWorkouts, addPendingWorkout, removePendingWorkout } from '@/lib/storage';
+import { authClient } from '@/lib/auth-client';
+import {
+  cacheTemplates,
+  createLocalWorkoutFromTemplate,
+  listLocalWorkoutHistory,
+  upsertServerWorkoutSnapshot,
+  type WorkoutSyncStatus,
+} from '@/db/workouts';
+import { retryWorkoutSync } from '@/lib/workout-sync';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
 import type { Template } from '@/hooks/useTemplateEditor';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
@@ -45,6 +54,8 @@ interface WorkoutHistoryItem {
   totalVolume: number | null;
   totalSets: number | null;
   exerciseCount: number | null;
+  syncStatus?: WorkoutSyncStatus;
+  lastSyncError?: string | null;
 }
 
 interface PendingWorkout {
@@ -78,12 +89,15 @@ export default function WorkoutsIndex() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const { startWorkout, isLoading, error: workoutSessionError } = useWorkoutSessionContext();
   const { weightUnit } = useUserPreferences();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   const [workoutName, setWorkoutName] = useState('');
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [opening1RMTestId, setOpening1RMTestId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
+  const [localHistory, setLocalHistory] = useState<WorkoutHistoryItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const queryClient = useQueryClient();
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
@@ -94,6 +108,15 @@ export default function WorkoutsIndex() {
     const workouts = await getPendingWorkouts();
     setPendingWorkouts(workouts);
   }, []);
+
+  const loadLocalHistory = useCallback(async () => {
+    if (!userId) {
+      setLocalHistory([]);
+      return;
+    }
+    const workouts = await listLocalWorkoutHistory(userId, 50);
+    setLocalHistory(workouts);
+  }, [userId]);
 
   const refreshWorkoutsScreen = useCallback(
     async (showRefreshIndicator = false) => {
@@ -107,6 +130,7 @@ export default function WorkoutsIndex() {
           queryClient.refetchQueries({ queryKey: ['templates'] }),
           queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
           queryClient.refetchQueries({ queryKey: ['workoutHistory'] }),
+          loadLocalHistory(),
         ]);
       } finally {
         if (showRefreshIndicator) {
@@ -114,12 +138,13 @@ export default function WorkoutsIndex() {
         }
       }
     },
-    [loadPendingWorkouts, queryClient],
+    [loadLocalHistory, loadPendingWorkouts, queryClient],
   );
 
   useEffect(() => {
     void loadPendingWorkouts();
-  }, [loadPendingWorkouts]);
+    void loadLocalHistory();
+  }, [loadLocalHistory, loadPendingWorkouts]);
 
   useFocusEffect(
     useCallback(() => {
@@ -161,11 +186,41 @@ export default function WorkoutsIndex() {
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
+
+  useEffect(() => {
+    if (!userId || workoutHistory.length === 0) return;
+    void Promise.all(
+      workoutHistory.map((item) =>
+        upsertServerWorkoutSnapshot(userId, {
+          ...item,
+          notes: null,
+          exercises: [],
+          totalVolume: item.totalVolume ?? undefined,
+          totalSets: item.totalSets ?? undefined,
+          durationMinutes: item.durationMinutes ?? undefined,
+          exerciseCount: item.exerciseCount ?? undefined,
+        }),
+      ),
+    ).then(loadLocalHistory);
+  }, [loadLocalHistory, userId, workoutHistory]);
+
   const mergedHistory = useMemo(() => {
-    const serverIds = new Set(workoutHistory.map((w) => w.id));
-    const pendingFiltered = pendingWorkouts.filter((p) => !serverIds.has(p.id));
-    return [...pendingFiltered, ...workoutHistory];
-  }, [pendingWorkouts, workoutHistory]);
+    const byId = new Map<string, WorkoutHistoryItem>();
+    for (const item of workoutHistory) {
+      byId.set(item.id, item);
+    }
+    for (const item of localHistory) {
+      byId.set(item.id, item);
+    }
+    for (const pending of pendingWorkouts) {
+      if (!byId.has(pending.id)) {
+        byId.set(pending.id, { ...pending, syncStatus: 'local', lastSyncError: null });
+      }
+    }
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    );
+  }, [localHistory, pendingWorkouts, workoutHistory]);
 
   const getDisplaySessionNumber = (program: ActiveProgram) =>
     Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
@@ -185,6 +240,13 @@ export default function WorkoutsIndex() {
 
   const handleStartFromTemplate = async (template: Template) => {
     try {
+      if (userId && template.id) {
+        const local = await createLocalWorkoutFromTemplate(userId, template.id);
+        if (local?.id) {
+          router.push(`/workout-session?workoutId=${local.id}`);
+          return;
+        }
+      }
       const workout = await apiFetch<{ id: string }>('/api/workouts', {
         method: 'POST',
         body: {
@@ -199,6 +261,21 @@ export default function WorkoutsIndex() {
       Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
   };
+
+  const handleRetrySync = async (workoutId: string) => {
+    if (!userId) return;
+    await retryWorkoutSync(userId, workoutId);
+    await loadLocalHistory();
+    await queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+  };
+
+  useEffect(() => {
+    if (!userId) return;
+    const templates = queryClient.getQueryData<Template[]>(['templates', userId]);
+    if (templates) {
+      void cacheTemplates(userId, templates);
+    }
+  }, [queryClient, userId]);
 
   const handleNewTemplate = () => {
     setEditingTemplate(null);
@@ -544,7 +621,11 @@ export default function WorkoutsIndex() {
             <SectionTitle title="Recent workouts" />
             {mergedHistory.map((item, index) => {
               const isPending =
-                index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id);
+                item.syncStatus === 'pending' ||
+                item.syncStatus === 'syncing' ||
+                item.syncStatus === 'failed' ||
+                item.syncStatus === 'conflict' ||
+                (index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id));
               return (
                 <WorkoutCard
                   key={`workout-history:${item.id}`}
@@ -556,7 +637,18 @@ export default function WorkoutsIndex() {
                   exerciseCount={item.exerciseCount ?? 0}
                   weightUnit={weightUnit}
                   isPending={isPending}
-                  onDelete={isPending ? () => handleDeletePendingWorkout(item.id) : undefined}
+                  syncStatus={item.syncStatus}
+                  syncError={item.lastSyncError}
+                  onRetry={
+                    item.syncStatus === 'failed' || item.syncStatus === 'conflict'
+                      ? () => handleRetrySync(item.id)
+                      : undefined
+                  }
+                  onDelete={
+                    isPending && !item.syncStatus
+                      ? () => handleDeletePendingWorkout(item.id)
+                      : undefined
+                  }
                 />
               );
             })}

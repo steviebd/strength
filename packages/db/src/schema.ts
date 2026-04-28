@@ -197,6 +197,22 @@ export const workoutSets = sqliteTable('workout_sets', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const workoutSyncOperations = sqliteTable(
+  'workout_sync_operations',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    workoutId: text('workout_id').notNull(),
+    status: text('status').notNull().default('applied'),
+    requestHash: text('request_hash'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [unique('workout_sync_operations_user_id_id_unique').on(t.userId, t.id)],
+);
+
 export const userProgramCycles = sqliteTable('user_program_cycles', {
   id: text('id')
     .primaryKey()

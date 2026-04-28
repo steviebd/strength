@@ -16,6 +16,9 @@ interface WorkoutCardProps {
   exerciseCount: number;
   weightUnit?: WeightUnit;
   isPending?: boolean;
+  syncStatus?: 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'conflict';
+  syncError?: string | null;
+  onRetry?: () => void;
   onDelete?: () => void;
 }
 
@@ -28,6 +31,9 @@ export function WorkoutCard({
   exerciseCount,
   weightUnit = 'kg',
   isPending,
+  syncStatus,
+  syncError,
+  onRetry,
   onDelete,
 }: WorkoutCardProps) {
   const router = useRouter();
@@ -52,6 +58,19 @@ export function WorkoutCard({
     return displayVolume.toString();
   };
 
+  const syncLabel =
+    syncStatus === 'syncing'
+      ? 'Syncing'
+      : syncStatus === 'failed'
+        ? 'Failed'
+        : syncStatus === 'conflict'
+          ? 'Conflict'
+          : syncStatus === 'pending'
+            ? 'Pending'
+            : syncStatus === 'local'
+              ? 'Local'
+              : null;
+
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/workout-session', params: { workoutId: id } })}
@@ -66,7 +85,24 @@ export function WorkoutCard({
           <View style={styles.metaRow}>
             <Text style={styles.dateText}>{formatDate(date)}</Text>
             <View style={styles.rightActions}>
-              {isPending ? <Badge label="Pending" tone="orange" /> : null}
+              {syncLabel ? <Badge label={syncLabel} tone="orange" /> : null}
+              {!syncLabel && isPending ? <Badge label="Pending" tone="orange" /> : null}
+              {syncError ? (
+                <Text style={styles.syncError} numberOfLines={2}>
+                  {syncError}
+                </Text>
+              ) : null}
+              {onRetry ? (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onRetry();
+                  }}
+                  style={styles.retryButton}
+                >
+                  <Text style={styles.retryText}>Retry</Text>
+                </Pressable>
+              ) : null}
               {onDelete ? (
                 <Pressable
                   onPress={(e) => {
@@ -154,6 +190,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(251,113,133,0.1)',
     paddingHorizontal: 12,
     paddingVertical: 6,
+  },
+  retryButton: {
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.25)',
+    backgroundColor: 'rgba(96,165,250,0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  retryText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.accentSecondary,
+  },
+  syncError: {
+    maxWidth: 180,
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    textAlign: 'right',
   },
   deleteText: {
     fontSize: typography.fontSizes.sm,

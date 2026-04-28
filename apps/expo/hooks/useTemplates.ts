@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import type { Template } from './useTemplateEditor';
+import { cacheTemplates } from '@/db/workouts';
 
 export type { Template };
 
@@ -14,7 +15,11 @@ export function useTemplates() {
     queryKey: ['templates', userId],
     enabled: !!userId,
     queryFn: async (): Promise<Template[]> => {
-      return apiFetch('/api/templates');
+      const templates = await apiFetch<Template[]>('/api/templates');
+      if (userId) {
+        await cacheTemplates(userId, templates);
+      }
+      return templates;
     },
     staleTime: 0,
     refetchOnMount: 'always',

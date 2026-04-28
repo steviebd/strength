@@ -5,6 +5,14 @@ import { getLastWorkout, setLastWorkout, removePendingWorkout } from '@/lib/stor
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { generateId } from '@strength/db/client';
 import { exerciseLibrary } from '@strength/db/client';
+import {
+  completeLocalWorkout,
+  createLocalWorkout,
+  getLocalWorkout,
+  markLocalCycleWorkoutComplete,
+} from '@/db/workouts';
+import { enqueueWorkoutCompletion } from '@/db/sync-queue';
+import { runWorkoutSync } from '@/lib/workout-sync';
 import type {
   Workout,
   WorkoutExercise,
@@ -23,14 +31,7 @@ function formatDuration(seconds: number): string {
 }
 
 function generateLocalId(): string {
-  return `local-${generateId()}`;
-}
-
-function isServerId(id: string | null | undefined): boolean {
-  return (
-    typeof id === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
-  );
+  return generateId();
 }
 
 interface UseWorkoutSessionReturn {
@@ -130,10 +131,17 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       setIsLoading(true);
       setError(null);
       try {
-        const workoutData = await apiFetch<Workout>('/api/workouts', {
-          method: 'POST',
-          body: { name },
-        });
+        const local = await createLocalWorkout(session.data.user.id, { name });
+        const workoutData =
+          local ??
+          ({
+            id: generateId(),
+            name,
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+            notes: null,
+            exercises: [],
+          } satisfies Workout);
         setWorkout(workoutData);
         setExercises([]);
         setDuration(0);
@@ -160,7 +168,12 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       try {
         let workoutData: Workout;
         if (typeof workoutOrId === 'string') {
-          workoutData = await apiFetch<Workout>(`/api/workouts/${workoutOrId}`);
+          const local = await getLocalWorkout(workoutOrId);
+          if (local) {
+            workoutData = local;
+          } else {
+            workoutData = await apiFetch<Workout>(`/api/workouts/${workoutOrId}`);
+          }
         } else {
           workoutData = workoutOrId;
         }
@@ -187,78 +200,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   );
 
   const completeWorkout = useCallback(async () => {
-    if (!workout) return;
+    if (!workout || !session.data?.user) return;
     setIsLoading(true);
     try {
-      const existingExercises = await apiFetch<Workout>(`/api/workouts/${workout.id}`);
-      const existingExerciseMap = new Map(
-        (existingExercises.exercises || []).map((ex) => [ex.exerciseId, ex]),
-      );
-
-      for (let i = 0; i < exercises.length; i++) {
-        const exercise = exercises[i];
-        const existingWorkoutExercise = existingExerciseMap.get(exercise.exerciseId);
-
-        if (existingWorkoutExercise) {
-          for (let j = 0; j < exercise.sets.length; j++) {
-            const set = exercise.sets[j];
-            if (isServerId(set.id)) {
-              await apiFetch(`/api/workouts/sets/${set.id}`, {
-                method: 'PUT',
-                body: {
-                  weight: set.weight,
-                  reps: set.reps,
-                  rpe: set.rpe,
-                  isComplete: set.isComplete,
-                },
-              });
-            } else {
-              await apiFetch('/api/workouts/sets', {
-                method: 'POST',
-                body: {
-                  workoutExerciseId: existingWorkoutExercise.id,
-                  setNumber: j + 1,
-                  weight: set.weight,
-                  reps: set.reps,
-                  rpe: set.rpe,
-                  isComplete: set.isComplete,
-                },
-              });
-            }
-          }
-        } else {
-          const workoutExercise = await apiFetch<{ id: string }>(
-            `/api/workouts/${workout.id}/exercises`,
-            {
-              method: 'POST',
-              body: {
-                exerciseId: exercise.exerciseId,
-                orderIndex: i,
-              },
-            },
-          );
-
-          for (let j = 0; j < exercise.sets.length; j++) {
-            const set = exercise.sets[j];
-            await apiFetch('/api/workouts/sets', {
-              method: 'POST',
-              body: {
-                workoutExerciseId: workoutExercise.id,
-                setNumber: j + 1,
-                weight: set.weight,
-                reps: set.reps,
-                rpe: set.rpe,
-                isComplete: set.isComplete,
-              },
-            });
-          }
-        }
+      const completed = await completeLocalWorkout(session.data.user.id, workout, exercises);
+      if (completed?.workout) {
+        await enqueueWorkoutCompletion(session.data.user.id, workout.id, completed.workout);
       }
-
-      await apiFetch(`/api/workouts/${workout.id}/complete`, {
-        method: 'PUT',
-        body: {},
-      });
+      if ((workout as any).cycleWorkoutId) {
+        await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
+      }
       for (const exercise of exercises) {
         const completedSets = exercise.sets.filter((s) => s.isComplete);
         if (completedSets.length > 0) {
@@ -278,12 +229,13 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
+      void runWorkoutSync(session.data.user.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to complete workout');
     } finally {
       setIsLoading(false);
     }
-  }, [workout, exercises]);
+  }, [workout, exercises, session.data?.user]);
 
   const discardWorkout = useCallback(async () => {
     if (workout?.id) {
@@ -393,24 +345,14 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     );
   }, []);
 
-  const updateSet = useCallback(
-    (setId: string, updates: Partial<WorkoutSet>) => {
-      setExercises((prev) =>
-        prev.map((ex) => ({
-          ...ex,
-          sets: ex.sets.map((s) => (s.id === setId ? { ...s, ...updates } : s)),
-        })),
-      );
-      const set = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
-      if (isServerId(set?.id)) {
-        apiFetch(`/api/workouts/sets/${setId}`, {
-          method: 'PUT',
-          body: updates,
-        }).catch(() => {});
-      }
-    },
-    [exercises],
-  );
+  const updateSet = useCallback((setId: string, updates: Partial<WorkoutSet>) => {
+    setExercises((prev) =>
+      prev.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((s) => (s.id === setId ? { ...s, ...updates } : s)),
+      })),
+    );
+  }, []);
 
   const deleteSet = useCallback((setId: string) => {
     setExercises((prev) =>
@@ -421,35 +363,25 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     );
   }, []);
 
-  const toggleSetComplete = useCallback(
-    (setId: string) => {
-      let isComplete = false;
-      setExercises((prev) =>
-        prev.map((ex) => ({
-          ...ex,
-          sets: ex.sets.map((s) => {
-            if (s.id === setId) {
-              isComplete = !s.isComplete;
-              return {
-                ...s,
-                isComplete,
-                completedAt: !s.isComplete ? new Date().toISOString() : null,
-              };
-            }
-            return s;
-          }),
-        })),
-      );
-      const set = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
-      if (isServerId(set?.id)) {
-        apiFetch(`/api/workouts/sets/${setId}`, {
-          method: 'PUT',
-          body: { isComplete },
-        }).catch(() => {});
-      }
-    },
-    [exercises],
-  );
+  const toggleSetComplete = useCallback((setId: string) => {
+    let isComplete = false;
+    setExercises((prev) =>
+      prev.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((s) => {
+          if (s.id === setId) {
+            isComplete = !s.isComplete;
+            return {
+              ...s,
+              isComplete,
+              completedAt: !s.isComplete ? new Date().toISOString() : null,
+            };
+          }
+          return s;
+        }),
+      })),
+    );
+  }, []);
 
   const getLastWorkoutData = useCallback(
     (exerciseId: string): { weight: number; reps: number } | null => {
