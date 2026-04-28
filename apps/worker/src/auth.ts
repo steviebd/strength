@@ -97,6 +97,13 @@ function resolveCookiePolicy(
   const baseURLIsHttps = baseURL?.startsWith('https://');
   const isDevMode = appEnv === 'development';
 
+  if (isDevMode && baseURLIsHttps) {
+    return {
+      secure: true,
+      sameSite: 'none',
+    };
+  }
+
   if (clientProtocol === 'https' && baseURLIsHttps && !isDevMode) {
     return {
       secure: true,
@@ -188,9 +195,12 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
       },
     },
     trustedOrigins: Array.from(new Set(trustedOrigins)),
-    cookies: {
-      secure: cookiePolicy.secure,
-      sameSite: cookiePolicy.sameSite,
+    advanced: {
+      useSecureCookies: cookiePolicy.secure,
+      defaultCookieAttributes: {
+        secure: cookiePolicy.secure,
+        sameSite: cookiePolicy.sameSite,
+      },
     },
     socialProviders:
       resolvedEnv.GOOGLE_CLIENT_ID && resolvedEnv.GOOGLE_CLIENT_SECRET
