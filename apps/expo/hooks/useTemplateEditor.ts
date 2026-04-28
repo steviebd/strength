@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { generateId } from '@strength/db';
+import { generateId } from '@strength/db/client';
 import type { Template, TemplateExercise } from '@/components/template/TemplateEditor/types';
 export type { Template, TemplateExercise };
 

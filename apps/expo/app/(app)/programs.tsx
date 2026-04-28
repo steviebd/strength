@@ -20,7 +20,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
 import { addPendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
@@ -1025,6 +1025,7 @@ export default function ProgramsScreen() {
                   </View>
                   <View style={styles.activeCardButtons}>
                     <ActionButton
+                      testID={`program-active-start-${program.id}`}
                       label={
                         openingProgramWorkoutId === program.id ? 'Opening...' : 'Start Next Session'
                       }
@@ -1035,6 +1036,7 @@ export default function ProgramsScreen() {
                     <View style={styles.activeCardButtonsRow}>
                       <View style={styles.flex1}>
                         <ActionButton
+                          testID={`program-active-schedule-${program.id}`}
                           label="View Schedule"
                           icon="calendar-outline"
                           variant="secondary"
@@ -1043,6 +1045,8 @@ export default function ProgramsScreen() {
                         />
                       </View>
                       <Pressable
+                        testID={`program-active-delete-${program.id}`}
+                        accessibilityLabel={`program-active-delete-${program.id}`}
                         style={[
                           styles.deleteButton,
                           deletingProgramId === program.id && styles.deleteButtonDisabled,
@@ -1065,6 +1069,8 @@ export default function ProgramsScreen() {
               const dc = diffColor(program.difficulty);
               return (
                 <Pressable
+                  testID={`program-option-${program.slug}`}
+                  accessibilityLabel={`program-option-${program.slug}`}
                   key={`program-option:${program.slug}`}
                   style={styles.programCard}
                   onPress={() => openProgramDetail(program)}
@@ -1156,6 +1162,8 @@ export default function ProgramsScreen() {
               </View>
 
               <Pressable
+                testID="program-start-this-program"
+                accessibilityLabel="program-start-this-program"
                 style={styles.primaryButton}
                 onPress={() => {
                   setShowDetailModal(false);
@@ -1253,6 +1261,7 @@ export default function ProgramsScreen() {
                         <Text style={styles.inputUnit}>{weightUnit}</Text>
                       </View>
                       <TextInput
+                        testID={`program-1rm-${key}`}
                         ref={(ref) => {
                           inputRefs.current[key] = ref;
                         }}
@@ -1274,6 +1283,8 @@ export default function ProgramsScreen() {
                 {scheduleStep === '1rm' && (
                   <>
                     <Pressable
+                      testID="program-continue-to-schedule"
+                      accessibilityLabel="program-continue-to-schedule"
                       style={[
                         styles.primaryButton,
                         (!hasAllOneRmValues(values) || startingProgram) &&
@@ -1317,6 +1328,8 @@ export default function ProgramsScreen() {
                           const isSelected = preferredGymDays.includes(day);
                           return (
                             <Pressable
+                              testID={`program-day-${day}`}
+                              accessibilityLabel={`program-day-${day}`}
                               key={`dayChip-${day}`}
                               style={isSelected ? styles.dayChipSelected : styles.dayChip}
                               onPress={() => {
@@ -1348,6 +1361,8 @@ export default function ProgramsScreen() {
                           const isSelected = preferredTime === time;
                           return (
                             <Pressable
+                              testID={`program-time-${time}`}
+                              accessibilityLabel={`program-time-${time}`}
                               key={`timeChip-${time}`}
                               style={isSelected ? styles.timeChipSelected : styles.timeChip}
                               onPress={() => {
@@ -1536,6 +1551,8 @@ export default function ProgramsScreen() {
 
                     <View style={styles.scheduleButtons}>
                       <Pressable
+                        testID="program-continue-to-review"
+                        accessibilityLabel="program-continue-to-review"
                         style={[
                           styles.primaryButton,
                           showStartModeChoice && !reviewConfirmed && styles.startButtonDisabled,
@@ -1633,6 +1650,8 @@ export default function ProgramsScreen() {
 
                     <View style={styles.scheduleButtons}>
                       <Pressable
+                        testID="program-confirm-start"
+                        accessibilityLabel="program-confirm-start"
                         style={[
                           styles.startButton,
                           (startingProgram || !reviewConfirmed) && styles.startButtonDisabled,

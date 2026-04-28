@@ -1,15 +1,24 @@
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { ActivityIndicator, View } from 'react-native';
+import React, { Suspense } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
-import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
-import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
+import { UserPreferencesProvider, useUserPreferences } from '@/context/UserPreferencesContext';
+import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+
+const TimezonePickerModal = React.lazy(() =>
+  import('@/components/profile/TimezonePickerModal').then((m) => ({
+    default: m.TimezonePickerModal,
+  })),
+);
+const WeightPickerModal = React.lazy(() =>
+  import('@/components/profile/WeightPickerModal').then((m) => ({ default: m.WeightPickerModal })),
+);
 
 const TAB_ICONS = {
   home: {
@@ -39,8 +48,7 @@ const TAB_ICONS = {
   },
 } as const;
 
-export default function AppLayout() {
-  const session = authClient.useSession();
+function AppTabs() {
   const insets = useSafeAreaInsets();
   const {
     isLoading,
@@ -63,25 +71,6 @@ export default function AppLayout() {
         body: { bodyweightKg },
       }),
   });
-
-  if (session.isPending && !session.data) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.background,
-        }}
-      >
-        <ActivityIndicator size="large" color={colors.accentSecondary} />
-      </View>
-    );
-  }
-
-  if (!session.data) {
-    return <Redirect href="/auth/sign-in?returnTo=/(app)/home" />;
-  }
 
   return (
     <>
@@ -198,40 +187,77 @@ export default function AppLayout() {
         />
       </Tabs>
 
-      <TimezonePickerModal
-        visible={!isLoading && needsTimezoneSelection}
-        title="Set your timezone"
-        description="Choose the timezone your workouts, meals, and daily summaries should follow."
-        confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
-        selectedTimezone={deviceTimezone ?? timezone}
-        onClose={() => {}}
-        onConfirm={setTimezone}
-        dismissLocked
-        acceptFirst={Boolean(deviceTimezone)}
-      />
+      <Suspense fallback={null}>
+        <TimezonePickerModal
+          visible={!isLoading && needsTimezoneSelection}
+          title="Set your timezone"
+          description="Choose the timezone your workouts, meals, and daily summaries should follow."
+          confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
+          selectedTimezone={deviceTimezone ?? timezone}
+          onClose={() => {}}
+          onConfirm={setTimezone}
+          dismissLocked
+          acceptFirst={Boolean(deviceTimezone)}
+        />
+      </Suspense>
 
-      <TimezonePickerModal
-        visible={showTimezoneMismatchModal}
-        title="Timezone changed?"
-        description="Your device timezone is different from your saved preference. Would you like to update it?"
-        confirmLabel="Update timezone"
-        selectedTimezone={deviceTimezone}
-        onClose={dismissTimezoneMismatchModal}
-        onConfirm={setTimezone}
-        acceptFirst={true}
-      />
+      <Suspense fallback={null}>
+        <TimezonePickerModal
+          visible={showTimezoneMismatchModal}
+          title="Timezone changed?"
+          description="Your device timezone is different from your saved preference. Would you like to update it?"
+          confirmLabel="Update timezone"
+          selectedTimezone={deviceTimezone}
+          onClose={dismissTimezoneMismatchModal}
+          onConfirm={setTimezone}
+          acceptFirst={true}
+        />
+      </Suspense>
 
-      <WeightPickerModal
-        visible={!isLoading && needsWeightSelection}
-        weightUnit={weightUnit}
-        onSave={async (bodyweightKg) => {
-          await saveBodyweightMutation.mutateAsync(bodyweightKg);
-          await recordBodyweight(bodyweightKg);
-          await markWeightAsPrompted();
-        }}
-        onSkip={markWeightAsPrompted}
-        isSaving={saveBodyweightMutation.isPending}
-      />
+      <Suspense fallback={null}>
+        <WeightPickerModal
+          visible={!isLoading && needsWeightSelection}
+          weightUnit={weightUnit}
+          onSave={async (bodyweightKg) => {
+            await saveBodyweightMutation.mutateAsync(bodyweightKg);
+            await recordBodyweight(bodyweightKg);
+            await markWeightAsPrompted();
+          }}
+          onSkip={markWeightAsPrompted}
+          isSaving={saveBodyweightMutation.isPending}
+        />
+      </Suspense>
     </>
+  );
+}
+
+export default function AppLayout() {
+  const session = authClient.useSession();
+
+  if (session.isPending && !session.data) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.accentSecondary} />
+      </View>
+    );
+  }
+
+  if (!session.data) {
+    return <Redirect href="/auth/sign-in?returnTo=/(app)/home" />;
+  }
+
+  return (
+    <UserPreferencesProvider>
+      <WorkoutSessionProvider>
+        <AppTabs />
+      </WorkoutSessionProvider>
+    </UserPreferencesProvider>
   );
 }

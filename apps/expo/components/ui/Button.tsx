@@ -17,7 +17,7 @@ import Animated, {
   withTiming,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { accent, border, radius, text, textRoles, layout } from '@/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'default';
@@ -38,6 +38,7 @@ interface ButtonProps {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   attention?: boolean;
+  testID?: string;
 }
 
 const variantStyles: Record<
@@ -133,6 +134,7 @@ export function Button({
   style,
   textStyle,
   attention = false,
+  testID,
 }: ButtonProps) {
   const v = variantStyles[variant];
   const s = sizeStyles[size];
@@ -162,6 +164,8 @@ export function Button({
   return (
     <Animated.View style={[animatedStyle, { minWidth: 0, flexShrink: 1 }]}>
       <Pressable
+        testID={testID}
+        accessibilityLabel={testID ?? (typeof label === 'string' ? label : undefined)}
         onPress={onPress}
         disabled={disabled || loading}
         style={({ pressed }) => [

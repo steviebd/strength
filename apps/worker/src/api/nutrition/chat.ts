@@ -1,6 +1,7 @@
 import { streamText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { getModel } from '../../lib/ai';
+import { checkRateLimit, getRateLimitPerHour } from '../../lib/rate-limit';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
@@ -31,12 +32,91 @@ interface ChatHistoryQuery {
   before?: string;
 }
 
+function isE2ENutritionMockEnabled(env: { APP_ENV?: string; E2E_TEST_MODE?: string }) {
+  return env.APP_ENV === 'development' && env.E2E_TEST_MODE === 'true';
+}
+
+function buildMockMealAnalysisContent(userMessageContent: string) {
+  const normalized = userMessageContent.toLowerCase();
+  const isBigMacMeal = normalized.includes('big mac') || normalized.includes('fries');
+  const analysis = isBigMacMeal
+    ? {
+        name: 'Large Big Mac and Fries',
+        calories: 1320,
+        proteinG: 34,
+        carbsG: 156,
+        fatG: 63,
+        confidence: 'medium',
+        mealType: 'Lunch',
+      }
+    : {
+        name: 'E2E Test Meal',
+        calories: 600,
+        proteinG: 35,
+        carbsG: 65,
+        fatG: 20,
+        confidence: 'medium',
+        mealType: 'Snack',
+      };
+
+  return [
+    `${analysis.name}: ${analysis.calories} kcal, ${analysis.proteinG}g protein, ${analysis.carbsG}g carbs, ${analysis.fatG}g fat.`,
+    '',
+    '```json',
+    JSON.stringify(analysis, null, 2),
+    '```',
+  ].join('\n');
+}
+
+async function streamMockNutritionResponse({
+  db,
+  userId,
+  userMessageContent,
+}: {
+  db: any;
+  userId: string;
+  userMessageContent: string;
+}) {
+  const content = buildMockMealAnalysisContent(userMessageContent);
+  await db.insert(schema.nutritionChatMessages).values({
+    userId,
+    role: 'assistant',
+    content,
+    hasImage: false,
+    createdAt: new Date(),
+  });
+
+  const textEncoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        textEncoder.encode(`data: ${JSON.stringify({ type: 'text-delta', text: content })}\n\n`),
+      );
+      controller.enqueue(textEncoder.encode('data: [DONE]\n\n'));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
+}
+
 export const chatHandler = createHandler(async (c, { userId, db }) => {
   let body: ChatRequest;
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: 'Invalid request body' }, 400);
+  }
+
+  const rateLimit = await checkRateLimit(db, userId, 'nutrition-chat', getRateLimitPerHour(c.env));
+  if (!rateLimit.allowed) {
+    return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
   }
 
   const { messages, date: requestedDate, hasImage, imageBase64 } = body;
@@ -192,6 +272,10 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     hasImage: hasImageFlag,
     createdAt: new Date(),
   });
+
+  if (isE2ENutritionMockEnabled(c.env)) {
+    return streamMockNutritionResponse({ db, userId, userMessageContent });
+  }
 
   let userContent:
     | string

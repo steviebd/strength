@@ -1,8 +1,8 @@
-import { eq, and, or, gt, desc, sql } from 'drizzle-orm';
+import { eq, and, or, gt, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { exerciseLibrary } from '@strength/db';
 import { getProgramCycleById, getOrCreateExerciseForUser } from '@strength/db';
-import { chunkedInsert } from '@strength/db';
+import { chunkArray, getSafeInsertChunkSize } from '@strength/db';
 
 export type SerializedProgramTargetLift = {
   name?: unknown;
@@ -161,6 +161,43 @@ export function parseProgramTargetLifts(targetLifts: string | null | undefined) 
   }
 }
 
+export function getProgramTargetLiftKey(targetLift: NormalizedProgramTargetLift): string {
+  return (
+    targetLift.exerciseId ??
+    targetLift.libraryId ??
+    targetLift.accessoryId ??
+    targetLift.lift ??
+    targetLift.name.trim().toLowerCase()
+  );
+}
+
+export function consolidateProgramTargetLifts(targetLifts: NormalizedProgramTargetLift[]) {
+  const grouped = new Map<
+    string,
+    NormalizedProgramTargetLift & { segments: NormalizedProgramTargetLift[] }
+  >();
+
+  for (const targetLift of targetLifts) {
+    const key = getProgramTargetLiftKey(targetLift);
+    const existing = grouped.get(key);
+
+    if (!existing) {
+      grouped.set(key, {
+        ...targetLift,
+        segments: [targetLift],
+      });
+      continue;
+    }
+
+    existing.sets += targetLift.sets;
+    existing.isAmrap = existing.isAmrap || targetLift.isAmrap;
+    existing.isRequired = existing.isRequired || targetLift.isRequired;
+    existing.segments.push(targetLift);
+  }
+
+  return Array.from(grouped.values());
+}
+
 export function getCurrentCycleWorkout(
   cycle: { currentWeek: number; currentSession: number },
   workouts: Array<{
@@ -184,9 +221,104 @@ export function getCurrentCycleWorkout(
   );
 }
 
+function hasAnyRecordedOneRM(oneRMs: {
+  squat1rm?: number | null;
+  bench1rm?: number | null;
+  deadlift1rm?: number | null;
+  ohp1rm?: number | null;
+}) {
+  return (
+    (oneRMs.squat1rm ?? 0) > 0 ||
+    (oneRMs.bench1rm ?? 0) > 0 ||
+    (oneRMs.deadlift1rm ?? 0) > 0 ||
+    (oneRMs.ohp1rm ?? 0) > 0
+  );
+}
+
+function mergeOneRMValues(
+  base: {
+    squat1rm?: number | null;
+    bench1rm?: number | null;
+    deadlift1rm?: number | null;
+    ohp1rm?: number | null;
+    completedAt?: Date | number | string | null;
+  },
+  fallback: {
+    squat1rm?: number | null;
+    bench1rm?: number | null;
+    deadlift1rm?: number | null;
+    ohp1rm?: number | null;
+  },
+) {
+  return {
+    squat1rm: (base.squat1rm ?? 0) > 0 ? base.squat1rm : (fallback.squat1rm ?? null),
+    bench1rm: (base.bench1rm ?? 0) > 0 ? base.bench1rm : (fallback.bench1rm ?? null),
+    deadlift1rm: (base.deadlift1rm ?? 0) > 0 ? base.deadlift1rm : (fallback.deadlift1rm ?? null),
+    ohp1rm: (base.ohp1rm ?? 0) > 0 ? base.ohp1rm : (fallback.ohp1rm ?? null),
+    completedAt: base.completedAt,
+  };
+}
+
+export function getOneRMsFromCompletedTestSetRows(
+  rows: Array<{ exerciseName: string | null; weight: number | null }>,
+) {
+  const oneRMs = {
+    squat1rm: null as number | null,
+    bench1rm: null as number | null,
+    deadlift1rm: null as number | null,
+    ohp1rm: null as number | null,
+  };
+
+  const nameToKey: Record<string, keyof typeof oneRMs> = {
+    squat: 'squat1rm',
+    'bench press': 'bench1rm',
+    deadlift: 'deadlift1rm',
+    'overhead press': 'ohp1rm',
+  };
+
+  for (const row of rows) {
+    if (!row.exerciseName || row.weight === null || row.weight <= 0) {
+      continue;
+    }
+
+    const key = nameToKey[row.exerciseName.trim().toLowerCase()];
+    if (!key) {
+      continue;
+    }
+
+    oneRMs[key] = Math.max(oneRMs[key] ?? 0, row.weight);
+  }
+
+  return oneRMs;
+}
+
+async function getOneRMsFromCompletedTestSets(db: any, workoutId: string) {
+  const rows = await db
+    .select({
+      exerciseName: schema.exercises.name,
+      weight: schema.workoutSets.weight,
+    })
+    .from(schema.workoutExercises)
+    .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
+    .innerJoin(
+      schema.workoutSets,
+      eq(schema.workoutExercises.id, schema.workoutSets.workoutExerciseId),
+    )
+    .where(
+      and(
+        eq(schema.workoutExercises.workoutId, workoutId),
+        eq(schema.workoutSets.isComplete, true),
+      ),
+    )
+    .all();
+
+  return getOneRMsFromCompletedTestSetRows(rows);
+}
+
 export async function getLatestOneRMsForUser(db: any, userId: string) {
   const latestOneRMWorkout = await db
     .select({
+      id: schema.workouts.id,
       squat1rm: schema.workouts.squat1rm,
       bench1rm: schema.workouts.bench1rm,
       deadlift1rm: schema.workouts.deadlift1rm,
@@ -198,6 +330,7 @@ export async function getLatestOneRMsForUser(db: any, userId: string) {
       and(
         eq(schema.workouts.userId, userId),
         eq(schema.workouts.name, '1RM Test'),
+        eq(schema.workouts.isDeleted, false),
         sql`${schema.workouts.completedAt} IS NOT NULL`,
       ),
     )
@@ -205,14 +338,12 @@ export async function getLatestOneRMsForUser(db: any, userId: string) {
     .limit(1)
     .get();
 
-  if (
-    latestOneRMWorkout &&
-    (latestOneRMWorkout.squat1rm ||
-      latestOneRMWorkout.bench1rm ||
-      latestOneRMWorkout.deadlift1rm ||
-      latestOneRMWorkout.ohp1rm)
-  ) {
-    return latestOneRMWorkout;
+  if (latestOneRMWorkout) {
+    const setOneRMs = await getOneRMsFromCompletedTestSets(db, latestOneRMWorkout.id);
+    const mergedOneRMs = mergeOneRMValues(latestOneRMWorkout, setOneRMs);
+    if (hasAnyRecordedOneRM(mergedOneRMs)) {
+      return mergedOneRMs;
+    }
   }
 
   const latestCycle = await db
@@ -224,7 +355,17 @@ export async function getLatestOneRMsForUser(db: any, userId: string) {
       completedAt: schema.userProgramCycles.startedAt,
     })
     .from(schema.userProgramCycles)
-    .where(eq(schema.userProgramCycles.userId, userId))
+    .where(
+      and(
+        eq(schema.userProgramCycles.userId, userId),
+        or(
+          gt(schema.userProgramCycles.squat1rm, 0),
+          gt(schema.userProgramCycles.bench1rm, 0),
+          gt(schema.userProgramCycles.deadlift1rm, 0),
+          gt(schema.userProgramCycles.ohp1rm, 0),
+        ),
+      ),
+    )
     .orderBy(desc(schema.userProgramCycles.startedAt))
     .limit(1)
     .get();
@@ -261,24 +402,22 @@ export async function createOneRMTestWorkout(db: any, userId: string, cycleId: s
   }
 
   const now = new Date();
+  const workoutId = schema.generateId();
 
-  const workout = await db
-    .insert(schema.workouts)
-    .values({
-      userId,
-      programCycleId: cycleId,
-      name: '1RM Test',
-      notes: null,
-      startedAt: now,
-      createdAt: now,
-      updatedAt: now,
-      startingSquat1rm: cycle.startingSquat1rm ?? cycle.squat1rm,
-      startingBench1rm: cycle.startingBench1rm ?? cycle.bench1rm,
-      startingDeadlift1rm: cycle.startingDeadlift1rm ?? cycle.deadlift1rm,
-      startingOhp1rm: cycle.startingOhp1rm ?? cycle.ohp1rm,
-    })
-    .returning()
-    .get();
+  const workoutValues = {
+    id: workoutId,
+    userId,
+    programCycleId: cycleId,
+    name: '1RM Test',
+    notes: null,
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    startingSquat1rm: cycle.startingSquat1rm ?? cycle.squat1rm,
+    startingBench1rm: cycle.startingBench1rm ?? cycle.bench1rm,
+    startingDeadlift1rm: cycle.startingDeadlift1rm ?? cycle.deadlift1rm,
+    startingOhp1rm: cycle.startingOhp1rm ?? cycle.ohp1rm,
+  };
 
   const mainLifts = [
     { name: 'Squat', lift: 'squat' as const },
@@ -287,37 +426,37 @@ export async function createOneRMTestWorkout(db: any, userId: string, cycleId: s
     { name: 'Overhead Press', lift: 'ohp' as const },
   ];
 
-  for (let i = 0; i < mainLifts.length; i++) {
-    const lift = mainLifts[i];
-    const exerciseId = await getOrCreateExerciseForUser(db, userId, lift.name, lift.lift);
-    const workoutExercise = await db
-      .insert(schema.workoutExercises)
-      .values({
-        workoutId: workout.id,
-        exerciseId,
-        orderIndex: i,
-        isAmrap: false,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
+  const exerciseIds = await Promise.all(
+    mainLifts.map((lift) => getOrCreateExerciseForUser(db, userId, lift.name, lift.lift)),
+  );
 
-    await db
-      .insert(schema.workoutSets)
-      .values({
-        workoutExerciseId: workoutExercise.id,
-        setNumber: 1,
-        weight: 0,
-        reps: 1,
-        rpe: null,
-        isComplete: false,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-  }
+  const workoutExerciseRows = mainLifts.map((_, i) => ({
+    id: schema.generateId(),
+    workoutId,
+    exerciseId: exerciseIds[i],
+    orderIndex: i,
+    isAmrap: false,
+    updatedAt: now,
+  }));
 
-  return workout;
+  const setRows = workoutExerciseRows.map((we) => ({
+    workoutExerciseId: we.id,
+    setNumber: 1,
+    weight: 0,
+    reps: 1,
+    rpe: null,
+    isComplete: false,
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  await db.batch([
+    db.insert(schema.workouts).values(workoutValues),
+    db.insert(schema.workoutExercises).values(workoutExerciseRows),
+    db.insert(schema.workoutSets).values(setRows),
+  ]);
+
+  return workoutValues;
 }
 
 export async function updateProgramCycleOneRMs(
@@ -366,87 +505,85 @@ export async function createWorkoutFromProgramCycleWorkout(
   cycleWorkout: any,
 ) {
   const now = new Date();
-  let createdWorkoutId: string | null = null;
-  const workout = await db
-    .insert(schema.workouts)
-    .values({
-      userId,
-      programCycleId: cycleId,
-      name: cycleWorkout.sessionName,
-      notes: null,
-      startedAt: now,
-      createdAt: now,
+  const workoutId = schema.generateId();
+
+  const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
+  if (targetLifts.all.length === 0) {
+    throw new Error(`Program cycle workout ${cycleWorkout.id} has no target lifts`);
+  }
+
+  const consolidatedTargetLifts = consolidateProgramTargetLifts(targetLifts.all);
+
+  const exerciseIdList: {
+    workoutExerciseId: string;
+    exerciseId: string;
+    orderIndex: number;
+    isAmrap: boolean;
+    targetLift: NormalizedProgramTargetLift & { segments: NormalizedProgramTargetLift[] };
+  }[] = [];
+
+  for (let i = 0; i < consolidatedTargetLifts.length; i++) {
+    const targetLift = consolidatedTargetLifts[i];
+    const isAmrap = targetLift.isAmrap;
+    let exerciseId: string;
+    if (targetLift.exerciseId) {
+      exerciseId = targetLift.exerciseId;
+    } else {
+      exerciseId = await getOrCreateExerciseForUser(
+        db,
+        userId,
+        targetLift.name,
+        targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
+        targetLift.libraryId,
+      );
+    }
+    exerciseIdList.push({
+      workoutExerciseId: schema.generateId(),
+      exerciseId,
+      orderIndex: i,
+      isAmrap,
+      targetLift,
+    });
+  }
+
+  const workoutValues = {
+    id: workoutId,
+    userId,
+    programCycleId: cycleId,
+    name: cycleWorkout.sessionName,
+    notes: null,
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const workoutExerciseRows = exerciseIdList.map(
+    ({ workoutExerciseId, exerciseId, orderIndex, isAmrap }) => ({
+      id: workoutExerciseId,
+      workoutId,
+      exerciseId,
+      orderIndex,
+      isAmrap,
       updatedAt: now,
-    })
-    .returning()
-    .get();
-  createdWorkoutId = workout.id;
+    }),
+  );
 
-  try {
-    const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
-    if (targetLifts.all.length === 0) {
-      throw new Error(`Program cycle workout ${cycleWorkout.id} has no target lifts`);
-    }
-
-    const exerciseIdList: {
-      workoutExerciseId: string;
-      exerciseId: string;
-      orderIndex: number;
-      isAmrap: boolean;
-      targetLift: any;
-    }[] = [];
-
-    for (let i = 0; i < targetLifts.all.length; i++) {
-      const targetLift = targetLifts.all[i];
-      const isAmrap = targetLift.isAmrap;
-      let exerciseId: string;
-      if (targetLift.exerciseId) {
-        exerciseId = targetLift.exerciseId;
-      } else {
-        exerciseId = await getOrCreateExerciseForUser(
-          db,
-          userId,
-          targetLift.name,
-          targetLift.lift as 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row' | undefined,
-          targetLift.libraryId,
-        );
-      }
-      exerciseIdList.push({
-        workoutExerciseId: schema.generateId(),
-        exerciseId,
-        orderIndex: i,
-        isAmrap,
-        targetLift,
-      });
-    }
-
-    const workoutExerciseRows = exerciseIdList.map(
-      ({ workoutExerciseId, exerciseId, orderIndex, isAmrap }) => ({
-        id: workoutExerciseId,
-        workoutId: workout.id,
-        exerciseId,
-        orderIndex,
-        isAmrap,
-        updatedAt: now,
-      }),
-    );
-
-    await chunkedInsert(db, { table: schema.workoutExercises, rows: workoutExerciseRows });
-    const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
-
-    for (const { workoutExerciseId, isAmrap, targetLift } of exerciseIdList) {
-      const fallbackSetCount = normalizeProgramSetCount(targetLift.sets, 1);
-      const fallbackWeight =
-        typeof targetLift.targetWeight === 'number' && Number.isFinite(targetLift.targetWeight)
-          ? targetLift.targetWeight
+  const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
+  for (const { workoutExerciseId, targetLift } of exerciseIdList) {
+    let nextSetNumber = 1;
+    for (const segment of targetLift.segments) {
+      const segmentSetCount = normalizeProgramSetCount(segment.sets, 1);
+      const segmentWeight =
+        typeof segment.targetWeight === 'number' && Number.isFinite(segment.targetWeight)
+          ? segment.targetWeight
           : null;
-      const fallbackReps = isAmrap ? null : normalizeProgramReps(targetLift.reps);
+      const segmentReps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
 
-      const setRows = Array.from({ length: fallbackSetCount }, (_, index) => ({
+      const setRows = Array.from({ length: segmentSetCount }, () => ({
         workoutExerciseId,
-        setNumber: index + 1,
-        weight: fallbackWeight,
-        reps: fallbackReps,
+        setNumber: nextSetNumber++,
+        weight: segmentWeight,
+        reps: segmentReps,
         rpe: null,
         isComplete: false,
         createdAt: now,
@@ -454,15 +591,33 @@ export async function createWorkoutFromProgramCycleWorkout(
       }));
       allSetRows.push(...setRows);
     }
+  }
 
-    if (allSetRows.length > 0) {
-      await chunkedInsert(db, { table: schema.workoutSets, rows: allSetRows });
+  const statements: any[] = [db.insert(schema.workouts).values(workoutValues)];
+
+  const exerciseChunkSize = getSafeInsertChunkSize(
+    workoutExerciseRows as Record<string, unknown>[],
+    100,
+    100,
+  );
+  const exerciseChunks = chunkArray(workoutExerciseRows, exerciseChunkSize);
+  for (const chunk of exerciseChunks) {
+    statements.push(db.insert(schema.workoutExercises).values(chunk));
+  }
+
+  if (allSetRows.length > 0) {
+    const setChunkSize = getSafeInsertChunkSize(allSetRows as Record<string, unknown>[], 100, 100);
+    const setChunks = chunkArray(allSetRows, setChunkSize);
+    for (const chunk of setChunks) {
+      statements.push(db.insert(schema.workoutSets).values(chunk));
     }
+  }
 
-    await db
+  statements.push(
+    db
       .update(schema.programCycleWorkouts)
       .set({
-        workoutId: workout.id,
+        workoutId,
         updatedAt: now,
       })
       .where(
@@ -470,23 +625,46 @@ export async function createWorkoutFromProgramCycleWorkout(
           eq(schema.programCycleWorkouts.id, cycleWorkout.id),
           eq(schema.programCycleWorkouts.cycleId, cycleId),
         ),
-      )
-      .run();
+      ),
+  );
 
-    return workout;
-  } catch (e) {
-    if (createdWorkoutId) {
-      await db
-        .delete(schema.workouts)
-        .where(and(eq(schema.workouts.id, createdWorkoutId), eq(schema.workouts.userId, userId)))
-        .run()
-        .catch(() => {});
-    }
-    throw e;
-  }
+  await db.batch(statements);
+
+  return workoutValues;
 }
 
 export async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId: string) {
+  const workout = await db
+    .select({
+      id: schema.workouts.id,
+      name: schema.workouts.name,
+      programCycleId: schema.workouts.programCycleId,
+      isDeleted: schema.workouts.isDeleted,
+    })
+    .from(schema.workouts)
+    .where(and(eq(schema.workouts.id, workoutId), eq(schema.workouts.userId, userId)))
+    .get();
+
+  if (workout?.name === '1RM Test' && workout.programCycleId && workout.isDeleted === false) {
+    const now = new Date();
+    await db
+      .update(schema.userProgramCycles)
+      .set({
+        status: 'completed',
+        isComplete: true,
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.userProgramCycles.id, workout.programCycleId),
+          eq(schema.userProgramCycles.userId, userId),
+        ),
+      )
+      .run();
+    return;
+  }
+
   const linkedCycleWorkout = await db
     .select({
       id: schema.programCycleWorkouts.id,
@@ -650,34 +828,60 @@ export async function getLastCompletedExerciseSnapshot(
   userId: string,
   exerciseId: string,
 ) {
-  let resolvedExerciseId: string | null = null;
+  const snapshots = await getLastCompletedExerciseSnapshots(db, userId, [exerciseId]);
+  return snapshots[0] ?? null;
+}
 
-  const directExercise = await db
+export async function getLastCompletedExerciseSnapshots(
+  db: any,
+  userId: string,
+  exerciseIds: string[],
+) {
+  if (exerciseIds.length === 0) return [];
+
+  const directExercises = await db
     .select({ id: schema.exercises.id, libraryId: schema.exercises.libraryId })
     .from(schema.exercises)
-    .where(and(eq(schema.exercises.id, exerciseId), eq(schema.exercises.userId, userId)))
-    .get();
+    .where(and(eq(schema.exercises.userId, userId), inArray(schema.exercises.id, exerciseIds)))
+    .all();
 
-  if (directExercise) {
-    resolvedExerciseId = directExercise.id;
-  } else {
+  const directMap = new Map<string, string>(
+    directExercises.map((e: { id: string; libraryId: string | null }) => [e.id, e.id]),
+  );
+  const unresolvedIds = exerciseIds.filter((id) => !directMap.has(id));
+
+  let libraryMap = new Map<string, string>();
+  if (unresolvedIds.length > 0) {
     const byLibraryId = await db
-      .select({ id: schema.exercises.id })
+      .select({ id: schema.exercises.id, libraryId: schema.exercises.libraryId })
       .from(schema.exercises)
-      .where(and(eq(schema.exercises.libraryId, exerciseId), eq(schema.exercises.userId, userId)))
-      .get();
-
-    if (byLibraryId) {
-      resolvedExerciseId = byLibraryId.id;
+      .where(
+        and(
+          eq(schema.exercises.userId, userId),
+          inArray(schema.exercises.libraryId, unresolvedIds),
+        ),
+      )
+      .all();
+    for (const row of byLibraryId) {
+      if (row.libraryId) libraryMap.set(row.libraryId, row.id);
     }
   }
 
-  if (!resolvedExerciseId) {
-    return null;
+  const resolvedIds: string[] = [];
+  const originalToResolved = new Map<string, string>();
+  for (const id of exerciseIds) {
+    const resolved = directMap.get(id) ?? libraryMap.get(id);
+    if (resolved) {
+      resolvedIds.push(resolved);
+      originalToResolved.set(id, resolved);
+    }
   }
 
-  const recentWorkoutExercise = await db
+  if (resolvedIds.length === 0) return [];
+
+  const recentRows = await db
     .select({
+      exerciseId: schema.workoutExercises.exerciseId,
       workoutExerciseId: schema.workoutExercises.id,
       workoutCompletedAt: schema.workouts.completedAt,
     })
@@ -685,48 +889,89 @@ export async function getLastCompletedExerciseSnapshot(
     .innerJoin(schema.workouts, eq(schema.workoutExercises.workoutId, schema.workouts.id))
     .where(
       and(
-        eq(schema.workoutExercises.exerciseId, resolvedExerciseId),
+        inArray(schema.workoutExercises.exerciseId, resolvedIds),
         eq(schema.workouts.userId, userId),
         sql`${schema.workouts.completedAt} IS NOT NULL`,
       ),
     )
     .orderBy(desc(schema.workouts.completedAt))
-    .limit(1)
-    .get();
+    .all();
 
-  if (!recentWorkoutExercise) {
-    return null;
+  const seen = new Set<string>();
+  const latestByResolvedId = new Map<
+    string,
+    { workoutExerciseId: string; workoutCompletedAt: Date | null }
+  >();
+  for (const row of recentRows) {
+    if (!seen.has(row.exerciseId)) {
+      seen.add(row.exerciseId);
+      latestByResolvedId.set(row.exerciseId, {
+        workoutExerciseId: row.workoutExerciseId,
+        workoutCompletedAt: row.workoutCompletedAt,
+      });
+    }
   }
 
-  const allSets = await db
+  if (latestByResolvedId.size === 0) return [];
+
+  const workoutExerciseIds = Array.from(latestByResolvedId.values()).map(
+    (v) => v.workoutExerciseId,
+  );
+  type SetRow = {
+    workoutExerciseId: string;
+    weight: number | null;
+    reps: number | null;
+    rpe: number | null;
+    setNumber: number | null;
+  };
+  const allSets: SetRow[] = await db
     .select({
+      workoutExerciseId: schema.workoutSets.workoutExerciseId,
       weight: schema.workoutSets.weight,
       reps: schema.workoutSets.reps,
       rpe: schema.workoutSets.rpe,
       setNumber: schema.workoutSets.setNumber,
     })
     .from(schema.workoutSets)
-    .where(eq(schema.workoutSets.workoutExerciseId, recentWorkoutExercise.workoutExerciseId))
+    .where(inArray(schema.workoutSets.workoutExerciseId, workoutExerciseIds))
     .orderBy(schema.workoutSets.setNumber)
     .all();
 
-  return {
-    exerciseId: resolvedExerciseId,
-    workoutDate: recentWorkoutExercise.workoutCompletedAt
-      ? new Date(recentWorkoutExercise.workoutCompletedAt).toISOString().split('T')[0]
-      : null,
-    sets: allSets.map(
-      (s: {
-        weight: number | null;
-        reps: number | null;
-        rpe: number | null;
-        setNumber: number | null;
-      }) => ({
+  const setsByWorkoutExerciseId = new Map<string, SetRow[]>();
+  for (const set of allSets) {
+    const list = setsByWorkoutExerciseId.get(set.workoutExerciseId) ?? [];
+    list.push(set);
+    setsByWorkoutExerciseId.set(set.workoutExerciseId, list);
+  }
+
+  const results: {
+    exerciseId: string;
+    workoutDate: string | null;
+    sets: {
+      weight: number | null;
+      reps: number | null;
+      rpe: number | null;
+      setNumber: number | null;
+    }[];
+  }[] = [];
+  for (const [originalId, resolvedId] of originalToResolved) {
+    const latest = latestByResolvedId.get(resolvedId);
+    if (latest) {
+      const sets = (setsByWorkoutExerciseId.get(latest.workoutExerciseId) ?? []).map((s) => ({
         weight: s.weight,
         reps: s.reps,
         rpe: s.rpe,
         setNumber: s.setNumber,
-      }),
-    ),
-  };
+      }));
+      results.push({
+        exerciseId: originalId,
+        workoutDate: latest.workoutCompletedAt
+          ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
+          : null,
+        sets,
+      });
+    }
+  }
+
+  return results;
 }

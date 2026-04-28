@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   colors,
   radius,
@@ -185,12 +185,14 @@ export function ActionButton({
   variant = 'primary',
   onPress,
   disabled,
+  testID,
 }: {
   label: string;
   icon?: keyof typeof Ionicons.glyphMap;
   variant?: 'primary' | 'secondary' | 'ghost';
   onPress?: () => void;
   disabled?: boolean;
+  testID?: string;
 }) {
   const variantStyles = {
     primary: { bg: colors.accent, text: colors.text, iconColor: colors.text },
@@ -202,6 +204,8 @@ export function ActionButton({
 
   return (
     <Pressable
+      testID={testID}
+      accessibilityLabel={testID ?? label}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [

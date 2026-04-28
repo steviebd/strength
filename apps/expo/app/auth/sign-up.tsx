@@ -144,6 +144,7 @@ export default function SignUpScreen() {
               👤
             </Text>
             <TextInput
+              testID="auth-sign-up-name"
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -182,6 +183,7 @@ export default function SignUpScreen() {
               ✉️
             </Text>
             <TextInput
+              testID="auth-sign-up-email"
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -222,6 +224,7 @@ export default function SignUpScreen() {
               🔒
             </Text>
             <TextInput
+              testID="auth-sign-up-password"
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -263,6 +266,7 @@ export default function SignUpScreen() {
               🔐
             </Text>
             <TextInput
+              testID="auth-sign-up-confirm-password"
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -309,6 +313,8 @@ export default function SignUpScreen() {
         </View>
 
         <Pressable
+          testID="auth-sign-up-submit"
+          accessibilityLabel="auth-sign-up-submit"
           style={{
             flexDirection: 'row',
             alignItems: 'center',

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useState } from 'react';
 import { colors, radius, spacing, typography } from '@/theme';
-import { convertToStorageWeight } from '@strength/db';
+import { convertToStorageWeight } from '@strength/db/client';
 
 interface WeightPickerModalProps {
   visible: boolean;
@@ -58,6 +58,7 @@ export function WeightPickerModal({
         <View style={styles.content}>
           <View style={styles.inputCard}>
             <TextInput
+              testID="onboarding-weight-input"
               style={styles.input}
               placeholder="0.0"
               placeholderTextColor={colors.placeholderText}
@@ -72,6 +73,8 @@ export function WeightPickerModal({
 
         <View style={styles.footer}>
           <Pressable
+            testID="onboarding-weight-save"
+            accessibilityLabel="onboarding-weight-save"
             onPress={handleSave}
             disabled={isSubmitting || isSaving}
             style={[
@@ -86,7 +89,13 @@ export function WeightPickerModal({
             )}
           </Pressable>
 
-          <Pressable onPress={onSkip} disabled={isSubmitting || isSaving} style={styles.skipButton}>
+          <Pressable
+            testID="onboarding-weight-skip"
+            accessibilityLabel="onboarding-weight-skip"
+            onPress={onSkip}
+            disabled={isSubmitting || isSaving}
+            style={styles.skipButton}
+          >
             <Text style={styles.skipButtonText}>Skip for now</Text>
           </Pressable>
         </View>

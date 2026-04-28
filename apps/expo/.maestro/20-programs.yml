@@ -1,0 +1,62 @@
+appId: com.strength.app
+---
+- launchApp:
+    clearState: false
+- tapOn: 'Programs'
+- tapOn:
+    id: 'program-option-stronglifts-5x5'
+- tapOn:
+    id: 'program-start-this-program'
+- tapOn:
+    id: 'program-1rm-squat'
+- inputText: '100'
+- tapOn:
+    id: 'program-1rm-bench'
+- inputText: '80'
+- tapOn:
+    id: 'program-1rm-deadlift'
+- inputText: '120'
+- tapOn:
+    id: 'program-1rm-ohp'
+- inputText: '50'
+- tapOn:
+    id: 'program-continue-to-schedule'
+- assertVisible: 'Schedule'
+- assertVisible: 'Morning'
+- tapOn:
+    id: 'program-continue-to-review'
+- assertVisible: 'Review'
+- tapOn:
+    id: 'program-confirm-start'
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 20000
+- tapOn: 'Programs'
+- assertVisible: 'Active Programs'
+- tapOn: 'Start Next Session'
+- extendedWaitUntil:
+    visible: 'Active Workout'
+    timeout: 20000
+- assertVisible: 'Squat'
+- assertVisible: '45.0'
+- tapOn:
+    id: 'workout-set-1-complete'
+- tapOn:
+    id: 'workout-action-complete'
+- tapOn:
+    text: 'Continue'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 20000
+- tapOn: 'Programs'
+- assertVisible: 'Session 2'
+- tapOn: 'View Schedule'
+- assertVisible: 'Upcoming Schedule'
+- assertVisible: 'Week 1'
+- back
+- tapOn: 'Delete'
+- tapOn:
+    text: 'Delete'
+    index: 1
+- assertNotVisible: 'Active Programs'

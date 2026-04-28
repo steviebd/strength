@@ -12,6 +12,15 @@
         "buildType": "apk"
       }
     },
+    "e2e-test": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_SCHEME": "strength"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "android": {

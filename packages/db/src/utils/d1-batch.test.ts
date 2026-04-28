@@ -15,8 +15,8 @@ describe('d1-batch constants', () => {
     expect(DEFAULT_CHUNK_SIZE).toBe(100);
   });
 
-  it('DEFAULT_CONCURRENCY should be 8', () => {
-    expect(DEFAULT_CONCURRENCY).toBe(8);
+  it('DEFAULT_CONCURRENCY should be 4', () => {
+    expect(DEFAULT_CONCURRENCY).toBe(4);
   });
 
   it('DEFAULT_MAX_QUERY_PARAMS should be 100', () => {

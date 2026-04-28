@@ -4,7 +4,7 @@ import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core/table';
 type DbClient = DrizzleD1Database<Record<string, unknown>>;
 
 export const DEFAULT_CHUNK_SIZE = 100;
-export const DEFAULT_CONCURRENCY = 8;
+export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_MAX_QUERY_PARAMS = 100;
 export const DEFAULT_STATEMENTS_PER_BATCH = 95;
 
@@ -41,7 +41,7 @@ export async function batchParallel<T>(
   });
 }
 
-function chunkArray<T>(arr: T[], size: number): T[][] {
+export function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
     chunks.push(arr.slice(i, i + size));
@@ -49,7 +49,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
-function getSafeInsertChunkSize(
+export function getSafeInsertChunkSize(
   rows: Record<string, unknown>[],
   chunkSize: number,
   maxQueryParams: number,

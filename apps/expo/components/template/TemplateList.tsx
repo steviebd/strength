@@ -49,6 +49,8 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
       {templates.map((template) => (
         <Surface key={`template:${template.id}`} style={styles.templateCard}>
           <Pressable
+            testID={`template-card-${template.id}`}
+            accessibilityLabel={`template-card-${template.name}`}
             onPress={() => {
               if (onEditTemplate) {
                 onEditTemplate(template);
@@ -93,6 +95,8 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
 
           <View style={styles.actionRow}>
             <Pressable
+              testID={`template-start-${template.id}`}
+              accessibilityLabel={`template-start-${template.name}`}
               onPress={() => {
                 if (onStartWorkout) {
                   onStartWorkout(template);

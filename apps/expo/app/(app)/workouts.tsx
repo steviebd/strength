@@ -76,7 +76,7 @@ export default function WorkoutsIndex() {
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [showStartWorkout, setShowStartWorkout] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-  const { startWorkout, isLoading } = useWorkoutSessionContext();
+  const { startWorkout, isLoading, error: workoutSessionError } = useWorkoutSessionContext();
   const { weightUnit } = useUserPreferences();
 
   const [workoutName, setWorkoutName] = useState('');
@@ -173,11 +173,14 @@ export default function WorkoutsIndex() {
   const handleStartWorkout = async () => {
     const name = workoutName.trim() || 'Workout';
     const workout = await startWorkout(name);
-    setShowStartWorkout(false);
-    setWorkoutName('');
     if (workout?.id) {
+      setShowStartWorkout(false);
+      setWorkoutName('');
       router.push(`/workout-session?workoutId=${workout.id}`);
+      return;
     }
+
+    Alert.alert('Unable to start workout', workoutSessionError ?? 'Please try again.');
   };
 
   const handleStartFromTemplate = async (template: Template) => {
@@ -192,8 +195,8 @@ export default function WorkoutsIndex() {
       if (workout?.id) {
         router.push(`/workout-session?workoutId=${workout.id}`);
       }
-    } catch {
-      // no-op
+    } catch (e) {
+      Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
   };
 
@@ -466,12 +469,14 @@ export default function WorkoutsIndex() {
                   {isNarrow ? (
                     <>
                       <Button
+                        testID="workouts-start-custom"
                         label="Start custom workout"
                         icon="play"
                         onPress={() => setShowStartWorkout(true)}
                         fullWidth
                       />
                       <Button
+                        testID="workouts-new-template"
                         label="New template"
                         icon="add"
                         variant="secondary"
@@ -483,6 +488,7 @@ export default function WorkoutsIndex() {
                     <>
                       <View style={styles.flex1}>
                         <Button
+                          testID="workouts-start-custom"
                           label="Start custom workout"
                           icon="play"
                           onPress={() => setShowStartWorkout(true)}
@@ -490,6 +496,7 @@ export default function WorkoutsIndex() {
                       </View>
                       <View style={styles.flex1}>
                         <Button
+                          testID="workouts-new-template"
                           label="New template"
                           icon="add"
                           variant="secondary"
@@ -578,6 +585,7 @@ export default function WorkoutsIndex() {
           <Surface style={styles.modalSurface}>
             <View style={styles.modalForm}>
               <TextField
+                testID="workouts-custom-name"
                 label="WORKOUT NAME"
                 placeholder="e.g., Upper Body Day"
                 value={workoutName}
@@ -585,6 +593,7 @@ export default function WorkoutsIndex() {
               />
 
               <Button
+                testID="workouts-start-empty"
                 label={isLoading ? 'Starting...' : 'Start Empty Workout'}
                 icon="play"
                 onPress={handleStartWorkout}

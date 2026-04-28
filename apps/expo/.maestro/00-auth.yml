@@ -1,0 +1,47 @@
+appId: com.strength.app
+---
+- runScript: scripts/reset-user.js
+- launchApp:
+    clearState: true
+- tapOn: 'Create one'
+- tapOn:
+    id: 'auth-sign-up-name'
+- inputText: 'Maestro Tester'
+- tapOn:
+    id: 'auth-sign-up-email'
+- inputText: '${E2E_EMAIL}'
+- tapOn:
+    id: 'auth-sign-up-password'
+- inputText: '${E2E_PASSWORD}'
+- tapOn:
+    id: 'auth-sign-up-confirm-password'
+- inputText: '${E2E_PASSWORD}'
+- tapOn:
+    id: 'auth-sign-up-submit'
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 20000
+- tapOn:
+    id: 'onboarding-timezone-confirm'
+    optional: true
+- tapOn:
+    id: 'onboarding-weight-skip'
+    optional: true
+- assertVisible: 'Home'
+- tapOn: 'Profile'
+- tapOn:
+    id: 'profile-sign-out'
+- extendedWaitUntil:
+    visible: 'Welcome back'
+    timeout: 10000
+- tapOn:
+    id: 'auth-sign-in-email'
+- inputText: '${E2E_EMAIL}'
+- tapOn:
+    id: 'auth-sign-in-password'
+- inputText: '${E2E_PASSWORD}'
+- tapOn:
+    id: 'auth-sign-in-submit'
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 15000

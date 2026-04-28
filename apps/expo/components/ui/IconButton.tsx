@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, type ViewStyle, type StyleProp } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { radius, text, layout } from '@/theme';
 
 type IconButtonVariant = 'ghost' | 'secondary' | 'outline' | 'danger';

@@ -19,7 +19,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { colors, radius, spacing, typography } from '@/theme';
 import { Input } from '@/components/ui/Input';
-import { convertToDisplayWeight, convertToStorageWeight } from '@strength/db';
+import { convertToDisplayWeight, convertToStorageWeight } from '@strength/db/client';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
 
 interface WhoopStatus {
@@ -40,7 +40,9 @@ async function connectWhoop(returnTo: string): Promise<{ authUrl?: string; error
   return apiFetch<{ authUrl?: string; error?: string; message?: string }>('/api/whoop/auth', {
     method: 'POST',
     body: { returnTo },
-  }).catch(() => ({ error: 'Failed to connect' }));
+  }).catch((error) => ({
+    error: error instanceof Error ? error.message : 'Failed to connect',
+  }));
 }
 
 async function disconnectWhoop(): Promise<void> {
@@ -539,7 +541,12 @@ export default function Profile() {
         </Pressable>
       </View>
 
-      <Pressable onPress={handleSignOut} style={[styles.button, styles.buttonSignOut]}>
+      <Pressable
+        testID="profile-sign-out"
+        accessibilityLabel="profile-sign-out"
+        onPress={handleSignOut}
+        style={[styles.button, styles.buttonSignOut]}
+      >
         <Text style={styles.buttonSignOutText}>Sign Out</Text>
       </Pressable>
 

@@ -10,7 +10,7 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db';
+import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db/client';
 import {
   createCustomExercise,
   ensurePersistedExercise,
@@ -208,27 +208,35 @@ export function ExerciseSearch({
     })();
   }
 
+  const excludeIdSet = useMemo(() => new Set(excludeIds), [excludeIds]);
+
+  const excludedLibraryIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const userExercise of userExercises) {
+      if (userExercise.libraryId && excludeIdSet.has(userExercise.id)) {
+        ids.add(userExercise.libraryId);
+      }
+    }
+    return ids;
+  }, [userExercises, excludeIdSet]);
+
   const filteredUserExercises = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     return userExercises.filter(
       (ex) =>
-        ex.libraryId === null &&
-        ex.name.toLowerCase().includes(query) &&
-        !excludeIds.includes(ex.id),
+        ex.libraryId === null && ex.name.toLowerCase().includes(query) && !excludeIdSet.has(ex.id),
     );
-  }, [userExercises, searchQuery, excludeIds]);
+  }, [userExercises, searchQuery, excludeIdSet]);
 
   const filteredLibraryExercises = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     return exerciseLibrary.filter(
       (ex) =>
         ex.name.toLowerCase().includes(query) &&
-        !excludeIds.includes(ex.id) &&
-        !userExercises.some((userExercise) => {
-          return userExercise.libraryId === ex.id && excludeIds.includes(userExercise.id);
-        }),
+        !excludeIdSet.has(ex.id) &&
+        !excludedLibraryIds.has(ex.id),
     );
-  }, [searchQuery, excludeIds, userExercises]);
+  }, [searchQuery, excludeIdSet, excludedLibraryIds]);
 
   const listData = useMemo((): ListItem[] => {
     const items: ListItem[] = [];
@@ -261,6 +269,8 @@ export function ExerciseSearch({
     const isSelected = pendingSelection.includes(selectionKey);
     return (
       <Pressable
+        testID={`workout-exercise-${isUser ? 'user' : 'library'}-${ex.id}`}
+        accessibilityLabel={`workout-exercise-${ex.name}`}
         style={({ pressed }) => [
           styles.exerciseRow,
           styles.exerciseRowBorder,
@@ -315,6 +325,7 @@ export function ExerciseSearch({
         {!showCreateForm && (
           <View style={styles.searchContainer}>
             <TextInput
+              testID="workout-exercise-search"
               style={styles.searchInput}
               placeholder="Search exercises..."
               placeholderTextColor={colors.placeholderText}
@@ -446,7 +457,12 @@ export function ExerciseSearch({
           {pendingSelection.length > 0 && (
             <View style={[styles.selectionBar, { paddingBottom: insets.bottom + spacing.md }]}>
               <Text style={styles.selectionText}>{pendingSelection.length} selected</Text>
-              <Pressable onPress={handleConfirm} style={styles.confirmButton}>
+              <Pressable
+                testID="workout-exercise-confirm"
+                accessibilityLabel="workout-exercise-confirm"
+                onPress={handleConfirm}
+                style={styles.confirmButton}
+              >
                 <Text style={styles.confirmButtonText}>
                   Add {pendingSelection.length} Exercise{pendingSelection.length > 1 ? 's' : ''}
                 </Text>

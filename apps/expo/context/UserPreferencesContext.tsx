@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { isValidTimeZone } from '@strength/db';
+import { isValidTimeZone } from '@strength/db/client';
 import { getActiveTimezone, getCurrentDeviceTimezone } from '@/lib/timezone';
 import {
   clearTimezoneDismissals,

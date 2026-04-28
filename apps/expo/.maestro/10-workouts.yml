@@ -1,0 +1,95 @@
+appId: com.strength.app
+---
+- launchApp:
+    clearState: false
+- tapOn: 'Workouts'
+- tapOn:
+    id: 'workouts-new-template'
+- tapOn:
+    id: 'template-name'
+- inputText: 'E2E Strength Template'
+- tapOn:
+    id: 'template-add-exercise'
+- tapOn:
+    id: 'template-exercise-search'
+- inputText: 'Squat'
+- tapOn:
+    text: 'Squat'
+    index: 0
+- tapOn:
+    id: 'template-exercise-search'
+- eraseText
+- inputText: 'Bench Press'
+- tapOn:
+    text: 'Bench Press'
+    index: 0
+- tapOn:
+    id: 'template-exercise-confirm'
+- assertVisible: 'Exercises (2)'
+- tapOn:
+    id: 'template-save'
+- extendedWaitUntil:
+    visible: 'E2E Strength Template'
+    timeout: 15000
+- tapOn:
+    text: 'Start Workout'
+    index: 0
+- extendedWaitUntil:
+    visible: 'Active Workout'
+    timeout: 15000
+- assertVisible: 'Squat'
+- assertVisible: 'Bench Press'
+- tapOn:
+    id: 'workout-set-1-weight'
+- inputText: '100'
+- pressKey: Enter
+- tapOn:
+    id: 'workout-set-1-reps'
+- inputText: '5'
+- pressKey: Enter
+- tapOn:
+    id: 'workout-set-1-complete'
+- tapOn:
+    id: 'workout-action-complete'
+- tapOn:
+    text: 'Continue'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 15000
+- tapOn: 'Workouts'
+- tapOn:
+    text: 'Start Workout'
+    index: 0
+- extendedWaitUntil:
+    visible: 'Active Workout'
+    timeout: 15000
+- assertVisible: '100.0'
+- assertVisible: '5'
+- tapOn:
+    id: 'workout-action-discard'
+- tapOn:
+    text: 'Discard'
+    optional: true
+- tapOn:
+    id: 'workouts-start-custom'
+- tapOn:
+    id: 'workouts-custom-name'
+- inputText: 'E2E Custom Workout'
+- tapOn:
+    id: 'workouts-start-empty'
+- extendedWaitUntil:
+    visible: 'Active Workout'
+    timeout: 15000
+- tapOn:
+    id: 'workout-add-exercise'
+- tapOn:
+    id: 'workout-exercise-search'
+- inputText: 'Squat'
+- tapOn:
+    text: 'Squat'
+    index: 0
+- tapOn:
+    id: 'workout-exercise-confirm'
+- assertVisible: '100.0'
+- assertVisible: '5'

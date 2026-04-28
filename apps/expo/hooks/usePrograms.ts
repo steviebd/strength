@@ -37,7 +37,8 @@ export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
     queryKey: ['programs', userId],
     enabled: !!userId,
     queryFn: async (): Promise<ProgramListItem[]> => {
-      return apiFetch<ProgramListItem[]>('/api/programs');
+      const data = await apiFetch<ProgramListItem[]>('/api/programs');
+      return data ?? [];
     },
     staleTime: 5 * 60 * 1000,
     refetchOnMount: 'always',
@@ -64,7 +65,8 @@ export function useActivePrograms() {
     queryKey: ['activePrograms', userId],
     enabled: !!userId,
     queryFn: async (): Promise<ActiveProgram[]> => {
-      return apiFetch<ActiveProgram[]>('/api/programs/active');
+      const data = await apiFetch<ActiveProgram[]>('/api/programs/active');
+      return data ?? [];
     },
     staleTime: 0,
     refetchOnMount: 'always',
@@ -88,7 +90,8 @@ export function useLatestOneRms() {
     queryKey: ['latestOneRms', userId],
     enabled: !!userId,
     queryFn: async (): Promise<LatestOneRMs | null> => {
-      return apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms');
+      const data = await apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms');
+      return data ?? null;
     },
     staleTime: 0,
     refetchOnMount: 'always',

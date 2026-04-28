@@ -109,34 +109,28 @@ router.put(
             ? new Date(weightPromptedAt)
             : null;
 
-      let result;
-      if (existing) {
-        result = await db
-          .update(schema.userPreferences)
-          .set({
+      const now = new Date();
+      const result = await db
+        .insert(schema.userPreferences)
+        .values({
+          userId,
+          weightUnit: nextWeightUnit,
+          timezone: nextTimezone,
+          weightPromptedAt: nextWeightPromptedAt,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: schema.userPreferences.userId,
+          set: {
             weightUnit: nextWeightUnit,
             timezone: nextTimezone,
             weightPromptedAt: nextWeightPromptedAt,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.userPreferences.userId, userId))
-          .returning()
-          .get();
-      } else {
-        const now = new Date();
-        result = await db
-          .insert(schema.userPreferences)
-          .values({
-            userId,
-            weightUnit: nextWeightUnit,
-            timezone: nextTimezone,
-            weightPromptedAt: nextWeightPromptedAt,
-            createdAt: now,
             updatedAt: now,
-          })
-          .returning()
-          .get();
-      }
+          },
+        })
+        .returning()
+        .get();
 
       const bodyStats = await db
         .select()

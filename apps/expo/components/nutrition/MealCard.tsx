@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Surface, Badge } from '@/components/ui/app-primitives';
 import { colors, typography, spacing } from '@/theme';
 
@@ -44,6 +44,8 @@ export function MealCard({
           <View style={styles.headerRight}>
             <Text style={styles.time}>{time}</Text>
             <Pressable
+              testID={`nutrition-meal-delete-${id}`}
+              accessibilityLabel={`nutrition-meal-delete-${name}`}
               onPress={(event) => {
                 event.stopPropagation();
                 onDelete?.(id);

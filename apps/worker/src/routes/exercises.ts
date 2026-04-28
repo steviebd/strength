@@ -4,6 +4,17 @@ import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
 import { resolveToUserExerciseId, findExistingUserExerciseByName } from '../lib/program-helpers';
 
+export function buildExerciseUpdate(body: Record<string, unknown>) {
+  const allowed: Record<string, unknown> = {};
+  const keys = ['name', 'muscleGroup', 'description'];
+  for (const key of keys) {
+    if (key in body) {
+      allowed[key] = body[key];
+    }
+  }
+  return allowed;
+}
+
 const router = createRouter();
 
 router.get(
@@ -134,10 +145,11 @@ router.put(
     const id = c.req.param('id') as string;
     try {
       const body = await c.req.json();
+      const allowed = buildExerciseUpdate(body);
       const result = await db
         .update(schema.exercises)
         .set({
-          ...body,
+          ...allowed,
           updatedAt: new Date(),
         })
         .where(and(eq(schema.exercises.id, id), eq(schema.exercises.userId, userId)))

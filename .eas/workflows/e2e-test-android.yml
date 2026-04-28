@@ -1,0 +1,12 @@
+name: E2E Test Android
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e_android:
+    name: Build Android test APK
+    type: build
+    params:
+      platform: android
+      profile: e2e-test

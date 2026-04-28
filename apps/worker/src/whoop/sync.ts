@@ -56,31 +56,32 @@ export async function upsertWhoopProfile(
   userId: string,
   profile: WhoopProfile,
 ): Promise<number> {
-  const existing = await db
-    .select({ id: whoopProfile.id })
-    .from(whoopProfile)
-    .where(eq(whoopProfile.userId, userId))
-    .get();
-
+  const now = new Date();
   const values = {
+    userId,
     whoopUserId: String(profile.user_id),
     email: profile.email,
     firstName: profile.first_name,
     lastName: profile.last_name,
     rawData: JSON.stringify(profile),
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   };
 
-  if (existing) {
-    await db.update(whoopProfile).set(values).where(eq(whoopProfile.id, existing.id));
-    return 0;
-  }
+  await db
+    .insert(whoopProfile)
+    .values(values)
+    .onConflictDoUpdate({
+      target: whoopProfile.whoopUserId,
+      set: {
+        email: profile.email,
+        firstName: profile.first_name,
+        lastName: profile.last_name,
+        rawData: JSON.stringify(profile),
+        updatedAt: now,
+      },
+    });
 
-  await db.insert(whoopProfile).values({
-    userId,
-    ...values,
-    createdAt: new Date(),
-  });
   return 1;
 }
 
@@ -89,12 +90,7 @@ export async function upsertWhoopWorkout(
   userId: string,
   workout: WhoopWorkout,
 ): Promise<number> {
-  const existing = await db
-    .select({ id: whoopWorkout.id })
-    .from(whoopWorkout)
-    .where(eq(whoopWorkout.whoopWorkoutId, workout.id))
-    .get();
-
+  const now = new Date();
   const zoneDurations = workout.score?.zone_durations;
   const values = {
     userId,
@@ -107,18 +103,29 @@ export async function upsertWhoopWorkout(
     score: workout.score ? JSON.stringify(workout.score) : null,
     during: workout.during ? JSON.stringify(workout.during) : null,
     zoneDuration: zoneDurations ? JSON.stringify(zoneDurations) : null,
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   };
 
-  if (existing) {
-    await db.update(whoopWorkout).set(values).where(eq(whoopWorkout.id, existing.id));
-    return 0;
-  }
+  await db
+    .insert(whoopWorkout)
+    .values(values)
+    .onConflictDoUpdate({
+      target: whoopWorkout.whoopWorkoutId,
+      set: {
+        userId,
+        start: new Date(workout.start),
+        end: new Date(workout.end),
+        timezoneOffset: workout.timezone_offset,
+        sportName: workout.sport_name,
+        scoreState: workout.score_state,
+        score: workout.score ? JSON.stringify(workout.score) : null,
+        during: workout.during ? JSON.stringify(workout.during) : null,
+        zoneDuration: zoneDurations ? JSON.stringify(zoneDurations) : null,
+        updatedAt: now,
+      },
+    });
 
-  await db.insert(whoopWorkout).values({
-    ...values,
-    createdAt: new Date(),
-  });
   return 1;
 }
 
@@ -152,12 +159,7 @@ export async function upsertWhoopRecovery(
     return 0;
   }
 
-  const existing = await db
-    .select({ id: whoopRecovery.id })
-    .from(whoopRecovery)
-    .where(eq(whoopRecovery.whoopRecoveryId, whoopRecoveryId))
-    .get();
-
+  const now = new Date();
   const recoveryScore = recovery.score?.recovery_score ?? null;
   const values = {
     userId,
@@ -174,19 +176,31 @@ export async function upsertWhoopRecovery(
     rawData: JSON.stringify(recovery),
     recoveryScoreTier: recoveryScore != null ? getScoreTier(recoveryScore) : null,
     timezoneOffset: null,
-    webhookReceivedAt: new Date(),
-    updatedAt: new Date(),
+    webhookReceivedAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
 
-  if (existing) {
-    await db.update(whoopRecovery).set(values).where(eq(whoopRecovery.id, existing.id));
-    return 0;
-  }
+  await db
+    .insert(whoopRecovery)
+    .values(values)
+    .onConflictDoUpdate({
+      target: whoopRecovery.whoopRecoveryId,
+      set: {
+        userId,
+        cycleId: recovery.cycle_id != null ? String(recovery.cycle_id) : null,
+        date: new Date(recovery.created_at ?? recovery.updated_at ?? Date.now()),
+        recoveryScore,
+        hrvRmssdMilli: recovery.score?.hrv_rmssd_milli ?? null,
+        restingHeartRate: recovery.score?.resting_heart_rate ?? null,
+        respiratoryRate: recovery.score?.respiratory_rate ?? null,
+        rawData: JSON.stringify(recovery),
+        recoveryScoreTier: recoveryScore != null ? getScoreTier(recoveryScore) : null,
+        webhookReceivedAt: now,
+        updatedAt: now,
+      },
+    });
 
-  await db.insert(whoopRecovery).values({
-    ...values,
-    createdAt: new Date(),
-  });
   return 1;
 }
 
@@ -216,12 +230,7 @@ export async function upsertWhoopCycle(
   userId: string,
   cycle: WhoopCycle,
 ): Promise<number> {
-  const existing = await db
-    .select({ id: whoopCycle.id })
-    .from(whoopCycle)
-    .where(eq(whoopCycle.whoopCycleId, cycle.id))
-    .get();
-
+  const now = new Date();
   const score = cycle.score;
   const values = {
     userId,
@@ -238,19 +247,35 @@ export async function upsertWhoopCycle(
     altitudeGainMeter: score?.altitude_gain_meter ?? null,
     altitudeChangeMeter: score?.altitude_change_meter ?? null,
     rawData: JSON.stringify(cycle),
-    webhookReceivedAt: new Date(),
-    updatedAt: new Date(),
+    webhookReceivedAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
 
-  if (existing) {
-    await db.update(whoopCycle).set(values).where(eq(whoopCycle.id, existing.id));
-    return 0;
-  }
+  await db
+    .insert(whoopCycle)
+    .values(values)
+    .onConflictDoUpdate({
+      target: whoopCycle.whoopCycleId,
+      set: {
+        userId,
+        start: new Date(cycle.start),
+        end: new Date(cycle.end),
+        timezoneOffset: cycle.timezone_offset,
+        dayStrain: score?.strain ?? null,
+        averageHeartRate: score?.average_heart_rate ?? null,
+        maxHeartRate: score?.max_heart_rate ?? null,
+        kilojoule: score?.kilojoule ?? null,
+        percentRecorded: score?.percent_recorded ?? null,
+        distanceMeter: score?.distance_meter ?? null,
+        altitudeGainMeter: score?.altitude_gain_meter ?? null,
+        altitudeChangeMeter: score?.altitude_change_meter ?? null,
+        rawData: JSON.stringify(cycle),
+        webhookReceivedAt: now,
+        updatedAt: now,
+      },
+    });
 
-  await db.insert(whoopCycle).values({
-    ...values,
-    createdAt: new Date(),
-  });
   return 1;
 }
 
@@ -259,12 +284,7 @@ export async function upsertWhoopSleep(
   userId: string,
   sleep: WhoopSleep,
 ): Promise<number> {
-  const existing = await db
-    .select({ id: whoopSleep.id })
-    .from(whoopSleep)
-    .where(eq(whoopSleep.whoopSleepId, sleep.id))
-    .get();
-
+  const now = new Date();
   const stageSummary = sleep.score?.stage_summary;
   const sleepNeeded = sleep.score?.sleep_needed;
   const totalSleepTimeMilli =
@@ -298,19 +318,44 @@ export async function upsertWhoopSleep(
       sleep.score?.sleep_performance_percentage != null
         ? getSleepQualityTier(sleep.score.sleep_performance_percentage)
         : null,
-    webhookReceivedAt: new Date(),
-    updatedAt: new Date(),
+    webhookReceivedAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
 
-  if (existing) {
-    await db.update(whoopSleep).set(values).where(eq(whoopSleep.id, existing.id));
-    return 0;
-  }
+  await db
+    .insert(whoopSleep)
+    .values(values)
+    .onConflictDoUpdate({
+      target: whoopSleep.whoopSleepId,
+      set: {
+        userId,
+        start: new Date(sleep.start),
+        end: new Date(sleep.end),
+        timezoneOffset: sleep.timezone_offset,
+        sleepPerformancePercentage: sleep.score?.sleep_performance_percentage ?? null,
+        totalSleepTimeMilli: totalSleepTimeMilli > 0 ? totalSleepTimeMilli : null,
+        sleepEfficiencyPercentage: sleep.score?.sleep_efficiency_percentage ?? null,
+        slowWaveSleepTimeMilli: stageSummary?.total_slow_wave_sleep_time_milli ?? null,
+        remSleepTimeMilli: stageSummary?.total_rem_sleep_time_milli ?? null,
+        lightSleepTimeMilli: stageSummary?.total_light_sleep_time_milli ?? null,
+        wakeTimeMilli: stageSummary?.total_awake_time_milli ?? null,
+        disturbanceCount: stageSummary?.disturbance_count ?? null,
+        sleepConsistencyPercentage: sleep.score?.sleep_consistency_percentage ?? null,
+        sleepNeedBaselineMilli: sleepNeeded?.baseline_milli ?? null,
+        sleepNeedFromSleepDebtMilli: sleepNeeded?.need_from_sleep_debt_milli ?? null,
+        sleepNeedFromRecentStrainMilli: sleepNeeded?.need_from_recent_strain_milli ?? null,
+        sleepNeedFromRecentNapMilli: sleepNeeded?.need_from_recent_nap_milli ?? null,
+        rawData: JSON.stringify(sleep),
+        sleepQualityTier:
+          sleep.score?.sleep_performance_percentage != null
+            ? getSleepQualityTier(sleep.score.sleep_performance_percentage)
+            : null,
+        webhookReceivedAt: now,
+        updatedAt: now,
+      },
+    });
 
-  await db.insert(whoopSleep).values({
-    ...values,
-    createdAt: new Date(),
-  });
   return 1;
 }
 
@@ -343,12 +388,7 @@ export async function upsertWhoopBodyMeasurement(
     measurement.measurement_date ??
     `${measurement.height_meter}:${measurement.weight_kilogram}:${measurement.max_heart_rate ?? 'na'}`;
 
-  const existing = await db
-    .select({ id: whoopBodyMeasurement.id })
-    .from(whoopBodyMeasurement)
-    .where(eq(whoopBodyMeasurement.whoopMeasurementId, measurementId))
-    .get();
-
+  const now = new Date();
   const values = {
     userId,
     whoopMeasurementId: measurementId,
@@ -357,22 +397,30 @@ export async function upsertWhoopBodyMeasurement(
     maxHeartRate: measurement.max_heart_rate ?? null,
     measurementDate: measurement.measurement_date ? new Date(measurement.measurement_date) : null,
     rawData: JSON.stringify(measurement),
-    webhookReceivedAt: new Date(),
-    updatedAt: new Date(),
+    webhookReceivedAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
 
-  if (existing) {
-    await db
-      .update(whoopBodyMeasurement)
-      .set(values)
-      .where(eq(whoopBodyMeasurement.id, existing.id));
-    return 0;
-  }
+  await db
+    .insert(whoopBodyMeasurement)
+    .values(values)
+    .onConflictDoUpdate({
+      target: whoopBodyMeasurement.whoopMeasurementId,
+      set: {
+        userId,
+        heightMeter: measurement.height_meter,
+        weightKilogram: measurement.weight_kilogram,
+        maxHeartRate: measurement.max_heart_rate ?? null,
+        measurementDate: measurement.measurement_date
+          ? new Date(measurement.measurement_date)
+          : null,
+        rawData: JSON.stringify(measurement),
+        webhookReceivedAt: now,
+        updatedAt: now,
+      },
+    });
 
-  await db.insert(whoopBodyMeasurement).values({
-    ...values,
-    createdAt: new Date(),
-  });
   return 1;
 }
 

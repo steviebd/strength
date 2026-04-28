@@ -34,15 +34,30 @@ export async function getOrCreateExerciseForUser(
   libraryId?: string,
 ): Promise<string> {
   if (libraryId) {
-    const existingByLibraryId = await db
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(and(eq(exercises.userId, userId), eq(exercises.libraryId, libraryId)))
+    const now = new Date();
+    const result = await db
+      .insert(exercises)
+      .values({
+        id: generateId(),
+        userId,
+        name: exerciseName,
+        muscleGroup: inferMuscleGroup(liftType),
+        description: null,
+        libraryId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [exercises.userId, exercises.libraryId],
+        set: {
+          name: exerciseName,
+          muscleGroup: inferMuscleGroup(liftType),
+          updatedAt: now,
+        },
+      })
+      .returning({ id: exercises.id })
       .get();
-
-    if (existingByLibraryId) {
-      return existingByLibraryId.id;
-    }
+    return result.id;
   }
 
   const existingByName = await db
@@ -58,18 +73,8 @@ export async function getOrCreateExerciseForUser(
   const libraryItem = getExerciseFromLibrary(exerciseName);
 
   if (libraryItem) {
-    const existingLibrary = await db
-      .select({ id: exercises.id })
-      .from(exercises)
-      .where(and(eq(exercises.userId, userId), eq(exercises.libraryId, libraryItem.id)))
-      .get();
-
-    if (existingLibrary) {
-      return existingLibrary.id;
-    }
-
     const now = new Date();
-    const created = await db
+    const result = await db
       .insert(exercises)
       .values({
         id: generateId(),
@@ -81,10 +86,18 @@ export async function getOrCreateExerciseForUser(
         createdAt: now,
         updatedAt: now,
       })
+      .onConflictDoUpdate({
+        target: [exercises.userId, exercises.libraryId],
+        set: {
+          name: libraryItem.name,
+          muscleGroup: libraryItem.muscleGroup,
+          description: libraryItem.description,
+          updatedAt: now,
+        },
+      })
       .returning({ id: exercises.id })
       .get();
-
-    return created.id;
+    return result.id;
   }
 
   const now = new Date();

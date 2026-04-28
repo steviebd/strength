@@ -8,7 +8,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { border, colors, radius, textRoles, layout, text } from '@/theme';
 
 interface TextFieldProps extends TextInputProps {

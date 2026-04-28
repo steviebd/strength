@@ -16,6 +16,10 @@ import { batchParallel } from '@strength/db';
 
 const router = createRouter();
 
+function pickProgramOneRM(input: unknown, fallback: number | null | undefined) {
+  return typeof input === 'number' && Number.isFinite(input) && input > 0 ? input : (fallback ?? 0);
+}
+
 router.get('/', async (c) => {
   const { PROGRAMS } = await import('../programs');
   const programsList = Object.values(PROGRAMS).map((p) => ({
@@ -69,11 +73,19 @@ router.post(
         return c.json({ message: 'Program not found' }, 404);
       }
 
+      const latestOneRMs = await getLatestOneRMsForUser(db, userId);
+      const resolvedOneRMs = {
+        squat1rm: pickProgramOneRM(squat1rm, latestOneRMs?.squat1rm),
+        bench1rm: pickProgramOneRM(bench1rm, latestOneRMs?.bench1rm),
+        deadlift1rm: pickProgramOneRM(deadlift1rm, latestOneRMs?.deadlift1rm),
+        ohp1rm: pickProgramOneRM(ohp1rm, latestOneRMs?.ohp1rm),
+      };
+
       const oneRMs = {
-        squat: squat1rm || 0,
-        bench: bench1rm || 0,
-        deadlift: deadlift1rm || 0,
-        ohp: ohp1rm || 0,
+        squat: resolvedOneRMs.squat1rm,
+        bench: resolvedOneRMs.bench1rm,
+        deadlift: resolvedOneRMs.deadlift1rm,
+        ohp: resolvedOneRMs.ohp1rm,
       };
 
       const generatedWorkouts = programConfig.generateWorkouts(oneRMs);
@@ -193,10 +205,10 @@ router.post(
       const cycle = await createProgramCycle(db, userId, {
         programSlug,
         name,
-        squat1rm: squat1rm || 0,
-        bench1rm: bench1rm || 0,
-        deadlift1rm: deadlift1rm || 0,
-        ohp1rm: ohp1rm || 0,
+        squat1rm: resolvedOneRMs.squat1rm,
+        bench1rm: resolvedOneRMs.bench1rm,
+        deadlift1rm: resolvedOneRMs.deadlift1rm,
+        ohp1rm: resolvedOneRMs.ohp1rm,
         totalSessionsPlanned,
         estimatedWeeks,
         preferredGymDays,

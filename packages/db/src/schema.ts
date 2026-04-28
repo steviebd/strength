@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core';
 
 export function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -72,21 +72,25 @@ export const verification = sqliteTable('verification', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
 });
 
-export const exercises = sqliteTable('exercises', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  muscleGroup: text('muscle_group'),
-  description: text('description'),
-  libraryId: text('library_id'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const exercises = sqliteTable(
+  'exercises',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    muscleGroup: text('muscle_group'),
+    description: text('description'),
+    libraryId: text('library_id'),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [unique('exercises_user_id_library_id_unique').on(t.userId, t.libraryId)],
+);
 
 export const templates = sqliteTable('templates', {
   id: text('id')
@@ -295,23 +299,30 @@ export const _templateExercisesTemplateIdIdx = index('idx_template_exercises_tem
   templateExercises.templateId,
 );
 
-export const userIntegration = sqliteTable('user_integration', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  provider: text('provider').notNull(),
-  providerUserId: text('provider_user_id'),
-  accessToken: text('access_token').notNull(),
-  refreshToken: text('refresh_token'),
-  accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp_ms' }),
-  scope: text('scope'),
-  isActive: integer('is_active', { mode: 'boolean' }).default(true),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const userIntegration = sqliteTable(
+  'user_integration',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    providerUserId: text('provider_user_id'),
+    accessToken: text('access_token').notNull(),
+    refreshToken: text('refresh_token'),
+    accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp_ms' }),
+    scope: text('scope'),
+    isActive: integer('is_active', { mode: 'boolean' }).default(true),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    unique('user_integration_user_id_provider_unique').on(t.userId, t.provider),
+    unique('user_integration_provider_provider_user_id_unique').on(t.provider, t.providerUserId),
+  ],
+);
 
 export const whoopProfile = sqliteTable('whoop_profile', {
   id: text('id')
@@ -598,18 +609,22 @@ export const userBodyStats = sqliteTable('user_body_stats', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-export const nutritionTrainingContext = sqliteTable('nutrition_training_context', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  trainingType: text('training_type').notNull(),
-  customLabel: text('custom_label'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const nutritionTrainingContext = sqliteTable(
+  'nutrition_training_context',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    trainingType: text('training_type').notNull(),
+    customLabel: text('custom_label'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [unique('nutrition_training_context_user_id_unique').on(t.userId)],
+);
 
 export const _nutritionEntriesUserLoggedAtIdx = index('idx_nutrition_entries_user_logged_at').on(
   nutritionEntries.userId,

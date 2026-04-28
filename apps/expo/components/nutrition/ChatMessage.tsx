@@ -180,6 +180,7 @@ export function ChatMessage({
                     ) : null}
                     {expanded ? (
                       <Button
+                        testID={isSaved ? 'nutrition-analysis-unsave' : 'nutrition-analysis-save'}
                         size="sm"
                         variant={isSaved ? 'default' : 'ghost'}
                         style={{ backgroundColor: isSaved ? undefined : '#1c1c1f' }}

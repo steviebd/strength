@@ -11,8 +11,39 @@ import {
 import {
   resolveToUserExerciseId,
   getLastCompletedExerciseSnapshot,
+  getLastCompletedExerciseSnapshots,
   advanceProgramCycleForWorkout,
 } from '../lib/program-helpers';
+
+export function buildWorkoutUpdate(body: Record<string, unknown>) {
+  const allowed: Record<string, unknown> = {};
+  const keys = [
+    'name',
+    'notes',
+    'startedAt',
+    'completedAt',
+    'totalVolume',
+    'totalSets',
+    'durationMinutes',
+  ];
+  for (const key of keys) {
+    if (key in body) {
+      allowed[key] = body[key];
+    }
+  }
+  return allowed;
+}
+
+export function buildWorkoutSetUpdate(body: Record<string, unknown>) {
+  const allowed: Record<string, unknown> = {};
+  const keys = ['setNumber', 'weight', 'reps', 'rpe', 'isComplete'];
+  for (const key of keys) {
+    if (key in body) {
+      allowed[key] = body[key];
+    }
+  }
+  return allowed;
+}
 
 const router = createRouter();
 
@@ -112,54 +143,63 @@ router.post(
           .where(eq(schema.templateExercises.templateId, templateId))
           .orderBy(schema.templateExercises.orderIndex)
           .all();
+
+        const exerciseIds = templateExercisesResult.map((te) => te.exerciseId);
+        const historySnapshots = await getLastCompletedExerciseSnapshots(db, userId, exerciseIds);
+        type Snapshot = {
+          exerciseId: string;
+          workoutDate: string | null;
+          sets: {
+            weight: number | null;
+            reps: number | null;
+            rpe: number | null;
+            setNumber: number | null;
+          }[];
+        };
+        const snapshotByExerciseId = new Map<string, Snapshot>(
+          historySnapshots.map((s) => [s.exerciseId, s]),
+        );
+
+        const workoutExerciseRows = templateExercisesResult.map((templateExercise, i) => ({
+          id: schema.generateId(),
+          workoutId: workout.id,
+          exerciseId: templateExercise.exerciseId,
+          orderIndex: i,
+          isAmrap: templateExercise.isAmrap ?? false,
+          updatedAt: now,
+        }));
+
+        await chunkedInsert(db, { table: schema.workoutExercises, rows: workoutExerciseRows });
+
+        const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
         for (let i = 0; i < templateExercisesResult.length; i++) {
           const templateExercise = templateExercisesResult[i];
-          const workoutExercise = await db
-            .insert(schema.workoutExercises)
-            .values({
-              workoutId: workout.id,
-              exerciseId: templateExercise.exerciseId,
-              orderIndex: i,
-              isAmrap: templateExercise.isAmrap ?? false,
+          const workoutExerciseId = workoutExerciseRows[i].id;
+          const historySnapshot = snapshotByExerciseId.get(templateExercise.exerciseId);
+
+          const plannedSetCount = Math.max(1, templateExercise.sets ?? 3);
+          const setRows = Array.from({ length: plannedSetCount }, (_, s) => {
+            const historySet = historySnapshot?.sets[s];
+            const plannedReps = templateExercise.isAmrap ? null : (templateExercise.reps ?? 0);
+            return {
+              workoutExerciseId,
+              setNumber: s + 1,
+              weight:
+                historySet?.weight ??
+                (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0),
+              reps: historySet?.reps ?? plannedReps,
+              rpe: historySet?.rpe ?? null,
+              isComplete: false,
+              createdAt: now,
               updatedAt: now,
-            })
-            .returning()
-            .get();
-          const historySnapshot = await getLastCompletedExerciseSnapshot(
-            db,
-            userId,
-            templateExercise.exerciseId,
-          );
+            };
+          });
 
-          const setRows =
-            historySnapshot && historySnapshot.sets.length > 0
-              ? historySnapshot.sets.map(
-                  (
-                    set: { weight: number | null; reps: number | null; rpe: number | null },
-                    index: number,
-                  ) => ({
-                    workoutExerciseId: workoutExercise.id,
-                    setNumber: index + 1,
-                    weight: set.weight,
-                    reps: set.reps,
-                    rpe: set.rpe,
-                    isComplete: false,
-                    createdAt: now,
-                    updatedAt: now,
-                  }),
-                )
-              : Array.from({ length: templateExercise.sets ?? 3 }, (_, s) => ({
-                  workoutExerciseId: workoutExercise.id,
-                  setNumber: s + 1,
-                  weight:
-                    (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0),
-                  reps: templateExercise.isAmrap ? null : (templateExercise.reps ?? 0),
-                  isComplete: false,
-                  createdAt: now,
-                  updatedAt: now,
-                }));
+          allSetRows.push(...setRows);
+        }
 
-          await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
+        if (allSetRows.length > 0) {
+          await chunkedInsert(db, { table: schema.workoutSets, rows: allSetRows });
         }
       }
       return c.json(workout, 201);
@@ -260,9 +300,10 @@ router.put(
     const id = c.req.param('id') as string;
     try {
       const body = await c.req.json();
+      const allowed = buildWorkoutUpdate(body);
       const result = await db
         .update(schema.workouts)
-        .set({ ...body, updatedAt: new Date() })
+        .set({ ...allowed, updatedAt: new Date() })
         .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
         .returning()
         .get();
@@ -453,13 +494,13 @@ router.put(
       const set = await requireOwnedWorkoutSet({ userId, db }, id);
       if (set instanceof Response) return set;
       const body = await c.req.json();
-      const updateData: any = { ...body, updatedAt: new Date() };
+      const allowed = buildWorkoutSetUpdate(body);
+      const updateData: any = { ...allowed, updatedAt: new Date() };
       if (body.isComplete === true) {
         updateData.completedAt = new Date();
       } else if (body.isComplete === false) {
         updateData.completedAt = null;
       }
-      delete updateData.timezone;
       const result = await db
         .update(schema.workoutSets)
         .set(updateData)

@@ -1,4 +1,4 @@
-import { formatLocalDate, isValidTimeZone, resolveEffectiveTimezone } from '@strength/db';
+import { formatLocalDate, isValidTimeZone, resolveEffectiveTimezone } from '@strength/db/client';
 
 export function getCurrentDeviceTimezone() {
   try {

@@ -25,6 +25,9 @@ export interface WorkerEnv {
   ENCRYPTION_MASTER_KEY?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  RATE_LIMIT_REQUEST_PER_HOUR?: string;
+  E2E_TEST_MODE?: string;
+  E2E_TEST_SECRET?: string;
 }
 
 type SameSitePolicy = 'strict' | 'lax' | 'none';
@@ -86,7 +89,7 @@ function getClientProtocol(headers: Headers): 'https' | 'http' {
   return 'http';
 }
 
-function resolveCookiePolicy(
+export function resolveCookiePolicy(
   baseURL: string | undefined,
   clientProtocol: 'https' | 'http',
   appEnv?: string,
@@ -104,7 +107,7 @@ function resolveCookiePolicy(
     };
   }
 
-  if (clientProtocol === 'https' && baseURLIsHttps && !isDevMode) {
+  if (!isDevMode && baseURLIsHttps) {
     return {
       secure: true,
       sameSite: 'strict',
@@ -157,6 +160,13 @@ export function resolveBaseURL(env: WorkerEnv) {
 
 export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: string) {
   const resolvedEnv = resolveWorkerEnv(env);
+  if (resolvedEnv.APP_ENV !== 'development') {
+    if (!resolvedEnv.WORKER_BASE_URL || !resolvedEnv.WORKER_BASE_URL.startsWith('https://')) {
+      throw new Error(
+        'WORKER_BASE_URL must be set and start with https:// in non-development environments',
+      );
+    }
+  }
   const db = drizzle(resolvedEnv.DB, { schema });
   const clientProtocol = headers ? getClientProtocol(headers) : 'http';
   const baseURL = resolveBaseURL(resolvedEnv);

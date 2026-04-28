@@ -127,6 +127,7 @@ export default function SignInScreen() {
               🔒
             </Text>
             <TextInput
+              testID="auth-sign-in-email"
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -167,6 +168,7 @@ export default function SignInScreen() {
               🔒
             </Text>
             <TextInput
+              testID="auth-sign-in-password"
               style={{
                 borderWidth: 1,
                 borderColor: colors.border,
@@ -213,6 +215,8 @@ export default function SignInScreen() {
         </View>
 
         <Pressable
+          testID="auth-sign-in-submit"
+          accessibilityLabel="auth-sign-in-submit"
           style={{
             flexDirection: 'row',
             alignItems: 'center',

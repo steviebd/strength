@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { exerciseLibrary } from '@strength/db';
+import { exerciseLibrary } from '@strength/db/client';
 import { createCustomExercise, listUserExercises, type UserExercise } from '@/lib/exercises';
 
 export function getUserSelectionKey(id: string) {

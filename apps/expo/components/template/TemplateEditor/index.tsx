@@ -212,7 +212,11 @@ function useTemplateEditorApi({
       setTimeout(() => setAutoSaveStatus('idle'), 2000);
       onSaved?.(savedTemplate);
       return savedTemplate;
-    } catch {
+    } catch (error) {
+      Alert.alert(
+        'Unable to save template',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
       setAutoSaveStatus('idle');
       return null;
     } finally {
@@ -408,6 +412,7 @@ export function TemplateEditor({
         <View style={styles.section}>
           <Text style={styles.label}>Template Name *</Text>
           <Input
+            testID="template-name"
             placeholder="Enter template name"
             value={formData.name}
             onChangeText={(text) => setFormData({ name: text })}
@@ -418,6 +423,7 @@ export function TemplateEditor({
         <View style={styles.section}>
           <Text style={styles.label}>Description</Text>
           <Input
+            testID="template-description"
             placeholder="Enter description (optional)"
             value={formData.description}
             onChangeText={(text) => setFormData({ description: text })}
@@ -437,6 +443,8 @@ export function TemplateEditor({
           <View style={styles.sectionHeader}>
             <Text style={styles.label}>Exercises ({currentExercises.length})</Text>
             <Pressable
+              testID="template-add-exercise"
+              accessibilityLabel="template-add-exercise"
               onPress={() => setShowExerciseSearch(true)}
               style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
             >
@@ -685,7 +693,13 @@ export function TemplateEditor({
           </Button>
         </View>
         <View style={styles.footerButton}>
-          <Button size="lg" onPress={handleSave} disabled={isSaving} fullWidth>
+          <Button
+            testID="template-save"
+            size="lg"
+            onPress={handleSave}
+            disabled={isSaving}
+            fullWidth
+          >
             {isSaving ? (
               <ActivityIndicator size="small" color="#ffffff" />
             ) : (

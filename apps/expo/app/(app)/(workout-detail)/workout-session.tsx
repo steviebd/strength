@@ -527,6 +527,7 @@ export default function WorkoutSessionScreen() {
       <View style={styles.actionButtonsRow}>
         {buttons.map((btn, idx) => (
           <Button
+            testID={`workout-action-${btn.label.toLowerCase().replace(/\s+/g, '-')}`}
             key={`workout-action:${btn.label}:${idx}`}
             label={btn.label}
             variant={btn.variant}
@@ -626,7 +627,12 @@ export default function WorkoutSessionScreen() {
             })}
 
             {(!isViewingCompleted || isEditing) && (
-              <Pressable style={styles.addExerciseButton} onPress={() => setShowAddExercise(true)}>
+              <Pressable
+                testID="workout-add-exercise"
+                accessibilityLabel="workout-add-exercise"
+                style={styles.addExerciseButton}
+                onPress={() => setShowAddExercise(true)}
+              >
                 <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
               </Pressable>
             )}

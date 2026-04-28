@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { ActionButton, PageHeader, SectionTitle, Surface } from '@/components/ui/app-primitives';

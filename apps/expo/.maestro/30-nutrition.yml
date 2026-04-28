@@ -1,0 +1,41 @@
+appId: com.strength.app
+---
+- launchApp:
+    clearState: false
+- tapOn: 'Nutrition'
+- tapOn:
+    id: 'nutrition-chat-input'
+- inputText: 'large Big Mac and large fries'
+- tapOn:
+    id: 'nutrition-chat-send'
+- extendedWaitUntil:
+    visible: 'Large Big Mac and Fries'
+    timeout: 20000
+- assertVisible: '1320'
+- assertVisible: '34g'
+- tapOn:
+    id: 'nutrition-analysis-save'
+- extendedWaitUntil:
+    visible: 'Saved'
+    timeout: 10000
+- assertVisible: 'Large Big Mac and Fries'
+- tapOn:
+    id: 'nutrition-analysis-unsave'
+- extendedWaitUntil:
+    visible: 'Save'
+    timeout: 10000
+- tapOn:
+    id: 'nutrition-analysis-save'
+- extendedWaitUntil:
+    visible: 'Saved'
+    timeout: 10000
+- tapOn:
+    text: 'Large Big Mac and Fries'
+    index: 1
+    optional: true
+- tapOn:
+    text: 'Delete Meal'
+    optional: true
+- tapOn:
+    text: 'Delete'
+    optional: true

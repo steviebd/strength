@@ -87,6 +87,16 @@ function groupConsecutiveExercises(names: string[]): GroupedExercise[] {
   return grouped;
 }
 
+export function computeStreak(localDate: string, workoutDates: Set<string>): number {
+  let streakDays = 0;
+  let checkDate = localDate;
+  while (workoutDates.has(checkDate)) {
+    streakDays++;
+    checkDate = addDays(checkDate, -1);
+  }
+  return streakDays;
+}
+
 type RecoveryStatus = 'green' | 'yellow' | 'red' | null;
 
 function getRecoveryStatusTone(recoveryScore: number | null): RecoveryStatus {
@@ -304,32 +314,31 @@ export async function homeSummaryHandler(c: any) {
 
   let streakDays = 0;
   if (hasActiveProgram) {
-    let checkDate = localDate;
-    while (true) {
-      const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(checkDate, timezone);
-      const dayWorkouts = await db
-        .select({ id: schema.workouts.id })
-        .from(schema.workouts)
-        .where(
-          and(
-            eq(schema.workouts.userId, userId),
-            eq(schema.workouts.isDeleted, false),
-            isNotNull(schema.workouts.completedAt),
-            gte(schema.workouts.completedAt, dayStart),
-            lte(schema.workouts.completedAt, dayEnd),
-          ),
-        )
-        .limit(1)
-        .get();
+    const lookbackStartLocal = addDays(localDate, -365);
+    const { start: rangeStart } = getUtcRangeForLocalDate(lookbackStartLocal, timezone);
+    const { end: rangeEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
-      if (dayWorkouts) {
-        streakDays++;
-        const prevDate = addDays(checkDate, -1);
-        checkDate = prevDate;
-      } else {
-        break;
-      }
-    }
+    const recentWorkouts = await db
+      .select({ completedAt: schema.workouts.completedAt })
+      .from(schema.workouts)
+      .where(
+        and(
+          eq(schema.workouts.userId, userId),
+          eq(schema.workouts.isDeleted, false),
+          isNotNull(schema.workouts.completedAt),
+          gte(schema.workouts.completedAt, rangeStart),
+          lte(schema.workouts.completedAt, rangeEnd),
+        ),
+      )
+      .all();
+
+    const workoutDates = new Set(
+      recentWorkouts
+        .map((w) => (w.completedAt ? formatLocalDate(new Date(w.completedAt), timezone) : null))
+        .filter((d): d is string => d !== null),
+    );
+
+    streakDays = computeStreak(localDate, workoutDates);
   }
 
   const weeklyStats = {

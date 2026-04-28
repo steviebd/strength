@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View, TextInput, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollToInput } from '@/context/ScrollContext';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -184,6 +184,8 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
               <Ionicons name="remove" size={fontSize + 4} color={colors.textMuted} />
             </Pressable>
             <Pressable
+              testID={`workout-set-${setNumber}-weight`}
+              accessibilityLabel={`workout-set-${setNumber}-weight`}
               onPress={handleWeightEditStart}
               disabled={!isEditMode}
               style={({ pressed }) => [
@@ -195,6 +197,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
             >
               {isEditingWeight ? (
                 <TextInput
+                  testID={`workout-set-${setNumber}-weight-input`}
                   ref={weightInputRef}
                   style={[styles.weightInput, { fontSize }]}
                   value={editWeightValue}
@@ -248,6 +251,8 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
               <Ionicons name="remove" size={fontSize + 4} color={colors.textMuted} />
             </Pressable>
             <Pressable
+              testID={`workout-set-${setNumber}-reps`}
+              accessibilityLabel={`workout-set-${setNumber}-reps`}
               onPress={handleRepsEditStart}
               disabled={!isEditMode}
               style={({ pressed }) => [
@@ -259,6 +264,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
             >
               {isRepsEditing ? (
                 <TextInput
+                  testID={`workout-set-${setNumber}-reps-input`}
                   ref={repsInputRef}
                   style={[styles.repsInput, { fontSize }]}
                   value={editRepsValue}
@@ -292,6 +298,8 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
 
       <View style={styles.footer}>
         <Pressable
+          testID={`workout-set-${setNumber}-complete`}
+          accessibilityLabel={`workout-set-${setNumber}-complete`}
           onPress={handleToggleComplete}
           disabled={!isEditMode}
           style={({ pressed }) => [

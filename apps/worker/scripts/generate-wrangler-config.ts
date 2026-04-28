@@ -36,7 +36,10 @@ const INFISICAL_KEYS = [
   'WHOOP_CLIENT_SECRET',
   'WHOOP_SYNC_RATE_LIMIT_PER_HOUR',
   'WHOOP_WEBHOOK_SECRET',
+  'RATE_LIMIT_REQUEST_PER_HOUR',
 ] as const;
+
+const OPTIONAL_LOCAL_KEYS = ['E2E_TEST_MODE', 'E2E_TEST_SECRET'] as const;
 
 function parseArgs(): Args {
   const values = process.argv.slice(2);
@@ -111,6 +114,14 @@ function getInfisicalVars(): Record<string, string> {
     }
     vars[key] = value;
   }
+
+  for (const key of OPTIONAL_LOCAL_KEYS) {
+    const value = process.env[key];
+    if (value) {
+      vars[key] = value;
+    }
+  }
+
   return vars;
 }
 

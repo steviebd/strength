@@ -5,6 +5,17 @@ import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
 import { requireOwnedTemplate } from '../api/guards';
 
+export function buildTemplateUpdate(body: Record<string, unknown>) {
+  const allowed: Record<string, unknown> = {};
+  const keys = ['name', 'description', 'notes'];
+  for (const key of keys) {
+    if (key in body) {
+      allowed[key] = body[key];
+    }
+  }
+  return allowed;
+}
+
 const router = createRouter();
 
 router.get(
@@ -170,9 +181,11 @@ router.put(
         return c.json({ message: 'Template not found' }, 404);
       }
 
+      const allowed = buildTemplateUpdate(body);
+
       await db
         .update(schema.templates)
-        .set({ ...body, updatedAt: new Date() })
+        .set({ ...allowed, updatedAt: new Date() })
         .where(and(eq(schema.templates.id, id), eq(schema.templates.userId, userId)))
         .run();
 

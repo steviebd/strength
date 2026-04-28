@@ -1,5 +1,5 @@
 import { apiFetch } from '@/lib/api';
-import type { ExerciseLibraryItem } from '@strength/db';
+import type { ExerciseLibraryItem } from '@strength/db/client';
 
 export interface UserExercise {
   id: string;

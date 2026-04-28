@@ -12,9 +12,27 @@ import {
   updateProgramCycleOneRMs,
   createWorkoutFromProgramCycleWorkout,
   normalizeProgramReps,
+  consolidateProgramTargetLifts,
 } from '../lib/program-helpers';
 import { getProgramCycleWithWorkouts, getProgramCycleById } from '@strength/db';
 import { getUtcRangeForLocalDate } from '../lib/timezone';
+
+export function buildOneRMTestWorkoutUpdate(body: Record<string, unknown>) {
+  const pickNumber = (key: string): number | undefined => {
+    const value = body[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  };
+  return {
+    squat1rm: pickNumber('squat1rm'),
+    bench1rm: pickNumber('bench1rm'),
+    deadlift1rm: pickNumber('deadlift1rm'),
+    ohp1rm: pickNumber('ohp1rm'),
+    startingSquat1rm: pickNumber('startingSquat1rm'),
+    startingBench1rm: pickNumber('startingBench1rm'),
+    startingDeadlift1rm: pickNumber('startingDeadlift1rm'),
+    startingOhp1rm: pickNumber('startingOhp1rm'),
+  };
+}
 
 const router = createRouter();
 
@@ -262,6 +280,7 @@ router.get(
         return c.json({ message: 'Current workout not found' }, 404);
       }
       const parsedTargetLifts = parseProgramTargetLifts(currentWorkout.targetLifts);
+      const exercises = consolidateProgramTargetLifts(parsedTargetLifts.all);
 
       return c.json({
         id: currentWorkout.id,
@@ -270,7 +289,7 @@ router.get(
         sessionName: currentWorkout.sessionName,
         isComplete: currentWorkout.isComplete,
         scheduledAt: currentWorkout.scheduledAt,
-        exercises: parsedTargetLifts.all.map((exercise, index) => ({
+        exercises: exercises.map((exercise, index) => ({
           id: `${currentWorkout.id}:${index}`,
           orderIndex: index,
           targetWeight: exercise.targetWeight,
@@ -353,17 +372,17 @@ router.put(
         return c.json({ message: '1RM test workout not found' }, 404);
       }
 
+      const updateFields = buildOneRMTestWorkoutUpdate(body);
+      const filteredFields: Record<string, number> = {};
+      for (const [key, value] of Object.entries(updateFields)) {
+        if (value !== undefined) {
+          filteredFields[key] = value;
+        }
+      }
       const updatedWorkout = await db
         .update(schema.workouts)
         .set({
-          squat1rm: body.squat1rm,
-          bench1rm: body.bench1rm,
-          deadlift1rm: body.deadlift1rm,
-          ohp1rm: body.ohp1rm,
-          startingSquat1rm: body.startingSquat1rm,
-          startingBench1rm: body.startingBench1rm,
-          startingDeadlift1rm: body.startingDeadlift1rm,
-          startingOhp1rm: body.startingOhp1rm,
+          ...filteredFields,
           updatedAt: new Date(),
         })
         .where(and(eq(schema.workouts.id, workout.id), eq(schema.workouts.userId, userId)))

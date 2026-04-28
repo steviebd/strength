@@ -10,7 +10,7 @@ import {
   Pressable,
   Text,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { MealImageCapture } from './MealImageCapture';
@@ -86,6 +86,7 @@ export function ChatInput({
         />
         <View style={styles.inputWrapper}>
           <TextInput
+            testID="nutrition-chat-input"
             ref={inputRef}
             style={styles.input}
             value={value}
@@ -101,6 +102,7 @@ export function ChatInput({
           />
         </View>
         <Button
+          testID="nutrition-chat-send"
           onPress={handleSend}
           disabled={(!value.trim() && !pendingImageUri) || isLoading}
           style={styles.sendButton}

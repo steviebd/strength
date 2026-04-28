@@ -9,7 +9,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { formatTimeZoneLabel, IANA_TIME_ZONES, normalizeTimeZoneSearchValue } from '@strength/db';
+import {
+  formatTimeZoneLabel,
+  IANA_TIME_ZONES,
+  normalizeTimeZoneSearchValue,
+} from '@strength/db/client';
 import { colors, radius, spacing, typography } from '@/theme';
 
 interface TimezonePickerModalProps {
@@ -205,6 +209,8 @@ export function TimezonePickerModal({
 
         <View style={styles.footer}>
           <Pressable
+            testID="onboarding-timezone-confirm"
+            accessibilityLabel="onboarding-timezone-confirm"
             onPress={handleConfirm}
             disabled={!draftTimezone || isSaving}
             style={[

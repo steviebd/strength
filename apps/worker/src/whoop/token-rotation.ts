@@ -199,23 +199,9 @@ export async function storeWhoopTokens(
     resolvedEnv.ENCRYPTION_MASTER_KEY!,
   );
 
-  const existing = await getIntegration(db, userId, 'whoop');
-
-  if (existing) {
-    await db
-      .update(userIntegration)
-      .set({
-        providerUserId,
-        accessToken: encryptedAccessToken,
-        refreshToken: encryptedRefreshToken,
-        accessTokenExpiresAt: expiresAt,
-        scope,
-        isActive: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(userIntegration.id, existing.id));
-  } else {
-    await db.insert(userIntegration).values({
+  await db
+    .insert(userIntegration)
+    .values({
       userId,
       provider: 'whoop',
       providerUserId,
@@ -226,8 +212,19 @@ export async function storeWhoopTokens(
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [userIntegration.userId, userIntegration.provider],
+      set: {
+        providerUserId,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        accessTokenExpiresAt: expiresAt,
+        scope,
+        isActive: true,
+        updatedAt: new Date(),
+      },
     });
-  }
 }
 
 export async function revokeWhoopIntegration(

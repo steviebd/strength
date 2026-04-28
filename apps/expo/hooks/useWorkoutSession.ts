@@ -3,8 +3,8 @@ import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { getLastWorkout, setLastWorkout, removePendingWorkout } from '@/lib/storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { generateId } from '@strength/db';
-import { exerciseLibrary } from '@strength/db';
+import { generateId } from '@strength/db/client';
+import { exerciseLibrary } from '@strength/db/client';
 import type {
   Workout,
   WorkoutExercise,

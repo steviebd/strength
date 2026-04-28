@@ -16,6 +16,7 @@ import {
   buildWhoopCallbackRedirect,
   resolveWhoopRedirectBaseURL,
 } from './lib/whoop-oauth';
+import { checkRateLimit, getRateLimitPerHour } from './lib/rate-limit';
 
 import healthRouter from './routes/health';
 import profileRouter from './routes/profile';
@@ -27,6 +28,7 @@ import programCyclesRouter from './routes/program-cycles';
 import whoopRouter from './routes/whoop';
 import nutritionRouter from './routes/nutrition';
 import homeRouter from './routes/home';
+import e2eRouter from './routes/e2e';
 
 type Variables = {
   user: ReturnType<typeof createAuth>['$Infer']['Session']['user'] | null;
@@ -58,14 +60,47 @@ function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
   return allowed;
 }
 
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 app.use(
   '/api/*',
   cors({
     origin: (origin, c) => {
-      if (!origin) return '*';
-      const allowedOrigins = getAllowedOrigins(c.env as WorkerEnv);
-      if (isAllowedDevOrigin(origin, allowedOrigins)) return origin;
-      return '*';
+      const env = c.env as WorkerEnv;
+      const allowedOrigins = getAllowedOrigins(env);
+      const baseURL = env.WORKER_BASE_URL;
+      let baseURLOrigin: string | undefined;
+      if (baseURL) {
+        try {
+          baseURLOrigin = new URL(baseURL).origin;
+        } catch {}
+      }
+
+      if (!origin) {
+        return undefined;
+      }
+
+      if (env.APP_ENV === 'development') {
+        if (isAllowedDevOrigin(origin, allowedOrigins)) {
+          return origin;
+        }
+        return undefined;
+      }
+
+      const strictAllowed = new Set([...allowedOrigins, ...(baseURLOrigin ? [baseURLOrigin] : [])]);
+      for (const allowed of strictAllowed) {
+        if (origin.startsWith(allowed)) {
+          return origin;
+        }
+      }
+      return undefined;
     },
     allowHeaders: ['Content-Type', 'Authorization', 'Cookie'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -107,16 +142,18 @@ app.route('/api/programs', programCyclesRouter);
 app.route('/api/whoop', whoopRouter);
 app.route('/api/nutrition', nutritionRouter);
 app.route('/api/home', homeRouter);
+app.route('/api/e2e', e2eRouter);
 
 // WHOOP OAuth landing page (no auth)
 app.get('/connect-whoop', (c) => {
   const success = c.req.query('success');
   const error = c.req.query('error');
+  const safeError = error ? escapeHtml(error) : undefined;
 
   const title = success ? 'WHOOP Connected' : 'WHOOP Connection Failed';
   const message = success
     ? 'Your WHOOP account was connected successfully. You can return to the app now.'
-    : `The WHOOP connection did not complete.${error ? ` Error: ${error}` : ''}`;
+    : `The WHOOP connection did not complete.${safeError ? ` Error: ${safeError}` : ''}`;
 
   const html = `<!doctype html>
 <html lang="en">
@@ -199,9 +236,30 @@ app.get('/api/auth/whoop/callback', async (c) => {
   }
   const redirectUri = `${baseURL}/api/auth/whoop/callback`;
 
+  const rateLimit = await checkRateLimit(
+    db,
+    userId,
+    'whoop-callback',
+    getRateLimitPerHour(resolvedEnv),
+  );
+  if (!rateLimit.allowed) {
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'rate_limited' }));
+  }
+
   try {
-    const tokens = await exchangeCodeForTokens(resolvedEnv, code, redirectUri);
-    const whoopProfile = await getWhoopProfile(tokens.access_token);
+    let tokens;
+    try {
+      tokens = await exchangeCodeForTokens(resolvedEnv, code, redirectUri);
+    } catch {
+      return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'token_exchange_failed' }));
+    }
+
+    let whoopProfile;
+    try {
+      whoopProfile = await getWhoopProfile(tokens.access_token);
+    } catch {
+      return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'profile_fetch_failed' }));
+    }
 
     await storeWhoopTokens(
       db,
@@ -217,12 +275,8 @@ app.get('/api/auth/whoop/callback', async (c) => {
     await upsertWhoopProfile(db, userId, whoopProfile);
 
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { success: 'true' }));
-  } catch (e) {
-    return c.redirect(
-      buildWhoopCallbackRedirect(deepLink, {
-        error: e instanceof Error ? e.message : 'unknown',
-      }),
-    );
+  } catch {
+    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'unknown' }));
   }
 });
 
@@ -245,6 +299,16 @@ app.post('/api/webhooks/whoop', async (c) => {
     }
 
     const db = createDb(c.env);
+    const rateLimit = await checkRateLimit(
+      db,
+      event.userId,
+      'whoop-webhook',
+      getRateLimitPerHour(c.env),
+    );
+    if (!rateLimit.allowed) {
+      return c.json({ error: 'Rate limit exceeded' }, 429);
+    }
+
     const result = await handleWebhookEvent(db, c.env, event);
 
     if (result.success && result.ignored) {

@@ -13,7 +13,7 @@ vi.mock('./auth', async (importOriginal) => {
 
 function createContext() {
   return {
-    env: { DB: {} },
+    env: { DB: {}, APP_ENV: 'development' },
     req: { url: 'http://localhost:8787/api/test', raw: { headers: new Headers() } },
     get(_key: string) {
       return undefined;

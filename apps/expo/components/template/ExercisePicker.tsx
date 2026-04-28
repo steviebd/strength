@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { ScreenScrollView } from '@/components/ui/Screen';
-import { exerciseLibrary } from '@strength/db';
+import { exerciseLibrary } from '@strength/db/client';
 import { ensurePersistedExercise } from '@/lib/exercises';
 import { colors, spacing, radius } from '@/theme';
 import {
@@ -179,6 +179,7 @@ export function ExercisePicker({
             <>
               <View style={styles.searchContainer}>
                 <TextInput
+                  testID="template-exercise-search"
                   style={styles.searchInput}
                   placeholder="Search exercises..."
                   placeholderTextColor={colors.placeholderText}
@@ -326,6 +327,8 @@ export function ExercisePicker({
                         );
                         return (
                           <Pressable
+                            testID={`template-exercise-user-${exercise.id}`}
+                            accessibilityLabel={`template-exercise-user-${exercise.name}`}
                             key={`user:${exercise.id}`}
                             onPress={() => handleToggleUser(exercise.id)}
                             style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
@@ -355,6 +358,8 @@ export function ExercisePicker({
                         );
                         return (
                           <Pressable
+                            testID={`template-exercise-library-${exercise.id}`}
+                            accessibilityLabel={`template-exercise-library-${exercise.name}`}
                             key={`library:${exercise.id}`}
                             onPress={() => handleToggleLibrary(exercise.id)}
                             style={[styles.exerciseItem, isSelected && styles.exerciseItemSelected]}
@@ -383,7 +388,12 @@ export function ExercisePicker({
             {pendingSelection.length > 0 && (
               <View style={styles.selectionBar}>
                 <Text style={styles.selectionCount}>{pendingSelection.length} selected</Text>
-                <Pressable onPress={handleConfirm} style={styles.addSelectedButton}>
+                <Pressable
+                  testID="template-exercise-confirm"
+                  accessibilityLabel="template-exercise-confirm"
+                  onPress={handleConfirm}
+                  style={styles.addSelectedButton}
+                >
                   <Text style={styles.addSelectedButtonText}>
                     Add {pendingSelection.length} Exercise{pendingSelection.length > 1 ? 's' : ''}
                   </Text>
