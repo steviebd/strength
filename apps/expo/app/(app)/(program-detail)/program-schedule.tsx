@@ -27,6 +27,8 @@ import {
   type ProgramScheduleWorkout,
 } from '@/hooks/useProgramSchedule';
 import { addPendingWorkout } from '@/lib/storage';
+import { authClient } from '@/lib/auth-client';
+import { createLocalWorkoutFromProgramCycleWorkout } from '@/db/workouts';
 import { colors, spacing, radius, typography } from '@/theme';
 
 function getMondayOfWeek(date: Date): Date {
@@ -315,6 +317,8 @@ export default function ProgramScheduleScreen() {
   const router = useRouter();
   useSafeAreaInsets();
   const { cycleId } = useLocalSearchParams<{ cycleId: string }>();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   const { data: schedule, isLoading } = useProgramSchedule(cycleId ?? '');
   const startWorkout = useStartCycleWorkout();
@@ -388,6 +392,13 @@ export default function ProgramScheduleScreen() {
     async (cycleWorkoutId: string) => {
       setStartingWorkoutId(cycleWorkoutId);
       try {
+        if (userId) {
+          const local = await createLocalWorkoutFromProgramCycleWorkout(userId, cycleWorkoutId);
+          if (local?.id) {
+            router.push(`/workout-session?workoutId=${local.id}&source=program&cycleId=${cycleId}`);
+            return;
+          }
+        }
         const result = await startWorkout.mutateAsync(cycleWorkoutId);
         if (result.workoutId) {
           await addPendingWorkout({

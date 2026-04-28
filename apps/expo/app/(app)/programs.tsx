@@ -23,6 +23,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
 import { addPendingWorkout } from '@/lib/storage';
+import { createLocalWorkoutFromCurrentProgramCycle } from '@/db/workouts';
+import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { PageHeader } from '@/components/ui/app-primitives';
@@ -640,6 +642,8 @@ function getDifficultyColor(difficulty: string) {
 
 export default function ProgramsScreen() {
   const router = useRouter();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<ProgramListItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -884,8 +888,16 @@ export default function ProgramsScreen() {
 
     setOpeningProgramWorkoutId(program.id);
     try {
+      if (userId) {
+        const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
+        if (local?.id) {
+          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+          return;
+        }
+      }
       const result = await apiFetch<{
         workoutId: string;
+        cycleWorkoutId?: string;
         sessionName: string;
         created: boolean;
         completed: boolean;
@@ -910,7 +922,7 @@ export default function ProgramsScreen() {
         completedAt: null,
         source: 'program',
         programCycleId: program.id,
-        cycleWorkoutId: result.workoutId,
+        cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
         exercises: [],
         exerciseCount: 0,
         durationMinutes: null,

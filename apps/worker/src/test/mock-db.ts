@@ -44,6 +44,7 @@ export function createMockDb(seed: QueueMap = {}) {
       return builder;
     },
     returning: () => builder,
+    onConflictDoUpdate: () => builder,
     get: async () => take(queue, 'get'),
     all: async () => take(queue, 'all', []),
     run: async () => take(queue, 'run', { success: true }),
@@ -57,4 +58,3 @@ export function createMockDb(seed: QueueMap = {}) {
 
   return builder;
 }
-

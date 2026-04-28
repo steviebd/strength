@@ -55,6 +55,7 @@ export const localWorkoutExercises = sqliteTable('local_workout_exercises', {
   id: text('id').primaryKey(),
   workoutId: text('workout_id').notNull(),
   exerciseId: text('exercise_id').notNull(),
+  libraryId: text('library_id'),
   name: text('name').notNull(),
   muscleGroup: text('muscle_group'),
   orderIndex: integer('order_index').notNull(),
@@ -85,8 +86,10 @@ export const localTemplates = sqliteTable('local_templates', {
   name: text('name').notNull(),
   description: text('description'),
   notes: text('notes'),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
   hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -114,8 +117,10 @@ export const localUserExercises = sqliteTable('local_user_exercises', {
   muscleGroup: text('muscle_group'),
   description: text('description'),
   libraryId: text('library_id'),
+  createdLocally: integer('created_locally', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
   hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -124,11 +129,27 @@ export const localProgramCycles = sqliteTable('local_program_cycles', {
   userId: text('user_id').notNull(),
   programSlug: text('program_slug').notNull(),
   name: text('name').notNull(),
+  squat1rm: real('squat_1rm'),
+  bench1rm: real('bench_1rm'),
+  deadlift1rm: real('deadlift_1rm'),
+  ohp1rm: real('ohp_1rm'),
+  startingSquat1rm: real('starting_squat_1rm'),
+  startingBench1rm: real('starting_bench_1rm'),
+  startingDeadlift1rm: real('starting_deadlift_1rm'),
+  startingOhp1rm: real('starting_ohp_1rm'),
   currentWeek: integer('current_week'),
   currentSession: integer('current_session'),
   totalSessionsCompleted: integer('total_sessions_completed').notNull().default(0),
   totalSessionsPlanned: integer('total_sessions_planned').notNull(),
   status: text('status').notNull().default('active'),
+  isComplete: integer('is_complete', { mode: 'boolean' }).notNull().default(false),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' }),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  preferredGymDays: text('preferred_gym_days'),
+  preferredTimeOfDay: text('preferred_time_of_day'),
+  programStartAt: integer('program_start_at', { mode: 'timestamp_ms' }),
+  firstSessionAt: integer('first_session_at', { mode: 'timestamp_ms' }),
   hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -142,9 +163,23 @@ export const localProgramCycleWorkouts = sqliteTable('local_program_cycle_workou
   targetLifts: text('target_lifts'),
   isComplete: integer('is_complete', { mode: 'boolean' }).notNull().default(false),
   workoutId: text('workout_id'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
   scheduledAt: integer('scheduled_at', { mode: 'timestamp_ms' }),
+  serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
   hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
 });
+
+export const localTrainingCacheMeta = sqliteTable(
+  'local_training_cache_meta',
+  {
+    userId: text('user_id').notNull(),
+    cacheKey: text('cache_key').notNull(),
+    hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+    generatedAt: integer('generated_at', { mode: 'timestamp_ms' }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.cacheKey] })],
+);
 
 export const localSyncQueue = sqliteTable('local_sync_queue', {
   id: text('id').primaryKey(),

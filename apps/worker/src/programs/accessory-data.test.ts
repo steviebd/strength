@@ -42,4 +42,3 @@ describe('accessory data', () => {
     ]);
   });
 });
-

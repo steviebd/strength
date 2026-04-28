@@ -8,8 +8,10 @@ import { exerciseLibrary } from '@strength/db/client';
 import {
   completeLocalWorkout,
   createLocalWorkout,
+  discardLocalWorkout,
   getLocalWorkout,
   markLocalCycleWorkoutComplete,
+  saveLocalWorkoutDraft,
 } from '@/db/workouts';
 import { enqueueWorkoutCompletion } from '@/db/sync-queue';
 import { runWorkoutSync } from '@/lib/workout-sync';
@@ -100,6 +102,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<Date | null>(null);
   const lastWorkoutDataRef = useRef<Map<string, { weight: number; reps: number }[]>>(new Map());
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -124,6 +127,22 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   useEffect(() => {
     logDuplicateWorkoutIds(exercises);
   }, [exercises]);
+
+  useEffect(() => {
+    if (!workout || workout.completedAt || !session.data?.user) return;
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+    }
+    const userId = session.data.user.id;
+    draftSaveTimerRef.current = setTimeout(() => {
+      void saveLocalWorkoutDraft(userId, workout, exercises);
+    }, 400);
+    return () => {
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+      }
+    };
+  }, [workout, exercises, session.data?.user]);
 
   const startWorkout = useCallback(
     async (name: string) => {
@@ -203,6 +222,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     if (!workout || !session.data?.user) return;
     setIsLoading(true);
     try {
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      await saveLocalWorkoutDraft(session.data.user.id, workout, exercises);
       const completed = await completeLocalWorkout(session.data.user.id, workout, exercises);
       if (completed?.workout) {
         await enqueueWorkoutCompletion(session.data.user.id, workout.id, completed.workout);
@@ -240,6 +264,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   const discardWorkout = useCallback(async () => {
     if (workout?.id) {
       try {
+        await discardLocalWorkout(workout.id);
         await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
         await removePendingWorkout(workout.id);
       } catch {

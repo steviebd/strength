@@ -1,0 +1,58 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('expo-constants', () => ({
+  default: { expoConfig: { hostUri: '192.168.1.10:8081' } },
+}));
+
+vi.mock('expo-linking', () => ({
+  createURL: vi.fn((path: string) => `strength://${path.replace(/^\//, '')}`),
+}));
+
+vi.mock('react-native', () => ({
+  Platform: { OS: 'web' },
+}));
+
+const fetchMock = vi.hoisted(() => vi.fn());
+
+vi.mock('./auth-client', () => ({
+  authClient: {
+    $fetch: fetchMock,
+  },
+}));
+
+process.env.EXPO_PUBLIC_WORKER_BASE_URL = 'http://localhost:8787';
+
+describe('apiFetch', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+  });
+
+  test('calls auth client with resolved relative API URL', async () => {
+    const { apiFetch } = await import('./api');
+    fetchMock.mockResolvedValue({ data: { ok: true }, error: null });
+
+    await expect(apiFetch('/api/health')).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8787/api/health', undefined);
+  });
+
+  test('surfaces server errors as ApiError', async () => {
+    const { apiFetch } = await import('./api');
+    fetchMock.mockResolvedValue({
+      data: null,
+      error: { status: 400, statusText: 'Bad Request', message: 'Invalid input' },
+    });
+
+    await expect(apiFetch('/api/workouts')).rejects.toMatchObject({
+      name: 'ApiError',
+      message: 'Invalid input',
+      status: 400,
+    });
+  });
+
+  test('returns undefined for empty success payloads', async () => {
+    const { apiFetch } = await import('./api');
+    fetchMock.mockResolvedValue({ data: null, error: null });
+
+    await expect(apiFetch('/api/no-content')).resolves.toBeUndefined();
+  });
+});

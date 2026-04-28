@@ -143,7 +143,14 @@ export function ExercisePicker({
             muscleGroup: persistedExercise.muscleGroup,
           });
         } catch (e) {
-          setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
+          if (e instanceof Error) {
+            setCreateError(e.message);
+          }
+          selectedExercises.push({
+            id: selectedLibraryExercise.id,
+            name: selectedLibraryExercise.name,
+            muscleGroup: selectedLibraryExercise.muscleGroup,
+          });
         }
       }
 

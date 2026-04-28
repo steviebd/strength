@@ -198,7 +198,12 @@ export function ExerciseSearch({
             description: persistedExercise.description ?? '',
           });
         } catch {
-          // no-op
+          selectedExercises.push({
+            id: libraryExercise.id,
+            name: libraryExercise.name,
+            muscleGroup: libraryExercise.muscleGroup,
+            description: libraryExercise.description,
+          });
         }
       }
 

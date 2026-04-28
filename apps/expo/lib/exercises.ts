@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api';
 import type { ExerciseLibraryItem } from '@strength/db/client';
 import { cacheUserExercises } from '@/db/workouts';
+import { getCachedUserExercises } from '@/db/training-cache';
 import { authClient } from './auth-client';
 
 export interface UserExercise {
@@ -22,13 +23,29 @@ export async function listUserExercises(search?: string, signal?: AbortSignal) {
     ? `/api/exercises?search=${encodeURIComponent(search.trim())}`
     : '/api/exercises';
 
-  const exercises = await apiFetch<UserExercise[]>(query, { signal });
   const session = await authClient.getSession();
   const userId = session.data?.user?.id;
-  if (userId) {
-    await cacheUserExercises(userId, exercises);
+  try {
+    const exercises = await apiFetch<UserExercise[]>(query, { signal });
+    if (userId) {
+      await cacheUserExercises(userId, exercises);
+    }
+    return exercises;
+  } catch (error) {
+    if (userId) {
+      const cached = await getCachedUserExercises(userId, search);
+      if (cached.length > 0) {
+        return cached.map((exercise) => ({
+          id: exercise.id,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          description: exercise.description,
+          libraryId: exercise.libraryId,
+        }));
+      }
+    }
+    throw error;
   }
-  return exercises;
 }
 
 export async function createCustomExercise(input: CreateExerciseInput) {

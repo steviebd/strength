@@ -20,28 +20,28 @@ const workouts = [
   { weekNumber: 2, sessionNumber: 3, sessionName: 'Week 2 A' },
 ];
 
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+}
+
 describe('program scheduler', () => {
   test('maps days and compares local dates', () => {
     expect(getDayIndex('sunday')).toBe(0);
     expect(getDayIndex('wednesday')).toBe(3);
-    expect(isSameDate(new Date('2026-12-31T01:00:00'), new Date('2026-12-31T23:00:00'))).toBe(
-      true,
-    );
+    expect(isSameDate(new Date('2026-12-31T01:00:00'), new Date('2026-12-31T23:00:00'))).toBe(true);
     expect(isSameDate(new Date('2026-12-31T23:00:00'), new Date('2027-01-01T00:00:00'))).toBe(
       false,
     );
   });
 
   test('adds days across month and year boundaries', () => {
-    expect(addDays(new Date('2026-12-30T00:00:00'), 3).toISOString().slice(0, 10)).toBe(
-      '2027-01-02',
-    );
+    expect(localDateKey(addDays(new Date('2026-12-30T00:00:00'), 3))).toBe('2027-01-02');
   });
 
   test('finds monday and gym days', () => {
-    expect(getMonday(new Date('2026-05-03T00:00:00')).toISOString().slice(0, 10)).toBe(
-      '2026-04-27',
-    );
+    expect(localDateKey(getMonday(new Date('2026-05-03T00:00:00')))).toBe('2026-04-27');
     expect(isGymDay(new Date('2026-04-29T00:00:00'), ['monday', 'wednesday'])).toBe(true);
     expect(isGymDay(new Date('2026-04-30T00:00:00'), ['monday', 'wednesday'])).toBe(false);
   });
@@ -52,7 +52,7 @@ describe('program scheduler', () => {
       preferredTimeOfDay: 'morning',
     });
 
-    expect(schedule.map((entry) => entry.scheduledDate.toISOString().slice(0, 10))).toEqual([
+    expect(schedule.map((entry) => localDateKey(entry.scheduledDate))).toEqual([
       '2026-12-30',
       '2027-01-04',
       '2027-01-06',
@@ -66,8 +66,8 @@ describe('program scheduler', () => {
       forceFirstSessionDate: new Date('2026-04-30T00:00:00'),
     });
 
-    expect(schedule[0].scheduledDate.toISOString().slice(0, 10)).toBe('2026-04-30');
-    expect(schedule[1].scheduledDate.toISOString().slice(0, 10)).toBe('2026-05-04');
+    expect(localDateKey(schedule[0].scheduledDate)).toBe('2026-04-30');
+    expect(localDateKey(schedule[1].scheduledDate)).toBe('2026-05-04');
   });
 
   test('resolves current week before, within, and after the schedule', () => {
@@ -88,8 +88,8 @@ describe('program scheduler', () => {
     const range = getWeekDateRange(1, schedule);
 
     expect(weekOne).toHaveLength(2);
-    expect(range.start.toISOString().slice(0, 10)).toBe('2026-04-27');
-    expect(range.end.toISOString().slice(0, 10)).toBe('2026-05-03');
+    expect(localDateKey(range.start)).toBe('2026-04-27');
+    expect(localDateKey(range.end)).toBe('2026-05-03');
     expect(range.days).toHaveLength(7);
   });
 
@@ -100,4 +100,3 @@ describe('program scheduler', () => {
     expect(formatDateLong('2026-04-28')).toBe('Tuesday, April 28, 2026');
   });
 });
-

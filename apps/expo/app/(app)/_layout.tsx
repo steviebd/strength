@@ -10,7 +10,7 @@ import { UserPreferencesProvider, useUserPreferences } from '@/context/UserPrefe
 import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { useWorkoutSync } from '@/hooks/useWorkoutSync';
+import { useTrainingSync } from '@/hooks/useTrainingSync';
 
 const TimezonePickerModal = React.lazy(() =>
   import('@/components/profile/TimezonePickerModal').then((m) => ({
@@ -72,7 +72,7 @@ function AppTabs() {
         body: { bodyweightKg },
       }),
   });
-  useWorkoutSync();
+  useTrainingSync();
 
   return (
     <>

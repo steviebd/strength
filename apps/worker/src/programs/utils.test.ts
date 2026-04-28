@@ -45,4 +45,3 @@ describe('program utils', () => {
     expect(getNsunsSets(false, 5, 8).sets[1]).toEqual({ reps: 3, isAmrap: false });
   });
 });
-

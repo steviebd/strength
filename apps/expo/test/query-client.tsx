@@ -11,8 +11,5 @@ export function createTestQueryClient() {
 }
 
 export function QueryClientTestProvider({ children }: PropsWithChildren) {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={createTestQueryClient()}>{children}</QueryClientProvider>;
 }
-

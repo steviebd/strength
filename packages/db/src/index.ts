@@ -5,4 +5,5 @@ export * from './utils/units';
 export * from './program/types';
 export * from './program/exercise';
 export * from './program/cycle';
+export * from './program/targets';
 export * from './timezones';

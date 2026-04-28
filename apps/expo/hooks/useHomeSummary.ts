@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { authClient } from '@/lib/auth-client';
+import { buildLocalHomeSummary } from '@/db/training-cache';
 
 type HomeScheduledWorkout = {
   cycleWorkoutId: string;
@@ -52,12 +54,30 @@ type HomeSummaryResponse = {
 
 export function useHomeSummary() {
   const { activeTimezone } = useUserPreferences();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   return useQuery({
     queryKey: ['homeSummary', activeTimezone],
     queryFn: async () => {
-      const response = await apiFetch<HomeSummaryResponse>(`/api/home/summary`);
-      return response;
+      if (userId) {
+        const local = await buildLocalHomeSummary(userId, activeTimezone ?? 'UTC');
+        if (local.todayWorkout.hasActiveProgram || local.weeklyStats.workoutsCompleted > 0) {
+          return local as HomeSummaryResponse;
+        }
+      }
+      try {
+        const response = await apiFetch<HomeSummaryResponse>(`/api/home/summary`);
+        return response;
+      } catch (error) {
+        if (userId) {
+          return (await buildLocalHomeSummary(
+            userId,
+            activeTimezone ?? 'UTC',
+          )) as HomeSummaryResponse;
+        }
+        throw error;
+      }
     },
     refetchInterval: 60 * 1000,
   });

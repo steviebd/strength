@@ -40,4 +40,3 @@ describe('timezone helpers', () => {
     expect(range.end.toISOString()).toBe('2026-04-28T14:00:00.000Z');
   });
 });
-

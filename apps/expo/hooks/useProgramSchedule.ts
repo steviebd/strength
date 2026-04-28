@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { authClient } from '@/lib/auth-client';
+import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { getCachedProgramSchedule } from '@/db/training-cache';
 
 export type ProgramScheduleWorkout = {
   cycleWorkoutId: string;
@@ -29,13 +32,30 @@ type ProgramScheduleResponse = {
 };
 
 export function useProgramSchedule(cycleId: string) {
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
+  const { activeTimezone } = useUserPreferences();
   return useQuery({
     queryKey: ['programSchedule', cycleId],
     queryFn: async () => {
-      const response = await apiFetch<ProgramScheduleResponse>(
-        `/api/programs/cycles/${cycleId}/schedule`,
-      );
-      return response;
+      if (userId) {
+        const cached = await getCachedProgramSchedule(userId, cycleId, activeTimezone ?? 'UTC');
+        if (cached) {
+          return cached as ProgramScheduleResponse;
+        }
+      }
+      try {
+        const response = await apiFetch<ProgramScheduleResponse>(
+          `/api/programs/cycles/${cycleId}/schedule`,
+        );
+        return response;
+      } catch (error) {
+        if (userId) {
+          const cached = await getCachedProgramSchedule(userId, cycleId, activeTimezone ?? 'UTC');
+          if (cached) return cached as ProgramScheduleResponse;
+        }
+        throw error;
+      }
     },
     enabled: Boolean(cycleId),
   });

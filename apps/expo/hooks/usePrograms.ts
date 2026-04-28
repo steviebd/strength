@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { cacheActivePrograms } from '@/db/workouts';
+import { getCachedActivePrograms } from '@/db/training-cache';
 
 export interface ProgramListItem {
   slug: string;
@@ -60,13 +62,55 @@ export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
 export function useActivePrograms() {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
+  const queryClient = useQueryClient();
 
   const activeProgramsQuery = useQuery({
     queryKey: ['activePrograms', userId],
     enabled: !!userId,
     queryFn: async (): Promise<ActiveProgram[]> => {
-      const data = await apiFetch<ActiveProgram[]>('/api/programs/active');
-      return data ?? [];
+      if (userId) {
+        const cached = await getCachedActivePrograms(userId);
+        if (cached.length > 0) {
+          void apiFetch<ActiveProgram[]>('/api/programs/active')
+            .then(async (data) => {
+              await cacheActivePrograms(userId, data ?? []);
+              queryClient.setQueryData(['activePrograms', userId], data ?? []);
+            })
+            .catch(() => {});
+          return cached.map((program) => ({
+            id: program.id,
+            programSlug: program.programSlug,
+            name: program.name,
+            currentWeek: program.currentWeek,
+            currentSession: program.currentSession,
+            totalSessionsCompleted: program.totalSessionsCompleted,
+            totalSessionsPlanned: program.totalSessionsPlanned,
+          }));
+        }
+      }
+      try {
+        const data = await apiFetch<ActiveProgram[]>('/api/programs/active');
+        if (userId) {
+          await cacheActivePrograms(userId, data ?? []);
+        }
+        return data ?? [];
+      } catch (error) {
+        if (userId) {
+          const cached = await getCachedActivePrograms(userId);
+          if (cached.length > 0) {
+            return cached.map((program) => ({
+              id: program.id,
+              programSlug: program.programSlug,
+              name: program.name,
+              currentWeek: program.currentWeek,
+              currentSession: program.currentSession,
+              totalSessionsCompleted: program.totalSessionsCompleted,
+              totalSessionsPlanned: program.totalSessionsPlanned,
+            }));
+          }
+        }
+        throw error;
+      }
     },
     staleTime: 0,
     refetchOnMount: 'always',

@@ -17,4 +17,3 @@ export function resetExpoMocks() {
   mockApiFetch.mockReset();
   mockUseSession.mockReturnValue(mockSession);
 }
-

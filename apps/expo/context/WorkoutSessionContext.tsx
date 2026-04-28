@@ -16,6 +16,7 @@ export interface WorkoutSet {
 export interface WorkoutExercise {
   id: string;
   exerciseId: string;
+  libraryId?: string | null;
   name: string;
   muscleGroup: string | null;
   orderIndex: number;
@@ -27,6 +28,10 @@ export interface WorkoutExercise {
 export interface Workout {
   id: string;
   name: string;
+  templateId?: string | null;
+  programCycleId?: string | null;
+  cycleWorkoutId?: string | null;
+  syncStatus?: 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'conflict';
   startedAt: string;
   completedAt: string | null;
   notes: string | null;

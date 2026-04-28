@@ -26,4 +26,3 @@ describe('calculateMacroTargets', () => {
     expect(calculateMacroTargets(150, null, 1000).carbsG).toBe(0);
   });
 });
-

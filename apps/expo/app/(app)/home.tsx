@@ -18,6 +18,7 @@ import {
 import { PageLayout } from '@/components/ui/PageLayout';
 import { useHomeSummary } from '@/hooks/useHomeSummary';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { createLocalWorkoutFromProgramCycleWorkout } from '@/db/workouts';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -75,6 +76,16 @@ export default function HomeScreen() {
     }
 
     try {
+      if (user?.id) {
+        const local = await createLocalWorkoutFromProgramCycleWorkout(
+          user.id,
+          startableCycleWorkoutId,
+        );
+        if (local?.id) {
+          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+          return;
+        }
+      }
       const result = await apiFetch<{
         workoutId: string;
         sessionName: string;

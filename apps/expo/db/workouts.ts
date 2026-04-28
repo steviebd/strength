@@ -1,5 +1,11 @@
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
-import { generateId } from '@strength/db/client';
+import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import {
+  consolidateProgramTargetLifts,
+  getCurrentCycleWorkout,
+  generateId,
+  normalizeProgramReps,
+  parseProgramTargetLifts,
+} from '@strength/db/client';
 import { getLocalDb } from './client';
 import {
   localProgramCycleWorkouts,
@@ -33,6 +39,7 @@ export interface LocalWorkoutHistoryItem {
 type LocalExerciseInput = {
   id?: string;
   exerciseId: string;
+  libraryId?: string | null;
   name: string;
   muscleGroup?: string | null;
   orderIndex: number;
@@ -84,6 +91,10 @@ function asWorkout(row: LocalWorkout, exercises: WorkoutExercise[]): Workout {
     totalSets: row.totalSets ?? undefined,
     durationMinutes: row.durationMinutes ?? undefined,
     exerciseCount: exercises.length,
+    templateId: row.templateId ?? null,
+    programCycleId: row.programCycleId ?? null,
+    cycleWorkoutId: row.cycleWorkoutId ?? null,
+    syncStatus: row.syncStatus as WorkoutSyncStatus,
     exercises,
   };
 }
@@ -135,6 +146,7 @@ async function replaceLocalExercises(workoutId: string, exercises: LocalExercise
         id: workoutExerciseId,
         workoutId,
         exerciseId: exercise.exerciseId,
+        libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup ?? null,
         orderIndex: exercise.orderIndex,
@@ -249,7 +261,7 @@ export async function createLocalWorkoutFromTemplate(userId: string, templateId:
       isAmrap: Boolean(exercise.isAmrap),
       sets: Array.from({ length: Math.max(1, exercise.sets ?? 3) }, (_, index) => ({
         setNumber: index + 1,
-        weight: exercise.targetWeight ?? 0,
+        weight: (exercise.targetWeight ?? 0) + (exercise.addedWeight ?? 0),
         reps: exercise.isAmrap ? null : (exercise.reps ?? 10),
         rpe: null,
         isComplete: false,
@@ -272,12 +284,65 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
     .get();
   if (!cycleWorkout) return null;
 
-  return createLocalWorkout(userId, {
+  const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
+  const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
+    const sets = exercise.segments.flatMap((segment) =>
+      Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
+        weight: (segment.targetWeight ?? 0) + (segment.addedWeight ?? 0),
+        reps: segment.isAmrap ? null : normalizeProgramReps(segment.reps),
+        rpe: null,
+        isComplete: false,
+      })),
+    );
+    return {
+      exerciseId:
+        exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
+      libraryId: exercise.libraryId ?? null,
+      name: exercise.name,
+      muscleGroup: null,
+      orderIndex: index,
+      isAmrap: exercise.isAmrap,
+      sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
+    };
+  });
+
+  const workout = await createLocalWorkout(userId, {
     name: cycleWorkout.sessionName,
     programCycleId: cycleWorkout.cycleId,
     cycleWorkoutId,
-    exercises: [],
+    exercises,
   });
+  if (workout?.id) {
+    db.update(localProgramCycleWorkouts)
+      .set({ workoutId: workout.id, hydratedAt: new Date() })
+      .where(eq(localProgramCycleWorkouts.id, cycleWorkoutId))
+      .run();
+  }
+  return workout;
+}
+
+export async function createLocalWorkoutFromCurrentProgramCycle(userId: string, cycleId: string) {
+  const db = getLocalDb();
+  if (!db) return null;
+  const cycle = db
+    .select()
+    .from(localProgramCycles)
+    .where(and(eq(localProgramCycles.id, cycleId), eq(localProgramCycles.userId, userId)))
+    .get();
+  if (!cycle) return null;
+  const workouts = db
+    .select()
+    .from(localProgramCycleWorkouts)
+    .where(eq(localProgramCycleWorkouts.cycleId, cycleId))
+    .orderBy(localProgramCycleWorkouts.weekNumber, localProgramCycleWorkouts.sessionNumber)
+    .all();
+  const current = getCurrentCycleWorkout(cycle, workouts);
+  if (!current) return null;
+  if (current.workoutId) {
+    const existing = await getLocalWorkout(current.workoutId);
+    if (existing) return existing;
+  }
+  return createLocalWorkoutFromProgramCycleWorkout(userId, current.id);
 }
 
 export async function getLocalWorkout(workoutId: string): Promise<Workout | null> {
@@ -325,6 +390,7 @@ export async function getLocalWorkout(workoutId: string): Promise<Workout | null
     (exercise): WorkoutExercise => ({
       id: exercise.id,
       exerciseId: exercise.exerciseId,
+      libraryId: exercise.libraryId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup ?? null,
       orderIndex: exercise.orderIndex,
@@ -398,9 +464,9 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
     .values({
       id: serverWorkout.id,
       userId,
-      templateId: null,
-      programCycleId: null,
-      cycleWorkoutId: null,
+      templateId: (serverWorkout as any).templateId ?? null,
+      programCycleId: (serverWorkout as any).programCycleId ?? null,
+      cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
       name: serverWorkout.name,
       startedAt: toDate(serverWorkout.startedAt) ?? now,
       completedAt,
@@ -423,6 +489,9 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
       target: localWorkouts.id,
       set: {
         name: serverWorkout.name,
+        templateId: (serverWorkout as any).templateId ?? null,
+        programCycleId: (serverWorkout as any).programCycleId ?? null,
+        cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
         startedAt: toDate(serverWorkout.startedAt) ?? now,
         completedAt,
         totalVolume: serverWorkout.totalVolume ?? null,
@@ -442,6 +511,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
       serverWorkout.exercises.map((exercise) => ({
         id: exercise.id,
         exerciseId: exercise.exerciseId,
+        libraryId: (exercise as any).libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
         orderIndex: exercise.orderIndex,
@@ -502,6 +572,7 @@ export async function completeLocalWorkout(
     exercises.map((exercise, exerciseIndex) => ({
       id: exercise.id,
       exerciseId: exercise.exerciseId,
+      libraryId: (exercise as any).libraryId ?? null,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
       orderIndex: exerciseIndex,
@@ -520,6 +591,102 @@ export async function completeLocalWorkout(
   );
 
   return { workout: await getLocalWorkout(workout.id), syncOperationId };
+}
+
+export async function saveLocalWorkoutDraft(
+  userId: string,
+  workout: Workout,
+  exercises: WorkoutExercise[],
+) {
+  const db = getLocalDb();
+  if (!db || workout.completedAt) return null;
+
+  const existing = db.select().from(localWorkouts).where(eq(localWorkouts.id, workout.id)).get();
+  if (!existing) {
+    await createLocalWorkout(userId, {
+      id: workout.id,
+      name: workout.name,
+      startedAt: workout.startedAt,
+      templateId: (workout as any).templateId ?? null,
+      programCycleId: (workout as any).programCycleId ?? null,
+      cycleWorkoutId: (workout as any).cycleWorkoutId ?? null,
+      exercises: [],
+    });
+  }
+
+  const now = new Date();
+  db.update(localWorkouts)
+    .set({
+      name: workout.name,
+      notes: workout.notes ?? null,
+      templateId: (workout as any).templateId ?? existing?.templateId ?? null,
+      programCycleId: (workout as any).programCycleId ?? existing?.programCycleId ?? null,
+      cycleWorkoutId: (workout as any).cycleWorkoutId ?? existing?.cycleWorkoutId ?? null,
+      updatedAt: now,
+      syncStatus: existing?.syncStatus === 'synced' ? 'synced' : 'local',
+    })
+    .where(eq(localWorkouts.id, workout.id))
+    .run();
+
+  await replaceLocalExercises(
+    workout.id,
+    exercises.map((exercise, exerciseIndex) => ({
+      id: exercise.id,
+      exerciseId: exercise.exerciseId,
+      libraryId: (exercise as any).libraryId ?? null,
+      name: exercise.name,
+      muscleGroup: exercise.muscleGroup,
+      orderIndex: exerciseIndex,
+      notes: exercise.notes,
+      isAmrap: exercise.isAmrap,
+      sets: exercise.sets.map((set, setIndex) => ({
+        id: set.id,
+        setNumber: setIndex + 1,
+        weight: set.weight,
+        reps: set.reps,
+        rpe: set.rpe,
+        isComplete: set.isComplete,
+        completedAt: set.completedAt,
+      })),
+    })),
+  );
+
+  return getLocalWorkout(workout.id);
+}
+
+export async function listLocalActiveWorkouts(userId: string) {
+  const db = getLocalDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(localWorkouts)
+    .where(
+      and(
+        eq(localWorkouts.userId, userId),
+        eq(localWorkouts.isDeleted, false),
+        isNull(localWorkouts.completedAt),
+      ),
+    )
+    .orderBy(desc(localWorkouts.startedAt))
+    .all();
+}
+
+export async function discardLocalWorkout(workoutId: string) {
+  const db = getLocalDb();
+  if (!db) return;
+  const existing = db
+    .select({ id: localWorkoutExercises.id })
+    .from(localWorkoutExercises)
+    .where(eq(localWorkoutExercises.workoutId, workoutId))
+    .all();
+  const existingIds = existing.map((row) => row.id);
+  if (existingIds.length > 0) {
+    db.delete(localWorkoutSets)
+      .where(inArray(localWorkoutSets.workoutExerciseId, existingIds))
+      .run();
+  }
+  db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
+  db.delete(localWorkouts).where(eq(localWorkouts.id, workoutId)).run();
 }
 
 export async function buildWorkoutCompletionPayload(workoutId: string) {
@@ -546,6 +713,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
     exercises: workout.exercises.map((exercise) => ({
       id: exercise.id,
       exerciseId: exercise.exerciseId,
+      libraryId: exercise.libraryId ?? null,
       orderIndex: exercise.orderIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,

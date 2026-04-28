@@ -11,6 +11,7 @@ interface WorkoutCardProps {
   id: string;
   name: string;
   date: string;
+  completedAt?: string | null;
   durationMinutes: number | null;
   totalVolume: number | null;
   exerciseCount: number;
@@ -26,6 +27,7 @@ export function WorkoutCard({
   id,
   name,
   date,
+  completedAt,
   durationMinutes,
   totalVolume,
   exerciseCount,
@@ -85,6 +87,7 @@ export function WorkoutCard({
           <View style={styles.metaRow}>
             <Text style={styles.dateText}>{formatDate(date)}</Text>
             <View style={styles.rightActions}>
+              {completedAt && !isPending ? <Badge label="Completed" tone="emerald" /> : null}
               {syncLabel ? <Badge label={syncLabel} tone="orange" /> : null}
               {!syncLabel && isPending ? <Badge label="Pending" tone="orange" /> : null}
               {syncError ? (

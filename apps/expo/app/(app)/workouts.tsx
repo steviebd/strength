@@ -34,6 +34,7 @@ import { getPendingWorkouts, addPendingWorkout, removePendingWorkout } from '@/l
 import { authClient } from '@/lib/auth-client';
 import {
   cacheTemplates,
+  createLocalWorkoutFromCurrentProgramCycle,
   createLocalWorkoutFromTemplate,
   listLocalWorkoutHistory,
   upsertServerWorkoutSnapshot,
@@ -296,8 +297,16 @@ export default function WorkoutsIndex() {
   const handleOpenCurrentProgramWorkout = async (program: ActiveProgram) => {
     setOpeningProgramWorkoutId(program.id);
     try {
+      if (userId) {
+        const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
+        if (local?.id) {
+          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+          return;
+        }
+      }
       const result = await apiFetch<{
         workoutId: string;
+        cycleWorkoutId?: string;
         sessionName: string;
         created: boolean;
         completed: boolean;
@@ -322,7 +331,7 @@ export default function WorkoutsIndex() {
         completedAt: null,
         source: 'program',
         programCycleId: program.id,
-        cycleWorkoutId: result.workoutId,
+        cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
         exercises: [],
         exerciseCount: 0,
         durationMinutes: null,
@@ -338,7 +347,7 @@ export default function WorkoutsIndex() {
           completedAt: null,
           source: 'program',
           programCycleId: program.id,
-          cycleWorkoutId: result.workoutId,
+          cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
           exerciseCount: 0,
           durationMinutes: null,
           totalVolume: null,
@@ -619,19 +628,20 @@ export default function WorkoutsIndex() {
         ) : (
           <View style={styles.historyList}>
             <SectionTitle title="Recent workouts" />
-            {mergedHistory.map((item, index) => {
+            {mergedHistory.map((item) => {
               const isPending =
                 item.syncStatus === 'pending' ||
                 item.syncStatus === 'syncing' ||
                 item.syncStatus === 'failed' ||
                 item.syncStatus === 'conflict' ||
-                (index < pendingWorkouts.length && pendingWorkouts.some((p) => p.id === item.id));
+                pendingWorkouts.some((p) => p.id === item.id);
               return (
                 <WorkoutCard
                   key={`workout-history:${item.id}`}
                   id={item.id}
                   name={item.name}
                   date={item.startedAt}
+                  completedAt={item.completedAt}
                   durationMinutes={item.durationMinutes ?? null}
                   totalVolume={item.totalVolume}
                   exerciseCount={item.exerciseCount ?? 0}

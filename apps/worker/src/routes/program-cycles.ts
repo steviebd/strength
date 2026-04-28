@@ -459,6 +459,8 @@ router.post(
         if (existingWorkout && !existingWorkout.isDeleted) {
           return c.json({
             workoutId: existingWorkout.id,
+            cycleWorkoutId: currentCycleWorkout.id,
+            sessionName: currentCycleWorkout.sessionName,
             created: false,
             completed: !!existingWorkout.completedAt,
           });
@@ -474,6 +476,7 @@ router.post(
 
       return c.json({
         workoutId: workout.id,
+        cycleWorkoutId: currentCycleWorkout.id,
         sessionName: workout.name,
         created: true,
         completed: false,

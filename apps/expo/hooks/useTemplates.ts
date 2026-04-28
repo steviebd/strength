@@ -3,6 +3,7 @@ import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import type { Template } from './useTemplateEditor';
 import { cacheTemplates } from '@/db/workouts';
+import { getCachedTemplates } from '@/db/training-cache';
 
 export type { Template };
 
@@ -15,11 +16,31 @@ export function useTemplates() {
     queryKey: ['templates', userId],
     enabled: !!userId,
     queryFn: async (): Promise<Template[]> => {
-      const templates = await apiFetch<Template[]>('/api/templates');
       if (userId) {
-        await cacheTemplates(userId, templates);
+        const cached = await getCachedTemplates(userId);
+        if (cached.length > 0) {
+          void apiFetch<Template[]>('/api/templates')
+            .then(async (templates) => {
+              await cacheTemplates(userId, templates);
+              queryClient.setQueryData(['templates', userId], templates);
+            })
+            .catch(() => {});
+          return cached;
+        }
       }
-      return templates;
+      try {
+        const templates = await apiFetch<Template[]>('/api/templates');
+        if (userId) {
+          await cacheTemplates(userId, templates);
+        }
+        return templates;
+      } catch (error) {
+        if (userId) {
+          const cached = await getCachedTemplates(userId);
+          if (cached.length > 0) return cached;
+        }
+        throw error;
+      }
     },
     staleTime: 0,
     refetchOnMount: 'always',

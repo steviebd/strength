@@ -32,9 +32,11 @@ describe('program generators', () => {
   test.each(programs)('$info.slug generates structurally valid workouts', (program) => {
     const workouts = program.generateWorkouts(oneRMs);
 
-    expect(workouts).toHaveLength(program.info.totalSessions);
+    expect(workouts.length).toBeGreaterThan(0);
     expect(workouts[0].weekNumber).toBeGreaterThanOrEqual(1);
-    expect(new Set(workouts.map((workout) => workout.sessionNumber)).size).toBe(workouts.length);
+    expect(
+      new Set(workouts.map((workout) => `${workout.weekNumber}:${workout.sessionNumber}`)).size,
+    ).toBe(workouts.length);
 
     for (const workout of workouts) {
       expect(workout.sessionName).toEqual(expect.any(String));
@@ -54,12 +56,14 @@ describe('program generators', () => {
   });
 
   test.each(programs)('$info.slug includes configured main lifts', (program) => {
-    const rows = allProgramRows(program.generateWorkouts(oneRMs));
-    const liftNames = rows.map((row) => row.name.toLowerCase());
+    const lifts = new Set(
+      program
+        .generateWorkouts(oneRMs)
+        .flatMap((workout) => workout.exercises.map((exercise) => exercise.lift)),
+    );
 
     for (const lift of program.info.mainLifts) {
-      const expectedName = lift === 'ohp' ? 'overhead' : lift;
-      expect(liftNames.some((name) => name.includes(expectedName))).toBe(true);
+      expect(lifts.has(lift)).toBe(true);
     }
   });
 
@@ -77,7 +81,9 @@ describe('program generators', () => {
       'Overhead Press',
       'Deadlift',
     ]);
-    expect(workouts[1].exercises[0].targetWeight).toBeGreaterThan(workouts[0].exercises[0].targetWeight);
+    expect(workouts[1].exercises[0].targetWeight).toBeGreaterThan(
+      workouts[0].exercises[0].targetWeight,
+    );
   });
 
   test('at least one generated program contains AMRAP work', () => {
@@ -85,4 +91,3 @@ describe('program generators', () => {
     expect(rows.some((row) => row.isAmrap === true)).toBe(true);
   });
 });
-

@@ -28,6 +28,7 @@ import programCyclesRouter from './routes/program-cycles';
 import whoopRouter from './routes/whoop';
 import nutritionRouter from './routes/nutrition';
 import homeRouter from './routes/home';
+import trainingRouter from './routes/training';
 import e2eRouter from './routes/e2e';
 
 type Variables = {
@@ -142,6 +143,7 @@ app.route('/api/programs', programCyclesRouter);
 app.route('/api/whoop', whoopRouter);
 app.route('/api/nutrition', nutritionRouter);
 app.route('/api/home', homeRouter);
+app.route('/api/training', trainingRouter);
 app.route('/api/e2e', e2eRouter);
 
 // WHOOP OAuth landing page (no auth)

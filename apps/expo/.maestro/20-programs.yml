@@ -1,5 +1,6 @@
 appId: com.strength.app
 ---
+- runScript: scripts/reset-user.js
 - launchApp:
     clearState: false
 - tapOn: 'Programs'

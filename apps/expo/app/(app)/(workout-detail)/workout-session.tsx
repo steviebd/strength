@@ -24,6 +24,7 @@ import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
+import { getLocalWorkout } from '@/db/workouts';
 import { resolveSetCompletionNavigation } from '@/lib/workoutSetNavigation';
 import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
 import { ScrollProvider } from '@/context/ScrollContext';
@@ -51,7 +52,13 @@ interface PendingSetScroll {
 }
 
 async function fetchWorkout(workoutId: string): Promise<Workout> {
-  return apiFetch<Workout>(`/api/workouts/${workoutId}`);
+  const local = await getLocalWorkout(workoutId);
+  try {
+    return await apiFetch<Workout>(`/api/workouts/${workoutId}`);
+  } catch (error) {
+    if (local) return local;
+    throw error;
+  }
 }
 
 export default function WorkoutSessionScreen() {
@@ -110,6 +117,19 @@ export default function WorkoutSessionScreen() {
     enabled: !!workoutId,
     staleTime: Infinity,
   });
+
+  useEffect(() => {
+    if (!workoutId) return;
+    let isActive = true;
+    getLocalWorkout(workoutId).then((local) => {
+      if (isActive && local) {
+        void loadWorkout(local);
+      }
+    });
+    return () => {
+      isActive = false;
+    };
+  }, [workoutId, loadWorkout]);
 
   useEffect(() => {
     if (loadedWorkout) {
