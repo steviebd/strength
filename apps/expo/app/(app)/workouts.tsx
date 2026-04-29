@@ -278,7 +278,10 @@ export default function WorkoutsIndex() {
         );
         const historySnapshots = [
           ...usableLocalHistory,
-          ...d1History.filter((snapshot): snapshot is ExerciseHistorySnapshot => Boolean(snapshot)),
+          ...d1History.filter(
+            (snapshot): snapshot is ExerciseHistorySnapshot =>
+              snapshot !== null && hasUsableHistory(snapshot),
+          ),
         ];
         const local = await createLocalWorkoutFromTemplate(userId, template.id, historySnapshots);
         if (local?.id) {

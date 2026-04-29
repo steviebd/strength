@@ -57,7 +57,7 @@ function getExerciseHistoryIds(exercise: Exercise) {
 }
 
 function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) {
-  return snapshot?.sets.some((set) => set.weight !== null || set.reps !== null) ?? false;
+  return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
 }
 
 async function fetchFirstExerciseHistorySnapshot(exerciseIds: string[], exerciseName: string) {
@@ -399,11 +399,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       }
 
       if (historySnapshot === null) {
-        historySnapshot = await fetchFirstExerciseHistorySnapshot(historyIds, exercise.name);
+        cached = await getCachedLastWorkoutData(historyIds);
       }
 
-      if (historySnapshot === null) {
-        cached = await getCachedLastWorkoutData(historyIds);
+      if (historySnapshot === null && cached === null) {
+        historySnapshot = await fetchFirstExerciseHistorySnapshot(historyIds, exercise.name);
       }
 
       const newSets: WorkoutSet[] =
