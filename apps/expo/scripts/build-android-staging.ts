@@ -5,11 +5,24 @@ import { join } from 'node:path';
 
 const BUILDS_DIR = join(process.cwd(), 'builds');
 const SERVER_PORT = Number(process.env.BUILDS_SERVER_PORT ?? '8080');
+function getJavaHome(): string {
+  if (process.env.JAVA_HOME) {
+    return process.env.JAVA_HOME;
+  }
+  const result = spawnSync('/usr/libexec/java_home', ['-v', '17'], {
+    encoding: 'utf-8',
+  });
+  if (result.status === 0 && result.stdout.trim()) {
+    return result.stdout.trim();
+  }
+  throw new Error('JAVA_HOME not set and Java 17 not found via /usr/libexec/java_home');
+}
+
 const BUILD_ENV = {
   ...process.env,
   EAS_SKIP_AUTO_FINGERPRINT: process.env.EAS_SKIP_AUTO_FINGERPRINT ?? '1',
   NODE_ENV: process.env.NODE_ENV ?? 'production',
-  JAVA_HOME: '/usr/lib/jvm/java-17-openjdk',
+  JAVA_HOME: getJavaHome(),
 };
 
 function getNextBuildNumber(): number {
