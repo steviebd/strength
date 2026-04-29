@@ -49,7 +49,7 @@ export async function listUserExercises(search?: string, signal?: AbortSignal) {
 }
 
 export async function createCustomExercise(input: CreateExerciseInput) {
-  return apiFetch<UserExercise>('/api/exercises', {
+  const exercise = await apiFetch<UserExercise>('/api/exercises', {
     method: 'POST',
     body: {
       name: input.name.trim(),
@@ -57,10 +57,18 @@ export async function createCustomExercise(input: CreateExerciseInput) {
       description: input.description?.trim() || null,
     },
   });
+
+  const session = await authClient.getSession();
+  const userId = session.data?.user?.id;
+  if (userId) {
+    await cacheUserExercises(userId, [exercise]);
+  }
+
+  return exercise;
 }
 
 export async function ensurePersistedExercise(exercise: ExerciseLibraryItem) {
-  return apiFetch<UserExercise>('/api/exercises', {
+  const persistedExercise = await apiFetch<UserExercise>('/api/exercises', {
     method: 'POST',
     body: {
       name: exercise.name,
@@ -69,4 +77,12 @@ export async function ensurePersistedExercise(exercise: ExerciseLibraryItem) {
       libraryId: exercise.id,
     },
   });
+
+  const session = await authClient.getSession();
+  const userId = session.data?.user?.id;
+  if (userId) {
+    await cacheUserExercises(userId, [persistedExercise]);
+  }
+
+  return persistedExercise;
 }

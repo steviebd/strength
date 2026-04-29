@@ -44,6 +44,7 @@ export interface Workout {
 
 export interface Exercise {
   id: string;
+  libraryId?: string | null;
   name: string;
   muscleGroup: string;
   description: string;

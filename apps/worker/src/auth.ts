@@ -1,6 +1,7 @@
 import { expo } from '@better-auth/expo';
 import { dash } from '@better-auth/infra';
 import { betterAuth } from 'better-auth/minimal';
+import type { BetterAuthPlugin } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
@@ -221,7 +222,7 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
             },
           }
         : {},
-    plugins: [expo(), dash({ apiKey: resolvedEnv.BETTER_AUTH_API_KEY })],
+    plugins: [expo(), dash({ apiKey: resolvedEnv.BETTER_AUTH_API_KEY }) as BetterAuthPlugin],
   });
 }
 

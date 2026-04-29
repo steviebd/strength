@@ -171,6 +171,7 @@ export function ExerciseSearch({
 
           selectedExercises.push({
             id: userEx.id,
+            libraryId: userEx.libraryId,
             name: userEx.name,
             muscleGroup: userEx.muscleGroup ?? '',
             description: userEx.description ?? '',
@@ -193,6 +194,7 @@ export function ExerciseSearch({
           const persistedExercise = await ensurePersistedExercise(libraryExercise);
           selectedExercises.push({
             id: persistedExercise.id,
+            libraryId: persistedExercise.libraryId,
             name: persistedExercise.name,
             muscleGroup: persistedExercise.muscleGroup ?? '',
             description: persistedExercise.description ?? '',
@@ -200,6 +202,7 @@ export function ExerciseSearch({
         } catch {
           selectedExercises.push({
             id: libraryExercise.id,
+            libraryId: libraryExercise.id,
             name: libraryExercise.name,
             muscleGroup: libraryExercise.muscleGroup,
             description: libraryExercise.description,

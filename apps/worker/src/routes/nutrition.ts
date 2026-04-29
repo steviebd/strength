@@ -9,7 +9,7 @@ import nutritionTrainingContextRouter from './nutrition-training-context';
 const router = createRouter();
 
 router.route('/entries', nutritionEntriesRouter);
-router.route('/entries/:id', nutritionEntriesIdRouter);
+router.route('/entries', nutritionEntriesIdRouter);
 router.route('/', nutritionChatRouter);
 router.route('/', nutritionDailySummaryRouter);
 router.route('/body-stats', nutritionBodyStatsRouter);

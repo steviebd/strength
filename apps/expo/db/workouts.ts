@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   consolidateProgramTargetLifts,
   getCurrentCycleWorkout,
@@ -55,6 +55,25 @@ type LocalExerciseInput = {
     completedAt?: Date | string | null;
   }>;
 };
+
+export type ExerciseHistorySnapshot = {
+  exerciseId: string;
+  workoutDate: string | null;
+  sets: Array<{
+    weight: number | null;
+    reps: number | null;
+    rpe: number | null;
+    setNumber?: number | null;
+  }>;
+};
+
+function uniqueIds(ids: string[]) {
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
+function normalizeExerciseName(name: string | null | undefined) {
+  return name?.trim().toLowerCase() || null;
+}
 
 function toDate(value: Date | string | number | null | undefined) {
   if (value == null) return null;
@@ -236,7 +255,11 @@ export async function createLocalWorkout(
   return getLocalWorkout(id);
 }
 
-export async function createLocalWorkoutFromTemplate(userId: string, templateId: string) {
+export async function createLocalWorkoutFromTemplate(
+  userId: string,
+  templateId: string,
+  fallbackHistorySnapshots: ExerciseHistorySnapshot[] = [],
+) {
   const db = getLocalDb();
   if (!db) return null;
 
@@ -249,6 +272,17 @@ export async function createLocalWorkoutFromTemplate(userId: string, templateId:
     .where(eq(localTemplateExercises.templateId, templateId))
     .orderBy(localTemplateExercises.orderIndex)
     .all();
+  const historySnapshots = await getLocalLastCompletedExerciseSnapshots(
+    userId,
+    exercises.map((exercise) => exercise.exerciseId),
+    exercises.map((exercise) => exercise.name),
+  );
+  const historyByExerciseId = new Map<string, ExerciseHistorySnapshot>(
+    fallbackHistorySnapshots.map((snapshot) => [snapshot.exerciseId, snapshot]),
+  );
+  for (const snapshot of historySnapshots) {
+    historyByExerciseId.set(snapshot.exerciseId, snapshot);
+  }
 
   return createLocalWorkout(userId, {
     name: template.name,
@@ -261,13 +295,156 @@ export async function createLocalWorkoutFromTemplate(userId: string, templateId:
       isAmrap: Boolean(exercise.isAmrap),
       sets: Array.from({ length: Math.max(1, exercise.sets ?? 3) }, (_, index) => ({
         setNumber: index + 1,
-        weight: (exercise.targetWeight ?? 0) + (exercise.addedWeight ?? 0),
-        reps: exercise.isAmrap ? null : (exercise.reps ?? 10),
-        rpe: null,
+        weight:
+          historyByExerciseId.get(exercise.exerciseId)?.sets[index]?.weight ??
+          (exercise.targetWeight ?? 0) + (exercise.addedWeight ?? 0),
+        reps:
+          historyByExerciseId.get(exercise.exerciseId)?.sets[index]?.reps ??
+          (exercise.isAmrap ? null : (exercise.reps ?? 10)),
+        rpe: historyByExerciseId.get(exercise.exerciseId)?.sets[index]?.rpe ?? null,
         isComplete: false,
       })),
     })),
   });
+}
+
+export async function getLocalLastCompletedExerciseSnapshots(
+  userId: string,
+  exerciseIds: string[],
+  exerciseNames: string[] = [],
+) {
+  const db = getLocalDb();
+  if (!db || (exerciseIds.length === 0 && exerciseNames.length === 0)) return [];
+  const requestedIds = uniqueIds(exerciseIds);
+  const requestedNames = Array.from(
+    new Set(exerciseNames.map(normalizeExerciseName).filter(Boolean) as string[]),
+  );
+  if (requestedIds.length === 0 && requestedNames.length === 0) return [];
+
+  const aliasToOriginalId = new Map<string, string>(requestedIds.map((id) => [id, id]));
+  const nameToOriginalId = new Map<string, string>();
+  for (let index = 0; index < requestedNames.length; index++) {
+    nameToOriginalId.set(requestedNames[index], requestedIds[index] ?? requestedNames[index]);
+  }
+  const userExerciseRows = db
+    .select({
+      id: localUserExercises.id,
+      libraryId: localUserExercises.libraryId,
+      name: localUserExercises.name,
+    })
+    .from(localUserExercises)
+    .where(eq(localUserExercises.userId, userId))
+    .all();
+
+  for (const row of userExerciseRows) {
+    const originalId = requestedIds.includes(row.id)
+      ? row.id
+      : row.libraryId && requestedIds.includes(row.libraryId)
+        ? row.libraryId
+        : normalizeExerciseName(row.name)
+          ? (nameToOriginalId.get(normalizeExerciseName(row.name) ?? '') ?? null)
+          : null;
+    if (!originalId) continue;
+    aliasToOriginalId.set(row.id, originalId);
+    if (row.libraryId) {
+      aliasToOriginalId.set(row.libraryId, originalId);
+    }
+  }
+
+  const lookupIds = Array.from(aliasToOriginalId.keys());
+  const historyIdentityConditions = [];
+  if (lookupIds.length > 0) {
+    historyIdentityConditions.push(inArray(localWorkoutExercises.exerciseId, lookupIds));
+    historyIdentityConditions.push(inArray(localWorkoutExercises.libraryId, lookupIds));
+  }
+  if (requestedNames.length > 0) {
+    historyIdentityConditions.push(
+      inArray(sql`lower(${localWorkoutExercises.name})`, requestedNames),
+    );
+  }
+  if (historyIdentityConditions.length === 0) return [];
+
+  const recentRows = db
+    .select({
+      workoutExerciseId: localWorkoutExercises.id,
+      exerciseId: localWorkoutExercises.exerciseId,
+      libraryId: localWorkoutExercises.libraryId,
+      name: localWorkoutExercises.name,
+      workoutCompletedAt: localWorkouts.completedAt,
+    })
+    .from(localWorkoutExercises)
+    .innerJoin(localWorkouts, eq(localWorkoutExercises.workoutId, localWorkouts.id))
+    .where(
+      and(
+        eq(localWorkouts.userId, userId),
+        eq(localWorkouts.isDeleted, false),
+        isNotNull(localWorkouts.completedAt),
+        or(...historyIdentityConditions),
+      ),
+    )
+    .orderBy(desc(localWorkouts.completedAt))
+    .all();
+
+  const latestByOriginalId = new Map<
+    string,
+    { workoutExerciseId: string; workoutCompletedAt: Date | null }
+  >();
+  for (const row of recentRows) {
+    const originalId =
+      aliasToOriginalId.get(row.exerciseId) ??
+      (row.libraryId ? aliasToOriginalId.get(row.libraryId) : undefined) ??
+      nameToOriginalId.get(normalizeExerciseName(row.name) ?? '') ??
+      null;
+    if (originalId && !latestByOriginalId.has(originalId)) {
+      latestByOriginalId.set(originalId, {
+        workoutExerciseId: row.workoutExerciseId,
+        workoutCompletedAt: row.workoutCompletedAt,
+      });
+    }
+  }
+
+  const workoutExerciseIds = Array.from(latestByOriginalId.values()).map(
+    (row) => row.workoutExerciseId,
+  );
+  if (workoutExerciseIds.length === 0) return [];
+
+  const setRows = db
+    .select({
+      workoutExerciseId: localWorkoutSets.workoutExerciseId,
+      weight: localWorkoutSets.weight,
+      reps: localWorkoutSets.reps,
+      rpe: localWorkoutSets.rpe,
+      setNumber: localWorkoutSets.setNumber,
+    })
+    .from(localWorkoutSets)
+    .where(
+      and(
+        inArray(localWorkoutSets.workoutExerciseId, workoutExerciseIds),
+        eq(localWorkoutSets.isDeleted, false),
+      ),
+    )
+    .orderBy(localWorkoutSets.setNumber)
+    .all();
+
+  const setsByWorkoutExerciseId = new Map<string, typeof setRows>();
+  for (const set of setRows) {
+    const sets = setsByWorkoutExerciseId.get(set.workoutExerciseId) ?? [];
+    sets.push(set);
+    setsByWorkoutExerciseId.set(set.workoutExerciseId, sets);
+  }
+
+  return Array.from(latestByOriginalId.entries()).map(([exerciseId, latest]) => ({
+    exerciseId,
+    workoutDate: latest.workoutCompletedAt
+      ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
+      : null,
+    sets: (setsByWorkoutExerciseId.get(latest.workoutExerciseId) ?? []).map((set) => ({
+      weight: set.weight,
+      reps: set.reps,
+      rpe: set.rpe,
+      setNumber: set.setNumber,
+    })),
+  }));
 }
 
 export async function createLocalWorkoutFromProgramCycleWorkout(
@@ -505,7 +682,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
     })
     .run();
 
-  if (serverWorkout.exercises) {
+  if (serverWorkout.exercises && serverWorkout.exercises.length > 0) {
     await replaceLocalExercises(
       serverWorkout.id,
       serverWorkout.exercises.map((exercise) => ({

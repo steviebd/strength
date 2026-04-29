@@ -103,7 +103,12 @@ export function ExercisePicker({
 
   const handleConfirm = () => {
     void (async () => {
-      const selectedExercises: Array<{ id: string; name: string; muscleGroup: string | null }> = [];
+      const selectedExercises: Array<{
+        id: string;
+        libraryId?: string | null;
+        name: string;
+        muscleGroup: string | null;
+      }> = [];
 
       for (const selectionKey of pendingSelection) {
         if (selectionKey.startsWith('user:')) {
@@ -116,6 +121,7 @@ export function ExercisePicker({
 
           selectedExercises.push({
             id: selectedUserExercise.id,
+            libraryId: selectedUserExercise.libraryId,
             name: selectedUserExercise.name,
             muscleGroup: selectedUserExercise.muscleGroup,
           });
@@ -139,6 +145,7 @@ export function ExercisePicker({
           const persistedExercise = await ensurePersistedExercise(selectedLibraryExercise);
           selectedExercises.push({
             id: persistedExercise.id,
+            libraryId: persistedExercise.libraryId,
             name: persistedExercise.name,
             muscleGroup: persistedExercise.muscleGroup,
           });
@@ -148,6 +155,7 @@ export function ExercisePicker({
           }
           selectedExercises.push({
             id: selectedLibraryExercise.id,
+            libraryId: selectedLibraryExercise.id,
             name: selectedLibraryExercise.name,
             muscleGroup: selectedLibraryExercise.muscleGroup,
           });

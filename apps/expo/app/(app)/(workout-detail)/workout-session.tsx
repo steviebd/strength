@@ -53,6 +53,10 @@ interface PendingSetScroll {
 
 async function fetchWorkout(workoutId: string): Promise<Workout> {
   const local = await getLocalWorkout(workoutId);
+  if (local && (!local.completedAt || local.syncStatus !== 'synced')) {
+    return local;
+  }
+
   try {
     return await apiFetch<Workout>(`/api/workouts/${workoutId}`);
   } catch (error) {
@@ -114,7 +118,7 @@ export default function WorkoutSessionScreen() {
   } = useQuery({
     queryKey: ['workout', workoutId],
     queryFn: () => fetchWorkout(workoutId!),
-    enabled: !!workoutId,
+    enabled: !!workoutId && workout?.id !== workoutId,
     staleTime: Infinity,
   });
 

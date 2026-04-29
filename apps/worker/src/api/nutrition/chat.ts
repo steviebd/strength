@@ -307,42 +307,56 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   let fullResponseText = '';
   const textEncoder = new TextEncoder();
   let isClosed = false;
+  let hasPersistedResponse = false;
+
+  async function persistAssistantResponse() {
+    const content = fullResponseText.trim();
+    if (!content || hasPersistedResponse) {
+      return;
+    }
+
+    hasPersistedResponse = true;
+    await db.insert(schema.nutritionChatMessages).values({
+      userId,
+      role: 'assistant',
+      content,
+      hasImage: false,
+      createdAt: new Date(),
+    });
+  }
 
   const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        for await (const delta of result.fullStream) {
-          if (isClosed) break;
-          if (delta.type === 'error') {
-            throw delta.error instanceof Error ? delta.error : new Error(String(delta.error));
-          }
-          if (delta.type === 'text-delta') {
-            fullResponseText += delta.text;
+    start(controller) {
+      const completionPromise = (async () => {
+        try {
+          for await (const delta of result.fullStream) {
+            if (delta.type === 'error') {
+              throw delta.error instanceof Error ? delta.error : new Error(String(delta.error));
+            }
+            if (delta.type === 'text-delta') {
+              fullResponseText += delta.text;
+            }
+            if (!isClosed) {
+              const bytes = textEncoder.encode(`data: ${JSON.stringify(delta)}\n\n`);
+              controller.enqueue(bytes);
+            }
           }
           if (!isClosed) {
-            const bytes = textEncoder.encode(`data: ${JSON.stringify(delta)}\n\n`);
-            controller.enqueue(bytes);
+            controller.enqueue(textEncoder.encode('data: [DONE]\n\n'));
+            controller.close();
           }
-        }
-        if (!isClosed) {
-          controller.enqueue(textEncoder.encode('data: [DONE]\n\n'));
-          controller.close();
-        }
 
-        if (fullResponseText.trim()) {
-          await db.insert(schema.nutritionChatMessages).values({
-            userId,
-            role: 'assistant',
-            content: fullResponseText,
-            hasImage: false,
-            createdAt: new Date(),
-          });
+          await persistAssistantResponse();
+        } catch (err) {
+          if (!isClosed) {
+            controller.error(err);
+          }
+          await persistAssistantResponse();
         }
-      } catch (err) {
-        if (!isClosed) {
-          controller.error(err);
-        }
-      }
+      })();
+
+      (c as any).executionCtx?.waitUntil?.(completionPromise);
+      return completionPromise;
     },
     cancel() {
       isClosed = true;

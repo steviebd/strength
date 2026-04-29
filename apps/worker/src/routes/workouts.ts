@@ -76,6 +76,7 @@ async function fetchWorkoutSyncSnapshot(db: any, workoutId: string) {
       isAmrap: schema.workoutExercises.isAmrap,
       name: schema.exercises.name,
       muscleGroup: schema.exercises.muscleGroup,
+      libraryId: schema.exercises.libraryId,
     })
     .from(schema.workoutExercises)
     .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
@@ -299,6 +300,7 @@ router.get(
           isAmrap: schema.workoutExercises.isAmrap,
           name: schema.exercises.name,
           muscleGroup: schema.exercises.muscleGroup,
+          libraryId: schema.exercises.libraryId,
         })
         .from(schema.workoutExercises)
         .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
@@ -884,15 +886,33 @@ router.get(
   '/last/:exerciseId',
   createHandler(async (c, { userId, db }) => {
     const exerciseId = c.req.param('exerciseId') as string;
+    const exerciseName = c.req.query('name')?.trim();
     try {
-      const snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
+      let snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
+
+      if (!snapshot && exerciseName) {
+        const matchingExercises = await db
+          .select({ id: schema.exercises.id })
+          .from(schema.exercises)
+          .where(
+            and(
+              eq(schema.exercises.userId, userId),
+              eq(schema.exercises.isDeleted, false),
+              sql`lower(${schema.exercises.name}) = ${exerciseName.toLowerCase()}`,
+            ),
+          )
+          .all();
+        const matchingIds = matchingExercises.map((exercise: { id: string }) => exercise.id);
+        const snapshots = await getLastCompletedExerciseSnapshots(db, userId, matchingIds);
+        snapshot = snapshots[0] ?? null;
+      }
 
       if (!snapshot) {
         return c.json(null);
       }
 
       return c.json({
-        exerciseId: snapshot.exerciseId,
+        exerciseId,
         workoutDate: snapshot.workoutDate,
         sets: snapshot.sets.map(
           (set: { weight: number | null; reps: number | null; rpe: number | null }) => ({

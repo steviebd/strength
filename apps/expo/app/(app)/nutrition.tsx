@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -399,10 +400,11 @@ export default function NutritionScreen() {
   });
 
   useEffect(() => {
-    if (!historyQuery.data || hasAppliedServerHistory.current === true) {
+    if (!historyQuery.data) {
       return;
     }
 
+    const isInitialHistoryLoad = hasAppliedServerHistory.current !== true;
     const serverMessages = historyQuery.data.messages.map((message) =>
       normalizeMessage({
         id: message.id,
@@ -415,9 +417,23 @@ export default function NutritionScreen() {
     setMessages((current) => mergeSavedEntryIds(serverMessages, current));
     setHistoryCursor(historyQuery.data.nextCursor);
     setHasMoreHistory(historyQuery.data.hasMore);
-    setExchangeExpansion({});
+    if (isInitialHistoryLoad) {
+      setExchangeExpansion({});
+    }
     hasAppliedServerHistory.current = true;
   }, [historyQuery.data]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void historyQuery.refetch();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [historyQuery.refetch]);
 
   const saveMealMutation = useMutation({
     mutationFn: (data: {
@@ -625,6 +641,10 @@ export default function NutritionScreen() {
           throw new Error('The assistant returned an empty response.');
         }
       } catch (error) {
+        if (assistantContent.trim()) {
+          return;
+        }
+
         const message =
           error instanceof Error ? error.message : 'Unable to reach the nutrition assistant.';
         setMessages((prev) =>

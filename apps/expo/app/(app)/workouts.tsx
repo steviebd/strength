@@ -36,8 +36,10 @@ import {
   cacheTemplates,
   createLocalWorkoutFromCurrentProgramCycle,
   createLocalWorkoutFromTemplate,
+  getLocalLastCompletedExerciseSnapshots,
   listLocalWorkoutHistory,
   upsertServerWorkoutSnapshot,
+  type ExerciseHistorySnapshot,
   type WorkoutSyncStatus,
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
@@ -75,6 +77,24 @@ interface PendingWorkout {
 
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
   return apiFetch<WorkoutHistoryItem[]>('/api/workouts');
+}
+
+async function fetchExerciseHistorySnapshot(
+  exerciseId: string,
+  exerciseName?: string | null,
+): Promise<ExerciseHistorySnapshot | null> {
+  try {
+    const params = exerciseName?.trim() ? `?name=${encodeURIComponent(exerciseName.trim())}` : '';
+    return await apiFetch<ExerciseHistorySnapshot | null>(
+      `/api/workouts/last/${encodeURIComponent(exerciseId)}${params}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function hasUsableHistory(snapshot: ExerciseHistorySnapshot) {
+  return snapshot.sets.some((set) => set.weight !== null || set.reps !== null);
 }
 
 export default function WorkoutsIndex() {
@@ -242,7 +262,25 @@ export default function WorkoutsIndex() {
   const handleStartFromTemplate = async (template: Template) => {
     try {
       if (userId && template.id) {
-        const local = await createLocalWorkoutFromTemplate(userId, template.id);
+        const templateExercises = template.exercises ?? [];
+        const exerciseIds = templateExercises.map((exercise) => exercise.exerciseId);
+        const localHistory = await getLocalLastCompletedExerciseSnapshots(
+          userId,
+          exerciseIds,
+          templateExercises.map((exercise) => exercise.name),
+        );
+        const usableLocalHistory = localHistory.filter(hasUsableHistory);
+        const localHistoryIds = new Set(usableLocalHistory.map((snapshot) => snapshot.exerciseId));
+        const d1History = await Promise.all(
+          templateExercises
+            .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
+            .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
+        );
+        const historySnapshots = [
+          ...usableLocalHistory,
+          ...d1History.filter((snapshot): snapshot is ExerciseHistorySnapshot => Boolean(snapshot)),
+        ];
+        const local = await createLocalWorkoutFromTemplate(userId, template.id, historySnapshots);
         if (local?.id) {
           router.push(`/workout-session?workoutId=${local.id}`);
           return;

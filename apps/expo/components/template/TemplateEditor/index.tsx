@@ -319,12 +319,20 @@ export function TemplateEditor({
   });
 
   const handleAddExercise = useCallback(
-    (exercises: Array<{ id: string; name: string; muscleGroup: string | null }>) => {
+    (
+      exercises: Array<{
+        id: string;
+        libraryId?: string | null;
+        name: string;
+        muscleGroup: string | null;
+      }>,
+    ) => {
       pushUndo();
       for (const exercise of exercises) {
         const newExercise: SelectedExercise = {
           id: generateId(),
           exerciseId: exercise.id,
+          libraryId: exercise.libraryId ?? undefined,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
           isAmrap: false,

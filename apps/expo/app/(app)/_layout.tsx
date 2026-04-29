@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ActivityIndicator, View } from 'react-native';
-import React, { Suspense } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,15 +10,8 @@ import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useTrainingSync } from '@/hooks/useTrainingSync';
-
-const TimezonePickerModal = React.lazy(() =>
-  import('@/components/profile/TimezonePickerModal').then((m) => ({
-    default: m.TimezonePickerModal,
-  })),
-);
-const WeightPickerModal = React.lazy(() =>
-  import('@/components/profile/WeightPickerModal').then((m) => ({ default: m.WeightPickerModal })),
-);
+import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
+import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
 
 const TAB_ICONS = {
   home: {
@@ -189,46 +181,40 @@ function AppTabs() {
         />
       </Tabs>
 
-      <Suspense fallback={null}>
-        <TimezonePickerModal
-          visible={!isLoading && needsTimezoneSelection}
-          title="Set your timezone"
-          description="Choose the timezone your workouts, meals, and daily summaries should follow."
-          confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
-          selectedTimezone={deviceTimezone ?? timezone}
-          onClose={() => {}}
-          onConfirm={setTimezone}
-          dismissLocked
-          acceptFirst={Boolean(deviceTimezone)}
-        />
-      </Suspense>
+      <TimezonePickerModal
+        visible={!isLoading && needsTimezoneSelection}
+        title="Set your timezone"
+        description="Choose the timezone your workouts, meals, and daily summaries should follow."
+        confirmLabel={deviceTimezone ? `Use ${deviceTimezone}` : 'Continue'}
+        selectedTimezone={deviceTimezone ?? timezone}
+        onClose={() => {}}
+        onConfirm={setTimezone}
+        dismissLocked
+        acceptFirst={Boolean(deviceTimezone)}
+      />
 
-      <Suspense fallback={null}>
-        <TimezonePickerModal
-          visible={showTimezoneMismatchModal}
-          title="Timezone changed?"
-          description="Your device timezone is different from your saved preference. Would you like to update it?"
-          confirmLabel="Update timezone"
-          selectedTimezone={deviceTimezone}
-          onClose={dismissTimezoneMismatchModal}
-          onConfirm={setTimezone}
-          acceptFirst={true}
-        />
-      </Suspense>
+      <TimezonePickerModal
+        visible={showTimezoneMismatchModal}
+        title="Timezone changed?"
+        description="Your device timezone is different from your saved preference. Would you like to update it?"
+        confirmLabel="Update timezone"
+        selectedTimezone={deviceTimezone}
+        onClose={dismissTimezoneMismatchModal}
+        onConfirm={setTimezone}
+        acceptFirst={true}
+      />
 
-      <Suspense fallback={null}>
-        <WeightPickerModal
-          visible={!isLoading && needsWeightSelection}
-          weightUnit={weightUnit}
-          onSave={async (bodyweightKg) => {
-            await saveBodyweightMutation.mutateAsync(bodyweightKg);
-            await recordBodyweight(bodyweightKg);
-            await markWeightAsPrompted();
-          }}
-          onSkip={markWeightAsPrompted}
-          isSaving={saveBodyweightMutation.isPending}
-        />
-      </Suspense>
+      <WeightPickerModal
+        visible={!isLoading && needsWeightSelection}
+        weightUnit={weightUnit}
+        onSave={async (bodyweightKg) => {
+          await saveBodyweightMutation.mutateAsync(bodyweightKg);
+          await recordBodyweight(bodyweightKg);
+          await markWeightAsPrompted();
+        }}
+        onSkip={markWeightAsPrompted}
+        isSaving={saveBodyweightMutation.isPending}
+      />
     </>
   );
 }
