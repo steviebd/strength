@@ -41,7 +41,7 @@ jobs:
           env-slug: staging
 
       - name: Build Expo web assets
-        run: bun --filter @strength/expo web:build
+        run: bun --filter @strength/expo build:web
 
       - name: Deploy to staging
         working-directory: apps/worker
@@ -77,7 +77,7 @@ jobs:
           env-slug: prod
 
       - name: Build Expo web assets
-        run: bun --filter @strength/expo web:build
+        run: bun --filter @strength/expo build:web
 
       - name: Deploy to production
         working-directory: apps/worker
