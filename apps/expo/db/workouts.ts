@@ -124,7 +124,7 @@ function computeWorkoutTotals(exercises: WorkoutExercise[], startedAt: string) {
   let totalVolume = 0;
 
   for (const exercise of exercises) {
-    for (const set of exercise.sets) {
+    for (const set of exercise.sets ?? []) {
       if (!set.isComplete) continue;
       totalSets++;
       if (set.weight && set.reps) {
@@ -177,7 +177,7 @@ async function replaceLocalExercises(workoutId: string, exercises: LocalExercise
       })
       .run();
 
-    for (const set of exercise.sets) {
+    for (const set of exercise.sets ?? []) {
       db.insert(localWorkoutSets)
         .values({
           id: set.id ?? generateId(),
@@ -287,24 +287,30 @@ export async function createLocalWorkoutFromTemplate(
   return createLocalWorkout(userId, {
     name: template.name,
     templateId,
-    exercises: exercises.map((exercise) => ({
-      exerciseId: exercise.exerciseId,
-      name: exercise.name,
-      muscleGroup: exercise.muscleGroup,
-      orderIndex: exercise.orderIndex,
-      isAmrap: Boolean(exercise.isAmrap),
-      sets: Array.from({ length: Math.max(1, exercise.sets ?? 3) }, (_, index) => ({
-        setNumber: index + 1,
-        weight:
-          historyByExerciseId.get(exercise.exerciseId)?.sets[index]?.weight ??
-          (exercise.targetWeight ?? 0) + (exercise.addedWeight ?? 0),
-        reps:
-          historyByExerciseId.get(exercise.exerciseId)?.sets[index]?.reps ??
-          (exercise.isAmrap ? null : (exercise.reps ?? 10)),
-        rpe: historyByExerciseId.get(exercise.exerciseId)?.sets[index]?.rpe ?? null,
-        isComplete: false,
-      })),
-    })),
+    exercises: exercises.map((exercise) => {
+      const historySnapshot = historyByExerciseId.get(exercise.exerciseId);
+      const historySetCount = historySnapshot?.sets.length ?? 0;
+      const plannedSetCount = Math.max(1, exercise.sets ?? 3);
+      const setCount = historySetCount > 0 ? historySetCount : plannedSetCount;
+
+      return {
+        exerciseId: exercise.exerciseId,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup,
+        orderIndex: exercise.orderIndex,
+        isAmrap: Boolean(exercise.isAmrap),
+        sets: Array.from({ length: setCount }, (_, index) => ({
+          setNumber: index + 1,
+          weight:
+            historySnapshot?.sets[index]?.weight ??
+            (exercise.targetWeight ?? 0) + (exercise.addedWeight ?? 0),
+          reps:
+            historySnapshot?.sets[index]?.reps ?? (exercise.isAmrap ? null : (exercise.reps ?? 10)),
+          rpe: historySnapshot?.sets[index]?.rpe ?? null,
+          isComplete: false,
+        })),
+      };
+    }),
   });
 }
 
@@ -694,7 +700,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
         orderIndex: exercise.orderIndex,
         notes: exercise.notes,
         isAmrap: exercise.isAmrap,
-        sets: exercise.sets.map((set) => ({
+        sets: (exercise.sets ?? []).map((set) => ({
           id: set.id,
           setNumber: set.setNumber,
           weight: set.weight,
@@ -755,7 +761,7 @@ export async function completeLocalWorkout(
       orderIndex: exerciseIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
-      sets: exercise.sets.map((set, setIndex) => ({
+      sets: (exercise.sets ?? []).map((set, setIndex) => ({
         id: set.id,
         setNumber: setIndex + 1,
         weight: set.weight,
@@ -816,7 +822,7 @@ export async function saveLocalWorkoutDraft(
       orderIndex: exerciseIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
-      sets: exercise.sets.map((set, setIndex) => ({
+      sets: (exercise.sets ?? []).map((set, setIndex) => ({
         id: set.id,
         setNumber: setIndex + 1,
         weight: set.weight,
@@ -898,7 +904,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
       muscleGroup: exercise.muscleGroup,
     })),
     sets: workout.exercises.flatMap((exercise) =>
-      exercise.sets.map((set) => ({
+      (exercise.sets ?? []).map((set) => ({
         id: set.id,
         workoutExerciseId: exercise.id,
         setNumber: set.setNumber,

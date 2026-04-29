@@ -93,8 +93,8 @@ async function fetchExerciseHistorySnapshot(
   }
 }
 
-function hasUsableHistory(snapshot: ExerciseHistorySnapshot) {
-  return snapshot.sets.some((set) => set.weight !== null || set.reps !== null);
+function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) {
+  return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
 }
 
 export default function WorkoutsIndex() {
@@ -176,9 +176,10 @@ export default function WorkoutsIndex() {
   useEffect(() => {
     if (view === 'history') {
       void loadPendingWorkouts();
+      void loadLocalHistory();
       void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     }
-  }, [loadPendingWorkouts, view, queryClient]);
+  }, [loadLocalHistory, loadPendingWorkouts, view, queryClient]);
 
   useEffect(() => {
     if (params.focusProgramId && activePrograms.length > 0) {
@@ -280,7 +281,7 @@ export default function WorkoutsIndex() {
           ...usableLocalHistory,
           ...d1History.filter(
             (snapshot): snapshot is ExerciseHistorySnapshot =>
-              snapshot !== null && hasUsableHistory(snapshot),
+              snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
           ),
         ];
         const local = await createLocalWorkoutFromTemplate(userId, template.id, historySnapshots);
@@ -650,7 +651,7 @@ export default function WorkoutsIndex() {
           <View style={styles.centerLoading}>
             <ActivityIndicator size="large" color={colors.accentSecondary} />
           </View>
-        ) : workoutHistoryError ? (
+        ) : workoutHistoryError && mergedHistory.length === 0 ? (
           <View style={styles.errorState}>
             <Text style={styles.errorTitle}>Error Loading History</Text>
             <Text style={styles.errorMessage}>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, forwardRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View, TextInput, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollToInput } from '@/context/ScrollContext';
@@ -65,7 +65,23 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const [editRepsValue, setEditRepsValue] = useState('');
   const weightInputRef = useRef<any>(null);
   const repsInputRef = useRef<any>(null);
+  const latestSetRef = useRef(set);
   const scrollToInput = useScrollToInput();
+
+  useEffect(() => {
+    latestSetRef.current = set;
+    setLocalWeight(displayWeight);
+    setLocalReps(set.reps);
+  }, [displayWeight, set]);
+
+  const emitUpdate = useCallback(
+    (updates: Partial<WorkoutSetData>) => {
+      const next = { ...latestSetRef.current, ...updates };
+      latestSetRef.current = next;
+      onUpdate(next);
+    },
+    [onUpdate],
+  );
 
   const weightIncrement = weightUnit === 'kg' ? 1.0 : 2.5;
 
@@ -73,15 +89,15 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     const newWeight = Math.max(0, localWeight - weightIncrement);
     setLocalWeight(newWeight);
     const storageWeight = convertToStorageWeight(newWeight, weightUnit);
-    onUpdate({ ...set, weight: storageWeight });
-  }, [localWeight, weightIncrement, weightUnit, onUpdate, set]);
+    emitUpdate({ weight: storageWeight });
+  }, [emitUpdate, localWeight, weightIncrement, weightUnit]);
 
   const handleWeightIncrease = useCallback(() => {
     const newWeight = localWeight + weightIncrement;
     setLocalWeight(newWeight);
     const storageWeight = convertToStorageWeight(newWeight, weightUnit);
-    onUpdate({ ...set, weight: storageWeight });
-  }, [localWeight, weightIncrement, weightUnit, onUpdate, set]);
+    emitUpdate({ weight: storageWeight });
+  }, [emitUpdate, localWeight, weightIncrement, weightUnit]);
 
   const handleWeightEditStart = useCallback(() => {
     setEditWeightValue(localWeight.toString());
@@ -94,10 +110,10 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     if (!isNaN(parsed) && parsed >= 0) {
       setLocalWeight(parsed);
       const storageWeight = convertToStorageWeight(parsed, weightUnit);
-      onUpdate({ ...set, weight: storageWeight });
+      emitUpdate({ weight: storageWeight });
     }
     setIsEditingWeight(false);
-  }, [editWeightValue, weightUnit, onUpdate, set]);
+  }, [editWeightValue, emitUpdate, weightUnit]);
 
   const handleRepsEditStart = useCallback(() => {
     setEditRepsValue(localReps.toString());
@@ -109,26 +125,26 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     const parsed = parseInt(editRepsValue, 10);
     if (!isNaN(parsed) && parsed >= 0) {
       setLocalReps(parsed);
-      onUpdate({ ...set, reps: parsed });
+      emitUpdate({ reps: parsed });
     }
     setIsRepsEditing(false);
-  }, [editRepsValue, onUpdate, set]);
+  }, [editRepsValue, emitUpdate]);
 
   const handleRepsDecrease = useCallback(() => {
     const newReps = Math.max(0, localReps - 1);
     setLocalReps(newReps);
-    onUpdate({ ...set, reps: newReps });
-  }, [localReps, onUpdate, set]);
+    emitUpdate({ reps: newReps });
+  }, [emitUpdate, localReps]);
 
   const handleRepsIncrease = useCallback(() => {
     const newReps = localReps + 1;
     setLocalReps(newReps);
-    onUpdate({ ...set, reps: newReps });
-  }, [localReps, onUpdate, set]);
+    emitUpdate({ reps: newReps });
+  }, [emitUpdate, localReps]);
 
   const handleToggleComplete = useCallback(() => {
-    onUpdate({ ...set, completed: !set.completed });
-  }, [onUpdate, set]);
+    emitUpdate({ completed: !latestSetRef.current.completed });
+  }, [emitUpdate]);
 
   const containerStyle = set.completed
     ? [styles.container, styles.containerCompleted]

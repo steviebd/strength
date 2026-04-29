@@ -215,7 +215,7 @@ export default function WorkoutSessionScreen() {
   const computedVolume = exercises.reduce((total, ex) => {
     return (
       total +
-      ex.sets.reduce((setTotal, set) => {
+      (ex.sets ?? []).reduce((setTotal, set) => {
         if (set.isComplete && set.weight && set.reps) {
           const weight = userWeightUnit === 'lbs' ? set.weight * KG_TO_LBS : set.weight;
           return setTotal + weight * set.reps;
@@ -618,7 +618,7 @@ export default function WorkoutSessionScreen() {
         >
           <View style={styles.exerciseList}>
             {exercises.map((exercise, idx) => {
-              const localSets = exercise.sets.map((s) => ({
+              const localSets = (exercise.sets ?? []).map((s) => ({
                 id: s.id,
                 reps: s.reps ?? 0,
                 weight: s.weight ?? 0,

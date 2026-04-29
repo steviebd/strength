@@ -239,8 +239,10 @@ router.post(
           const workoutExerciseId = workoutExerciseRows[i].id;
           const historySnapshot = snapshotByExerciseId.get(templateExercise.exerciseId);
 
+          const historySetCount = historySnapshot?.sets.length ?? 0;
           const plannedSetCount = Math.max(1, templateExercise.sets ?? 3);
-          const setRows = Array.from({ length: plannedSetCount }, (_, s) => {
+          const setCount = historySetCount > 0 ? historySetCount : plannedSetCount;
+          const setRows = Array.from({ length: setCount }, (_, s) => {
             const historySet = historySnapshot?.sets[s];
             const plannedReps = templateExercise.isAmrap ? null : (templateExercise.reps ?? 0);
             return {
