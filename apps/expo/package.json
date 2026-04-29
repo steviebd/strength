@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "web:build": "npx tsx scripts/web-build.ts",
+    "build:web": "npx tsx scripts/web-build.ts",
     "typecheck": "bunx tsc --noEmit",
     "build:android:staging": "bun run scripts/build-android-staging.ts"
   },
