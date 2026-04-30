@@ -113,7 +113,7 @@ router.post(
     }
 
     try {
-      const result = await syncAllWhoopData(db, c.env, userId);
+      const result = await syncAllWhoopData(db, c.env, userId, { isInitialSync: false });
       const authError = result.errors.find(
         (message) =>
           message.includes('WHOOP_SESSION_EXPIRED') ||

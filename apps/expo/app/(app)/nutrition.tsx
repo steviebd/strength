@@ -551,91 +551,17 @@ export default function NutritionScreen() {
           requestBody.imageBase64 = attachedImage.base64;
         }
 
-        const response = await apiFetch<globalThis.Response>('/api/nutrition/chat', {
+        const response = await apiFetch<{ content: string }>('/api/nutrition/chat', {
           method: 'POST',
           body: requestBody,
-          __stream: true,
-        } as never);
+        });
 
-        const applySseChunk = (chunk: string) => {
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (!line.trim() || !line.startsWith('data: ')) continue;
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-
-            let delta: unknown;
-            try {
-              delta = JSON.parse(data);
-            } catch {
-              continue;
-            }
-
-            if (!delta || typeof delta !== 'object') {
-              continue;
-            }
-
-            if ('type' in delta && delta.type === 'error') {
-              const error = 'error' in delta ? delta.error : null;
-              const errorMessage =
-                error instanceof Error
-                  ? error.message
-                  : typeof error === 'string'
-                    ? error
-                    : 'The assistant stream returned an error.';
-              throw new Error(errorMessage);
-            }
-
-            const textDelta =
-              'type' in delta && delta.type === 'text-delta' && 'text' in delta
-                ? typeof delta.text === 'string'
-                  ? delta.text
-                  : ''
-                : 'textDelta' in delta && typeof delta.textDelta === 'string'
-                  ? delta.textDelta
-                  : 'delta' in delta && typeof delta.delta === 'string'
-                    ? delta.delta
-                    : '';
-
-            if (textDelta) {
-              assistantContent += textDelta;
-              setMessages((prev) =>
-                prev.map((message) =>
-                  message.id === assistantMsgId
-                    ? { ...message, content: assistantContent }
-                    : message,
-                ),
-              );
-            }
-          }
-        };
-
-        const reader = response.body?.getReader();
-        if (reader) {
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-            applySseChunk(lines.join('\n'));
-          }
-
-          if (buffer.trim()) {
-            applySseChunk(buffer);
-          }
-        } else {
-          const rawText = await response.text();
-          if (!rawText.trim()) {
-            throw new Error('No response body');
-          }
-          applySseChunk(rawText);
-        }
+        assistantContent = response.content;
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantMsgId ? { ...message, content: assistantContent } : message,
+          ),
+        );
 
         if (!assistantContent.trim()) {
           throw new Error('The assistant returned an empty response.');

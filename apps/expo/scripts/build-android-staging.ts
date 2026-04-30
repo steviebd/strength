@@ -1,11 +1,13 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 
 const BUILDS_DIR = join(process.cwd(), 'builds');
 const ENV_LOCAL_PATH = join(process.cwd(), '.env.local');
-const SERVER_PORT = Number(process.env.BUILDS_SERVER_PORT ?? '8080');
+const PREFERRED_SERVER_PORT = Number(process.env.BUILDS_SERVER_PORT ?? '8080');
+const SKIP_SERVER = process.env.BUILDS_SKIP_SERVER === '1';
 
 function getJavaHome(): string {
   if (process.env.JAVA_HOME) {
@@ -52,6 +54,30 @@ function getLanIp() {
   }
 
   return 'localhost';
+}
+
+function isPortAvailable(port: number) {
+  return new Promise<boolean>((resolve) => {
+    const server = createServer()
+      .once('error', () => {
+        resolve(false);
+      })
+      .once('listening', () => {
+        server.close(() => {
+          resolve(true);
+        });
+      })
+      .listen(port, '0.0.0.0');
+  });
+}
+
+async function findAvailablePort(startPort: number) {
+  for (let port = startPort; port < startPort + 20; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(`No available build server port found from ${startPort} to ${startPort + 19}`);
 }
 
 function syncStagingEnv() {
@@ -128,7 +154,7 @@ eas.stderr.on('data', (chunk: Buffer) => {
   process.stderr.write(text);
 });
 
-eas.on('exit', (code) => {
+eas.on('exit', async (code) => {
   if (code !== 0) {
     process.exit(code ?? 1);
   }
@@ -144,15 +170,21 @@ eas.on('exit', (code) => {
   console.log(`Copying ${apkPath} -> ${destPath}`);
   cpSync(apkPath, destPath);
 
-  const lanIp = getLanIp();
-  const installUrl = `http://${lanIp}:${SERVER_PORT}/${buildNumber}.apk`;
-
   console.log('');
   console.log(`Build saved: ${destPath}`);
-  console.log(`Install URL: ${installUrl}`);
-  console.log(`Serving builds directory on port ${SERVER_PORT}. Press Ctrl+C to stop.`);
 
-  const server = spawn('python3', ['-m', 'http.server', String(SERVER_PORT)], {
+  if (SKIP_SERVER) {
+    process.exit(0);
+  }
+
+  const lanIp = getLanIp();
+  const serverPort = await findAvailablePort(PREFERRED_SERVER_PORT);
+  const installUrl = `http://${lanIp}:${serverPort}/${buildNumber}.apk`;
+
+  console.log(`Install URL: ${installUrl}`);
+  console.log(`Serving builds directory on port ${serverPort}. Press Ctrl+C to stop.`);
+
+  const server = spawn('python3', ['-m', 'http.server', String(serverPort)], {
     cwd: BUILDS_DIR,
     stdio: 'inherit',
   });

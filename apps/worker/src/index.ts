@@ -5,7 +5,7 @@ import { createDb, populateAuthContext, getAuth } from './api/auth';
 import { exchangeCodeForTokens } from './whoop/auth';
 import { storeWhoopTokens } from './whoop/token-rotation';
 import { getWhoopProfile } from './whoop/api';
-import { upsertWhoopProfile } from './whoop/sync';
+import { upsertWhoopProfile, syncAllWhoopData } from './whoop/sync';
 import {
   handleWebhookEvent,
   normalizeWhoopWebhookPayload,
@@ -275,6 +275,12 @@ app.get('/api/auth/whoop/callback', async (c) => {
     );
 
     await upsertWhoopProfile(db, userId, whoopProfile);
+
+    try {
+      await syncAllWhoopData(db, resolvedEnv, userId, { isInitialSync: true });
+    } catch {
+      // Initial sync failure shouldn't break the OAuth flow
+    }
 
     return c.redirect(buildWhoopCallbackRedirect(deepLink, { success: 'true' }));
   } catch {

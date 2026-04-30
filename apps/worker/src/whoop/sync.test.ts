@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createMockDb } from '../test/mock-db';
-import { upsertWhoopCycle, upsertWhoopProfile, upsertWhoopWorkout } from './sync';
+import { getSyncStartDate, upsertWhoopCycle, upsertWhoopProfile, upsertWhoopWorkout } from './sync';
 
 describe('whoop sync upserts', () => {
   test('upserts profile with stable provider identity', async () => {
@@ -74,5 +74,40 @@ describe('whoop sync upserts', () => {
       maxHeartRate: 150,
       kilojoule: 9000,
     });
+  });
+});
+
+describe('getSyncStartDate', () => {
+  test('initial sync returns 365 days ago', () => {
+    const result = getSyncStartDate(null, true);
+    const expected = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
+  });
+
+  test('incremental sync with no data returns 365 days ago', () => {
+    const result = getSyncStartDate(null, false);
+    const expected = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
+  });
+
+  test('incremental sync uses 7-day overlap from latest date', () => {
+    const latest = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const result = getSyncStartDate(latest, false);
+    const expected = new Date(latest.getTime() - 7 * 24 * 60 * 60 * 1000);
+    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
+  });
+
+  test('incremental sync caps at 365 days', () => {
+    const latest = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+    const result = getSyncStartDate(latest, false);
+    const expected = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
+  });
+
+  test('accepts numeric timestamps', () => {
+    const latest = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const result = getSyncStartDate(latest, false);
+    const expected = new Date(latest - 7 * 24 * 60 * 60 * 1000);
+    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
   });
 });

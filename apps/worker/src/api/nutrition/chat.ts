@@ -1,4 +1,4 @@
-import { streamText } from 'ai';
+import { generateText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { getModel } from '../../lib/ai';
 import { checkRateLimit, getRateLimitPerHour } from '../../lib/rate-limit';
@@ -68,7 +68,7 @@ function buildMockMealAnalysisContent(userMessageContent: string) {
   ].join('\n');
 }
 
-async function streamMockNutritionResponse({
+async function persistMockAssistantResponse({
   db,
   userId,
   userMessageContent,
@@ -85,25 +85,7 @@ async function streamMockNutritionResponse({
     hasImage: false,
     createdAt: new Date(),
   });
-
-  const textEncoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(
-        textEncoder.encode(`data: ${JSON.stringify({ type: 'text-delta', text: content })}\n\n`),
-      );
-      controller.enqueue(textEncoder.encode('data: [DONE]\n\n'));
-      controller.close();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+  return content;
 }
 
 export const chatHandler = createHandler(async (c, { userId, db }) => {
@@ -273,10 +255,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     createdAt: new Date(),
   });
 
-  if (isE2ENutritionMockEnabled(c.env)) {
-    return streamMockNutritionResponse({ db, userId, userMessageContent });
-  }
-
   let userContent:
     | string
     | Array<{ type: 'text'; text: string } | { type: 'image'; image: string }>;
@@ -297,79 +275,29 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   const priorMessages = messages.slice(0, -1).map(compactNutritionChatHistoryMessage);
   const userMessage = { role: 'user' as const, content: userContent };
   const aiMessages = [systemMessage, structuredContextMessage, ...priorMessages, userMessage];
-  const model = getModel(c.env);
 
-  const result = streamText({
-    model,
-    messages: aiMessages,
-  });
+  let assistantContent: string;
 
-  let fullResponseText = '';
-  const textEncoder = new TextEncoder();
-  let isClosed = false;
-  let hasPersistedResponse = false;
+  if (isE2ENutritionMockEnabled(c.env)) {
+    assistantContent = await persistMockAssistantResponse({ db, userId, userMessageContent });
+  } else {
+    const model = getModel(c.env);
+    const result = await generateText({
+      model,
+      messages: aiMessages,
+    });
+    assistantContent = result.text;
 
-  async function persistAssistantResponse() {
-    const content = fullResponseText.trim();
-    if (!content || hasPersistedResponse) {
-      return;
-    }
-
-    hasPersistedResponse = true;
     await db.insert(schema.nutritionChatMessages).values({
       userId,
       role: 'assistant',
-      content,
+      content: assistantContent,
       hasImage: false,
       createdAt: new Date(),
     });
   }
 
-  const stream = new ReadableStream({
-    start(controller) {
-      const completionPromise = (async () => {
-        try {
-          for await (const delta of result.fullStream) {
-            if (delta.type === 'error') {
-              throw delta.error instanceof Error ? delta.error : new Error(String(delta.error));
-            }
-            if (delta.type === 'text-delta') {
-              fullResponseText += delta.text;
-            }
-            if (!isClosed) {
-              const bytes = textEncoder.encode(`data: ${JSON.stringify(delta)}\n\n`);
-              controller.enqueue(bytes);
-            }
-          }
-          if (!isClosed) {
-            controller.enqueue(textEncoder.encode('data: [DONE]\n\n'));
-            controller.close();
-          }
-
-          await persistAssistantResponse();
-        } catch (err) {
-          if (!isClosed) {
-            controller.error(err);
-          }
-          await persistAssistantResponse();
-        }
-      })();
-
-      (c as any).executionCtx?.waitUntil?.(completionPromise);
-      return completionPromise;
-    },
-    cancel() {
-      isClosed = true;
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+  return c.json({ content: assistantContent });
 });
 
 export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => {

@@ -168,7 +168,7 @@ async function fetchWhoopCollection<T>(
 
   do {
     const pageParams: Record<string, string | number> = {
-      limit: 25,
+      limit: 100,
       ...baseParams,
     };
     if (nextToken) {
