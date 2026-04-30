@@ -1,5 +1,12 @@
 import { describe, expect, test, vi } from 'vitest';
-import { createAuth, resolveCookiePolicy } from './auth';
+import { betterAuth } from 'better-auth/minimal';
+import {
+  createAuth,
+  resolveCookiePolicy,
+  SESSION_COOKIE_CACHE_MAX_AGE_SECONDS,
+  SESSION_EXPIRES_IN_SECONDS,
+  SESSION_UPDATE_AGE_SECONDS,
+} from './auth';
 
 vi.mock('better-auth/minimal', () => ({
   betterAuth: vi.fn(() => ({})),
@@ -20,6 +27,28 @@ vi.mock('drizzle-orm/d1', () => ({
 const mockDb = {} as D1Database;
 
 describe('createAuth', () => {
+  test('configures sessions to expire after 10 days of inactivity', () => {
+    createAuth({
+      DB: mockDb,
+      BETTER_AUTH_SECRET: 'secret',
+      WORKER_BASE_URL: 'http://localhost:8787',
+      APP_ENV: 'development',
+    });
+
+    expect(betterAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: {
+          expiresIn: SESSION_EXPIRES_IN_SECONDS,
+          updateAge: SESSION_UPDATE_AGE_SECONDS,
+          cookieCache: {
+            enabled: true,
+            maxAge: SESSION_COOKIE_CACHE_MAX_AGE_SECONDS,
+          },
+        },
+      }),
+    );
+  });
+
   test('throws in production when WORKER_BASE_URL is missing', () => {
     expect(() =>
       createAuth({
