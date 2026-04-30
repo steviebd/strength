@@ -10,6 +10,8 @@ invocation_logs = true
 
 {{D1_BLOCK}}
 
+{{QUEUE_BLOCK}}
+
 {{VARS_BLOCK}}
 
 {{ENV_BLOCK}}

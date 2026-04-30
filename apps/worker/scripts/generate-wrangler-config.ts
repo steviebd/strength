@@ -129,6 +129,7 @@ function buildTemplateValues(args: Args): Record<string, string> {
   const vars = getInfisicalVars();
   const values: Record<string, string> = {
     D1_BLOCK: '',
+    QUEUE_BLOCK: '',
     VARS_BLOCK: '',
     ENV_BLOCK: '',
   };
@@ -149,6 +150,7 @@ function buildTemplateValues(args: Args): Record<string, string> {
     ]
       .filter(Boolean)
       .join('\n');
+    values.QUEUE_BLOCK = renderQueueBlock('strength-nutrition-chat-dev');
 
     values.VARS_BLOCK = renderVarsTable('[vars]', vars);
     return values;
@@ -169,12 +171,26 @@ function buildTemplateValues(args: Args): Record<string, string> {
     `database_id = "${dbId}"`,
     'migrations_dir = "../../packages/db/drizzle/migrations"',
     '',
+    renderQueueBlock(`strength-nutrition-chat-${envName}`, `env.${envName}.`),
+    '',
     renderVarsTable(`[env.${envName}.vars]`, vars),
   ]
     .filter(Boolean)
     .join('\n');
 
   return values;
+}
+
+function renderQueueBlock(queueName: string, prefix = ''): string {
+  return [
+    `[[${prefix}queues.producers]]`,
+    'binding = "NUTRITION_CHAT_QUEUE"',
+    `queue = "${queueName}"`,
+    '',
+    `[[${prefix}queues.consumers]]`,
+    `queue = "${queueName}"`,
+    'max_batch_size = 1',
+  ].join('\n');
 }
 
 function renderVarsTable(header: string, vars: Record<string, string>): string {

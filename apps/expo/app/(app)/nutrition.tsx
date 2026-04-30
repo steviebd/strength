@@ -69,6 +69,18 @@ interface ChatHistoryResponse {
   hasMore: boolean;
 }
 
+interface ChatCreateResponse {
+  jobId: string;
+  status: 'pending';
+}
+
+interface ChatJobResponse {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  content: string | null;
+  error: string | null;
+}
+
 interface MealEntry {
   id: string;
   name: string | null;
@@ -133,7 +145,13 @@ function getSuggestedPrompts(trainingType: TrainingType) {
 
 const CHAT_HISTORY_PAGE_SIZE = 5;
 const CHAT_FOCUS_HISTORY_OFFSET = 260;
-const NUTRITION_BOTTOM_INSET = 420;
+const NUTRITION_BOTTOM_INSET = 210;
+const CHAT_JOB_POLL_INTERVAL_MS = 1500;
+const CHAT_JOB_MAX_POLLS = 40;
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function normalizeMessage(message: ChatMessageData): ChatMessageData {
   const analysis = message.analysis ?? parseMealAnalysisFromContent(message.content) ?? undefined;
@@ -551,21 +569,35 @@ export default function NutritionScreen() {
           requestBody.imageBase64 = attachedImage.base64;
         }
 
-        const response = await apiFetch<{ content: string }>('/api/nutrition/chat', {
+        const response = await apiFetch<ChatCreateResponse>('/api/nutrition/chat', {
           method: 'POST',
           body: requestBody,
         });
 
-        assistantContent = response.content;
+        for (let attempt = 0; attempt < CHAT_JOB_MAX_POLLS; attempt++) {
+          const job = await apiFetch<ChatJobResponse>(`/api/nutrition/chat/jobs/${response.jobId}`);
+
+          if (job.status === 'completed') {
+            assistantContent = job.content ?? '';
+            break;
+          }
+
+          if (job.status === 'failed') {
+            throw new Error(job.error ?? 'The assistant could not complete that request.');
+          }
+
+          await delay(CHAT_JOB_POLL_INTERVAL_MS);
+        }
+
+        if (!assistantContent.trim()) {
+          throw new Error('The assistant took too long to respond.');
+        }
+
         setMessages((prev) =>
           prev.map((message) =>
             message.id === assistantMsgId ? { ...message, content: assistantContent } : message,
           ),
         );
-
-        if (!assistantContent.trim()) {
-          throw new Error('The assistant returned an empty response.');
-        }
       } catch (error) {
         if (assistantContent.trim()) {
           return;

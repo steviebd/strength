@@ -146,6 +146,37 @@ GitHub Actions deploys via Infisical OIDC — no long-lived credentials stored a
 bun run check   # lint + typecheck + tests
 ```
 
+### Cloudflare Queues
+
+Nutrition chat runs through a Cloudflare Queue. Create each remote queue once before
+deploying an environment:
+
+```bash
+cd apps/worker
+infisical run --env=staging --project-config-dir ../.. -- wrangler queues create strength-nutrition-chat-staging --message-retention-period-secs 86400
+infisical run --env=prod --project-config-dir ../.. -- wrangler queues create strength-nutrition-chat-prod --message-retention-period-secs 86400
+```
+
+The explicit retention value keeps queue creation compatible with Cloudflare Workers
+Free. Older Wrangler versions default to a retention period that Free queues reject.
+Queue creation only creates the resource; the queue is connected to the Worker when
+the Worker is deployed with the generated Wrangler config.
+
+After queue creation, apply migrations and deploy the Worker:
+
+```bash
+bun run db:apply:staging
+bun run deploy:staging
+```
+
+If the Cloudflare dashboard still shows no consumer after deploy, attach it manually:
+
+```bash
+cd apps/worker
+infisical run --env=staging --project-config-dir ../.. -- wrangler queues consumer add strength-nutrition-chat-staging strength-worker-staging --batch-size 1
+infisical run --env=prod --project-config-dir ../.. -- wrangler queues consumer add strength-nutrition-chat-prod strength-worker-prod --batch-size 1
+```
+
 ## Packages
 
 | Package | Purpose |

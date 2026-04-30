@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
@@ -169,6 +169,7 @@ eas.on('exit', async (code) => {
 
   console.log(`Copying ${apkPath} -> ${destPath}`);
   cpSync(apkPath, destPath);
+  rmSync(apkPath);
 
   console.log('');
   console.log(`Build saved: ${destPath}`);

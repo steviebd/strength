@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from './auth/password';
 
 export interface WorkerEnv {
   DB: D1Database;
+  NUTRITION_CHAT_QUEUE?: Queue<NutritionChatQueueMessage>;
   BETTER_AUTH_SECRET: string;
   WORKER_BASE_URL: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
@@ -29,6 +30,10 @@ export interface WorkerEnv {
   RATE_LIMIT_REQUEST_PER_HOUR?: string;
   E2E_TEST_MODE?: string;
   E2E_TEST_SECRET?: string;
+}
+
+export interface NutritionChatQueueMessage {
+  jobId: string;
 }
 
 type SameSitePolicy = 'strict' | 'lax' | 'none';

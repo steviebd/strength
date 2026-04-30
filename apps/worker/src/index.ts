@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { createAuth, resolveWorkerEnv, type WorkerEnv } from './auth';
+import {
+  createAuth,
+  resolveWorkerEnv,
+  type NutritionChatQueueMessage,
+  type WorkerEnv,
+} from './auth';
 import { createDb, populateAuthContext, getAuth } from './api/auth';
 import { exchangeCodeForTokens } from './whoop/auth';
 import { storeWhoopTokens } from './whoop/token-rotation';
@@ -30,6 +35,7 @@ import nutritionRouter from './routes/nutrition';
 import homeRouter from './routes/home';
 import trainingRouter from './routes/training';
 import e2eRouter from './routes/e2e';
+import { processNutritionChatJob } from './api/nutrition/chat';
 
 type Variables = {
   user: ReturnType<typeof createAuth>['$Infer']['Session']['user'] | null;
@@ -337,4 +343,14 @@ app.get('/api/webhooks/whoop', async (c) => {
   return c.json({ ok: true, message: 'WHOOP webhook endpoint active' });
 });
 
-export default app;
+async function queue(batch: MessageBatch<NutritionChatQueueMessage>, env: WorkerEnv) {
+  for (const message of batch.messages) {
+    await processNutritionChatJob(env, message.body);
+    message.ack();
+  }
+}
+
+export default {
+  fetch: app.fetch.bind(app),
+  queue,
+};
