@@ -3,12 +3,15 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "infisical run --env=dev -- bun run dev:metro",
+    "sync-env:dev": "bun run scripts/sync-expo-env.ts dev",
+    "sync-env:staging": "bun run scripts/sync-expo-env.ts staging",
+    "dev": "bun run sync-env:dev && bun run dev:metro",
     "dev:metro": "lsof -ti:8081 | xargs kill -9 2>/dev/null || true; EXPO_NO_METRO_LAZY=1 expo start --clear -- --port 8081",
     "android": "EXPO_NO_METRO_LAZY=1 expo start --android",
     "ios": "EXPO_NO_METRO_LAZY=1 expo start --ios",
     "web": "EXPO_NO_METRO_LAZY=1 expo start --web",
     "build:web": "npx tsx scripts/web-build.ts",
+    "logs:android": "adb logcat -c && adb logcat '*:S' 'ReactNative:V' 'ReactNativeJS:V' 'AndroidRuntime:E' 'ExpoModulesCore:E'",
     "typecheck": "bunx tsc --noEmit",
     "build:android:staging": "bun run scripts/build-android-staging.ts"
   },

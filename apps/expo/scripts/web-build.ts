@@ -44,33 +44,14 @@ async function main() {
     return;
   }
 
-  console.log('Local build - fetching secrets from Infisical dev environment');
-  const result = spawnSync('infisical', ['secrets', '--env', 'dev', '--output', 'dotenv'], {
-    encoding: 'utf-8',
+  const result = spawnSync('bun', ['run', 'sync-env:dev'], {
+    stdio: 'inherit',
   });
 
-  if (result.status !== 0 || !result.stdout.trim()) {
-    console.error('Failed to fetch secrets from Infisical dev');
-    console.error('Ensure you are logged in: infisical login');
+  if (result.status !== 0) {
     process.exit(1);
   }
 
-  const lines = result.stdout.split('\n').filter((line) => line.startsWith('EXPO_PUBLIC_'));
-  const secrets: Record<string, string> = {};
-  for (const line of lines) {
-    const eqIndex = line.indexOf('=');
-    if (eqIndex > 0) {
-      const key = line.slice(0, eqIndex);
-      const value = line.slice(eqIndex + 1);
-      secrets[key] = value;
-    }
-  }
-  if (Object.keys(secrets).length === 0) {
-    console.error('No EXPO_PUBLIC_* secrets found in Infisical dev');
-    process.exit(1);
-  }
-  writeEnvFile(secrets);
-  console.log('Wrote secrets to .env.local');
   runBuild();
 }
 

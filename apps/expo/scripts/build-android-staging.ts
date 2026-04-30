@@ -1,10 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 
 const BUILDS_DIR = join(process.cwd(), 'builds');
+const ENV_LOCAL_PATH = join(process.cwd(), '.env.local');
 const SERVER_PORT = Number(process.env.BUILDS_SERVER_PORT ?? '8080');
+
 function getJavaHome(): string {
   if (process.env.JAVA_HOME) {
     return process.env.JAVA_HOME;
@@ -52,61 +54,65 @@ function getLanIp() {
   return 'localhost';
 }
 
-function runInfisicalCommand(args: string[]) {
-  return spawnSync(
-    'infisical',
-    ['run', '--env=staging', '--project-config-dir', '../..', '--', ...args],
-    {
-      cwd: process.cwd(),
-      env: BUILD_ENV,
-      encoding: 'utf-8',
-    },
-  );
+function syncStagingEnv() {
+  const result = spawnSync('bun', ['run', 'sync-env:staging'], {
+    cwd: process.cwd(),
+    env: BUILD_ENV,
+    stdio: 'inherit',
+  });
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
 }
 
-const envCheck = runInfisicalCommand([
-  'sh',
-  '-c',
-  'test -n "$EXPO_PUBLIC_WORKER_BASE_URL" && printf "%s" "$EXPO_PUBLIC_WORKER_BASE_URL"',
-]);
+function readEnvLocal() {
+  const env: Record<string, string> = {};
+  const content = readFileSync(ENV_LOCAL_PATH, 'utf-8');
 
-if (envCheck.status !== 0 || !envCheck.stdout.trim()) {
-  console.error('Missing EXPO_PUBLIC_WORKER_BASE_URL in Infisical staging.');
-  console.error('Set it to the staging Worker URL before building the APK.');
-  process.exit(1);
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, eqIndex);
+    const value = trimmed.slice(eqIndex + 1);
+    if (key.startsWith('EXPO_PUBLIC_')) {
+      env[key] = value;
+    }
+  }
+
+  return env;
 }
+
+syncStagingEnv();
+const expoPublicEnv = readEnvLocal();
+const workerUrl = expoPublicEnv.EXPO_PUBLIC_WORKER_BASE_URL;
 
 mkdirSync(BUILDS_DIR, { recursive: true });
 
 const buildNumber = getNextBuildNumber();
 const destPath = join(BUILDS_DIR, `${buildNumber}.apk`);
-const workerUrl = envCheck.stdout.trim();
+const easEnv = {
+  ...BUILD_ENV,
+  ...expoPublicEnv,
+};
 
 console.log(`Staging Worker URL: ${workerUrl}`);
+console.log(`Expo app scheme: ${expoPublicEnv.EXPO_PUBLIC_APP_SCHEME}`);
 console.log(`Starting staging Android build ${buildNumber}...`);
 
-const eas = spawn(
-  'infisical',
-  [
-    'run',
-    '--env=staging',
-    '--project-config-dir',
-    '../..',
-    '--',
-    'eas',
-    'build',
-    '--local',
-    '--platform',
-    'android',
-    '--profile',
-    'staging',
-  ],
-  {
-    cwd: process.cwd(),
-    env: BUILD_ENV,
-    stdio: ['inherit', 'pipe', 'pipe'],
-  },
-);
+const eas = spawn('eas', ['build', '--local', '--platform', 'android', '--profile', 'staging'], {
+  cwd: process.cwd(),
+  env: easEnv,
+  stdio: ['inherit', 'pipe', 'pipe'],
+});
 
 let output = '';
 
@@ -154,4 +160,14 @@ eas.on('exit', (code) => {
   server.on('exit', (serverCode) => {
     process.exit(serverCode ?? 0);
   });
+});
+
+process.once('SIGINT', () => {
+  eas.kill('SIGINT');
+  process.exit(130);
+});
+
+process.once('SIGTERM', () => {
+  eas.kill('SIGTERM');
+  process.exit(143);
 });

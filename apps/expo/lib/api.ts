@@ -1,5 +1,5 @@
 import { authClient } from './auth-client';
-import { env } from './env';
+import { assertAppConfigured, env } from './env';
 import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 
@@ -64,6 +64,8 @@ function getNativeAuthHeaders(): HeadersInit {
 }
 
 async function apiFetchStream(endpoint: string, options: ApiFetchOptions): Promise<Response> {
+  assertAppConfigured();
+
   const isRelative = !endpoint.startsWith('http');
   const url = isRelative
     ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
@@ -102,6 +104,8 @@ async function apiFetchStream(endpoint: string, options: ApiFetchOptions): Promi
 }
 
 export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
+  assertAppConfigured();
+
   const isRelative = !endpoint.startsWith('http');
   const url = isRelative
     ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`

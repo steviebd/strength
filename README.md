@@ -100,6 +100,19 @@ Secrets are injected by Infisical at runtime. No `.env` file.
 | `WHOOP_CLIENT_ID` | From Whoop Developer Portal |
 | `WHOOP_CLIENT_SECRET` | From Whoop Developer Portal |
 
+**Required in Infisical `staging` for Android APK builds:**
+
+| Secret | Notes |
+|--------|-------|
+| `EXPO_PUBLIC_WORKER_BASE_URL` | HTTPS staging Worker URL embedded into the native app bundle |
+| `EXPO_PUBLIC_APP_SCHEME` | Optional; defaults to `strength` |
+
+`bun run dev:expo` writes Infisical `dev` `EXPO_PUBLIC_*` values to
+`apps/expo/.env.local` before starting Metro. `bun run dev:expo:staging` and
+`bun run build:android:staging` write Infisical `staging` values first. The Android
+staging build also validates that `EXPO_PUBLIC_WORKER_BASE_URL` is present and HTTPS,
+then passes the generated values directly to `eas build --local`.
+
 **Optional:**
 
 | Secret | Notes |
