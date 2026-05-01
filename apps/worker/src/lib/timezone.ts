@@ -46,8 +46,9 @@ export async function requireDateRange(
   db: any,
   userId: string,
   date: string,
+  requestedTimezone?: string | null,
 ): Promise<{ start: Date; end: Date; timezone: string } | Response> {
-  const timezoneResult = await resolveUserTimezone(db, userId);
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
   }

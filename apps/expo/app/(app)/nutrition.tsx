@@ -147,10 +147,34 @@ const CHAT_HISTORY_PAGE_SIZE = 5;
 const CHAT_FOCUS_HISTORY_OFFSET = 260;
 const NUTRITION_BOTTOM_INSET = 120;
 const CHAT_JOB_POLL_INTERVAL_MS = 1500;
-const CHAT_JOB_MAX_POLLS = 40;
+const CHAT_JOB_TIMEOUT_MS = 3 * 60 * 1000;
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildNutritionDateUrl(
+  path: string,
+  date: string,
+  timezone: string | null | undefined,
+  params?: Record<string, string | number | null | undefined>,
+) {
+  const searchParams = new URLSearchParams({ date });
+  if (timezone) {
+    searchParams.set('timezone', timezone);
+  }
+
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== null && value !== undefined) {
+      searchParams.set(key, String(value));
+    }
+  }
+
+  return `${path}?${searchParams.toString()}`;
+}
+
+function getNutritionLocalStateKey(date: string, timezone: string | null | undefined) {
+  return `${date}_${timezone ?? 'local'}`.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function normalizeMessage(message: ChatMessageData): ChatMessageData {
@@ -287,7 +311,14 @@ export default function NutritionScreen() {
   const queryClient = useQueryClient();
   const { activeTimezone } = useUserPreferences();
   const date = getTodayLocalDate(activeTimezone);
-  const dailySummaryQueryKey = useMemo(() => ['nutrition-daily-summary', date], [date]);
+  const localStateKey = useMemo(
+    () => getNutritionLocalStateKey(date, activeTimezone),
+    [activeTimezone, date],
+  );
+  const dailySummaryQueryKey = useMemo(
+    () => ['nutrition-daily-summary', date, activeTimezone],
+    [activeTimezone, date],
+  );
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [draftText, setDraftText] = useState('');
@@ -308,11 +339,12 @@ export default function NutritionScreen() {
   const [chatInputY, setChatInputY] = useState<number | null>(null);
   const savingAnalysisMessageIds = useRef(new Set<string>());
 
-  const { data: whoopData } = useWhoopData(date);
+  const { data: whoopData } = useWhoopData(date, activeTimezone ?? 'UTC');
 
   const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
     queryKey: dailySummaryQueryKey,
-    queryFn: () => apiFetch(`/api/nutrition/daily-summary?date=${date}`),
+    queryFn: () =>
+      apiFetch(buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone)),
   });
 
   useEffect(() => {
@@ -326,9 +358,9 @@ export default function NutritionScreen() {
 
     async function restoreLocalState() {
       const [cachedMessages, cachedDraft, cachedPendingImage] = await Promise.all([
-        getNutritionChatMessages<ChatMessageData>(date),
-        getNutritionChatDraft(date),
-        getNutritionPendingImage(date),
+        getNutritionChatMessages<ChatMessageData>(localStateKey),
+        getNutritionChatDraft(localStateKey),
+        getNutritionPendingImage(localStateKey),
       ]);
 
       if (isCancelled) return;
@@ -349,17 +381,17 @@ export default function NutritionScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [date]);
+  }, [localStateKey]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
-    void setNutritionChatMessages(date, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
-  }, [date, hasRestoredLocalState, messages]);
+    void setNutritionChatMessages(localStateKey, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
+  }, [hasRestoredLocalState, localStateKey, messages]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
-    void setNutritionChatDraft(date, draftText);
-  }, [date, draftText, hasRestoredLocalState]);
+    void setNutritionChatDraft(localStateKey, draftText);
+  }, [draftText, hasRestoredLocalState, localStateKey]);
 
   useEffect(() => {
     if (!summary) return;
@@ -408,10 +440,14 @@ export default function NutritionScreen() {
   const exchanges = useMemo(() => buildChatExchanges(messages), [messages]);
 
   const historyQuery = useQuery<ChatHistoryResponse>({
-    queryKey: ['nutrition-chat-history-initial', date],
+    queryKey: ['nutrition-chat-history-initial', date, activeTimezone],
     enabled: hasRestoredLocalState,
     queryFn: () =>
-      apiFetch(`/api/nutrition/chat/history?date=${date}&limit=${CHAT_HISTORY_PAGE_SIZE}`),
+      apiFetch(
+        buildNutritionDateUrl('/api/nutrition/chat/history', date, activeTimezone, {
+          limit: CHAT_HISTORY_PAGE_SIZE,
+        }),
+      ),
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     staleTime: 0,
@@ -508,7 +544,7 @@ export default function NutritionScreen() {
     mutationFn: (type: TrainingType) =>
       apiFetch('/api/nutrition/training-context', {
         method: 'POST',
-        body: { trainingType: type, date },
+        body: { trainingType: type, date, timezone: activeTimezone },
       }),
     onSuccess: () => {
       refetchSummary();
@@ -547,7 +583,7 @@ export default function NutritionScreen() {
 
       setMessages((prev) => [...prev, userMsg]);
       setPendingImage(null);
-      void setNutritionPendingImage(date, null);
+      void setNutritionPendingImage(localStateKey, null);
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
@@ -562,6 +598,7 @@ export default function NutritionScreen() {
             content: message.content,
           })),
           date,
+          timezone: activeTimezone,
         };
 
         if (attachedImage) {
@@ -574,7 +611,8 @@ export default function NutritionScreen() {
           body: requestBody,
         });
 
-        for (let attempt = 0; attempt < CHAT_JOB_MAX_POLLS; attempt++) {
+        const jobStartedAt = Date.now();
+        while (Date.now() - jobStartedAt < CHAT_JOB_TIMEOUT_MS) {
           const job = await apiFetch<ChatJobResponse>(`/api/nutrition/chat/jobs/${response.jobId}`);
 
           if (job.status === 'completed') {
@@ -628,7 +666,7 @@ export default function NutritionScreen() {
         }
       }
     },
-    [date, messages, pendingImage],
+    [activeTimezone, date, localStateKey, messages, pendingImage],
   );
 
   const loadOlderHistory = useCallback(async () => {
@@ -640,7 +678,10 @@ export default function NutritionScreen() {
 
     try {
       const response = await apiFetch<ChatHistoryResponse>(
-        `/api/nutrition/chat/history?date=${date}&limit=${CHAT_HISTORY_PAGE_SIZE}&before=${historyCursor}`,
+        buildNutritionDateUrl('/api/nutrition/chat/history', date, activeTimezone, {
+          limit: CHAT_HISTORY_PAGE_SIZE,
+          before: historyCursor,
+        }),
       );
 
       const olderMessages = response.messages.map((message) =>
@@ -660,7 +701,7 @@ export default function NutritionScreen() {
     } finally {
       setIsLoadingMoreHistory(false);
     }
-  }, [date, historyCursor, isLoadingMoreHistory]);
+  }, [activeTimezone, date, historyCursor, isLoadingMoreHistory]);
 
   const handleSaveFromAnalysis = useCallback(
     async (messageId: string, analysis: MealAnalysis, savedEntryId?: string | null) => {
@@ -767,10 +808,10 @@ export default function NutritionScreen() {
     (base64: string, uri: string) => {
       const image = { base64, uri };
       setPendingImage(image);
-      void setNutritionPendingImage(date, image);
+      void setNutritionPendingImage(localStateKey, image);
       scrollToChatInput(true, 0);
     },
-    [date, scrollToChatInput],
+    [localStateKey, scrollToChatInput],
   );
 
   useEffect(() => {
@@ -943,7 +984,7 @@ export default function NutritionScreen() {
                   pendingImageUri={pendingImage?.uri ?? null}
                   onClearImage={() => {
                     setPendingImage(null);
-                    void setNutritionPendingImage(date, null);
+                    void setNutritionPendingImage(localStateKey, null);
                   }}
                 />
               </View>

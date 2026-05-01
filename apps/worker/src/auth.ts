@@ -38,6 +38,10 @@ export interface NutritionChatQueueMessage {
 
 type SameSitePolicy = 'strict' | 'lax' | 'none';
 
+export const SESSION_EXPIRES_IN_SECONDS = 10 * 24 * 60 * 60;
+export const SESSION_UPDATE_AGE_SECONDS = 60 * 60;
+export const SESSION_COOKIE_CACHE_MAX_AGE_SECONDS = 5 * 60;
+
 function getProcessEnv() {
   const maybeProcess = globalThis as typeof globalThis & {
     process?: { env?: Record<string, string | undefined> };
@@ -205,9 +209,11 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
       },
     },
     session: {
+      expiresIn: SESSION_EXPIRES_IN_SECONDS,
+      updateAge: SESSION_UPDATE_AGE_SECONDS,
       cookieCache: {
         enabled: true,
-        maxAge: 5 * 60,
+        maxAge: SESSION_COOKIE_CACHE_MAX_AGE_SECONDS,
       },
     },
     trustedOrigins: Array.from(new Set(trustedOrigins)),

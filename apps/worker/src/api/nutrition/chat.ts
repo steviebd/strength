@@ -27,10 +27,16 @@ interface ChatRequest {
   timezone?: string;
 }
 
+interface QueuedChatPayload {
+  messages: ChatRequest['messages'];
+  timezone?: string | null;
+}
+
 interface ChatHistoryQuery {
   date: string;
   limit?: string;
   before?: string;
+  timezone?: string;
 }
 
 type ChatJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -141,12 +147,14 @@ async function resolveChatDate({
   db,
   userId,
   requestedDate,
+  requestedTimezone,
 }: {
   db: any;
   userId: string;
   requestedDate: string | undefined;
+  requestedTimezone?: string | null;
 }) {
-  const timezoneResult = await resolveUserTimezone(db, userId);
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   if (timezoneResult.error || !timezoneResult.timezone) {
     return { error: timezoneResult.error ?? 'Timezone is required' };
   }
@@ -177,8 +185,14 @@ async function generateNutritionChatAssistantContent({
   userId: string;
   body: ChatRequest;
 }): Promise<{ content: string; assistantMessageId: string }> {
-  const { messages, date: requestedDate, hasImage, imageBase64 } = body;
-  const dateResult = await resolveChatDate({ db, userId, requestedDate });
+  const {
+    messages,
+    date: requestedDate,
+    hasImage,
+    imageBase64,
+    timezone: requestedTimezone,
+  } = body;
+  const dateResult = await resolveChatDate({ db, userId, requestedDate, requestedTimezone });
   if (dateResult.error || !dateResult.date || !dateResult.timezone) {
     throw new Error(dateResult.error);
   }
@@ -400,7 +414,13 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const { messages, date: requestedDate, hasImage = false, imageBase64 } = body;
+  const {
+    messages,
+    date: requestedDate,
+    hasImage = false,
+    imageBase64,
+    timezone: requestedTimezone,
+  } = body;
   if (!validateChatMessages(messages)) {
     return c.json({ error: 'Messages are required' }, 400);
   }
@@ -416,7 +436,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: 'Rate limit exceeded', code: 'RATE_LIMITED' }, 429);
   }
 
-  const dateResult = await resolveChatDate({ db, userId, requestedDate });
+  const dateResult = await resolveChatDate({ db, userId, requestedDate, requestedTimezone });
   if (dateResult.error || !dateResult.date) {
     return c.json({ error: dateResult.error }, 400);
   }
@@ -436,7 +456,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     id: jobId,
     userId,
     status: 'pending',
-    messagesJson: JSON.stringify(messages),
+    messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
     date: dateResult.date,
     hasImage: hasImageFlag,
     imageBase64: hasImageFlag ? imageBase64 : null,
@@ -513,7 +533,9 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
     .where(eq(schema.nutritionChatJobs.id, job.id));
 
   try {
-    const messages = JSON.parse(job.messagesJson) as ChatRequest['messages'];
+    const payload = JSON.parse(job.messagesJson) as ChatRequest['messages'] | QueuedChatPayload;
+    const messages = Array.isArray(payload) ? payload : payload.messages;
+    const timezone = Array.isArray(payload) ? undefined : payload.timezone;
     const assistant = await generateNutritionChatAssistantContent({
       db,
       env,
@@ -521,6 +543,7 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
       body: {
         messages,
         date: job.date,
+        timezone: timezone ?? undefined,
         hasImage: job.hasImage ?? false,
         imageBase64: job.imageBase64 ?? undefined,
       },
@@ -554,8 +577,13 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
 }
 
 export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => {
-  const { date, limit: limitParam, before } = c.req.query() as unknown as ChatHistoryQuery;
-  const timezoneResult = await resolveUserTimezone(db, userId);
+  const {
+    date,
+    limit: limitParam,
+    before,
+    timezone: requestedTimezone,
+  } = c.req.query() as unknown as ChatHistoryQuery;
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
   }
