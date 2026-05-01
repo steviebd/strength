@@ -21,7 +21,7 @@ import type { ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
 import { colors, radius, spacing, typography } from '@/theme';
 
 interface ExerciseSearchProps {
-  onSelect: (exercises: ExerciseLibraryItem[]) => void;
+  onSelect: (exercises: ExerciseLibraryItem[]) => void | Promise<void>;
   onClose: () => void;
   excludeIds?: string[];
   visible?: boolean;
@@ -85,17 +85,25 @@ export function ExerciseSearch({
     description: '',
   });
   const [creating, setCreating] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
   const scrollViewportHeight = useRef(0);
+  const confirmingRef = useRef(false);
 
   const handleClose = () => {
+    if (confirmingRef.current) {
+      return;
+    }
     setPendingSelection([]);
     onClose();
   };
 
   useEffect(() => {
     if (!visible) {
+      confirmingRef.current = false;
+      setConfirming(false);
+      setPendingSelection([]);
       return;
     }
 
@@ -157,62 +165,75 @@ export function ExerciseSearch({
   }
 
   function handleConfirm() {
+    if (confirmingRef.current || pendingSelection.length === 0) {
+      return;
+    }
+
+    confirmingRef.current = true;
+    setConfirming(true);
+
     void (async () => {
-      const selectedExercises: ExerciseLibraryItem[] = [];
+      try {
+        const selectedExercises: ExerciseLibraryItem[] = [];
 
-      for (const selectionKey of pendingSelection) {
-        if (selectionKey.startsWith('user:')) {
-          const userId = selectionKey.slice('user:'.length);
-          const userEx = userExercises.find((exercise) => exercise.id === userId);
+        for (const selectionKey of pendingSelection) {
+          if (selectionKey.startsWith('user:')) {
+            const userId = selectionKey.slice('user:'.length);
+            const userEx = userExercises.find((exercise) => exercise.id === userId);
 
-          if (!userEx) {
+            if (!userEx) {
+              continue;
+            }
+
+            selectedExercises.push({
+              id: userEx.id,
+              libraryId: userEx.libraryId,
+              name: userEx.name,
+              muscleGroup: userEx.muscleGroup ?? '',
+              description: userEx.description ?? '',
+            });
             continue;
           }
 
-          selectedExercises.push({
-            id: userEx.id,
-            libraryId: userEx.libraryId,
-            name: userEx.name,
-            muscleGroup: userEx.muscleGroup ?? '',
-            description: userEx.description ?? '',
-          });
-          continue;
+          if (!selectionKey.startsWith('library:')) {
+            continue;
+          }
+
+          const libraryId = selectionKey.slice('library:'.length);
+          const libraryExercise = exerciseLibrary.find((exercise) => exercise.id === libraryId);
+
+          if (!libraryExercise) {
+            continue;
+          }
+
+          try {
+            const persistedExercise = await ensurePersistedExercise(libraryExercise);
+            selectedExercises.push({
+              id: persistedExercise.id,
+              libraryId: persistedExercise.libraryId,
+              name: persistedExercise.name,
+              muscleGroup: persistedExercise.muscleGroup ?? '',
+              description: persistedExercise.description ?? '',
+            });
+          } catch {
+            selectedExercises.push({
+              id: libraryExercise.id,
+              libraryId: libraryExercise.id,
+              name: libraryExercise.name,
+              muscleGroup: libraryExercise.muscleGroup,
+              description: libraryExercise.description,
+            });
+          }
         }
 
-        if (!selectionKey.startsWith('library:')) {
-          continue;
-        }
-
-        const libraryId = selectionKey.slice('library:'.length);
-        const libraryExercise = exerciseLibrary.find((exercise) => exercise.id === libraryId);
-
-        if (!libraryExercise) {
-          continue;
-        }
-
-        try {
-          const persistedExercise = await ensurePersistedExercise(libraryExercise);
-          selectedExercises.push({
-            id: persistedExercise.id,
-            libraryId: persistedExercise.libraryId,
-            name: persistedExercise.name,
-            muscleGroup: persistedExercise.muscleGroup ?? '',
-            description: persistedExercise.description ?? '',
-          });
-        } catch {
-          selectedExercises.push({
-            id: libraryExercise.id,
-            libraryId: libraryExercise.id,
-            name: libraryExercise.name,
-            muscleGroup: libraryExercise.muscleGroup,
-            description: libraryExercise.description,
-          });
-        }
+        await onSelect(selectedExercises);
+        setPendingSelection([]);
+        onClose();
+      } catch (e) {
+        setCreateError(e instanceof Error ? e.message : 'Failed to add exercise');
+        confirmingRef.current = false;
+        setConfirming(false);
       }
-
-      onSelect(selectedExercises);
-      setPendingSelection([]);
-      onClose();
     })();
   }
 
@@ -469,10 +490,13 @@ export function ExerciseSearch({
                 testID="workout-exercise-confirm"
                 accessibilityLabel="workout-exercise-confirm"
                 onPress={handleConfirm}
+                disabled={confirming}
                 style={styles.confirmButton}
               >
                 <Text style={styles.confirmButtonText}>
-                  Add {pendingSelection.length} Exercise{pendingSelection.length > 1 ? 's' : ''}
+                  {confirming
+                    ? 'Adding...'
+                    : `Add ${pendingSelection.length} Exercise${pendingSelection.length > 1 ? 's' : ''}`}
                 </Text>
               </Pressable>
             </View>

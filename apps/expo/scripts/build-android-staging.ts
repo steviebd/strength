@@ -13,13 +13,51 @@ function getJavaHome(): string {
   if (process.env.JAVA_HOME) {
     return process.env.JAVA_HOME;
   }
-  const result = spawnSync('/usr/libexec/java_home', ['-v', '17'], {
-    encoding: 'utf-8',
-  });
-  if (result.status === 0 && result.stdout.trim()) {
-    return result.stdout.trim();
+
+  if (process.platform === 'darwin') {
+    const result = spawnSync('/usr/libexec/java_home', ['-v', '17'], {
+      encoding: 'utf-8',
+    });
+    if (result.status === 0 && result.stdout.trim()) {
+      return result.stdout.trim();
+    }
   }
-  throw new Error('JAVA_HOME not set and Java 17 not found via /usr/libexec/java_home');
+
+  const linuxPaths = [
+    '/usr/lib/jvm/java-17-openjdk',
+    '/usr/lib/jvm/java-17-openjdk-amd64',
+    '/usr/lib/jvm/default-java',
+  ];
+  for (const path of linuxPaths) {
+    if (existsSync(path)) {
+      return path;
+    }
+  }
+
+  const whichResult = spawnSync('which', ['java'], { encoding: 'utf-8' });
+  if (whichResult.status === 0) {
+    const javaPath = whichResult.stdout.trim();
+    const versionResult = spawnSync(javaPath, ['-version'], {
+      encoding: 'utf-8',
+    });
+    if (versionResult.status === 0 && versionResult.stderr.includes('17')) {
+      const readlinkResult = spawnSync('readlink', ['-f', javaPath], {
+        encoding: 'utf-8',
+      });
+      if (readlinkResult.status === 0) {
+        const realPath = readlinkResult.stdout.trim();
+        const match = realPath.match(/^(.+)\/bin\/java$/);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    'JAVA_HOME not set and Java 17 home could not be determined automatically. ' +
+      'Please set JAVA_HOME to your Java 17 installation directory (e.g., /usr/lib/jvm/java-17-openjdk).',
+  );
 }
 
 const BUILD_ENV = {

@@ -3,6 +3,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
   type TextStyle,
@@ -95,9 +96,26 @@ export default function Profile() {
   const [highlightWhoopCard, setHighlightWhoopCard] = useState(false);
   const [shouldFocusWhoopCard, setShouldFocusWhoopCard] = useState(false);
 
+  // Nutrition Goals state
+  const [useCustomTargets, setUseCustomTargets] = useState(false);
+  const [targetCalories, setTargetCalories] = useState('');
+  const [targetProteinG, setTargetProteinG] = useState('');
+  const [targetCarbsG, setTargetCarbsG] = useState('');
+  const [targetFatG, setTargetFatG] = useState('');
+  const [fatLocked, setFatLocked] = useState(false);
+  const [targetsDirty, setTargetsDirty] = useState(false);
+  const [targetError, setTargetError] = useState<string | null>(null);
+
   const { data: bodyStats } = useQuery({
     queryKey: ['body-stats'],
-    queryFn: () => apiFetch<{ bodyweightKg: number | null }>('/api/nutrition/body-stats'),
+    queryFn: () =>
+      apiFetch<{
+        bodyweightKg: number | null;
+        targetCalories: number | null;
+        targetProteinG: number | null;
+        targetCarbsG: number | null;
+        targetFatG: number | null;
+      }>('/api/nutrition/body-stats'),
   });
 
   const saveBodyweightMutation = useMutation({
@@ -112,6 +130,80 @@ export default function Profile() {
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
     },
   });
+
+  const saveTargetsMutation = useMutation({
+    mutationFn: (targets: {
+      targetCalories?: number | null;
+      targetProteinG?: number | null;
+      targetCarbsG?: number | null;
+      targetFatG?: number | null;
+    }) =>
+      apiFetch('/api/nutrition/body-stats', {
+        method: 'POST',
+        body: targets,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['body-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
+      setTargetsDirty(false);
+    },
+  });
+
+  function getBaseTargetsFromBodyweight(bodyweightKg: number | null | undefined) {
+    if (!bodyweightKg) return null;
+    const proteinG = Math.round(bodyweightKg * 2);
+    const fatG = Math.round(bodyweightKg * 0.8);
+    const carbsG = Math.max(0, Math.round((2500 - proteinG * 4 - fatG * 9) / 4));
+    return { calories: 2500, proteinG, carbsG, fatG };
+  }
+
+  function recalcFat(cal: number, protein: number, carbs: number) {
+    return Math.max(0, Math.round((cal - protein * 4 - carbs * 4) / 9));
+  }
+
+  function getTargetBudget(cal: number, protein: number, carbs: number, fat: number) {
+    return cal - (protein * 4 + carbs * 4 + fat * 9);
+  }
+
+  function syncTargetsFromBodyStats() {
+    const hasManual =
+      bodyStats?.targetCalories != null ||
+      bodyStats?.targetProteinG != null ||
+      bodyStats?.targetCarbsG != null ||
+      bodyStats?.targetFatG != null;
+
+    if (hasManual) {
+      setUseCustomTargets(true);
+      setTargetCalories(bodyStats?.targetCalories != null ? String(bodyStats.targetCalories) : '');
+      setTargetProteinG(bodyStats?.targetProteinG != null ? String(bodyStats.targetProteinG) : '');
+      setTargetCarbsG(bodyStats?.targetCarbsG != null ? String(bodyStats.targetCarbsG) : '');
+      setTargetFatG(bodyStats?.targetFatG != null ? String(bodyStats.targetFatG) : '');
+      setFatLocked(false);
+    } else {
+      setUseCustomTargets(false);
+      const auto = getBaseTargetsFromBodyweight(bodyStats?.bodyweightKg);
+      if (auto) {
+        setTargetCalories(String(auto.calories));
+        setTargetProteinG(String(auto.proteinG));
+        setTargetCarbsG(String(auto.carbsG));
+        setTargetFatG(String(auto.fatG));
+      } else {
+        setTargetCalories('');
+        setTargetProteinG('');
+        setTargetCarbsG('');
+        setTargetFatG('');
+      }
+      setFatLocked(false);
+    }
+    setTargetsDirty(false);
+    setTargetError(null);
+  }
+
+  useEffect(() => {
+    if (!bodyStats) return;
+    syncTargetsFromBodyStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bodyStats]);
 
   useEffect(() => {
     if (bodyStats?.bodyweightKg !== undefined && bodyStats?.bodyweightKg !== null) {
@@ -133,6 +225,121 @@ export default function Profile() {
       const kg = convertToStorageWeight(value, weightUnit);
       saveBodyweightMutation.mutate(kg);
     }
+  };
+
+  const handleToggleCustomTargets = (enabled: boolean) => {
+    if (enabled) {
+      setUseCustomTargets(true);
+      if (
+        !targetCalories &&
+        !targetProteinG &&
+        !targetCarbsG &&
+        !targetFatG &&
+        bodyStats?.bodyweightKg
+      ) {
+        const auto = getBaseTargetsFromBodyweight(bodyStats.bodyweightKg);
+        if (auto) {
+          setTargetCalories(String(auto.calories));
+          setTargetProteinG(String(auto.proteinG));
+          setTargetCarbsG(String(auto.carbsG));
+          setTargetFatG(String(auto.fatG));
+        }
+      }
+    } else {
+      setUseCustomTargets(false);
+      // Clear manual targets from DB
+      saveTargetsMutation.mutate({
+        targetCalories: null,
+        targetProteinG: null,
+        targetCarbsG: null,
+        targetFatG: null,
+      });
+    }
+  };
+
+  const handleTargetCaloriesChange = (text: string) => {
+    setTargetCalories(text);
+    setTargetsDirty(true);
+    if (!fatLocked) {
+      const cal = parseInt(text, 10);
+      const protein = parseInt(targetProteinG, 10);
+      const carbs = parseInt(targetCarbsG, 10);
+      if (!isNaN(cal) && !isNaN(protein) && !isNaN(carbs)) {
+        setTargetFatG(String(recalcFat(cal, protein, carbs)));
+      }
+    }
+  };
+
+  const handleTargetProteinChange = (text: string) => {
+    setTargetProteinG(text);
+    setTargetsDirty(true);
+    if (!fatLocked) {
+      const cal = parseInt(targetCalories, 10);
+      const protein = parseInt(text, 10);
+      const carbs = parseInt(targetCarbsG, 10);
+      if (!isNaN(cal) && !isNaN(protein) && !isNaN(carbs)) {
+        setTargetFatG(String(recalcFat(cal, protein, carbs)));
+      }
+    }
+  };
+
+  const handleTargetCarbsChange = (text: string) => {
+    setTargetCarbsG(text);
+    setTargetsDirty(true);
+    if (!fatLocked) {
+      const cal = parseInt(targetCalories, 10);
+      const protein = parseInt(targetProteinG, 10);
+      const carbs = parseInt(text, 10);
+      if (!isNaN(cal) && !isNaN(protein) && !isNaN(carbs)) {
+        setTargetFatG(String(recalcFat(cal, protein, carbs)));
+      }
+    }
+  };
+
+  const handleTargetFatChange = (text: string) => {
+    setTargetFatG(text);
+    setTargetsDirty(true);
+    setFatLocked(text.length > 0);
+  };
+
+  const handleCalculateFromBodyweight = () => {
+    if (!bodyStats?.bodyweightKg) return;
+    const auto = getBaseTargetsFromBodyweight(bodyStats.bodyweightKg);
+    if (auto) {
+      setTargetCalories(String(auto.calories));
+      setTargetProteinG(String(auto.proteinG));
+      setTargetCarbsG(String(auto.carbsG));
+      setTargetFatG(String(auto.fatG));
+      setFatLocked(false);
+      setTargetsDirty(true);
+      setTargetError(null);
+    }
+  };
+
+  const handleSaveTargets = () => {
+    const cal = parseInt(targetCalories, 10);
+    const protein = parseInt(targetProteinG, 10);
+    const carbs = parseInt(targetCarbsG, 10);
+    const fat = parseInt(targetFatG, 10);
+
+    if (isNaN(cal) || isNaN(protein) || isNaN(carbs) || isNaN(fat)) {
+      setTargetError('All fields must be filled with valid numbers');
+      return;
+    }
+
+    const budget = getTargetBudget(cal, protein, carbs, fat);
+    if (Math.abs(budget) > 5) {
+      setTargetError(`Calories must match macros within 5 cal (off by ${budget})`);
+      return;
+    }
+
+    setTargetError(null);
+    saveTargetsMutation.mutate({
+      targetCalories: cal,
+      targetProteinG: protein,
+      targetCarbsG: carbs,
+      targetFatG: fat,
+    });
   };
 
   const handleSignOut = () => {
@@ -361,6 +568,129 @@ export default function Profile() {
             </Pressable>
           </View>
         </View>
+
+        <View style={styles.nutritionGoalsSection}>
+          <View style={styles.nutritionGoalsHeader}>
+            <Text style={styles.rowLabel}>Nutrition Goals</Text>
+            <Switch
+              value={useCustomTargets}
+              onValueChange={handleToggleCustomTargets}
+              trackColor={{ false: colors.border, true: colors.accent }}
+              thumbColor={useCustomTargets ? colors.text : colors.textMuted}
+            />
+          </View>
+
+          {!useCustomTargets ? (
+            <View style={styles.autoTargetsBox}>
+              {(() => {
+                const auto = getBaseTargetsFromBodyweight(bodyStats?.bodyweightKg);
+                if (auto) {
+                  return (
+                    <Text style={styles.autoTargetsText}>
+                      {auto.calories} cal | {auto.proteinG}g P | {auto.carbsG}g C | {auto.fatG}g F
+                      {'\n'}
+                      <Text style={styles.autoTargetsSubtext}>
+                        Based on {bodyStats?.bodyweightKg}kg bodyweight. Adjusted daily by training
+                        type.
+                      </Text>
+                    </Text>
+                  );
+                }
+                return (
+                  <Text style={styles.autoTargetsSubtext}>
+                    Set your bodyweight to see auto-calculated targets.
+                  </Text>
+                );
+              })()}
+            </View>
+          ) : (
+            <View style={styles.customTargetsBox}>
+              <View style={styles.targetRow}>
+                <View style={styles.targetField}>
+                  <Text style={styles.targetLabel}>Calories</Text>
+                  <Input
+                    containerStyle={styles.targetInputContainer}
+                    style={styles.targetInput}
+                    value={targetCalories}
+                    onChangeText={handleTargetCaloriesChange}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                  />
+                </View>
+                <View style={styles.targetField}>
+                  <Text style={styles.targetLabel}>Protein (g)</Text>
+                  <Input
+                    containerStyle={styles.targetInputContainer}
+                    style={styles.targetInput}
+                    value={targetProteinG}
+                    onChangeText={handleTargetProteinChange}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                  />
+                </View>
+              </View>
+              <View style={styles.targetRow}>
+                <View style={styles.targetField}>
+                  <Text style={styles.targetLabel}>Carbs (g)</Text>
+                  <Input
+                    containerStyle={styles.targetInputContainer}
+                    style={styles.targetInput}
+                    value={targetCarbsG}
+                    onChangeText={handleTargetCarbsChange}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                  />
+                </View>
+                <View style={styles.targetField}>
+                  <Text style={styles.targetLabel}>Fat (g)</Text>
+                  <Input
+                    containerStyle={styles.targetInputContainer}
+                    style={styles.targetInput}
+                    value={targetFatG}
+                    onChangeText={handleTargetFatChange}
+                    placeholder="0"
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                  />
+                </View>
+              </View>
+
+              {targetError ? <Text style={styles.targetErrorText}>{targetError}</Text> : null}
+
+              <View style={styles.targetButtonRow}>
+                <Pressable
+                  onPress={handleCalculateFromBodyweight}
+                  disabled={!bodyStats?.bodyweightKg || saveTargetsMutation.isPending}
+                  style={[
+                    styles.targetCalcButton,
+                    (!bodyStats?.bodyweightKg || saveTargetsMutation.isPending) &&
+                      styles.targetButtonDisabled,
+                  ]}
+                >
+                  <Text style={styles.targetCalcButtonText}>Calculate from bodyweight</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSaveTargets}
+                  disabled={!targetsDirty || saveTargetsMutation.isPending || Boolean(targetError)}
+                  style={[
+                    styles.targetSaveButton,
+                    (!targetsDirty || saveTargetsMutation.isPending || Boolean(targetError)) &&
+                      styles.targetButtonDisabled,
+                  ]}
+                >
+                  {saveTargetsMutation.isPending ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.targetSaveButtonText}>Save targets</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          )}
+        </View>
       </View>
 
       <View
@@ -530,8 +860,13 @@ export default function Profile() {
           <Text style={styles.rowChevron}>›</Text>
         </Pressable>
 
-        <Pressable style={styles.row}>
-          <Text style={styles.rowLabel}>Privacy</Text>
+        <Pressable style={styles.row} onPress={() => router.push('/privacy')}>
+          <Text style={styles.rowLabel}>Privacy Policy</Text>
+          <Text style={styles.rowChevron}>›</Text>
+        </Pressable>
+
+        <Pressable style={styles.row} onPress={() => router.push('/terms')}>
+          <Text style={styles.rowLabel}>Terms of Service</Text>
           <Text style={styles.rowChevron}>›</Text>
         </Pressable>
 
@@ -830,5 +1165,99 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+  },
+  nutritionGoalsSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  nutritionGoalsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  autoTargetsBox: {
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: spacing.md,
+  },
+  autoTargetsText: {
+    fontSize: typography.fontSizes.base,
+    color: colors.text,
+    lineHeight: 22,
+  },
+  autoTargetsSubtext: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+  customTargetsBox: {
+    gap: spacing.md,
+  },
+  targetRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  targetField: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  targetLabel: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    letterSpacing: 1.2,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  targetInputContainer: {
+    flex: 1,
+  },
+  targetInput: {
+    height: 40,
+    fontSize: 16,
+    textAlign: 'center',
+  } as TextStyle,
+  targetErrorText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
+    textAlign: 'center',
+  },
+  targetButtonRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  targetCalcButton: {
+    flex: 1,
+    borderRadius: radius.md,
+    backgroundColor: colors.border,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  targetCalcButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  targetSaveButton: {
+    flex: 1,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  targetSaveButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  targetButtonDisabled: {
+    opacity: 0.5,
   },
 });

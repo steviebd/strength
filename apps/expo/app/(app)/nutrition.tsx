@@ -145,7 +145,7 @@ function getSuggestedPrompts(trainingType: TrainingType) {
 
 const CHAT_HISTORY_PAGE_SIZE = 5;
 const CHAT_FOCUS_HISTORY_OFFSET = 260;
-const NUTRITION_BOTTOM_INSET = 210;
+const NUTRITION_BOTTOM_INSET = 120;
 const CHAT_JOB_POLL_INTERVAL_MS = 1500;
 const CHAT_JOB_MAX_POLLS = 40;
 

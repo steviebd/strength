@@ -380,6 +380,31 @@ export default function SignUpScreen() {
           </Text>
         </Pressable>
 
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            paddingTop: 8,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center' }}>
+            By creating an account, you agree to our{' '}
+          </Text>
+          <Link href="/terms">
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>
+              Terms of Service
+            </Text>
+          </Link>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}> and </Text>
+          <Link href="/privacy">
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>
+              Privacy Policy
+            </Text>
+          </Link>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>.</Text>
+        </View>
+
         <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 8 }}>
           <Text style={{ fontSize: 14, color: colors.textMuted }}>Already have an account? </Text>
           <Link href="/auth/sign-in">

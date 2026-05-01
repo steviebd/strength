@@ -337,6 +337,16 @@ export default function HomeScreen() {
           </View>
         </View>
       </Surface>
+
+      <View style={styles.legalFooter}>
+        <Pressable onPress={() => router.push('/privacy')}>
+          <Text style={styles.legalFooterText}>Privacy Policy</Text>
+        </Pressable>
+        <Text style={styles.legalFooterDot}>·</Text>
+        <Pressable onPress={() => router.push('/terms')}>
+          <Text style={styles.legalFooterText}>Terms of Service</Text>
+        </Pressable>
+      </View>
     </PageLayout>
   );
 }
@@ -483,5 +493,21 @@ const styles = StyleSheet.create({
   recoveryMetrics: {
     flexDirection: 'row',
     gap: 12,
+  },
+  legalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  legalFooterText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  legalFooterDot: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
   },
 });

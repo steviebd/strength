@@ -125,6 +125,8 @@ type WhoopCollectionResponse<T> = {
   next_token?: string | null;
 };
 
+const WHOOP_COLLECTION_PAGE_LIMIT = 25;
+
 async function fetchWhoopJson<T>(
   endpoint: string,
   accessToken: string,
@@ -168,7 +170,7 @@ async function fetchWhoopCollection<T>(
 
   do {
     const pageParams: Record<string, string | number> = {
-      limit: 100,
+      limit: WHOOP_COLLECTION_PAGE_LIMIT,
       ...baseParams,
     };
     if (nextToken) {
