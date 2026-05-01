@@ -11,6 +11,7 @@ const systemContext: SystemPromptContext = {
   bodyweightKg: 92.5,
   energyUnit: 'kcal',
   weightUnit: 'kg',
+  timezone: 'Australia/Sydney',
   trainingContext: {
     type: 'powerlifting',
     programName: 'Meet prep',
@@ -81,6 +82,7 @@ describe('nutrition prompts', () => {
         energy: 'kcal',
         weight: 'kg',
         program: true,
+        tz: 'Australia/Sydney',
       },
       tr: {
         type: 'powerlifting',

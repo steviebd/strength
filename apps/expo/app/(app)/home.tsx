@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { convertToDisplayWeight } from '@strength/db/client';
 import { colors, radius, spacing, typography, textRoles } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import {
@@ -28,7 +29,7 @@ export default function HomeScreen() {
   const user = session.data?.user;
   const displayName = user?.name || user?.email || 'Athlete';
   const avatarLetter = user?.name?.[0] || user?.email?.[0] || '?';
-  const { activeTimezone } = useUserPreferences();
+  const { activeTimezone, weightUnit } = useUserPreferences();
   const { data: homeData } = useHomeSummary();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ focusProgramId?: string }>();
@@ -112,6 +113,12 @@ export default function HomeScreen() {
     await queryClient.invalidateQueries({ queryKey: ['homeSummary', activeTimezone] });
     setIsRefreshing(false);
   }, [activeTimezone]);
+
+  function format1rm(value: number | null): string {
+    if (value === null || value === undefined) return `-- ${weightUnit}`;
+    const display = convertToDisplayWeight(value, weightUnit);
+    return `${display} ${weightUnit}`;
+  }
 
   return (
     <PageLayout
@@ -276,6 +283,32 @@ export default function HomeScreen() {
           </View>
         </Surface>
       </View>
+
+      <SectionTitle title="Current 1RM" />
+      <Surface style={styles.oneRmCard}>
+        <View style={styles.oneRmGrid}>
+          <MetricTile
+            label="Squat"
+            value={format1rm(homeData?.oneRepMaxes?.squat ?? null)}
+            tone="orange"
+          />
+          <MetricTile
+            label="Bench"
+            value={format1rm(homeData?.oneRepMaxes?.bench ?? null)}
+            tone="sky"
+          />
+          <MetricTile
+            label="Deadlift"
+            value={format1rm(homeData?.oneRepMaxes?.deadlift ?? null)}
+            tone="emerald"
+          />
+          <MetricTile
+            label="OHP"
+            value={format1rm(homeData?.oneRepMaxes?.ohp ?? null)}
+            tone="rose"
+          />
+        </View>
+      </Surface>
 
       <SectionTitle title="Recovery Snapshot" />
       <Surface style={styles.recoveryCard}>
@@ -492,6 +525,14 @@ const styles = StyleSheet.create({
   },
   recoveryMetrics: {
     flexDirection: 'row',
+    gap: 12,
+  },
+  oneRmCard: {
+    marginBottom: spacing.lg - 4,
+  },
+  oneRmGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
   },
   legalFooter: {

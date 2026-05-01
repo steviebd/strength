@@ -281,6 +281,7 @@ async function generateNutritionChatAssistantContent({
     bodyweightKg,
     energyUnit,
     weightUnit,
+    timezone,
     trainingContext: trainingCtx,
     whoopData,
     dailyIntake,

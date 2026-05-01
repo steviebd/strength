@@ -469,6 +469,12 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
       totalVolume: recent.reduce((sum, item) => sum + (item.totalVolume ?? 0), 0),
       totalVolumeLabel: '0 kg',
     },
+    oneRepMaxes: {
+      squat: activeCycle?.squat1rm ?? null,
+      bench: activeCycle?.bench1rm ?? null,
+      deadlift: activeCycle?.deadlift1rm ?? null,
+      ohp: activeCycle?.ohp1rm ?? null,
+    },
     recoverySnapshot: {
       sleepDurationLabel: null,
       sleepPerformancePercentage: null,

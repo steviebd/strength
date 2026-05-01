@@ -412,10 +412,18 @@ export async function homeSummaryHandler(c: any) {
     isWhoopConnected,
   };
 
+  const oneRepMaxes = {
+    squat: activeCycle?.squat1rm ?? null,
+    bench: activeCycle?.bench1rm ?? null,
+    deadlift: activeCycle?.deadlift1rm ?? null,
+    ohp: activeCycle?.ohp1rm ?? null,
+  };
+
   return c.json({
     date: dateInfo,
     todayWorkout: todayWorkoutOutput,
     weeklyStats,
+    oneRepMaxes,
     recoverySnapshot,
   });
 }

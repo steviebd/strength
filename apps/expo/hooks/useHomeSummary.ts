@@ -42,6 +42,12 @@ type HomeSummaryResponse = {
     totalVolume: number;
     totalVolumeLabel: string;
   };
+  oneRepMaxes: {
+    squat: number | null;
+    bench: number | null;
+    deadlift: number | null;
+    ohp: number | null;
+  };
   recoverySnapshot: {
     sleepDurationLabel: string | null;
     sleepPerformancePercentage: number | null;

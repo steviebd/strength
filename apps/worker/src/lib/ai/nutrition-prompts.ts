@@ -33,6 +33,7 @@ export interface SystemPromptContext {
   bodyweightKg: number | null;
   energyUnit: 'kcal' | 'kj';
   weightUnit: 'kg' | 'lbs';
+  timezone: string;
   trainingContext: TrainingContext | null;
   whoopData: WhoopData;
   dailyIntake: DailyIntake;
@@ -84,7 +85,7 @@ function compactWhoopData(data: WhoopData): CompactObject | null {
 export function assembleSystemPrompt(_context: SystemPromptContext): string {
   return `You are a nutrition assistant for a powerlifter using the Fit workout app.
 Use NUTRITION_CONTEXT_JSON for user facts, targets, training, recovery, and intake.
-Context keys: d=date, u=user, tr=training, w=Whoop, in=intake so far, t=targets; cal=calories, p=proteinG, c=carbsG, f=fatG.
+Context keys: d=date, u=user, tr=training, w=Whoop, in=intake so far, t=targets; cal=calories, p=proteinG, c=carbsG, f=fatG, tz=timezone.
 Do not ask for bodyweight if context.u.bwKg is non-null.
 When estimating/logging food, include one JSON code block like:
 \u0060\u0060\u0060json
@@ -114,6 +115,7 @@ export function assembleStructuredNutritionContext(context: NutritionAssistantCo
       energy: context.energyUnit,
       weight: context.weightUnit,
       program: context.hasActiveProgram,
+      tz: context.timezone,
     },
     tr: compactTrainingContext(context.trainingContext),
     w: compactWhoopData(context.whoopData),
