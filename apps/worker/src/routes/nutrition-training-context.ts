@@ -47,6 +47,7 @@ router.post(
         set: {
           trainingType,
           customLabel: customLabel ?? null,
+          createdAt: now,
           updatedAt: now,
         },
       })

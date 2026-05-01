@@ -43,6 +43,7 @@ export const upsertTrainingContextHandler = createHandler(async (c, { userId, db
       .set({
         trainingType,
         customLabel: customLabel ?? null,
+        createdAt: now,
         updatedAt: now,
       })
       .where(

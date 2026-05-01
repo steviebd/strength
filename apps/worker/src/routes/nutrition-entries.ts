@@ -16,7 +16,13 @@ router.get(
       return validation.response;
     }
 
-    const dateRange = await requireDateRange(c, db, userId, validation.date);
+    const dateRange = await requireDateRange(
+      c,
+      db,
+      userId,
+      validation.date,
+      c.req.query('timezone'),
+    );
     if (dateRange instanceof Response) {
       return dateRange;
     }
