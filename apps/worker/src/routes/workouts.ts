@@ -660,11 +660,28 @@ router.post(
         .run();
 
       if (workoutInput.cycleWorkoutId) {
-        await db
-          .update(schema.programCycleWorkouts)
-          .set({ workoutId: id, updatedAt: now })
-          .where(eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId))
-          .run();
+        const ownedCycleWorkout = await db
+          .select({ id: schema.programCycleWorkouts.id })
+          .from(schema.programCycleWorkouts)
+          .innerJoin(
+            schema.userProgramCycles,
+            eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+          )
+          .where(
+            and(
+              eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId),
+              eq(schema.userProgramCycles.userId, userId),
+            ),
+          )
+          .get();
+
+        if (ownedCycleWorkout) {
+          await db
+            .update(schema.programCycleWorkouts)
+            .set({ workoutId: id, updatedAt: now })
+            .where(eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId))
+            .run();
+        }
       }
 
       await advanceProgramCycleForWorkout(db, userId, id);

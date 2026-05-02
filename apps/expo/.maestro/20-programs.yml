@@ -1,12 +1,5 @@
 appId: ${MAESTRO_APP_ID}
 ---
-- runScript:
-    file: scripts/reset-user.js
-    env:
-      WORKER_BASE_URL: ${WORKER_BASE_URL}
-      E2E_TEST_SECRET: ${E2E_TEST_SECRET}
-      E2E_EMAIL: ${E2E_EMAIL}
-      E2E_PASSWORD: ${E2E_PASSWORD}
 - launchApp:
     clearState: true
 - openLink: ${MAESTRO_OPEN_LINK}

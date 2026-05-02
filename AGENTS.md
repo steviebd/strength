@@ -41,7 +41,7 @@ Migrations: `packages/db/drizzle/migrations/`
 
 ## Auth
 
-Auth is **intentionally disabled** unless `APP_ENV=development`. The worker skips auth middleware entirely in non-dev mode. Do not assume auth is active when working on API endpoints.
+Auth is **enforced on all protected API routes** regardless of environment. The `createHandler` wrapper and `requireAuth` helper validate sessions on every request. Do not bypass auth when working on API endpoints.
 
 ### Shared Auth Helper
 

@@ -40,8 +40,6 @@ const INFISICAL_KEYS = [
   'RATE_LIMIT_REQUEST_PER_HOUR',
 ] as const;
 
-const OPTIONAL_LOCAL_KEYS = ['E2E_TEST_MODE', 'E2E_TEST_SECRET'] as const;
-
 function parseArgs(): Args {
   const values = process.argv.slice(2);
   let env: TargetEnv = 'dev';
@@ -114,13 +112,6 @@ function getInfisicalVars(): Record<string, string> {
       process.exit(1);
     }
     vars[key] = value;
-  }
-
-  for (const key of OPTIONAL_LOCAL_KEYS) {
-    const value = process.env[key];
-    if (value) {
-      vars[key] = value;
-    }
   }
 
   return vars;

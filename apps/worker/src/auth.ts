@@ -28,8 +28,6 @@ export interface WorkerEnv {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   RATE_LIMIT_REQUEST_PER_HOUR?: string;
-  E2E_TEST_MODE?: string;
-  E2E_TEST_SECRET?: string;
 }
 
 export interface NutritionChatQueueMessage {

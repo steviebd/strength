@@ -48,64 +48,6 @@ interface ChatJobResponse {
   error: string | null;
 }
 
-function isE2ENutritionMockEnabled(env: { APP_ENV?: string; E2E_TEST_MODE?: string }) {
-  return env.APP_ENV === 'development' && env.E2E_TEST_MODE === 'true';
-}
-
-function buildMockMealAnalysisContent(userMessageContent: string) {
-  const normalized = userMessageContent.toLowerCase();
-  const isBigMacMeal = normalized.includes('big mac') || normalized.includes('fries');
-  const analysis = isBigMacMeal
-    ? {
-        name: 'Large Big Mac and Fries',
-        calories: 1320,
-        proteinG: 34,
-        carbsG: 156,
-        fatG: 63,
-        confidence: 'medium',
-        mealType: 'Lunch',
-      }
-    : {
-        name: 'E2E Test Meal',
-        calories: 600,
-        proteinG: 35,
-        carbsG: 65,
-        fatG: 20,
-        confidence: 'medium',
-        mealType: 'Snack',
-      };
-
-  return [
-    `${analysis.name}: ${analysis.calories} kcal, ${analysis.proteinG}g protein, ${analysis.carbsG}g carbs, ${analysis.fatG}g fat.`,
-    '',
-    '```json',
-    JSON.stringify(analysis, null, 2),
-    '```',
-  ].join('\n');
-}
-
-async function persistMockAssistantResponse({
-  db,
-  userId,
-  userMessageContent,
-}: {
-  db: any;
-  userId: string;
-  userMessageContent: string;
-}) {
-  const content = buildMockMealAnalysisContent(userMessageContent);
-  const id = crypto.randomUUID();
-  await db.insert(schema.nutritionChatMessages).values({
-    id,
-    userId,
-    role: 'assistant',
-    content,
-    hasImage: false,
-    createdAt: new Date(),
-  });
-  return { content, assistantMessageId: id };
-}
-
 function validateChatMessages(messages: ChatRequest['messages']) {
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return false;
@@ -333,28 +275,22 @@ async function generateNutritionChatAssistantContent({
   let assistantContent: string;
   let assistantMessageId: string;
 
-  if (isE2ENutritionMockEnabled(env)) {
-    const persisted = await persistMockAssistantResponse({ db, userId, userMessageContent });
-    assistantContent = persisted.content;
-    assistantMessageId = persisted.assistantMessageId;
-  } else {
-    const model = getModel(env);
-    const result = await generateText({
-      model,
-      messages: aiMessages,
-    });
-    assistantContent = result.text;
-    assistantMessageId = crypto.randomUUID();
+  const model = getModel(env);
+  const result = await generateText({
+    model,
+    messages: aiMessages,
+  });
+  assistantContent = result.text;
+  assistantMessageId = crypto.randomUUID();
 
-    await db.insert(schema.nutritionChatMessages).values({
-      id: assistantMessageId,
-      userId,
-      role: 'assistant',
-      content: assistantContent,
-      hasImage: false,
-      createdAt: new Date(),
-    });
-  }
+  await db.insert(schema.nutritionChatMessages).values({
+    id: assistantMessageId,
+    userId,
+    role: 'assistant',
+    content: assistantContent,
+    hasImage: false,
+    createdAt: new Date(),
+  });
 
   return { content: assistantContent, assistantMessageId };
 }
