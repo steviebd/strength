@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { env } from '@/lib/env';
+import LandingPage from './landing';
 
 export default function HomeScreen() {
   if (env.configError) {
@@ -30,7 +31,7 @@ function AuthenticatedRedirect() {
   }
 
   if (!session.data) {
-    return <Redirect href="/auth/sign-in?returnTo=/(app)/home" />;
+    return <LandingPage />;
   }
 
   return <Redirect href="/(app)/home" />;
