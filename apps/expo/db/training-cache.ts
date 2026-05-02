@@ -414,6 +414,7 @@ export async function getCachedProgramSchedule(userId: string, cycleId: string, 
 export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
   const activePrograms = await getCachedActivePrograms(userId);
   const activeCycle = activePrograms[0] ?? null;
+  const latestOneRMs = activeCycle ? null : await getCachedLatestOneRMs(userId);
   let workout: any = null;
   let nextWorkout: any = null;
   if (activeCycle) {
@@ -470,10 +471,10 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
       totalVolumeLabel: '0 kg',
     },
     oneRepMaxes: {
-      squat: activeCycle?.squat1rm ?? null,
-      bench: activeCycle?.bench1rm ?? null,
-      deadlift: activeCycle?.deadlift1rm ?? null,
-      ohp: activeCycle?.ohp1rm ?? null,
+      squat: activeCycle?.squat1rm ?? latestOneRMs?.squat1rm ?? null,
+      bench: activeCycle?.bench1rm ?? latestOneRMs?.bench1rm ?? null,
+      deadlift: activeCycle?.deadlift1rm ?? latestOneRMs?.deadlift1rm ?? null,
+      ohp: activeCycle?.ohp1rm ?? latestOneRMs?.ohp1rm ?? null,
     },
     recoverySnapshot: {
       sleepDurationLabel: null,
@@ -484,6 +485,25 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
       isWhoopConnected: false,
     },
   };
+}
+
+async function getCachedLatestOneRMs(userId: string) {
+  const db = getLocalDb();
+  if (!db) return null;
+  return (
+    db
+      .select({
+        squat1rm: localProgramCycles.squat1rm,
+        bench1rm: localProgramCycles.bench1rm,
+        deadlift1rm: localProgramCycles.deadlift1rm,
+        ohp1rm: localProgramCycles.ohp1rm,
+      })
+      .from(localProgramCycles)
+      .where(eq(localProgramCycles.userId, userId))
+      .orderBy(desc(localProgramCycles.startedAt))
+      .limit(1)
+      .get() ?? null
+  );
 }
 
 async function getCachedRecentWorkoutHistory(userId: string, limit = 50) {
@@ -531,4 +551,51 @@ export async function markLocalProgramAdvance(input: {
     })
     .where(eq(localProgramCycles.id, input.programCycleId))
     .run();
+}
+
+export async function updateLocalProgramCycleOneRMs(
+  programCycleId: string,
+  input: {
+    squat1rm?: number | null;
+    bench1rm?: number | null;
+    deadlift1rm?: number | null;
+    ohp1rm?: number | null;
+    startingSquat1rm?: number | null;
+    startingBench1rm?: number | null;
+    startingDeadlift1rm?: number | null;
+    startingOhp1rm?: number | null;
+    isComplete?: boolean;
+  },
+) {
+  const db = getLocalDb();
+  if (!db) return;
+
+  const now = new Date();
+  const update: Record<string, unknown> = {
+    updatedAt: now,
+    hydratedAt: now,
+  };
+
+  for (const key of [
+    'squat1rm',
+    'bench1rm',
+    'deadlift1rm',
+    'ohp1rm',
+    'startingSquat1rm',
+    'startingBench1rm',
+    'startingDeadlift1rm',
+    'startingOhp1rm',
+  ] as const) {
+    if (input[key] !== undefined) {
+      update[key] = input[key];
+    }
+  }
+
+  if (input.isComplete === true) {
+    update.isComplete = true;
+    update.status = 'completed';
+    update.completedAt = now;
+  }
+
+  db.update(localProgramCycles).set(update).where(eq(localProgramCycles.id, programCycleId)).run();
 }

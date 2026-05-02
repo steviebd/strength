@@ -105,7 +105,7 @@ export default function WorkoutSessionScreen() {
   const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
-  const { weightUnit: userWeightUnit } = useUserPreferences();
+  const { activeTimezone, weightUnit: userWeightUnit } = useUserPreferences();
 
   const scrollYRef = useRef(0);
   const setRefsRef = useRef(new Map<string, React.RefObject<View | null>>());
@@ -383,6 +383,8 @@ export default function WorkoutSessionScreen() {
       queryClient.invalidateQueries({ queryKey: ['workout', completedWorkoutId] });
     }
     queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+    queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
+    queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] });
     if (isProgramOneRMTest && typeof cycleId === 'string') {
       const liftMaxes: Record<string, number | null> = {
         squat: null,
@@ -407,6 +409,7 @@ export default function WorkoutSessionScreen() {
         }
       }
       const params = new URLSearchParams({ cycleId });
+      if (completedWorkoutId) params.set('workoutId', completedWorkoutId);
       if (liftMaxes.squat !== null) params.set('squatMax', String(liftMaxes.squat));
       if (liftMaxes.bench !== null) params.set('benchMax', String(liftMaxes.bench));
       if (liftMaxes.deadlift !== null) params.set('deadliftMax', String(liftMaxes.deadlift));
@@ -421,6 +424,7 @@ export default function WorkoutSessionScreen() {
     exercises,
     isProgramOneRMTest,
     isProgramSession,
+    activeTimezone,
     queryClient,
     router,
     workout?.id,

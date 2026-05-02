@@ -76,7 +76,9 @@ if (envName === 'staging' || envName === 'prod') {
     console.error(
       `Invalid EXPO_PUBLIC_WORKER_BASE_URL for ${envName}: ${publicEnv.EXPO_PUBLIC_WORKER_BASE_URL}`,
     );
-    console.error(error instanceof Error ? error.message : `Expected a valid ${envName} Worker URL.`);
+    console.error(
+      error instanceof Error ? error.message : `Expected a valid ${envName} Worker URL.`,
+    );
     process.exit(1);
   }
 }

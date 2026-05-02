@@ -172,11 +172,15 @@ console.log(`Production Worker URL: ${workerUrl}`);
 console.log(`Expo app scheme: ${expoPublicEnv.EXPO_PUBLIC_APP_SCHEME}`);
 console.log(`Starting production Android build ${buildNumber}...`);
 
-const eas = spawn('eas', ['build', '--local', '--platform', 'android', '--profile', 'production-apk'], {
-  cwd: process.cwd(),
-  env: easEnv,
-  stdio: ['inherit', 'pipe', 'pipe'],
-});
+const eas = spawn(
+  'eas',
+  ['build', '--local', '--platform', 'android', '--profile', 'production-apk'],
+  {
+    cwd: process.cwd(),
+    env: easEnv,
+    stdio: ['inherit', 'pipe', 'pipe'],
+  },
+);
 
 let output = '';
 
