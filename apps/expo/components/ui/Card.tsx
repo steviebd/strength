@@ -1,7 +1,5 @@
 import { Surface, type SurfaceProps } from './app-primitives';
 
-export { Surface };
-
 interface CardProps extends SurfaceProps {}
 
 export function Card({ children, style, ...props }: CardProps) {

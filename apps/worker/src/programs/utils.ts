@@ -14,12 +14,6 @@ export function getAmrapTargetReps(baseReps: number): number {
   return baseReps + 2;
 }
 
-export const WAVE_HELPER = {
-  strengthBlock: [0.75, 0.8, 0.85],
-  peakingBlock: [0.875, 0.925, 0.95],
-  deload: [0.5, 0.6, 0.7],
-};
-
 export interface PercentageSet {
   percentage: number;
   reps: number;
@@ -87,15 +81,3 @@ export function getNsunsSets(isAmrap: boolean, baseReps: number, amrapReps: numb
     ],
   };
 }
-
-export const CANDITO_STRENGTH_WEEKS = [
-  { sets: [4, 3, 2, 0], percentages: [0.75, 0.8, 0.85], amrap: 75 },
-  { sets: [4, 3, 2, 0], percentages: [0.8, 0.85, 0.9], amrap: 80 },
-  { sets: [4, 3, 2, 0], percentages: [0.85, 0.9, 0.95], amrap: 85 },
-] as const;
-
-export const CANDITO_PEAKING_WEEKS = [
-  { sets: [3, 2, 2, 0], percentages: [0.875, 0.925, 0.975], amrap: 875 },
-  { sets: [3, 2, 1, 0], percentages: [0.925, 0.95, 1.0], amrap: 925 },
-  { sets: [2, 2, 1, 0], percentages: [0.95, 0.975, 1.025], amrap: 0, isDeload: true },
-] as const;

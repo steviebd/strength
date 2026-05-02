@@ -1,5 +1,3 @@
-import { StyleSheet } from 'react-native';
-
 export const colors = {
   background: '#0a0a0a',
   surface: '#18181b',
@@ -14,13 +12,6 @@ export const colors = {
   warning: '#f59e0b',
   error: '#ef4444',
   sky: '#7dd3fc',
-};
-
-export const background = {
-  app: '#0a0a0a',
-  elevated: '#1c1c1f',
-  subtle: '#27272a',
-  inset: '#0d0d0e',
 };
 
 export const surface = {
@@ -58,23 +49,6 @@ export const accent = {
   primaryPressed: '#d95f45',
   secondary: '#fb923c',
   subtle: 'rgba(239,111,79,0.12)',
-};
-
-export const status = {
-  success: '#22c55e',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  info: '#7dd3fc',
-  neutral: '#71717a',
-};
-
-export const chart = {
-  blue: '#3b82f6',
-  purple: '#8b5cf6',
-  gray: '#6b7280',
-  orange: '#f97316',
-  green: '#22c55e',
-  red: '#ef4444',
 };
 
 export const spacing = {
@@ -200,26 +174,3 @@ export const layout = {
   controlHeightSmall: 40,
   minTouchTarget: 44,
 };
-
-export const globalStyles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: layout.cardPadding,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  screenPadding: {
-    paddingHorizontal: layout.screenPadding,
-  },
-  baseText: {
-    color: colors.text,
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.normal,
-  },
-  mutedText: {
-    color: colors.textMuted,
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.normal,
-  },
-});

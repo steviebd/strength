@@ -3,7 +3,11 @@ import {
   FlatList,
   StyleSheet,
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -13,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db/client';
 import {
   createCustomExercise,
+  deleteCustomExercise,
   ensurePersistedExercise,
   listUserExercises,
   type UserExercise,
@@ -85,11 +90,16 @@ export function ExerciseSearch({
     description: '',
   });
   const [creating, setCreating] = useState(false);
+  const [deletingExerciseId, setDeletingExerciseId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
   const scrollViewportHeight = useRef(0);
+  const createScrollRef = useRef<ScrollView>(null);
+  const descriptionInputRef = useRef<TextInput>(null);
+  const descriptionFieldY = useRef(0);
   const confirmingRef = useRef(false);
+  const longPressedSelectionKey = useRef<string | null>(null);
 
   const handleClose = () => {
     if (confirmingRef.current) {
@@ -141,16 +151,16 @@ export function ExerciseSearch({
     setCreateError(null);
     try {
       const newExercise = await createCustomExercise(createForm);
-      setUserExercises((prev) => [
-        {
+      setUserExercises((prev) => {
+        const exercise = {
           id: newExercise.id,
           name: newExercise.name,
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
-          libraryId: null,
-        },
-        ...prev,
-      ]);
+          libraryId: newExercise.libraryId ?? null,
+        };
+        return [exercise, ...prev.filter((existing) => existing.id !== newExercise.id)];
+      });
       setPendingSelection((prev) => {
         const selectionKey = getUserSelectionKey(newExercise.id);
         return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
@@ -162,6 +172,67 @@ export function ExerciseSearch({
     } finally {
       setCreating(false);
     }
+  }
+
+  function handleSelectMuscleGroup(group: string) {
+    setCreateForm((f) => ({ ...f, muscleGroup: group }));
+    requestAnimationFrame(() => {
+      createScrollRef.current?.scrollTo({
+        y: Math.max(0, descriptionFieldY.current - spacing.lg),
+        animated: true,
+      });
+      descriptionInputRef.current?.focus();
+    });
+  }
+
+  function scrollDescriptionIntoView() {
+    createScrollRef.current?.scrollTo({
+      y: Math.max(0, descriptionFieldY.current - spacing.lg),
+      animated: true,
+    });
+  }
+
+  function toggleSelection(selectionKey: string) {
+    setPendingSelection((prev) =>
+      prev.includes(selectionKey)
+        ? prev.filter((id) => id !== selectionKey)
+        : [...prev, selectionKey],
+    );
+  }
+
+  async function handleDeleteCustomExercise(exercise: CombinedExercise) {
+    if (deletingExerciseId) {
+      return;
+    }
+
+    setDeletingExerciseId(exercise.id);
+    setCreateError(null);
+    try {
+      await deleteCustomExercise(exercise.id);
+      const selectionKey = getUserSelectionKey(exercise.id);
+      setPendingSelection((prev) => prev.filter((id) => id !== selectionKey));
+      setUserExercises((prev) => prev.filter((existing) => existing.id !== exercise.id));
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Failed to delete exercise');
+    } finally {
+      setDeletingExerciseId(null);
+    }
+  }
+
+  function handleUserExercisePress(exercise: CombinedExercise, selectionKey: string) {
+    const isSelected = pendingSelection.includes(selectionKey);
+    Alert.alert(exercise.name, undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: isSelected ? 'Remove from workout' : 'Add to workout',
+        onPress: () => toggleSelection(selectionKey),
+      },
+      {
+        text: 'Delete exercise',
+        style: 'destructive',
+        onPress: () => void handleDeleteCustomExercise(exercise),
+      },
+    ]);
   }
 
   function handleConfirm() {
@@ -300,6 +371,7 @@ export function ExerciseSearch({
       <Pressable
         testID={`workout-exercise-${isUser ? 'user' : 'library'}-${ex.id}`}
         accessibilityLabel={`workout-exercise-${ex.name}`}
+        disabled={deletingExerciseId === ex.id}
         style={({ pressed }) => [
           styles.exerciseRow,
           styles.exerciseRowBorder,
@@ -307,12 +379,25 @@ export function ExerciseSearch({
           pressed && styles.exerciseRowPressed,
         ]}
         onPress={() => {
-          setPendingSelection((prev) =>
-            prev.includes(selectionKey)
-              ? prev.filter((id) => id !== selectionKey)
-              : [...prev, selectionKey],
-          );
+          if (longPressedSelectionKey.current === selectionKey) {
+            longPressedSelectionKey.current = null;
+            return;
+          }
+          toggleSelection(selectionKey);
         }}
+        onLongPress={
+          isUser
+            ? () => {
+                longPressedSelectionKey.current = selectionKey;
+                setTimeout(() => {
+                  if (longPressedSelectionKey.current === selectionKey) {
+                    longPressedSelectionKey.current = null;
+                  }
+                }, 1000);
+                handleUserExercisePress(ex, selectionKey);
+              }
+            : undefined
+        }
       >
         <View style={styles.exerciseInfo}>
           <View style={styles.exerciseNameRow}>
@@ -327,7 +412,11 @@ export function ExerciseSearch({
           </View>
           <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
         </View>
-        {isSelected ? (
+        {deletingExerciseId === ex.id ? (
+          <View style={styles.addBadge}>
+            <Text style={styles.addBadgeText}>Deleting...</Text>
+          </View>
+        ) : isSelected ? (
           <View style={styles.selectedBadge}>
             <Text style={styles.selectedBadgeText}>✓</Text>
           </View>
@@ -372,68 +461,91 @@ export function ExerciseSearch({
       </View>
 
       {showCreateForm ? (
-        <View style={styles.createForm}>
-          <View style={styles.formField}>
-            <Text style={styles.formLabel}>Name *</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="e.g. Hammer Curls"
-              placeholderTextColor={colors.placeholderText}
-              value={createForm.name}
-              onChangeText={(text) => setCreateForm((f) => ({ ...f, name: text }))}
-              autoFocus
-            />
-          </View>
+        <KeyboardAvoidingView
+          style={styles.createForm}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={insets.top}
+        >
+          <ScrollView
+            ref={createScrollRef}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[
+              styles.createFormContent,
+              { paddingBottom: insets.bottom + spacing.xxl * 4 },
+            ]}
+          >
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Name *</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="e.g. Hammer Curls"
+                placeholderTextColor={colors.placeholderText}
+                value={createForm.name}
+                onChangeText={(text) => setCreateForm((f) => ({ ...f, name: text }))}
+                returnKeyType="next"
+                onSubmitEditing={scrollDescriptionIntoView}
+                autoFocus
+              />
+            </View>
 
-          <View style={styles.formField}>
-            <Text style={styles.formLabel}>Muscle Group *</Text>
-            <View style={styles.muscleGroupGrid}>
-              {MUSCLE_GROUPS.map((group) => {
-                const isSelected = createForm.muscleGroup === group;
-                return (
-                  <Pressable
-                    key={`muscle-group:${group}`}
-                    onPress={() => setCreateForm((f) => ({ ...f, muscleGroup: group }))}
-                    style={[
-                      styles.muscleGroupChip,
-                      isSelected ? styles.muscleGroupChipSelected : styles.muscleGroupChipDefault,
-                    ]}
-                  >
-                    <Text
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Muscle Group *</Text>
+              <View style={styles.muscleGroupGrid}>
+                {MUSCLE_GROUPS.map((group) => {
+                  const isSelected = createForm.muscleGroup === group;
+                  return (
+                    <Pressable
+                      key={`muscle-group:${group}`}
+                      onPress={() => handleSelectMuscleGroup(group)}
                       style={[
-                        styles.muscleGroupChipText,
-                        isSelected
-                          ? styles.muscleGroupChipTextSelected
-                          : styles.muscleGroupChipTextDefault,
+                        styles.muscleGroupChip,
+                        isSelected ? styles.muscleGroupChipSelected : styles.muscleGroupChipDefault,
                       ]}
                     >
-                      {group}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                      <Text
+                        style={[
+                          styles.muscleGroupChipText,
+                          isSelected
+                            ? styles.muscleGroupChipTextSelected
+                            : styles.muscleGroupChipTextDefault,
+                        ]}
+                      >
+                        {group}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
-          </View>
 
-          <View style={styles.formField}>
-            <Text style={styles.formLabel}>Description (optional)</Text>
-            <TextInput
-              style={[styles.formInput, styles.formInputMultiline]}
-              placeholder="Add notes about form, equipment, etc."
-              placeholderTextColor={colors.placeholderText}
-              value={createForm.description}
-              onChangeText={(text) => setCreateForm((f) => ({ ...f, description: text }))}
-              multiline
-            />
-          </View>
-
-          {createError && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{createError}</Text>
+            <View
+              style={styles.formField}
+              onLayout={(event) => {
+                descriptionFieldY.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <Text style={styles.formLabel}>Description (optional)</Text>
+              <TextInput
+                ref={descriptionInputRef}
+                style={[styles.formInput, styles.formInputMultiline]}
+                placeholder="Add notes about form, equipment, etc."
+                placeholderTextColor={colors.placeholderText}
+                value={createForm.description}
+                onChangeText={(text) => setCreateForm((f) => ({ ...f, description: text }))}
+                multiline
+                onFocus={() => {
+                  requestAnimationFrame(scrollDescriptionIntoView);
+                }}
+              />
             </View>
-          )}
 
-          <View style={styles.formButtons}>
+            {createError && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{createError}</Text>
+              </View>
+            )}
+          </ScrollView>
+          <View style={[styles.formFooter, { paddingBottom: insets.bottom + spacing.sm }]}>
             <Pressable
               onPress={() => {
                 setShowCreateForm(false);
@@ -447,18 +559,23 @@ export function ExerciseSearch({
             <Pressable
               onPress={handleCreateExercise}
               disabled={creating}
-              style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}
+              style={({ pressed }) => [
+                styles.createButton,
+                pressed && styles.createButtonPressed,
+                creating && styles.buttonDisabled,
+              ]}
             >
               <Text style={styles.createButtonText}>{creating ? 'Creating...' : 'Create'}</Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       ) : (
         <>
           <Pressable
             onPress={() => {
               setShowCreateForm(true);
               setSearchQuery('');
+              setCreateError(null);
             }}
             style={({ pressed }) => [
               styles.createExerciseButton,
@@ -640,6 +757,16 @@ const styles = StyleSheet.create({
   },
   createForm: {
     flex: 1,
+  },
+  createFormContent: {
+    padding: spacing.md,
+  },
+  formFooter: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
     padding: spacing.md,
   },
   formField: {
@@ -704,11 +831,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.error,
   },
-  formButtons: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
   cancelButton: {
     flex: 1,
     borderRadius: radius.md,
@@ -741,6 +863,9 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   createExerciseButton: {
     marginHorizontal: spacing.md,

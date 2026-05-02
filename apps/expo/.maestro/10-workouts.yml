@@ -1,8 +1,41 @@
-appId: com.strength.app
+appId: ${MAESTRO_APP_ID}
 ---
-- runScript: scripts/reset-user.js
+- runScript:
+    file: scripts/reset-user.js
+    env:
+      WORKER_BASE_URL: ${WORKER_BASE_URL}
+      E2E_TEST_SECRET: ${E2E_TEST_SECRET}
+      E2E_EMAIL: ${E2E_EMAIL}
+      E2E_PASSWORD: ${E2E_PASSWORD}
 - launchApp:
-    clearState: false
+    clearState: true
+- openLink: ${MAESTRO_OPEN_LINK}
+- tapOn:
+    text: 'Continue'
+    optional: true
+- tapOn:
+    text: 'Close'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Welcome back'
+    timeout: 45000
+- tapOn:
+    id: 'auth-sign-in-email'
+- inputText: '${E2E_EMAIL}'
+- tapOn:
+    id: 'auth-sign-in-password'
+- inputText: '${E2E_PASSWORD}'
+- tapOn:
+    id: 'auth-sign-in-submit'
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 15000
+- tapOn:
+    id: 'onboarding-timezone-confirm'
+    optional: true
+- tapOn:
+    id: 'onboarding-weight-skip'
+    optional: true
 - tapOn: 'Workouts'
 - tapOn:
     id: 'workouts-new-template'

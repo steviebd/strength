@@ -9,10 +9,12 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { updateLocalProgramCycleOneRMs } from '@/db/training-cache';
 import { colors, radius, spacing, typography } from '@/theme';
 
 type ProgramCycleResponse = {
@@ -71,8 +73,10 @@ const LIFT_FIELDS: LiftField[] = [
 
 export default function ProgramOneRMTestScreen() {
   const router = useRouter();
-  const { cycleId, squatMax, benchMax, deadliftMax, ohpMax } = useLocalSearchParams<{
+  const queryClient = useQueryClient();
+  const { cycleId, workoutId, squatMax, benchMax, deadliftMax, ohpMax } = useLocalSearchParams<{
     cycleId?: string;
+    workoutId?: string;
     squatMax?: string;
     benchMax?: string;
     deadliftMax?: string;
@@ -166,6 +170,20 @@ export default function ProgramOneRMTestScreen() {
         // Saving cycle data is still useful if a test workout was not created yet.
       }
 
+      await updateLocalProgramCycleOneRMs(cycleId, {
+        squat1rm: squat,
+        bench1rm: bench,
+        deadlift1rm: deadlift,
+        ohp1rm: ohp,
+        startingSquat1rm: (payload.startingSquat1rm as number | null) ?? null,
+        startingBench1rm: (payload.startingBench1rm as number | null) ?? null,
+        startingDeadlift1rm: (payload.startingDeadlift1rm as number | null) ?? null,
+        startingOhp1rm: (payload.startingOhp1rm as number | null) ?? null,
+        isComplete: true,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
+      await queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
+
       Alert.alert('Saved', '1RMs updated and the program was marked complete.');
       router.replace('/(app)/programs');
     } catch (e) {
@@ -173,7 +191,7 @@ export default function ProgramOneRMTestScreen() {
     } finally {
       setSaving(false);
     }
-  }, [cycle, cycleId, router, values, weightUnit]);
+  }, [cycle, cycleId, queryClient, router, values, weightUnit]);
 
   const hasUnsavedChanges = useMemo(
     () =>
@@ -185,10 +203,19 @@ export default function ProgramOneRMTestScreen() {
   );
 
   const handleDiscard = useCallback(() => {
-    const goToPrograms = () => router.replace('/(app)/programs');
+    const discardTestAndGoToPrograms = async () => {
+      if (typeof workoutId === 'string' && workoutId) {
+        try {
+          await apiFetch(`/api/workouts/${workoutId}`, { method: 'DELETE' });
+        } catch {
+          // Leaving the results screen should not be blocked by a best-effort cleanup.
+        }
+      }
+      router.replace('/(app)/programs');
+    };
 
     if (!hasUnsavedChanges) {
-      goToPrograms();
+      void discardTestAndGoToPrograms();
       return;
     }
 
@@ -197,10 +224,12 @@ export default function ProgramOneRMTestScreen() {
       {
         text: 'Discard',
         style: 'destructive',
-        onPress: goToPrograms,
+        onPress: () => {
+          void discardTestAndGoToPrograms();
+        },
       },
     ]);
-  }, [hasUnsavedChanges, router]);
+  }, [hasUnsavedChanges, router, workoutId]);
 
   if (!cycleId) {
     return (

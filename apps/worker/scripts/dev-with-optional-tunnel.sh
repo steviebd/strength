@@ -44,7 +44,9 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" || -n "${CLOUDFLARE_TUNNEL_NAME:-}" || -n "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
+if [[ "${CLOUDFLARE_TUNNEL_DISABLED:-}" == "1" ]]; then
+  echo "Cloudflare Tunnel disabled for this dev session."
+elif [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" || -n "${CLOUDFLARE_TUNNEL_NAME:-}" || -n "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
   if [[ -z "${CLOUDFLARE_TUNNEL_HOSTNAME:-}" ]]; then
     echo "Set CLOUDFLARE_TUNNEL_HOSTNAME to auto-start Cloudflare Tunnel." >&2
     exit 1

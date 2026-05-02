@@ -10,7 +10,7 @@ export class WhoopSessionExpiredError extends Error {
 
 type WhoopReauthCause = 'token_revoked' | 'refresh_failed' | 'no_refresh_token';
 
-export class WhoopNotConnectedError extends Error {
+class WhoopNotConnectedError extends Error {
   code = 'WHOOP_NOT_CONNECTED' as const;
   message = 'WHOOP not connected. Please connect your account.';
   reauthUrl: string | null = null;

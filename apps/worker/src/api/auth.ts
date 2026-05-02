@@ -5,15 +5,15 @@ import * as schema from '@strength/db';
 
 type AuthInstance = ReturnType<typeof createAuth>;
 
-export type AuthUser = AuthInstance['$Infer']['Session']['user'];
-export type AuthSession = AuthInstance['$Infer']['Session']['session'];
+type AuthUser = AuthInstance['$Infer']['Session']['user'];
+type AuthSession = AuthInstance['$Infer']['Session']['session'];
 
 export type AppVariables = {
   user: AuthUser | null;
   session: AuthSession | null;
 };
 
-export type AppContext = Context<{ Bindings: WorkerEnv; Variables: AppVariables }>;
+type AppContext = Context<{ Bindings: WorkerEnv; Variables: AppVariables }>;
 
 export function createDb(env: WorkerEnv) {
   return drizzle(env.DB, { schema });
@@ -28,7 +28,7 @@ export type AuthContext = {
   userId: string;
 };
 
-export function getAuthHeaders(c: any) {
+function getAuthHeaders(c: any) {
   const headers = new Headers(c.req.raw.headers);
   const expoOrigin = headers.get('expo-origin');
   const originalOrigin = headers.get('origin');
@@ -46,7 +46,7 @@ export function getAuth(c: any) {
   return createAuth(c.env as WorkerEnv, headers, origin);
 }
 
-export async function loadAuthSession(c: any) {
+async function loadAuthSession(c: any) {
   const auth = getAuth(c);
   const headers = getAuthHeaders(c);
   const session = await auth.api.getSession({ headers });
@@ -83,9 +83,7 @@ export async function requireAuthContext(c: AppContext): Promise<AuthContext | R
   return { userId: user.id, user, session, db: createDb(c.env) };
 }
 
-export const requireAuthDb = requireAuthContext;
-
-export type SecuredHandler<R = Response> = (
+type SecuredHandler<R = Response> = (
   c: AppContext,
   data: { userId: string; db: AppDb },
 ) => Promise<R>;

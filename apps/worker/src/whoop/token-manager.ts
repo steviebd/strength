@@ -78,10 +78,3 @@ export async function withValidToken<T>(
     throw error;
   }
 }
-
-export async function markWhoopDisconnected(
-  db: DrizzleD1Database<typeof schema>,
-  userId: string,
-): Promise<void> {
-  await revokeWhoopIntegration(db, userId);
-}

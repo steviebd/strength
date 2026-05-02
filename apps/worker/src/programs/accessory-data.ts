@@ -1,7 +1,7 @@
 import { roundToPlate } from './utils';
 import type { AccessoryDefinition, ProgramAccessory, WorkoutAccessory, OneRMValues } from './types';
 
-export const ACCESSORIES: Record<string, AccessoryDefinition> = {
+const ACCESSORIES: Record<string, AccessoryDefinition> = {
   dips: {
     id: 'dips',
     name: 'Dips',

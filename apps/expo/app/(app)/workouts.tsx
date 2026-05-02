@@ -44,7 +44,7 @@ import {
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
-import type { Template } from '@/hooks/useTemplateEditor';
+import type { Template } from '@/components/template/TemplateEditor/types';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
 import { colors, radius, spacing, typography } from '@/theme';
 

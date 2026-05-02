@@ -66,12 +66,6 @@ export function useHomeSummary() {
   return useQuery({
     queryKey: ['homeSummary', activeTimezone],
     queryFn: async () => {
-      if (userId) {
-        const local = await buildLocalHomeSummary(userId, activeTimezone ?? 'UTC');
-        if (local.todayWorkout.hasActiveProgram || local.weeklyStats.workoutsCompleted > 0) {
-          return local as HomeSummaryResponse;
-        }
-      }
       try {
         const response = await apiFetch<HomeSummaryResponse>(`/api/home/summary`);
         return response;

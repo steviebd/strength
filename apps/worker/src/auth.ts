@@ -236,7 +236,3 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
     plugins: [expo(), dash({ apiKey: resolvedEnv.BETTER_AUTH_API_KEY }) as BetterAuthPlugin],
   });
 }
-
-export function isDevAuthEnabled(env: WorkerEnv) {
-  return resolveWorkerEnv(env).APP_ENV === 'development';
-}

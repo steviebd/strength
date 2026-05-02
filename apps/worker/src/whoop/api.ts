@@ -212,10 +212,6 @@ export async function fetchRecoveryByCycleId(
   return fetchWhoopJson<WhoopRecovery>(`cycle/${cycleId}/recovery`, accessToken);
 }
 
-export async function fetchCycleById(accessToken: string, cycleId: string): Promise<WhoopCycle> {
-  return fetchWhoopJson<WhoopCycle>(`cycle/${cycleId}`, accessToken);
-}
-
 export async function fetchWorkouts(accessToken: string, start?: Date): Promise<WhoopWorkout[]> {
   return fetchWhoopCollection<WhoopWorkout>(
     'activity/workout',

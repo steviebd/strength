@@ -2,14 +2,14 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-type InfisicalEnv = 'dev' | 'staging';
+type InfisicalEnv = 'dev' | 'staging' | 'prod';
 
 const envName = process.argv[2] as InfisicalEnv | undefined;
-const allowedEnvs = new Set<InfisicalEnv>(['dev', 'staging']);
+const allowedEnvs = new Set<InfisicalEnv>(['dev', 'staging', 'prod']);
 const envFile = join(process.cwd(), '.env.local');
 
 if (!envName || !allowedEnvs.has(envName)) {
-  console.error('Usage: bun run scripts/sync-expo-env.ts <dev|staging>');
+  console.error('Usage: bun run scripts/sync-expo-env.ts <dev|staging|prod>');
   process.exit(1);
 }
 
@@ -66,7 +66,7 @@ try {
   process.exit(1);
 }
 
-if (envName === 'staging') {
+if (envName === 'staging' || envName === 'prod') {
   try {
     const url = new URL(publicEnv.EXPO_PUBLIC_WORKER_BASE_URL);
     if (url.protocol !== 'https:') {
@@ -74,9 +74,11 @@ if (envName === 'staging') {
     }
   } catch (error) {
     console.error(
-      `Invalid EXPO_PUBLIC_WORKER_BASE_URL for staging: ${publicEnv.EXPO_PUBLIC_WORKER_BASE_URL}`,
+      `Invalid EXPO_PUBLIC_WORKER_BASE_URL for ${envName}: ${publicEnv.EXPO_PUBLIC_WORKER_BASE_URL}`,
     );
-    console.error(error instanceof Error ? error.message : 'Expected a valid staging Worker URL.');
+    console.error(
+      error instanceof Error ? error.message : `Expected a valid ${envName} Worker URL.`,
+    );
     process.exit(1);
   }
 }

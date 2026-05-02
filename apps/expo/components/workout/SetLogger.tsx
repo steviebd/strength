@@ -105,6 +105,19 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     setIsEditingWeight(true);
   }, [localWeight, scrollToInput]);
 
+  const handleWeightEditChange = useCallback(
+    (value: string) => {
+      setEditWeightValue(value);
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed) && parsed >= 0) {
+        setLocalWeight(parsed);
+        const storageWeight = convertToStorageWeight(parsed, weightUnit);
+        emitUpdate({ weight: storageWeight });
+      }
+    },
+    [emitUpdate, weightUnit],
+  );
+
   const handleWeightEditEnd = useCallback(() => {
     const parsed = parseFloat(editWeightValue);
     if (!isNaN(parsed) && parsed >= 0) {
@@ -120,6 +133,18 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     scrollToInput(repsInputRef);
     setIsRepsEditing(true);
   }, [localReps, scrollToInput]);
+
+  const handleRepsEditChange = useCallback(
+    (value: string) => {
+      setEditRepsValue(value);
+      const parsed = parseInt(value, 10);
+      if (!isNaN(parsed) && parsed >= 0) {
+        setLocalReps(parsed);
+        emitUpdate({ reps: parsed });
+      }
+    },
+    [emitUpdate],
+  );
 
   const handleRepsEditEnd = useCallback(() => {
     const parsed = parseInt(editRepsValue, 10);
@@ -217,7 +242,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
                   ref={weightInputRef}
                   style={[styles.weightInput, { fontSize }]}
                   value={editWeightValue}
-                  onChangeText={setEditWeightValue}
+                  onChangeText={handleWeightEditChange}
                   onBlur={handleWeightEditEnd}
                   onSubmitEditing={handleWeightEditEnd}
                   keyboardType="decimal-pad"
@@ -284,7 +309,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
                   ref={repsInputRef}
                   style={[styles.repsInput, { fontSize }]}
                   value={editRepsValue}
-                  onChangeText={setEditRepsValue}
+                  onChangeText={handleRepsEditChange}
                   onBlur={handleRepsEditEnd}
                   onSubmitEditing={handleRepsEditEnd}
                   keyboardType="number-pad"

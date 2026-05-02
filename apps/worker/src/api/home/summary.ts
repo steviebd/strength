@@ -3,6 +3,7 @@ import { formatLocalDate } from '@strength/db';
 import * as schema from '@strength/db';
 import { requireAuthContext } from '../auth';
 import { resolveUserTimezone, getUtcRangeForLocalDate } from '../../lib/timezone';
+import { getLatestOneRMsForUser } from '../../lib/program-helpers';
 
 function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name: string }> {
   if (!targetLifts) return [];
@@ -412,11 +413,12 @@ export async function homeSummaryHandler(c: any) {
     isWhoopConnected,
   };
 
+  const latestOneRMs = await getLatestOneRMsForUser(db, userId);
   const oneRepMaxes = {
-    squat: activeCycle?.squat1rm ?? null,
-    bench: activeCycle?.bench1rm ?? null,
-    deadlift: activeCycle?.deadlift1rm ?? null,
-    ohp: activeCycle?.ohp1rm ?? null,
+    squat: activeCycle?.squat1rm ?? latestOneRMs?.squat1rm ?? null,
+    bench: activeCycle?.bench1rm ?? latestOneRMs?.bench1rm ?? null,
+    deadlift: activeCycle?.deadlift1rm ?? latestOneRMs?.deadlift1rm ?? null,
+    ohp: activeCycle?.ohp1rm ?? latestOneRMs?.ohp1rm ?? null,
   };
 
   return c.json({

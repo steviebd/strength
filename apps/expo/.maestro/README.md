@@ -1,28 +1,28 @@
 # Maestro E2E
 
-These flows target a standalone/dev build with `appId: com.strength.app`. They are not intended
-for Expo Go.
+These flows default to Expo Go for local development. Use a standalone/dev APK only when you need
+to test native build behavior.
 
-Required environment:
+Required environment comes from Infisical `dev`:
+
+- `WORKER_BASE_URL` or `EXPO_PUBLIC_WORKER_BASE_URL`
+- `E2E_TEST_SECRET`
+- `E2E_EMAIL`
+- `E2E_PASSWORD`
+
+`MAESTRO_APP_ID` defaults to `host.exp.exponent` for Expo Go. `MAESTRO_OPEN_LINK` defaults to
+`exp://10.0.2.2:8081`, which is the Android emulator URL for the Expo dev server. For a physical
+device, set it to your machine's LAN IP, for example `exp://10.0.0.41:8081`.
+
+Start the E2E dev stack:
 
 ```bash
-export WORKER_BASE_URL=http://127.0.0.1:8787
-export E2E_EMAIL=your-local-user@example.com
-export E2E_PASSWORD='your-local-password'
+bun run dev:e2e
 ```
 
-The root `package.json` scripts source `.env.local` automatically before invoking Maestro, so these
-values can live in repo-root `.env.local`.
-
-The worker should use local D1 and development auth:
-
-```bash
-APP_ENV=development E2E_TEST_MODE=true bun run dev
-```
-
-`E2E_TEST_MODE=true` is only needed for deterministic mocked nutrition chat responses. `E2E_TEST_SECRET`
-only protects the optional `/api/e2e/reset-user` helper; the default flows do not reset the existing
-local user.
+This starts the Worker through Infisical with local D1 and `E2E_TEST_MODE=true`, then starts Expo.
+`E2E_TEST_SECRET` protects `/api/e2e/reset-user`, which each flow calls before it starts.
+Use `bun run dev:e2e:remote` when you explicitly want remote dev D1 instead.
 
 Worker config and secrets still come through the existing Infisical-backed dev commands. Do not
 expect Maestro to generate `wrangler.toml` or inject Worker secrets.
@@ -44,6 +44,36 @@ Run all flows:
 bun run e2e:maestro
 ```
 
-The root script loads `.env.local`, adds `$HOME/.maestro/bin` to `PATH`, checks that an Android
-device is connected, and installs the newest APK from `apps/expo/builds/` if `com.strength.app` is
-not installed yet.
+Recommended Expo Go loop:
+
+```bash
+# terminal 1: Worker + Expo
+bun run dev:e2e
+
+# open the project in Expo Go on the emulator/device
+
+# terminal 2: run one flow
+bun run e2e:maestro:auth
+```
+
+For a physical Android device:
+
+```bash
+MAESTRO_OPEN_LINK=exp://<your-lan-ip>:8081 bun run e2e:maestro:auth
+```
+
+To run against a built APK instead of Expo Go:
+
+```bash
+MAESTRO_APP_ID=com.strength.app bun run e2e:maestro
+```
+
+To launch Maestro Studio with Infisical-loaded env:
+
+```bash
+bun run e2e:maestro:studio
+```
+
+If you open the Maestro desktop app directly, it will not inherit Infisical env from this repo. Launch
+Studio through the script above, or set `MAESTRO_APP_ID`, `WORKER_BASE_URL`, `E2E_TEST_SECRET`,
+`E2E_EMAIL`, and `E2E_PASSWORD` in Studio before running `00-auth.yml`.
