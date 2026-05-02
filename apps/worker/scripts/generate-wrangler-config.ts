@@ -30,6 +30,7 @@ const INFISICAL_KEYS = [
   'WORKER_BASE_URL',
   'CF_AI_GATEWAY_TOKEN',
   'ENCRYPTION_MASTER_KEY',
+  'EXPO_PUBLIC_APP_SCHEME',
 
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -103,15 +104,24 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
+const OPTIONAL_INFISICAL_KEYS = new Set(['EXPO_PUBLIC_APP_SCHEME']);
+
 function getInfisicalVars(): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const key of INFISICAL_KEYS) {
     const value = process.env[key];
-    if (!value) {
+    if (!value && !OPTIONAL_INFISICAL_KEYS.has(key)) {
       console.error(`Missing required Infisical variable '${key}'.`);
       process.exit(1);
     }
-    vars[key] = value;
+    if (value) {
+      vars[key] = value;
+    }
+  }
+
+  // Map EXPO_PUBLIC_APP_SCHEME to APP_SCHEME so the Worker can read it consistently
+  if (vars.EXPO_PUBLIC_APP_SCHEME) {
+    vars.APP_SCHEME = vars.EXPO_PUBLIC_APP_SCHEME;
   }
 
   return vars;

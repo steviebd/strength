@@ -9,70 +9,20 @@ const ENV_LOCAL_PATH = join(process.cwd(), '.env.local');
 const PREFERRED_SERVER_PORT = Number(process.env.BUILDS_SERVER_PORT ?? '8080');
 const SKIP_SERVER = process.env.BUILDS_SKIP_SERVER === '1';
 
-function getJavaHome(): string {
-  if (process.env.JAVA_HOME) {
-    return process.env.JAVA_HOME;
-  }
+const ALLOWED_ENVS = ['staging', 'prod'] as const;
+type BuildEnv = (typeof ALLOWED_ENVS)[number];
 
-  if (process.platform === 'darwin') {
-    const result = spawnSync('/usr/libexec/java_home', ['-v', '17'], {
-      encoding: 'utf-8',
-    });
-    if (result.status === 0 && result.stdout.trim()) {
-      return result.stdout.trim();
-    }
-  }
-
-  const linuxPaths = [
-    '/usr/lib/jvm/java-17-openjdk',
-    '/usr/lib/jvm/java-17-openjdk-amd64',
-    '/usr/lib/jvm/default-java',
-  ];
-  for (const path of linuxPaths) {
-    if (existsSync(path)) {
-      return path;
-    }
-  }
-
-  const whichResult = spawnSync('which', ['java'], { encoding: 'utf-8' });
-  if (whichResult.status === 0) {
-    const javaPath = whichResult.stdout.trim();
-    const versionResult = spawnSync(javaPath, ['-version'], {
-      encoding: 'utf-8',
-    });
-    if (versionResult.status === 0 && versionResult.stderr.includes('17')) {
-      const readlinkResult = spawnSync('readlink', ['-f', javaPath], {
-        encoding: 'utf-8',
-      });
-      if (readlinkResult.status === 0) {
-        const realPath = readlinkResult.stdout.trim();
-        const match = realPath.match(/^(.+)\/bin\/java$/);
-        if (match) {
-          return match[1];
-        }
-      }
-    }
-  }
-
-  throw new Error(
-    'JAVA_HOME not set and Java 17 home could not be determined automatically. ' +
-      'Please set JAVA_HOME to your Java 17 installation directory (e.g., /usr/lib/jvm/java-17-openjdk).',
-  );
-}
-
-const BUILD_ENV = {
-  ...process.env,
-  EAS_SKIP_AUTO_FINGERPRINT: process.env.EAS_SKIP_AUTO_FINGERPRINT ?? '1',
-  NODE_ENV: process.env.NODE_ENV ?? 'production',
-  JAVA_HOME: getJavaHome(),
+const ENV_PROFILE_MAP: Record<BuildEnv, string> = {
+  staging: 'staging',
+  prod: 'production',
 };
 
 function getNextBuildNumber(): number {
   let max = 0;
   if (existsSync(BUILDS_DIR)) {
     for (const file of readdirSync(BUILDS_DIR)) {
-      if (file.endsWith('.apk')) {
-        const num = parseInt(file.replace('.apk', ''), 10);
+      if (file.endsWith('.ipa')) {
+        const num = parseInt(file.replace('.ipa', ''), 10);
         if (!isNaN(num) && num > max) max = num;
       }
     }
@@ -118,10 +68,10 @@ async function findAvailablePort(startPort: number) {
   throw new Error(`No available build server port found from ${startPort} to ${startPort + 19}`);
 }
 
-function syncStagingEnv() {
-  const result = spawnSync('bun', ['run', 'sync-env:staging'], {
+function syncEnv(env: BuildEnv) {
+  const result = spawnSync('bun', ['run', `sync-env:${env}`], {
     cwd: process.cwd(),
-    env: BUILD_ENV,
+    env: process.env,
     stdio: 'inherit',
   });
 
@@ -155,24 +105,37 @@ function readEnvLocal() {
   return env;
 }
 
-syncStagingEnv();
+function parseArgs(): BuildEnv {
+  const arg = process.argv[2];
+  if (!arg || !ALLOWED_ENVS.includes(arg as BuildEnv)) {
+    console.error(`Usage: bun run scripts/build-ios.ts <${ALLOWED_ENVS.join('|')}>`);
+    process.exit(1);
+  }
+  return arg as BuildEnv;
+}
+
+const env = parseArgs();
+const profile = ENV_PROFILE_MAP[env];
+const displayEnv = env === 'prod' ? 'production' : env;
+
+syncEnv(env);
 const expoPublicEnv = readEnvLocal();
 const workerUrl = expoPublicEnv.EXPO_PUBLIC_WORKER_BASE_URL;
 
 mkdirSync(BUILDS_DIR, { recursive: true });
 
 const buildNumber = getNextBuildNumber();
-const destPath = join(BUILDS_DIR, `${buildNumber}.apk`);
+const destPath = join(BUILDS_DIR, `${buildNumber}.ipa`);
 const easEnv = {
-  ...BUILD_ENV,
+  ...process.env,
   ...expoPublicEnv,
 };
 
-console.log(`Staging Worker URL: ${workerUrl}`);
+console.log(`${displayEnv.charAt(0).toUpperCase() + displayEnv.slice(1)} Worker URL: ${workerUrl}`);
 console.log(`Expo app scheme: ${expoPublicEnv.EXPO_PUBLIC_APP_SCHEME}`);
-console.log(`Starting staging Android build ${buildNumber}...`);
+console.log(`Starting ${displayEnv} iOS build ${buildNumber}...`);
 
-const eas = spawn('eas', ['build', '--local', '--platform', 'android', '--profile', 'staging'], {
+const eas = spawn('eas', ['build', '--local', '--platform', 'ios', '--profile', profile], {
   cwd: process.cwd(),
   env: easEnv,
   stdio: ['inherit', 'pipe', 'pipe'],
@@ -197,17 +160,17 @@ eas.on('exit', async (code) => {
     process.exit(code ?? 1);
   }
 
-  const apkPaths = output.match(/(?:\/|[A-Za-z]:\\)[^\s'"]+\.apk/g);
-  const apkPath = apkPaths?.at(-1);
+  const ipaPaths = output.match(/(?:\/|[A-Za-z]:\\)[^\s'"]+\.ipa/g);
+  const ipaPath = ipaPaths?.at(-1);
 
-  if (!apkPath) {
-    console.error('Could not find APK path in EAS output.');
+  if (!ipaPath) {
+    console.error('Could not find IPA path in EAS output.');
     process.exit(1);
   }
 
-  console.log(`Copying ${apkPath} -> ${destPath}`);
-  cpSync(apkPath, destPath);
-  rmSync(apkPath);
+  console.log(`Copying ${ipaPath} -> ${destPath}`);
+  cpSync(ipaPath, destPath);
+  rmSync(ipaPath);
 
   console.log('');
   console.log(`Build saved: ${destPath}`);
@@ -218,7 +181,7 @@ eas.on('exit', async (code) => {
 
   const lanIp = getLanIp();
   const serverPort = await findAvailablePort(PREFERRED_SERVER_PORT);
-  const installUrl = `http://${lanIp}:${serverPort}/${buildNumber}.apk`;
+  const installUrl = `http://${lanIp}:${serverPort}/${buildNumber}.ipa`;
 
   console.log(`Install URL: ${installUrl}`);
   console.log(`Serving builds directory on port ${serverPort}. Press Ctrl+C to stop.`);

@@ -13,6 +13,8 @@
     "dev:expo:staging": "cd apps/expo && bun run sync-env:staging && bun run dev:metro",
     "build:android:staging": "cd apps/expo && bun run build:android:staging",
     "build:android:prod": "cd apps/expo && bun run build:android:prod",
+    "build:ios:staging": "cd apps/expo && bun run build:ios:staging",
+    "build:ios:prod": "cd apps/expo && bun run build:ios:prod",
     "size:android": "cd apps/expo && bun run size:android",
     "e2e:maestro": "infisical run --env=dev --project-config-dir . -- bun run scripts/run-maestro.ts",
     "e2e:maestro:studio": "infisical run --env=dev --project-config-dir . -- bash -lc 'export MAESTRO_APP_ID=${MAESTRO_APP_ID:-host.exp.exponent}; export MAESTRO_OPEN_LINK=${MAESTRO_OPEN_LINK:-exp://10.0.2.2:8081}; export WORKER_BASE_URL=${MAESTRO_WORKER_BASE_URL:-http://127.0.0.1:8787}; export PATH=\"$HOME/.maestro/bin:$PATH\"; maestro studio apps/expo/.maestro'",

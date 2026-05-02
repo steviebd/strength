@@ -9,6 +9,14 @@ const ENV_LOCAL_PATH = join(process.cwd(), '.env.local');
 const PREFERRED_SERVER_PORT = Number(process.env.BUILDS_SERVER_PORT ?? '8080');
 const SKIP_SERVER = process.env.BUILDS_SKIP_SERVER === '1';
 
+const ALLOWED_ENVS = ['staging', 'prod'] as const;
+type BuildEnv = (typeof ALLOWED_ENVS)[number];
+
+const ENV_PROFILE_MAP: Record<BuildEnv, string> = {
+  staging: 'staging',
+  prod: 'production-apk',
+};
+
 function getJavaHome(): string {
   if (process.env.JAVA_HOME) {
     return process.env.JAVA_HOME;
@@ -118,8 +126,8 @@ async function findAvailablePort(startPort: number) {
   throw new Error(`No available build server port found from ${startPort} to ${startPort + 19}`);
 }
 
-function syncProdEnv() {
-  const result = spawnSync('bun', ['run', 'sync-env:prod'], {
+function syncEnv(env: BuildEnv) {
+  const result = spawnSync('bun', ['run', `sync-env:${env}`], {
     cwd: process.cwd(),
     env: BUILD_ENV,
     stdio: 'inherit',
@@ -155,7 +163,20 @@ function readEnvLocal() {
   return env;
 }
 
-syncProdEnv();
+function parseArgs(): BuildEnv {
+  const arg = process.argv[2];
+  if (!arg || !ALLOWED_ENVS.includes(arg as BuildEnv)) {
+    console.error(`Usage: bun run scripts/build-android.ts <${ALLOWED_ENVS.join('|')}>`);
+    process.exit(1);
+  }
+  return arg as BuildEnv;
+}
+
+const env = parseArgs();
+const profile = ENV_PROFILE_MAP[env];
+const displayEnv = env === 'prod' ? 'production' : env;
+
+syncEnv(env);
 const expoPublicEnv = readEnvLocal();
 const workerUrl = expoPublicEnv.EXPO_PUBLIC_WORKER_BASE_URL;
 
@@ -168,19 +189,15 @@ const easEnv = {
   ...expoPublicEnv,
 };
 
-console.log(`Production Worker URL: ${workerUrl}`);
+console.log(`${displayEnv.charAt(0).toUpperCase() + displayEnv.slice(1)} Worker URL: ${workerUrl}`);
 console.log(`Expo app scheme: ${expoPublicEnv.EXPO_PUBLIC_APP_SCHEME}`);
-console.log(`Starting production Android build ${buildNumber}...`);
+console.log(`Starting ${displayEnv} Android build ${buildNumber}...`);
 
-const eas = spawn(
-  'eas',
-  ['build', '--local', '--platform', 'android', '--profile', 'production-apk'],
-  {
-    cwd: process.cwd(),
-    env: easEnv,
-    stdio: ['inherit', 'pipe', 'pipe'],
-  },
-);
+const eas = spawn('eas', ['build', '--local', '--platform', 'android', '--profile', profile], {
+  cwd: process.cwd(),
+  env: easEnv,
+  stdio: ['inherit', 'pipe', 'pipe'],
+});
 
 let output = '';
 
@@ -202,7 +219,7 @@ eas.on('exit', async (code) => {
   }
 
   const apkPaths = output.match(/(?:\/|[A-Za-z]:\\)[^\s'"]+\.apk/g);
-  const apkPath = apkPaths?.[apkPaths.length - 1];
+  const apkPath = apkPaths?.at(-1);
 
   if (!apkPath) {
     console.error('Could not find APK path in EAS output.');

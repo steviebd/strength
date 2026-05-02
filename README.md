@@ -100,18 +100,27 @@ Secrets are injected by Infisical at runtime. No `.env` file.
 | `WHOOP_CLIENT_ID` | From Whoop Developer Portal |
 | `WHOOP_CLIENT_SECRET` | From Whoop Developer Portal |
 
-**Required in Infisical `staging` for Android APK builds:**
+**Required in Infisical `staging` and `prod` for native builds:**
 
 | Secret | Notes |
 |--------|-------|
-| `EXPO_PUBLIC_WORKER_BASE_URL` | HTTPS staging Worker URL embedded into the native app bundle |
-| `EXPO_PUBLIC_APP_SCHEME` | Optional; defaults to `strength` |
+| `EXPO_PUBLIC_WORKER_BASE_URL` | HTTPS Worker URL embedded into the native app bundle |
+| `EXPO_PUBLIC_APP_SCHEME` | `strength-staging` for staging, `strength` for prod. Also injected into the Worker as `APP_SCHEME` for CORS/trusted origins. |
 
 `bun run dev:expo` writes Infisical `dev` `EXPO_PUBLIC_*` values to
 `apps/expo/.env.local` before starting Metro. `bun run dev:expo:staging` and
-`bun run build:android:staging` write Infisical `staging` values first. The Android
-staging build also validates that `EXPO_PUBLIC_WORKER_BASE_URL` is present and HTTPS,
-then passes the generated values directly to `eas build --local`.
+`bun run build:android:staging` write Infisical `staging` values first. Build scripts
+validate that `EXPO_PUBLIC_WORKER_BASE_URL` is present and HTTPS for staging/prod,
+then pass the generated values directly to `eas build --local`.
+
+**Build outputs:**
+
+| Environment | App Name | Android Package | iOS Bundle ID |
+|-------------|----------|-----------------|---------------|
+| Staging | `strength-staging` | `com.strength.app.staging` | `com.strength.app.staging` |
+| Production | `strength` | `com.strength.app` | `com.strength.app` |
+
+Staging and production apps can be installed side-by-side because they use different package/bundle identifiers.
 
 **Optional:**
 
@@ -126,6 +135,11 @@ then passes the generated values directly to `eas build --local`.
 bun run dev              # Worker + Expo concurrently (local D1)
 bun run dev:remote       # Worker against remote dev D1
 bun run dev:expo         # Expo only
+
+bun run build:android:staging  # Local EAS APK build (staging)
+bun run build:android:prod     # Local EAS APK build (production)
+bun run build:ios:staging      # Local EAS IPA build (staging)
+bun run build:ios:prod         # Local EAS IPA build (production)
 
 bun run db:apply:local   # Push migrations to local D1
 bun run db:apply:remote   # Push migrations to remote dev D1

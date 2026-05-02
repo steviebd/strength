@@ -5,24 +5,35 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "APP_NAME": "strength"
+      }
     },
     "staging": {
+      "env": {
+        "APP_NAME": "strength-staging",
+        "APP_BUNDLE_SUFFIX": ".staging"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "e2e-test": {
       "distribution": "internal",
+      "env": {
+        "APP_NAME": "strength",
+        "EXPO_PUBLIC_APP_SCHEME": "strength"
+      },
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_APP_SCHEME": "strength"
       }
     },
     "production": {
       "autoIncrement": true,
+      "env": {
+        "APP_NAME": "strength"
+      },
       "android": {
         "buildType": "app-bundle",
         "enableProguardInReleaseBuilds": true
@@ -30,6 +41,9 @@
     },
     "production-apk": {
       "autoIncrement": true,
+      "env": {
+        "APP_NAME": "strength"
+      },
       "android": {
         "buildType": "apk",
         "enableProguardInReleaseBuilds": true

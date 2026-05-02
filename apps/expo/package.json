@@ -16,8 +16,10 @@
     "logs:android:crash": "bun run scripts/capture-android-crash.ts",
     "typecheck": "bunx tsc --noEmit",
     "size:android": "bun run scripts/android-size-report.ts",
-    "build:android:staging": "bun run scripts/build-android-staging.ts",
-    "build:android:prod": "bun run scripts/build-android-prod.ts"
+    "build:android:staging": "bun run scripts/build-android.ts staging",
+    "build:android:prod": "bun run scripts/build-android.ts prod",
+    "build:ios:staging": "bun run scripts/build-ios.ts staging",
+    "build:ios:prod": "bun run scripts/build-ios.ts prod"
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.9",

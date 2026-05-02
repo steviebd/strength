@@ -65,7 +65,11 @@ MAESTRO_OPEN_LINK=exp://<your-lan-ip>:8081 bun run e2e:maestro apps/expo/.maestr
 To run against a built APK instead of Expo Go:
 
 ```bash
+# Production build
 MAESTRO_APP_ID=com.strength.app bun run e2e:maestro
+
+# Staging build
+MAESTRO_APP_ID=com.strength.app.staging bun run e2e:maestro
 ```
 
 To launch Maestro Studio with Infisical-loaded env:
