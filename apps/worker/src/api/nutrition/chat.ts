@@ -263,14 +263,10 @@ async function generateNutritionChatAssistantContent({
     userContent = userMessageContent;
   }
 
-  const systemMessage = { role: 'system' as const, content: systemPrompt };
-  const structuredContextMessage = {
-    role: 'system' as const,
-    content: structuredContextPrompt,
-  };
+  const combinedSystemPrompt = `${systemPrompt}\n\n${structuredContextPrompt}`;
   const priorMessages = messages.slice(0, -1).map(compactNutritionChatHistoryMessage);
   const userMessage = { role: 'user' as const, content: userContent };
-  const aiMessages = [systemMessage, structuredContextMessage, ...priorMessages, userMessage];
+  const aiMessages = [...priorMessages, userMessage];
 
   let assistantContent: string;
   let assistantMessageId: string;
@@ -278,6 +274,7 @@ async function generateNutritionChatAssistantContent({
   const model = getModel(env);
   const result = await generateText({
     model,
+    system: combinedSystemPrompt,
     messages: aiMessages,
   });
   assistantContent = result.text;
