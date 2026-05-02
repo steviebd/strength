@@ -2,20 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { platformStorage } from './platform-storage';
 
 const STORAGE_KEYS = {
-  LAST_WORKOUT: (exerciseId: string) => `lw_${exerciseId}`,
   PENDING_WORKOUTS: 'pending_workouts',
   DISMISSED_DEVICE_TIMEZONE: 'dismissed_device_timezone',
   NUTRITION_CHAT_MESSAGES: (date: string) => `nutrition_chat_messages_${date}`,
   NUTRITION_CHAT_DRAFT: (date: string) => `nutrition_chat_draft_${date}`,
   NUTRITION_PENDING_IMAGE: (date: string) => `nutrition_pending_image_${date}`,
 } as const;
-
-interface LastWorkoutData {
-  weight: number | null;
-  reps: number | null;
-  rpe: number | null;
-  date: string;
-}
 
 interface PendingWorkout {
   id: string;
@@ -40,22 +32,6 @@ interface NutritionChatCache {
 interface NutritionPendingImage {
   base64: string;
   uri: string;
-}
-
-async function getLastWorkout(exerciseId: string): Promise<LastWorkoutData | null> {
-  const key = STORAGE_KEYS.LAST_WORKOUT(exerciseId);
-  const data = platformStorage.getItem(key);
-  if (!data) return null;
-  try {
-    return JSON.parse(data) as LastWorkoutData;
-  } catch {
-    return null;
-  }
-}
-
-async function setLastWorkout(exerciseId: string, data: LastWorkoutData): Promise<void> {
-  const key = STORAGE_KEYS.LAST_WORKOUT(exerciseId);
-  platformStorage.setItem(key, JSON.stringify(data));
 }
 
 async function getPendingWorkouts(): Promise<PendingWorkout[]> {
@@ -140,8 +116,6 @@ async function setNutritionPendingImage(
 }
 
 export {
-  getLastWorkout,
-  setLastWorkout,
   getPendingWorkouts,
   addPendingWorkout,
   removePendingWorkout,

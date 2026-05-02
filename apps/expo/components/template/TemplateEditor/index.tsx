@@ -1,5 +1,14 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, Modal, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -520,18 +529,31 @@ export function TemplateEditor({
                             const newSets = currentSets > 1 ? currentSets - 1 : 1;
                             handleUpdateExercise(exercise.id, { sets: newSets });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { left: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text style={styles.counterValue}>{exercise.sets ?? 3}</Text>
+                        <TextInput
+                          style={styles.counterInput}
+                          keyboardType="numeric"
+                          selectTextOnFocus
+                          value={exercise.sets?.toString() ?? ''}
+                          onChangeText={(text) => {
+                            const num = parseInt(text, 10);
+                            updateExercise(exercise.id, { sets: isNaN(num) ? undefined : num });
+                          }}
+                          onBlur={() => {
+                            const current = exercise.sets ?? 3;
+                            updateExercise(exercise.id, { sets: Math.max(1, current) });
+                          }}
+                        />
                         <Pressable
                           onPress={() => {
                             const currentSets = exercise.sets ?? 3;
                             const newSets = currentSets + 1;
                             handleUpdateExercise(exercise.id, { sets: newSets });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { right: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
@@ -549,13 +571,31 @@ export function TemplateEditor({
                               repsRaw: newReps.toString(),
                             });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { left: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text style={styles.counterValue}>
-                          {exercise.repsRaw || (exercise.reps ?? 10).toString()}
-                        </Text>
+                        <TextInput
+                          style={styles.counterInput}
+                          keyboardType="numeric"
+                          selectTextOnFocus
+                          value={exercise.repsRaw ?? (exercise.reps ?? 10).toString()}
+                          onChangeText={(text) => {
+                            const num = parseInt(text, 10);
+                            updateExercise(exercise.id, {
+                              reps: isNaN(num) ? undefined : num,
+                              repsRaw: text,
+                            });
+                          }}
+                          onBlur={() => {
+                            const current = exercise.reps ?? 10;
+                            const normalized = Math.max(1, current);
+                            updateExercise(exercise.id, {
+                              reps: normalized,
+                              repsRaw: normalized.toString(),
+                            });
+                          }}
+                        />
                         <Pressable
                           onPress={() => {
                             const currentReps = exercise.reps ?? 10;
@@ -565,7 +605,7 @@ export function TemplateEditor({
                               repsRaw: newReps.toString(),
                             });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { right: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
@@ -580,22 +620,35 @@ export function TemplateEditor({
                             const newWeight = Math.max(0, currentWeight - 5);
                             handleUpdateExercise(exercise.id, { targetWeight: newWeight });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { left: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text style={styles.counterValue}>
-                          {exercise.targetWeight && exercise.targetWeight > 0
-                            ? exercise.targetWeight
-                            : '0'}
-                        </Text>
+                        <TextInput
+                          style={styles.counterInput}
+                          keyboardType="numeric"
+                          selectTextOnFocus
+                          value={exercise.targetWeight?.toString() ?? '0'}
+                          onChangeText={(text) => {
+                            const num = parseInt(text, 10);
+                            updateExercise(exercise.id, {
+                              targetWeight: isNaN(num) ? undefined : num,
+                            });
+                          }}
+                          onBlur={() => {
+                            const current = exercise.targetWeight ?? 0;
+                            updateExercise(exercise.id, {
+                              targetWeight: Math.max(0, current),
+                            });
+                          }}
+                        />
                         <Pressable
                           onPress={() => {
                             const currentWeight = exercise.targetWeight ?? 0;
                             const newWeight = currentWeight + 5;
                             handleUpdateExercise(exercise.id, { targetWeight: newWeight });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { right: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
@@ -883,21 +936,23 @@ const styles = StyleSheet.create({
   },
   counterButton: {
     position: 'absolute',
-    left: 0,
     top: 0,
     bottom: 0,
     width: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   counterButtonText: {
     fontSize: typography.fontSizes.lg,
     color: colors.textMuted,
   },
-  counterValue: {
+  counterInput: {
+    flex: 1,
     fontSize: typography.fontSizes.base,
     color: colors.text,
     textAlign: 'center',
+    paddingHorizontal: 32,
   },
   toggleRow: {
     flexDirection: 'row',

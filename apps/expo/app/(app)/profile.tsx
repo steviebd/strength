@@ -16,6 +16,7 @@ import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { getCachedBodyStats, cacheBodyStats } from '@/db/body-stats';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -106,16 +107,62 @@ export default function Profile() {
   const [targetsDirty, setTargetsDirty] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
 
+  const latestServerUpdatedAtRef = useRef(0);
+
   const { data: bodyStats } = useQuery({
     queryKey: ['body-stats'],
-    queryFn: () =>
-      apiFetch<{
+    queryFn: async () => {
+      const userId = session?.user?.id;
+      if (userId) {
+        const cached = await getCachedBodyStats(userId);
+        if (cached) {
+          // Kick off background refresh without awaiting
+          apiFetch<{
+            bodyweightKg: number | null;
+            targetCalories: number | null;
+            targetProteinG: number | null;
+            targetCarbsG: number | null;
+            targetFatG: number | null;
+            updatedAt?: string | Date | null;
+          }>('/api/nutrition/body-stats')
+            .then((fresh) => {
+              const incomingUpdatedAt = fresh.updatedAt
+                ? typeof fresh.updatedAt === 'string'
+                  ? new Date(fresh.updatedAt).getTime()
+                  : fresh.updatedAt.getTime()
+                : 0;
+              if (!incomingUpdatedAt || incomingUpdatedAt >= latestServerUpdatedAtRef.current) {
+                latestServerUpdatedAtRef.current = incomingUpdatedAt;
+                void cacheBodyStats(userId, fresh);
+              }
+            })
+            .catch(() => {
+              // Offline is fine, serve cached
+            });
+          return cached;
+        }
+      }
+      const fresh = await apiFetch<{
         bodyweightKg: number | null;
         targetCalories: number | null;
         targetProteinG: number | null;
         targetCarbsG: number | null;
         targetFatG: number | null;
-      }>('/api/nutrition/body-stats'),
+        updatedAt?: string | Date | null;
+      }>('/api/nutrition/body-stats');
+      const incomingUpdatedAt = fresh.updatedAt
+        ? typeof fresh.updatedAt === 'string'
+          ? new Date(fresh.updatedAt).getTime()
+          : fresh.updatedAt.getTime()
+        : 0;
+      if (incomingUpdatedAt) {
+        latestServerUpdatedAtRef.current = incomingUpdatedAt;
+      }
+      if (userId) {
+        await cacheBodyStats(userId, fresh, true);
+      }
+      return fresh;
+    },
   });
 
   const saveBodyweightMutation = useMutation({
@@ -124,8 +171,12 @@ export default function Profile() {
         method: 'POST',
         body: { bodyweightKg },
       }),
-    onSuccess: async (_data, bodyweightKg) => {
+    onSuccess: async (data, bodyweightKg) => {
       await recordBodyweight(bodyweightKg);
+      const userId = session?.user?.id;
+      if (userId) {
+        await cacheBodyStats(userId, data as any, true);
+      }
       queryClient.invalidateQueries({ queryKey: ['body-stats'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
     },
@@ -142,7 +193,11 @@ export default function Profile() {
         method: 'POST',
         body: targets,
       }),
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      const userId = session?.user?.id;
+      if (userId) {
+        await cacheBodyStats(userId, data as any, true);
+      }
       queryClient.invalidateQueries({ queryKey: ['body-stats'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
       setTargetsDirty(false);

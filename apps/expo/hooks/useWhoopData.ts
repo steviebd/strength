@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '@/lib/api';
 import { getTodayLocalDate } from '@/lib/timezone';
+import { getCachedWhoopData, cacheWhoopData } from '@/db/whoop';
+import { authClient } from '@/lib/auth-client';
 
 interface WhoopRecovery {
   score: number | null;
@@ -29,10 +30,6 @@ interface UseWhoopDataResult {
 
 const STALENESS_MS = 15 * 60 * 1000;
 
-function getCacheKey(date: string, timezone: string): string {
-  return `whoop_cache_${timezone}_${date}`;
-}
-
 function isStale(timestamp: number): boolean {
   return Date.now() - timestamp > STALENESS_MS;
 }
@@ -44,62 +41,76 @@ export function useWhoopData(
   const [data, setData] = useState<WhoopCache | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-
-  const saveToCache = useCallback(
-    async (cacheData: WhoopCache) => {
-      try {
-        const key = getCacheKey(date, timezone);
-        await AsyncStorage.setItem(key, JSON.stringify(cacheData));
-      } catch {}
-    },
-    [date, timezone],
-  );
-
-  const loadFromCache = useCallback(async (): Promise<WhoopCache | null> => {
-    try {
-      const key = getCacheKey(date, timezone);
-      const cached = await AsyncStorage.getItem(key);
-      if (cached) {
-        return JSON.parse(cached) as WhoopCache;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }, [date, timezone]);
-
-  const fetchFreshData = useCallback(async (): Promise<WhoopCache> => {
-    const response = await apiFetch<{ whoopRecovery: WhoopRecovery; whoopCycle: WhoopCycle }>(
-      `/api/nutrition/daily-summary?date=${date}`,
-    );
-    return {
-      recovery: response.whoopRecovery,
-      cycle: response.whoopCycle,
-      timestamp: Date.now(),
-    };
-  }, [date]);
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   const loadData = useCallback(async () => {
+    if (!userId) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const cached = await loadFromCache();
-      if (cached && !isStale(cached.timestamp)) {
-        setData(cached);
+      const cached = await getCachedWhoopData(userId, date, timezone);
+      if (cached && !isStale(cached.hydratedAt.getTime())) {
+        setData({
+          recovery:
+            cached.data.recoveryScore !== null
+              ? {
+                  score: cached.data.recoveryScore,
+                  status: cached.data.status,
+                  hrv: cached.data.hrv,
+                }
+              : null,
+          cycle:
+            cached.data.caloriesBurned !== null
+              ? {
+                  caloriesBurned: cached.data.caloriesBurned,
+                  totalStrain: cached.data.totalStrain,
+                }
+              : null,
+          timestamp: cached.hydratedAt.getTime(),
+        });
         setIsLoading(false);
         return;
       }
 
-      const fresh = await fetchFreshData();
-      await saveToCache(fresh);
+      const response = await apiFetch<{
+        whoopRecovery: WhoopRecovery;
+        whoopCycle: WhoopCycle;
+        whoopUpdatedAt: number | null;
+      }>(`/api/nutrition/daily-summary?date=${date}`);
+
+      const fresh: WhoopCache = {
+        recovery: response.whoopRecovery,
+        cycle: response.whoopCycle,
+        timestamp: Date.now(),
+      };
+
+      await cacheWhoopData(
+        userId,
+        date,
+        timezone,
+        {
+          recoveryScore: response.whoopRecovery?.score ?? null,
+          status: response.whoopRecovery?.status ?? null,
+          hrv: response.whoopRecovery?.hrv ?? null,
+          caloriesBurned: response.whoopCycle?.caloriesBurned ?? null,
+          totalStrain: response.whoopCycle?.totalStrain ?? null,
+        },
+        response.whoopUpdatedAt,
+      );
+
       setData(fresh);
     } catch (e) {
       setError(e instanceof Error ? e : new Error('Failed to load WHOOP data'));
     } finally {
       setIsLoading(false);
     }
-  }, [loadFromCache, fetchFreshData, saveToCache]);
+  }, [userId, date, timezone]);
 
   const refetch = useCallback(() => {
     loadData();

@@ -18,6 +18,7 @@ import { PageLayout } from '@/components/ui/PageLayout';
 import { ActionButton, PageHeader, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, radius, spacing, typography } from '@/theme';
 import { apiFetch } from '@/lib/api';
+import { authClient } from '@/lib/auth-client';
 import {
   getNutritionChatDraft,
   getNutritionChatMessages,
@@ -26,6 +27,7 @@ import {
   setNutritionChatMessages,
   setNutritionPendingImage,
 } from '@/lib/storage';
+import { getCachedDailySummary, cacheDailySummary, invalidateDailySummary } from '@/db/nutrition';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
@@ -309,6 +311,7 @@ function removeEntryFromSummary(summary: DailySummary | undefined, entryId: stri
 export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
   const queryClient = useQueryClient();
+  const session = authClient.useSession();
   const { activeTimezone } = useUserPreferences();
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
@@ -343,8 +346,30 @@ export default function NutritionScreen() {
 
   const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
     queryKey: dailySummaryQueryKey,
-    queryFn: () =>
-      apiFetch(buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone)),
+    queryFn: async () => {
+      const userId = session.data?.user?.id;
+      if (userId) {
+        const cached = await getCachedDailySummary(userId, date, activeTimezone ?? 'UTC');
+        if (cached) {
+          // Kick off background refresh without awaiting
+          apiFetch(buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone))
+            .then((fresh) => {
+              void cacheDailySummary(userId, date, activeTimezone ?? 'UTC', fresh);
+            })
+            .catch(() => {
+              // Offline is fine, serve cached
+            });
+          return cached as DailySummary;
+        }
+      }
+      const fresh = await apiFetch(
+        buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone),
+      );
+      if (userId) {
+        await cacheDailySummary(userId, date, activeTimezone ?? 'UTC', fresh);
+      }
+      return fresh as DailySummary;
+    },
   });
 
   useEffect(() => {
@@ -512,6 +537,12 @@ export default function NutritionScreen() {
         body: payload,
       });
     },
+    onMutate: async () => {
+      const userId = session.data?.user?.id;
+      if (userId) {
+        await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
+      }
+    },
     onSuccess: () => {
       refetchSummary();
     },
@@ -520,6 +551,10 @@ export default function NutritionScreen() {
   const deleteMealMutation = useMutation({
     mutationFn: (id: string) => apiFetch(`/api/nutrition/entries/${id}`, { method: 'DELETE' }),
     onMutate: async (entryId) => {
+      const userId = session.data?.user?.id;
+      if (userId) {
+        await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
+      }
       await queryClient.cancelQueries({ queryKey: dailySummaryQueryKey });
       const previousSummary = queryClient.getQueryData<DailySummary>(dailySummaryQueryKey);
 
@@ -546,6 +581,12 @@ export default function NutritionScreen() {
         method: 'POST',
         body: { trainingType: type, date, timezone: activeTimezone },
       }),
+    onMutate: async () => {
+      const userId = session.data?.user?.id;
+      if (userId) {
+        await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
+      }
+    },
     onSuccess: () => {
       refetchSummary();
     },

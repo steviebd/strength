@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
-import { getLastWorkout, setLastWorkout, removePendingWorkout } from '@/lib/storage';
+import { removePendingWorkout } from '@/lib/storage';
+import { getLastWorkout, setLastWorkout } from '@/db/last-workouts';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { generateId } from '@strength/db/client';
 import { exerciseLibrary } from '@strength/db/client';
@@ -70,9 +71,9 @@ async function fetchFirstExerciseHistorySnapshot(exerciseIds: string[], exercise
   return null;
 }
 
-async function getCachedLastWorkoutData(exerciseIds: string[]) {
+async function getCachedLastWorkoutData(userId: string, exerciseIds: string[]) {
   for (const exerciseId of exerciseIds) {
-    const cached = await getLastWorkout(exerciseId);
+    const cached = await getLastWorkout(userId, exerciseId);
     if (cached && (cached.weight !== null || cached.reps !== null)) {
       return cached;
     }
@@ -395,20 +396,23 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       if ((workout as any).cycleWorkoutId) {
         await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
       }
-      for (const exercise of latestExercises) {
-        const completedSets = (exercise.sets ?? []).filter((s) => s.isComplete);
-        if (completedSets.length > 0) {
-          const lastSet = completedSets[completedSets.length - 1];
-          if (lastSet.weight !== null || lastSet.reps !== null) {
-            const lastWorkout = {
-              weight: lastSet.weight,
-              reps: lastSet.reps,
-              rpe: lastSet.rpe,
-              date: new Date().toISOString(),
-            };
-            await setLastWorkout(exercise.exerciseId, lastWorkout);
-            if (exercise.libraryId) {
-              await setLastWorkout(exercise.libraryId, lastWorkout);
+      if (session.data?.user) {
+        const userId = session.data.user.id;
+        for (const exercise of latestExercises) {
+          const completedSets = (exercise.sets ?? []).filter((s) => s.isComplete);
+          if (completedSets.length > 0) {
+            const lastSet = completedSets[completedSets.length - 1];
+            if (lastSet.weight !== null || lastSet.reps !== null) {
+              const lastWorkout = {
+                weight: lastSet.weight,
+                reps: lastSet.reps,
+                rpe: lastSet.rpe,
+                date: new Date().toISOString(),
+              };
+              await setLastWorkout(userId, exercise.exerciseId, lastWorkout);
+              if (exercise.libraryId) {
+                await setLastWorkout(userId, exercise.libraryId, lastWorkout);
+              }
             }
           }
         }
@@ -468,8 +472,8 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         historySnapshot = await fetchFirstExerciseHistorySnapshot(historyIds, exercise.name);
       }
 
-      if (historySnapshot === null) {
-        cached = await getCachedLastWorkoutData(historyIds);
+      if (historySnapshot === null && session.data?.user?.id) {
+        cached = await getCachedLastWorkoutData(session.data.user.id, historyIds);
       }
 
       const newSets: WorkoutSet[] =

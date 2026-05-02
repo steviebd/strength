@@ -196,8 +196,68 @@ export const localSyncQueue = sqliteTable('local_sync_queue', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const localLastWorkouts = sqliteTable(
+  'local_last_workouts',
+  {
+    userId: text('user_id').notNull(),
+    exerciseId: text('exercise_id').notNull(),
+    weight: real('weight'),
+    reps: integer('reps'),
+    rpe: real('rpe'),
+    date: text('date').notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.exerciseId] })],
+);
+
+export const localNutritionDailySummaries = sqliteTable(
+  'local_nutrition_daily_summaries',
+  {
+    userId: text('user_id').notNull(),
+    date: text('date').notNull(),
+    timezone: text('timezone').notNull().default('UTC'),
+    json: text('json').notNull(),
+    hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.date, table.timezone] })],
+);
+
+export const localBodyStats = sqliteTable('local_body_stats', {
+  userId: text('user_id').primaryKey(),
+  bodyweightKg: real('bodyweight_kg'),
+  heightCm: real('height_cm'),
+  targetCalories: integer('target_calories'),
+  targetProteinG: integer('target_protein_g'),
+  targetCarbsG: integer('target_carbs_g'),
+  targetFatG: integer('target_fat_g'),
+  recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }),
+  serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
+  hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localWhoopData = sqliteTable(
+  'local_whoop_data',
+  {
+    userId: text('user_id').notNull(),
+    date: text('date').notNull(),
+    timezone: text('timezone').notNull().default('UTC'),
+    recoveryScore: real('recovery_score'),
+    status: text('status'),
+    hrv: real('hrv'),
+    caloriesBurned: real('calories_burned'),
+    totalStrain: real('total_strain'),
+    serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
+    hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.date, table.timezone] })],
+);
+
 export type LocalUserPreferences = typeof localUserPreferences.$inferSelect;
 export type LocalWorkout = typeof localWorkouts.$inferSelect;
 export type LocalWorkoutExercise = typeof localWorkoutExercises.$inferSelect;
 export type LocalWorkoutSet = typeof localWorkoutSets.$inferSelect;
 export type LocalSyncQueueItem = typeof localSyncQueue.$inferSelect;
+export type LocalLastWorkout = typeof localLastWorkouts.$inferSelect;
+export type LocalNutritionDailySummary = typeof localNutritionDailySummaries.$inferSelect;
+export type LocalBodyStat = typeof localBodyStats.$inferSelect;
+export type LocalWhoopDatum = typeof localWhoopData.$inferSelect;

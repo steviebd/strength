@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '@/theme';
-import { Button } from '@/components/ui/Button';
 import { MealImageCapture } from './MealImageCapture';
 
 interface ChatInputProps {
@@ -101,16 +100,22 @@ export function ChatInput({
             onFocus={onFocus}
           />
         </View>
-        <Button
+        <Pressable
           testID="nutrition-chat-send"
           onPress={handleSend}
           disabled={(!value.trim() && !pendingImageUri) || isLoading}
-          style={styles.sendButton}
-          size="sm"
-          variant="default"
+          style={({ pressed }) => [
+            styles.sendButton,
+            pressed && styles.sendButtonPressed,
+            ((!value.trim() && !pendingImageUri) || isLoading) && styles.sendButtonDisabled,
+          ]}
         >
-          {isLoading ? <ActivityIndicator size="small" color="#ffffff" /> : '↑'}
-        </Button>
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Ionicons name="paper-plane" size={18} color="#ffffff" />
+          )}
+        </Pressable>
       </View>
     </View>
   );
@@ -210,8 +215,18 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   sendButton: {
-    width: 48,
-    minWidth: 48,
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
     alignSelf: 'flex-end',
+  },
+  sendButtonPressed: {
+    opacity: 0.85,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
   },
 });

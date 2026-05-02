@@ -350,4 +350,55 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
         ON local_workout_exercises (lower(name));
     `);
   });
+
+  applyVersionedMigration(sqlite, '20260502_local_cache_expansion', () => {
+    sqlite.execSync(`
+      CREATE TABLE IF NOT EXISTS local_last_workouts (
+        user_id TEXT NOT NULL,
+        exercise_id TEXT NOT NULL,
+        weight REAL,
+        reps INTEGER,
+        rpe REAL,
+        date TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, exercise_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS local_nutrition_daily_summaries (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        json TEXT NOT NULL,
+        hydrated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, date, timezone)
+      );
+
+      CREATE TABLE IF NOT EXISTS local_body_stats (
+        user_id TEXT PRIMARY KEY NOT NULL,
+        bodyweight_kg REAL,
+        height_cm REAL,
+        target_calories INTEGER,
+        target_protein_g INTEGER,
+        target_carbs_g INTEGER,
+        target_fat_g INTEGER,
+        recorded_at INTEGER,
+        server_updated_at INTEGER,
+        hydrated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS local_whoop_data (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        recovery_score REAL,
+        status TEXT,
+        hrv REAL,
+        calories_burned REAL,
+        total_strain REAL,
+        server_updated_at INTEGER,
+        hydrated_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, date, timezone)
+      );
+    `);
+  });
 }

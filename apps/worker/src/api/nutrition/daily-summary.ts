@@ -167,6 +167,11 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
     trainingContext,
     whoopRecovery,
     whoopCycle,
+    whoopUpdatedAt:
+      Math.max(
+        whoopData.recoveryUpdatedAt?.getTime() ?? 0,
+        whoopData.cycleUpdatedAt?.getTime() ?? 0,
+      ) || null,
     programSession: null,
   });
 });
