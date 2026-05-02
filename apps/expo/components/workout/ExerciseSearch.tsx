@@ -545,7 +545,7 @@ export function ExerciseSearch({
               </View>
             )}
           </ScrollView>
-          <View style={[styles.formFooter, { paddingBottom: insets.bottom + spacing.md }]}>
+          <View style={[styles.formFooter, { paddingBottom: insets.bottom + spacing.sm }]}>
             <Pressable
               onPress={() => {
                 setShowCreateForm(false);
