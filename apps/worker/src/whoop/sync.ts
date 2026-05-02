@@ -398,52 +398,6 @@ export async function deleteWhoopSleep(
   return 1;
 }
 
-export async function upsertWhoopBodyMeasurement(
-  db: DrizzleD1Database<typeof schema>,
-  userId: string,
-  measurement: WhoopBodyMeasurement,
-): Promise<number> {
-  const measurementId =
-    measurement.id ??
-    measurement.measurement_date ??
-    `${measurement.height_meter}:${measurement.weight_kilogram}:${measurement.max_heart_rate ?? 'na'}`;
-
-  const now = new Date();
-  const values = {
-    userId,
-    whoopMeasurementId: measurementId,
-    heightMeter: measurement.height_meter,
-    weightKilogram: measurement.weight_kilogram,
-    maxHeartRate: measurement.max_heart_rate ?? null,
-    measurementDate: measurement.measurement_date ? new Date(measurement.measurement_date) : null,
-    rawData: JSON.stringify(measurement),
-    webhookReceivedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  await db
-    .insert(whoopBodyMeasurement)
-    .values(values)
-    .onConflictDoUpdate({
-      target: whoopBodyMeasurement.whoopMeasurementId,
-      set: {
-        userId,
-        heightMeter: measurement.height_meter,
-        weightKilogram: measurement.weight_kilogram,
-        maxHeartRate: measurement.max_heart_rate ?? null,
-        measurementDate: measurement.measurement_date
-          ? new Date(measurement.measurement_date)
-          : null,
-        rawData: JSON.stringify(measurement),
-        webhookReceivedAt: now,
-        updatedAt: now,
-      },
-    });
-
-  return 1;
-}
-
 // Batched sync helpers
 
 async function syncWorkouts(

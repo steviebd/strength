@@ -2,17 +2,6 @@ export * from './types';
 export * from './utils';
 export * from './accessory-data';
 export * from './scheduler';
-export * from './config';
-
-export { stronglifts, generateWorkouts as generateStrongliftsWorkouts } from './stronglifts';
-export { wendler531, generateWorkouts as generateWendler531Workouts } from './wendler531';
-export { madcow, generateWorkouts as generateMadcowWorkouts } from './madcow';
-export { candito, generateWorkouts as generateCanditoWorkouts } from './candito';
-export { nsuns, generateWorkouts as generateNsunsWorkouts } from './nsuns';
-export { sheiko, generateWorkouts as generateSheikoWorkouts } from './sheiko';
-export { nuckols, generateWorkouts as generateNuckolsWorkouts } from './nuckols';
-export { megsquats, generateWorkouts as generateMegsquatsWorkouts } from './megsquats';
-export { jenSinkler, generateWorkouts as generateJenSinklerWorkouts } from './jen-sinkler';
 
 import { stronglifts } from './stronglifts';
 import { wendler531 } from './wendler531';

@@ -62,12 +62,6 @@ export async function getRunnableSyncItems(
     .all();
 }
 
-export async function getSyncItemsForWorkout(workoutId: string) {
-  const db = getLocalDb();
-  if (!db) return [];
-  return db.select().from(localSyncQueue).where(eq(localSyncQueue.entityId, workoutId)).all();
-}
-
 export async function markSyncItemStatus(
   id: string,
   status: SyncQueueStatus,

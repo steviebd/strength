@@ -53,10 +53,8 @@ async function resetUserData(env: WorkerEnv, email: string) {
     env.DB.prepare('delete from whoop_sleep where user_id = ?').bind(userId),
     env.DB.prepare('delete from whoop_body_measurement where user_id = ?').bind(userId),
     env.DB.prepare('delete from session where user_id = ?').bind(userId),
-    env.DB.prepare('delete from account where user_id = ?').bind(userId),
     env.DB.prepare('delete from user_preferences where user_id = ?').bind(userId),
     env.DB.prepare('delete from verification where identifier = ?').bind(email),
-    env.DB.prepare('delete from user where id = ?').bind(userId),
   ]);
 
   return { deleted: true };
@@ -76,6 +74,14 @@ router.post('/reset-user', async (c) => {
 
   const result = await resetUserData(c.env, email);
   return c.json({ ok: true, ...result });
+});
+
+router.get('/status', async (c) => {
+  if (!isE2EEnabled(c.env) || !isAuthorized(c)) {
+    return c.json({ message: 'Not found' }, 404);
+  }
+
+  return c.json({ ok: true, appEnv: c.env.APP_ENV, e2eTestMode: c.env.E2E_TEST_MODE });
 });
 
 export default router;

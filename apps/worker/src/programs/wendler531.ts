@@ -17,7 +17,7 @@ function calculateTargetWeight(
   return roundToPlate(trainingMax * percentage);
 }
 
-export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
+function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
   const lifts: Array<{ name: string; lift: LiftType; libraryId: string; oneRM: number }> = [
     {

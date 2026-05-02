@@ -61,7 +61,7 @@ export function stripMachineJsonFromAssistantText(content: string): string {
     .trim();
 }
 
-export function getMealTypeFromHour(hour: number): MealType {
+function getMealTypeFromHour(hour: number): MealType {
   if (hour >= 6 && hour < 11) return 'Breakfast';
   if (hour >= 11 && hour < 16) return 'Lunch';
   if (hour >= 17 && hour < 22) return 'Dinner';

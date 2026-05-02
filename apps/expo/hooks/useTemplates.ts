@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
-import type { Template } from './useTemplateEditor';
+import type { Template } from '@/components/template/TemplateEditor/types';
 import { cacheTemplates } from '@/db/workouts';
 import { getCachedTemplates } from '@/db/training-cache';
 

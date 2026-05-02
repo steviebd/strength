@@ -80,10 +80,6 @@ async function removePendingWorkout(workoutId: string): Promise<void> {
   platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, JSON.stringify(filtered));
 }
 
-async function clearPendingWorkouts(): Promise<void> {
-  platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, '');
-}
-
 async function getNutritionChatMessages<T>(date: string): Promise<T[]> {
   const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date));
   if (!data) return [];
@@ -143,33 +139,16 @@ async function setNutritionPendingImage(
   await AsyncStorage.setItem(key, JSON.stringify(image));
 }
 
-async function getDismissedDeviceTimezone(): Promise<string | null> {
-  return platformStorage.getItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
-}
-
-async function setDismissedDeviceTimezone(timezone: string | null): Promise<void> {
-  if (!timezone) {
-    platformStorage.removeItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE);
-    return;
-  }
-  platformStorage.setItem(STORAGE_KEYS.DISMISSED_DEVICE_TIMEZONE, timezone);
-}
-
 export {
-  LastWorkoutData,
-  PendingWorkout,
   getLastWorkout,
   setLastWorkout,
   getPendingWorkouts,
   addPendingWorkout,
   removePendingWorkout,
-  clearPendingWorkouts,
   getNutritionChatMessages,
   setNutritionChatMessages,
   getNutritionChatDraft,
   setNutritionChatDraft,
   getNutritionPendingImage,
   setNutritionPendingImage,
-  getDismissedDeviceTimezone,
-  setDismissedDeviceTimezone,
 };

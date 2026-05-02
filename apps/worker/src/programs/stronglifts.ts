@@ -15,7 +15,7 @@ function calculateTargetWeight(
   return roundToPlate(baseWeight + progression * 2.5);
 }
 
-export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
+function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
   let workoutIndex = 0;
 

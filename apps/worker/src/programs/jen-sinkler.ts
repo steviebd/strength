@@ -17,7 +17,7 @@ function calculateTargetWeight(
   return roundToPlate(weight);
 }
 
-export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
+function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
   let workoutIndex = 0;
 

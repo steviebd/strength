@@ -1,6 +1,6 @@
 import { apiFetch } from '@/lib/api';
 import type { ExerciseLibraryItem } from '@strength/db/client';
-import { cacheUserExercises } from '@/db/workouts';
+import { cacheUserExercises, deleteCachedUserExercise } from '@/db/workouts';
 import { getCachedUserExercises } from '@/db/training-cache';
 import { authClient } from './auth-client';
 
@@ -65,6 +65,18 @@ export async function createCustomExercise(input: CreateExerciseInput) {
   }
 
   return exercise;
+}
+
+export async function deleteCustomExercise(exerciseId: string) {
+  await apiFetch<{ success: boolean }>(`/api/exercises/${encodeURIComponent(exerciseId)}`, {
+    method: 'DELETE',
+  });
+
+  const session = await authClient.getSession();
+  const userId = session.data?.user?.id;
+  if (userId) {
+    await deleteCachedUserExercise(userId, exerciseId);
+  }
 }
 
 export async function ensurePersistedExercise(exercise: ExerciseLibraryItem) {

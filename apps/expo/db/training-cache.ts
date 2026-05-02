@@ -18,7 +18,7 @@ import {
 } from './local-schema';
 import { upsertServerWorkoutSnapshot } from './workouts';
 import type { Workout } from '@/context/WorkoutSessionContext';
-import type { Template } from '@/hooks/useTemplateEditor';
+import type { Template } from '@/components/template/TemplateEditor/types';
 
 const DIRTY_WORKOUT_STATUSES = ['pending', 'syncing', 'failed', 'conflict'];
 
@@ -284,7 +284,7 @@ export async function getCachedTemplates(userId: string): Promise<Template[]> {
   );
 }
 
-export async function getCachedTemplate(templateId: string): Promise<Template | null> {
+async function getCachedTemplate(templateId: string): Promise<Template | null> {
   const db = getLocalDb();
   if (!db) return null;
   const template = db.select().from(localTemplates).where(eq(localTemplates.id, templateId)).get();
@@ -345,7 +345,7 @@ export async function getCachedActivePrograms(userId: string) {
     .all();
 }
 
-export async function getCachedProgramCycleWithWorkouts(userId: string, cycleId: string) {
+async function getCachedProgramCycleWithWorkouts(userId: string, cycleId: string) {
   const db = getLocalDb();
   if (!db) return null;
   const cycle = db
@@ -486,7 +486,7 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
   };
 }
 
-export async function getCachedRecentWorkoutHistory(userId: string, limit = 50) {
+async function getCachedRecentWorkoutHistory(userId: string, limit = 50) {
   const db = getLocalDb();
   if (!db) return [];
   return db

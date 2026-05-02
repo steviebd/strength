@@ -30,7 +30,7 @@ function calculateTargetWeight(
   return roundToPlate(estimatedOneRM * percentage);
 }
 
-export function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
+function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
   const workouts: ProgramWorkout[] = [];
 
   for (let week = 1; week <= 8; week++) {

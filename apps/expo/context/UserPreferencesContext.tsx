@@ -49,7 +49,7 @@ interface UserPreferencesContextValue {
   isLoading: boolean;
 }
 
-export const UserPreferencesContext = createContext<UserPreferencesContextValue | null>(null);
+const UserPreferencesContext = createContext<UserPreferencesContextValue | null>(null);
 
 function parseDate(value: string | Date | null | undefined) {
   if (!value) {

@@ -6,6 +6,7 @@
     "sync-env:dev": "bun run scripts/sync-expo-env.ts dev",
     "sync-env:staging": "bun run scripts/sync-expo-env.ts staging",
     "dev": "bun run sync-env:dev && bun run dev:metro",
+    "dev:e2e": "EXPO_NO_DOTENV=1 EXPO_PUBLIC_APP_SCHEME=strength EXPO_PUBLIC_WORKER_BASE_URL=${E2E_WORKER_BASE_URL:-http://127.0.0.1:8787} bun run dev:metro",
     "dev:metro": "lsof -ti:8081 | xargs kill -9 2>/dev/null || true; EXPO_NO_METRO_LAZY=1 expo start --clear -- --port 8081",
     "android": "EXPO_NO_METRO_LAZY=1 expo start --android",
     "ios": "EXPO_NO_METRO_LAZY=1 expo start --ios",

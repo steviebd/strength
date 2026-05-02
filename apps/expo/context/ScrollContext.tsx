@@ -5,7 +5,7 @@ interface ScrollContextValue {
   scrollToInput: (inputRef: RefObject<any>) => void;
 }
 
-export const ScrollContext = createContext<ScrollContextValue | null>(null);
+const ScrollContext = createContext<ScrollContextValue | null>(null);
 
 export function useScrollToInput(): (inputRef: RefObject<any>) => void {
   const ctx = useContext(ScrollContext);

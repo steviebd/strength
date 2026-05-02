@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import {
   consolidateProgramTargetLifts,
   getCurrentCycleWorkout,
@@ -837,23 +837,6 @@ export async function saveLocalWorkoutDraft(
   return getLocalWorkout(workout.id);
 }
 
-export async function listLocalActiveWorkouts(userId: string) {
-  const db = getLocalDb();
-  if (!db) return [];
-  return db
-    .select()
-    .from(localWorkouts)
-    .where(
-      and(
-        eq(localWorkouts.userId, userId),
-        eq(localWorkouts.isDeleted, false),
-        isNull(localWorkouts.completedAt),
-      ),
-    )
-    .orderBy(desc(localWorkouts.startedAt))
-    .all();
-}
-
 export async function discardLocalWorkout(workoutId: string) {
   const db = getLocalDb();
   if (!db) return;
@@ -1023,6 +1006,8 @@ export async function cacheUserExercises(userId: string, exercises: any[]) {
   if (!db) return;
   const hydratedAt = new Date();
   for (const exercise of exercises) {
+    const createdAt = toDate(exercise.createdAt) ?? hydratedAt;
+    const updatedAt = toDate(exercise.updatedAt) ?? hydratedAt;
     db.insert(localUserExercises)
       .values({
         id: exercise.id,
@@ -1031,8 +1016,10 @@ export async function cacheUserExercises(userId: string, exercises: any[]) {
         muscleGroup: exercise.muscleGroup ?? null,
         description: exercise.description ?? null,
         libraryId: exercise.libraryId ?? null,
-        createdAt: toDate(exercise.createdAt),
-        updatedAt: toDate(exercise.updatedAt),
+        createdLocally: false,
+        createdAt,
+        updatedAt,
+        serverUpdatedAt: updatedAt,
         hydratedAt,
       })
       .onConflictDoUpdate({
@@ -1042,12 +1029,22 @@ export async function cacheUserExercises(userId: string, exercises: any[]) {
           muscleGroup: exercise.muscleGroup ?? null,
           description: exercise.description ?? null,
           libraryId: exercise.libraryId ?? null,
-          updatedAt: toDate(exercise.updatedAt),
+          createdLocally: false,
+          updatedAt,
+          serverUpdatedAt: updatedAt,
           hydratedAt,
         },
       })
       .run();
   }
+}
+
+export async function deleteCachedUserExercise(userId: string, exerciseId: string) {
+  const db = getLocalDb();
+  if (!db) return;
+  db.delete(localUserExercises)
+    .where(and(eq(localUserExercises.userId, userId), eq(localUserExercises.id, exerciseId)))
+    .run();
 }
 
 export async function cacheActivePrograms(userId: string, programs: any[]) {

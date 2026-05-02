@@ -77,7 +77,7 @@ export interface ProgramListItem {
   category: ProgramCategory;
 }
 
-export const PROGRAM_SLUGS = {
+const PROGRAM_SLUGS = {
   stronglifts5x5: 'stronglifts-5x5',
   wendler531: '531',
   madcow5x5: 'madcow-5x5',
