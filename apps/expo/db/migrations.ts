@@ -40,10 +40,12 @@ function applyVersionedMigration(sqlite: SQLiteDatabase, id: string, migrate: ()
   if (hasMigration(sqlite, id)) {
     return;
   }
-  migrate();
-  sqlite.execSync(
-    `INSERT OR REPLACE INTO local_schema_migrations (id, applied_at) VALUES ('${id}', ${Date.now()})`,
-  );
+  sqlite.withTransactionSync(() => {
+    migrate();
+    sqlite.execSync(
+      `INSERT OR REPLACE INTO local_schema_migrations (id, applied_at) VALUES ('${id}', ${Date.now()})`,
+    );
+  });
 }
 
 export function runLocalMigrations(sqlite: SQLiteDatabase) {
@@ -244,6 +246,8 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       ON local_workouts (user_id, completed_at, is_deleted);
     CREATE INDEX IF NOT EXISTS idx_local_workout_exercises_workout
       ON local_workout_exercises (workout_id, order_index);
+    CREATE INDEX IF NOT EXISTS idx_local_workout_exercises_lower_name
+      ON local_workout_exercises (lower(name));
     CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise
       ON local_workout_sets (workout_exercise_id, set_number);
     CREATE INDEX IF NOT EXISTS idx_local_templates_user
@@ -256,6 +260,12 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       ON local_program_cycle_workouts (cycle_id, week_number, session_number);
     CREATE INDEX IF NOT EXISTS idx_local_sync_queue_runnable
       ON local_sync_queue (status, available_at);
+    CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise_deleted_order
+      ON local_workout_sets (workout_exercise_id, is_deleted, set_number);
+    CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
+      ON local_sync_queue (user_id, status, available_at);
+    CREATE INDEX IF NOT EXISTS idx_local_workout_exercises_lower_name
+      ON local_workout_exercises (lower(name));
   `);
 
   applyVersionedMigration(sqlite, '20260428_training_cache_columns', () => {
@@ -327,6 +337,17 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
         ON local_program_cycles (user_id, status);
       CREATE INDEX IF NOT EXISTS idx_local_program_cycle_workouts_cycle_order
         ON local_program_cycle_workouts (cycle_id, week_number, session_number);
+    `);
+  });
+
+  applyVersionedMigration(sqlite, '20260502_performance_indexes', () => {
+    sqlite.execSync(`
+      CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise_deleted_order
+        ON local_workout_sets (workout_exercise_id, is_deleted, set_number);
+      CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
+        ON local_sync_queue (user_id, status, available_at);
+      CREATE INDEX IF NOT EXISTS idx_local_workout_exercises_lower_name
+        ON local_workout_exercises (lower(name));
     `);
   });
 }

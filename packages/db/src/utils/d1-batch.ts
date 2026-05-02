@@ -6,7 +6,7 @@ type DbClient = DrizzleD1Database<Record<string, unknown>>;
 export const DEFAULT_CHUNK_SIZE = 100;
 export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_MAX_QUERY_PARAMS = 100;
-export const DEFAULT_STATEMENTS_PER_BATCH = 95;
+export const DEFAULT_STATEMENTS_PER_BATCH = 45;
 
 export async function batchParallel<T>(
   tasks: (() => Promise<T>)[],
@@ -130,6 +130,7 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     rows: T['$inferInsert'][];
     chunkSize?: number;
     maxQueryParams?: number;
+    maxStatementsPerBatch?: number;
   },
 ): Promise<number> {
   const {
@@ -137,9 +138,13 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     rows,
     chunkSize = DEFAULT_CHUNK_SIZE,
     maxQueryParams = DEFAULT_MAX_QUERY_PARAMS,
+    maxStatementsPerBatch = DEFAULT_STATEMENTS_PER_BATCH,
   } = config;
 
   if (rows.length === 0) return 0;
+  if (maxStatementsPerBatch < 1) {
+    throw new Error('maxStatementsPerBatch must be at least 1');
+  }
 
   const safeChunkSize = getSafeInsertChunkSize(
     rows as Record<string, unknown>[],
@@ -148,14 +153,21 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
   );
   const chunks = chunkArray(rows, safeChunkSize);
 
-  const STATEMENTS_PER_BATCH = DEFAULT_STATEMENTS_PER_BATCH;
   let insertedRows = 0;
 
-  for (let i = 0; i < chunks.length; i += STATEMENTS_PER_BATCH) {
-    const batchChunks = chunks.slice(i, i + STATEMENTS_PER_BATCH);
+  for (let i = 0; i < chunks.length; i += maxStatementsPerBatch) {
+    const batchChunks = chunks.slice(i, i + maxStatementsPerBatch);
     const statements = batchChunks.map((chunk) => db.insert(table).values(chunk));
     const results = await db.batch(statements as any);
-    insertedRows += results.reduce((sum, r) => sum + r.rowsAffected, 0);
+    const batchInsertedRows = results.reduce((sum, r) => sum + r.rowsAffected, 0);
+    insertedRows += batchInsertedRows;
+    if (chunks.length > maxStatementsPerBatch) {
+      console.info('chunkedInsert batch completed', {
+        batch: Math.floor(i / maxStatementsPerBatch) + 1,
+        statements: statements.length,
+        rowsAffected: batchInsertedRows,
+      });
+    }
   }
 
   return insertedRows;

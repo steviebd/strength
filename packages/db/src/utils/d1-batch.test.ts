@@ -23,8 +23,8 @@ describe('d1-batch constants', () => {
     expect(DEFAULT_MAX_QUERY_PARAMS).toBe(100);
   });
 
-  it('DEFAULT_STATEMENTS_PER_BATCH should be 95', () => {
-    expect(DEFAULT_STATEMENTS_PER_BATCH).toBe(95);
+  it('DEFAULT_STATEMENTS_PER_BATCH should be 45', () => {
+    expect(DEFAULT_STATEMENTS_PER_BATCH).toBe(45);
   });
 });
 
@@ -282,11 +282,52 @@ describe('chunkedInsert', () => {
       chunkSize: 1,
     });
 
-    expect(batchCalls.length).toBe(3);
-    expect(batchCalls[0].length).toBe(95);
-    expect(batchCalls[1].length).toBe(95);
-    expect(batchCalls[2].length).toBe(60);
+    expect(batchCalls.length).toBe(6);
+    expect(batchCalls[0].length).toBe(45);
+    expect(batchCalls[1].length).toBe(45);
+    expect(batchCalls[2].length).toBe(45);
+    expect(batchCalls[3].length).toBe(45);
+    expect(batchCalls[4].length).toBe(45);
+    expect(batchCalls[5].length).toBe(25);
     expect(inserted).toBe(250);
+  });
+
+  it('should allow callers to override statements per batch', async () => {
+    const batchCalls: unknown[][][] = [];
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => ({
+          prepare: () => ({
+            getQuery: () => ({ sql: '?', params: [] }),
+          }),
+        }),
+      }),
+      batch: async (statements: unknown[][]) => {
+        batchCalls.push(statements);
+        return statements.map(() => ({ rowsAffected: 1 }));
+      },
+    };
+
+    const rows = Array.from({ length: 25 }, (_, i) => ({ id: String(i) }));
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      chunkSize: 1,
+      maxStatementsPerBatch: 10,
+    });
+
+    expect(batchCalls.map((batch) => batch.length)).toEqual([10, 10, 5]);
+    expect(inserted).toBe(25);
+  });
+
+  it('should reject invalid maxStatementsPerBatch values', async () => {
+    await expect(
+      chunkedInsert({} as any, {
+        table: {} as any,
+        rows: [{ id: 'a' }],
+        maxStatementsPerBatch: 0,
+      }),
+    ).rejects.toThrow('maxStatementsPerBatch must be at least 1');
   });
 
   it('should call db.batch once for small inserts', async () => {

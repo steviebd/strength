@@ -6,7 +6,7 @@ import {
   normalizeProgramReps,
   parseProgramTargetLifts,
 } from '@strength/db/client';
-import { getLocalDb } from './client';
+import { getLocalDb, withLocalTransaction } from './client';
 import {
   localProgramCycleWorkouts,
   localProgramCycles,
@@ -140,61 +140,63 @@ function computeWorkoutTotals(exercises: WorkoutExercise[], startedAt: string) {
   return { completedAt, totalSets, totalVolume, durationMinutes };
 }
 
-async function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[]) {
+function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[]) {
   const db = getLocalDb();
   if (!db) return;
 
-  const now = new Date();
-  const existing = db
-    .select({ id: localWorkoutExercises.id })
-    .from(localWorkoutExercises)
-    .where(eq(localWorkoutExercises.workoutId, workoutId))
-    .all();
-  const existingIds = existing.map((row) => row.id);
-  if (existingIds.length > 0) {
-    db.delete(localWorkoutSets)
-      .where(inArray(localWorkoutSets.workoutExerciseId, existingIds))
-      .run();
-    db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
-  }
+  withLocalTransaction(() => {
+    const now = new Date();
+    const existing = db
+      .select({ id: localWorkoutExercises.id })
+      .from(localWorkoutExercises)
+      .where(eq(localWorkoutExercises.workoutId, workoutId))
+      .all();
+    const existingIds = existing.map((row) => row.id);
+    if (existingIds.length > 0) {
+      db.delete(localWorkoutSets)
+        .where(inArray(localWorkoutSets.workoutExerciseId, existingIds))
+        .run();
+      db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
+    }
 
-  for (const exercise of exercises) {
-    const workoutExerciseId = exercise.id ?? generateId();
-    db.insert(localWorkoutExercises)
-      .values({
-        id: workoutExerciseId,
-        workoutId,
-        exerciseId: exercise.exerciseId,
-        libraryId: exercise.libraryId ?? null,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup ?? null,
-        orderIndex: exercise.orderIndex,
-        notes: exercise.notes ?? null,
-        isAmrap: exercise.isAmrap ?? false,
-        isDeleted: false,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-
-    for (const set of exercise.sets ?? []) {
-      db.insert(localWorkoutSets)
+    for (const exercise of exercises) {
+      const workoutExerciseId = exercise.id ?? generateId();
+      db.insert(localWorkoutExercises)
         .values({
-          id: set.id ?? generateId(),
-          workoutExerciseId,
-          setNumber: set.setNumber,
-          weight: set.weight ?? null,
-          reps: set.reps ?? null,
-          rpe: set.rpe ?? null,
-          isComplete: set.isComplete ?? false,
-          completedAt: toDate(set.completedAt),
+          id: workoutExerciseId,
+          workoutId,
+          exerciseId: exercise.exerciseId,
+          libraryId: exercise.libraryId ?? null,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup ?? null,
+          orderIndex: exercise.orderIndex,
+          notes: exercise.notes ?? null,
+          isAmrap: exercise.isAmrap ?? false,
           isDeleted: false,
           createdAt: now,
           updatedAt: now,
         })
         .run();
+
+      for (const set of exercise.sets ?? []) {
+        db.insert(localWorkoutSets)
+          .values({
+            id: set.id ?? generateId(),
+            workoutExerciseId,
+            setNumber: set.setNumber,
+            weight: set.weight ?? null,
+            reps: set.reps ?? null,
+            rpe: set.rpe ?? null,
+            isComplete: set.isComplete ?? false,
+            completedAt: toDate(set.completedAt),
+            isDeleted: false,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+      }
     }
-  }
+  });
 }
 
 export async function createLocalWorkout(
@@ -214,44 +216,46 @@ export async function createLocalWorkout(
 
   const now = new Date();
   const id = input.id ?? generateId();
-  db.insert(localWorkouts)
-    .values({
-      id,
-      userId,
-      templateId: input.templateId ?? null,
-      programCycleId: input.programCycleId ?? null,
-      cycleWorkoutId: input.cycleWorkoutId ?? null,
-      name: input.name,
-      startedAt: toDate(input.startedAt) ?? now,
-      completedAt: null,
-      notes: null,
-      totalVolume: null,
-      totalSets: null,
-      durationMinutes: null,
-      isDeleted: false,
-      createdAt: now,
-      updatedAt: now,
-      syncStatus: 'local',
-      syncOperationId: null,
-      syncAttemptCount: 0,
-      lastSyncError: null,
-      lastSyncAttemptAt: null,
-      serverUpdatedAt: null,
-      createdLocally: true,
-    })
-    .onConflictDoUpdate({
-      target: localWorkouts.id,
-      set: {
-        name: input.name,
+  withLocalTransaction(() => {
+    db.insert(localWorkouts)
+      .values({
+        id,
+        userId,
         templateId: input.templateId ?? null,
         programCycleId: input.programCycleId ?? null,
         cycleWorkoutId: input.cycleWorkoutId ?? null,
+        name: input.name,
+        startedAt: toDate(input.startedAt) ?? now,
+        completedAt: null,
+        notes: null,
+        totalVolume: null,
+        totalSets: null,
+        durationMinutes: null,
+        isDeleted: false,
+        createdAt: now,
         updatedAt: now,
-      },
-    })
-    .run();
+        syncStatus: 'local',
+        syncOperationId: null,
+        syncAttemptCount: 0,
+        lastSyncError: null,
+        lastSyncAttemptAt: null,
+        serverUpdatedAt: null,
+        createdLocally: true,
+      })
+      .onConflictDoUpdate({
+        target: localWorkouts.id,
+        set: {
+          name: input.name,
+          templateId: input.templateId ?? null,
+          programCycleId: input.programCycleId ?? null,
+          cycleWorkoutId: input.cycleWorkoutId ?? null,
+          updatedAt: now,
+        },
+      })
+      .run();
 
-  await replaceLocalExercises(id, input.exercises ?? []);
+    replaceLocalExercises(id, input.exercises ?? []);
+  });
   return getLocalWorkout(id);
 }
 
@@ -643,75 +647,77 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
 
   const now = new Date();
   const completedAt = toDate(serverWorkout.completedAt);
-  db.insert(localWorkouts)
-    .values({
-      id: serverWorkout.id,
-      userId,
-      templateId: (serverWorkout as any).templateId ?? null,
-      programCycleId: (serverWorkout as any).programCycleId ?? null,
-      cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
-      name: serverWorkout.name,
-      startedAt: toDate(serverWorkout.startedAt) ?? now,
-      completedAt,
-      notes: serverWorkout.notes ?? null,
-      totalVolume: serverWorkout.totalVolume ?? null,
-      totalSets: serverWorkout.totalSets ?? null,
-      durationMinutes: serverWorkout.durationMinutes ?? null,
-      isDeleted: false,
-      createdAt: now,
-      updatedAt: now,
-      syncStatus: 'synced',
-      syncOperationId: null,
-      syncAttemptCount: 0,
-      lastSyncError: null,
-      lastSyncAttemptAt: null,
-      serverUpdatedAt: now,
-      createdLocally: false,
-    })
-    .onConflictDoUpdate({
-      target: localWorkouts.id,
-      set: {
-        name: serverWorkout.name,
+  withLocalTransaction(() => {
+    db.insert(localWorkouts)
+      .values({
+        id: serverWorkout.id,
+        userId,
         templateId: (serverWorkout as any).templateId ?? null,
         programCycleId: (serverWorkout as any).programCycleId ?? null,
         cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
+        name: serverWorkout.name,
         startedAt: toDate(serverWorkout.startedAt) ?? now,
         completedAt,
+        notes: serverWorkout.notes ?? null,
         totalVolume: serverWorkout.totalVolume ?? null,
         totalSets: serverWorkout.totalSets ?? null,
         durationMinutes: serverWorkout.durationMinutes ?? null,
-        syncStatus: 'synced',
-        lastSyncError: null,
-        serverUpdatedAt: now,
+        isDeleted: false,
+        createdAt: now,
         updatedAt: now,
-      },
-    })
-    .run();
+        syncStatus: 'synced',
+        syncOperationId: null,
+        syncAttemptCount: 0,
+        lastSyncError: null,
+        lastSyncAttemptAt: null,
+        serverUpdatedAt: now,
+        createdLocally: false,
+      })
+      .onConflictDoUpdate({
+        target: localWorkouts.id,
+        set: {
+          name: serverWorkout.name,
+          templateId: (serverWorkout as any).templateId ?? null,
+          programCycleId: (serverWorkout as any).programCycleId ?? null,
+          cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
+          startedAt: toDate(serverWorkout.startedAt) ?? now,
+          completedAt,
+          totalVolume: serverWorkout.totalVolume ?? null,
+          totalSets: serverWorkout.totalSets ?? null,
+          durationMinutes: serverWorkout.durationMinutes ?? null,
+          syncStatus: 'synced',
+          lastSyncError: null,
+          serverUpdatedAt: now,
+          updatedAt: now,
+        },
+      })
+      .run();
 
-  if (serverWorkout.exercises && serverWorkout.exercises.length > 0) {
-    await replaceLocalExercises(
-      serverWorkout.id,
-      serverWorkout.exercises.map((exercise) => ({
-        id: exercise.id,
-        exerciseId: exercise.exerciseId,
-        libraryId: (exercise as any).libraryId ?? null,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup,
-        orderIndex: exercise.orderIndex,
-        notes: exercise.notes,
-        isAmrap: exercise.isAmrap,
-        sets: (exercise.sets ?? []).map((set) => ({
-          id: set.id,
-          setNumber: set.setNumber,
-          weight: set.weight,
-          reps: set.reps,
-          rpe: set.rpe,
-          isComplete: set.isComplete,
-          completedAt: set.completedAt,
+    if (serverWorkout.exercises && serverWorkout.exercises.length > 0) {
+      replaceLocalExercises(
+        serverWorkout.id,
+        serverWorkout.exercises.map((exercise) => ({
+          id: exercise.id,
+          exerciseId: exercise.exerciseId,
+          libraryId: (exercise as any).libraryId ?? null,
+          name: exercise.name,
+          muscleGroup: exercise.muscleGroup,
+          orderIndex: exercise.orderIndex,
+          notes: exercise.notes,
+          isAmrap: exercise.isAmrap,
+          sets: (exercise.sets ?? []).map((set) => ({
+            id: set.id,
+            setNumber: set.setNumber,
+            weight: set.weight,
+            reps: set.reps,
+            rpe: set.rpe,
+            isComplete: set.isComplete,
+            completedAt: set.completedAt,
+          })),
         })),
-      })),
-    );
-  }
+      );
+    }
+  });
 
   return getLocalWorkout(serverWorkout.id);
 }
@@ -736,42 +742,44 @@ export async function completeLocalWorkout(
 
   const totals = computeWorkoutTotals(exercises, workout.startedAt);
   const syncOperationId = generateId();
-  db.update(localWorkouts)
-    .set({
-      completedAt: totals.completedAt,
-      totalVolume: totals.totalVolume,
-      totalSets: totals.totalSets,
-      durationMinutes: totals.durationMinutes,
-      updatedAt: totals.completedAt,
-      syncStatus: 'pending',
-      syncOperationId,
-      lastSyncError: null,
-    })
-    .where(eq(localWorkouts.id, workout.id))
-    .run();
+  withLocalTransaction(() => {
+    db.update(localWorkouts)
+      .set({
+        completedAt: totals.completedAt,
+        totalVolume: totals.totalVolume,
+        totalSets: totals.totalSets,
+        durationMinutes: totals.durationMinutes,
+        updatedAt: totals.completedAt,
+        syncStatus: 'pending',
+        syncOperationId,
+        lastSyncError: null,
+      })
+      .where(eq(localWorkouts.id, workout.id))
+      .run();
 
-  await replaceLocalExercises(
-    workout.id,
-    exercises.map((exercise, exerciseIndex) => ({
-      id: exercise.id,
-      exerciseId: exercise.exerciseId,
-      libraryId: (exercise as any).libraryId ?? null,
-      name: exercise.name,
-      muscleGroup: exercise.muscleGroup,
-      orderIndex: exerciseIndex,
-      notes: exercise.notes,
-      isAmrap: exercise.isAmrap,
-      sets: (exercise.sets ?? []).map((set, setIndex) => ({
-        id: set.id,
-        setNumber: setIndex + 1,
-        weight: set.weight,
-        reps: set.reps,
-        rpe: set.rpe,
-        isComplete: set.isComplete,
-        completedAt: set.isComplete ? (set.completedAt ?? totals.completedAt) : null,
+    replaceLocalExercises(
+      workout.id,
+      exercises.map((exercise, exerciseIndex) => ({
+        id: exercise.id,
+        exerciseId: exercise.exerciseId,
+        libraryId: (exercise as any).libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup,
+        orderIndex: exerciseIndex,
+        notes: exercise.notes,
+        isAmrap: exercise.isAmrap,
+        sets: (exercise.sets ?? []).map((set, setIndex) => ({
+          id: set.id,
+          setNumber: setIndex + 1,
+          weight: set.weight,
+          reps: set.reps,
+          rpe: set.rpe,
+          isComplete: set.isComplete,
+          completedAt: set.isComplete ? (set.completedAt ?? totals.completedAt) : null,
+        })),
       })),
-    })),
-  );
+    );
+  });
 
   return { workout: await getLocalWorkout(workout.id), syncOperationId };
 }
@@ -798,41 +806,43 @@ export async function saveLocalWorkoutDraft(
   }
 
   const now = new Date();
-  db.update(localWorkouts)
-    .set({
-      name: workout.name,
-      notes: workout.notes ?? null,
-      templateId: (workout as any).templateId ?? existing?.templateId ?? null,
-      programCycleId: (workout as any).programCycleId ?? existing?.programCycleId ?? null,
-      cycleWorkoutId: (workout as any).cycleWorkoutId ?? existing?.cycleWorkoutId ?? null,
-      updatedAt: now,
-      syncStatus: existing?.syncStatus === 'synced' ? 'synced' : 'local',
-    })
-    .where(eq(localWorkouts.id, workout.id))
-    .run();
+  withLocalTransaction(() => {
+    db.update(localWorkouts)
+      .set({
+        name: workout.name,
+        notes: workout.notes ?? null,
+        templateId: (workout as any).templateId ?? existing?.templateId ?? null,
+        programCycleId: (workout as any).programCycleId ?? existing?.programCycleId ?? null,
+        cycleWorkoutId: (workout as any).cycleWorkoutId ?? existing?.cycleWorkoutId ?? null,
+        updatedAt: now,
+        syncStatus: existing?.syncStatus === 'synced' ? 'synced' : 'local',
+      })
+      .where(eq(localWorkouts.id, workout.id))
+      .run();
 
-  await replaceLocalExercises(
-    workout.id,
-    exercises.map((exercise, exerciseIndex) => ({
-      id: exercise.id,
-      exerciseId: exercise.exerciseId,
-      libraryId: (exercise as any).libraryId ?? null,
-      name: exercise.name,
-      muscleGroup: exercise.muscleGroup,
-      orderIndex: exerciseIndex,
-      notes: exercise.notes,
-      isAmrap: exercise.isAmrap,
-      sets: (exercise.sets ?? []).map((set, setIndex) => ({
-        id: set.id,
-        setNumber: setIndex + 1,
-        weight: set.weight,
-        reps: set.reps,
-        rpe: set.rpe,
-        isComplete: set.isComplete,
-        completedAt: set.completedAt,
+    replaceLocalExercises(
+      workout.id,
+      exercises.map((exercise, exerciseIndex) => ({
+        id: exercise.id,
+        exerciseId: exercise.exerciseId,
+        libraryId: (exercise as any).libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup,
+        orderIndex: exerciseIndex,
+        notes: exercise.notes,
+        isAmrap: exercise.isAmrap,
+        sets: (exercise.sets ?? []).map((set, setIndex) => ({
+          id: set.id,
+          setNumber: setIndex + 1,
+          weight: set.weight,
+          reps: set.reps,
+          rpe: set.rpe,
+          isComplete: set.isComplete,
+          completedAt: set.completedAt,
+        })),
       })),
-    })),
-  );
+    );
+  });
 
   return getLocalWorkout(workout.id);
 }
@@ -840,19 +850,21 @@ export async function saveLocalWorkoutDraft(
 export async function discardLocalWorkout(workoutId: string) {
   const db = getLocalDb();
   if (!db) return;
-  const existing = db
-    .select({ id: localWorkoutExercises.id })
-    .from(localWorkoutExercises)
-    .where(eq(localWorkoutExercises.workoutId, workoutId))
-    .all();
-  const existingIds = existing.map((row) => row.id);
-  if (existingIds.length > 0) {
-    db.delete(localWorkoutSets)
-      .where(inArray(localWorkoutSets.workoutExerciseId, existingIds))
-      .run();
-  }
-  db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
-  db.delete(localWorkouts).where(eq(localWorkouts.id, workoutId)).run();
+  withLocalTransaction(() => {
+    const existing = db
+      .select({ id: localWorkoutExercises.id })
+      .from(localWorkoutExercises)
+      .where(eq(localWorkoutExercises.workoutId, workoutId))
+      .all();
+    const existingIds = existing.map((row) => row.id);
+    if (existingIds.length > 0) {
+      db.delete(localWorkoutSets)
+        .where(inArray(localWorkoutSets.workoutExerciseId, existingIds))
+        .run();
+    }
+    db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
+    db.delete(localWorkouts).where(eq(localWorkouts.id, workoutId)).run();
+  });
 }
 
 export async function buildWorkoutCompletionPayload(workoutId: string) {

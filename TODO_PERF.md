@@ -53,9 +53,9 @@ After the concrete transaction wrappers are implemented and measured, revisit a 
 - an explicit statement that D1 batches are not atomic
 
 ### Acceptance
-- [ ] `withLocalTransaction` compiles and has a unit test or mock test proving the callback is wrapped.
-- [ ] `chunkArray` / `getSafeInsertChunkSize` stay in `@strength/db` for D1 chunking.
-- [ ] `bulkWrite` remains a later extraction, not a blocker for the first SQLite wins.
+- [x] `withLocalTransaction` compiles and has a unit test or mock test proving the callback is wrapped.
+- [x] `chunkArray` / `getSafeInsertChunkSize` stay in `@strength/db` for D1 chunking.
+- [x] `bulkWrite` remains a later extraction, not a blocker for the first SQLite wins.
 
 ---
 
@@ -76,9 +76,9 @@ After the concrete transaction wrappers are implemented and measured, revisit a 
 
 **Related parent write:** `saveLocalWorkoutDraft` updates the parent `local_workouts` row immediately before calling `replaceLocalExercises`. If practical, wrap the parent update and exercise replacement in the same transaction so draft state cannot be partially updated.
 
-- [ ] `replaceLocalExercises` wrapped in `withTransactionSync`.
-- [ ] `saveLocalWorkoutDraft` either uses one transaction for the workout update + exercise replacement, or documents why the parent update remains outside.
-- [ ] Verified that `createLocalWorkout` and `updateLocalWorkout` still behave correctly.
+- [x] `replaceLocalExercises` wrapped in `withTransactionSync`.
+- [x] `saveLocalWorkoutDraft` either uses one transaction for the workout update + exercise replacement, or documents why the parent update remains outside.
+- [x] Verified that `createLocalWorkout` and `updateLocalWorkout` still behave correctly.
 
 ### 2b. `hydrateOfflineTrainingSnapshot` (`apps/expo/db/training-cache.ts:50`)
 
@@ -94,8 +94,8 @@ After the concrete transaction wrappers are implemented and measured, revisit a 
 - stay outside the main training-cache transaction but get their own transaction via `replaceLocalExercises`; or
 - be batched in a separate recent-workout hydration transaction that skips dirty local workouts.
 
-- [ ] `hydrateOfflineTrainingSnapshot` wraps template/user-exercise/cycle/cache-meta writes in local transactions.
-- [ ] Orphan-cleanup changed from N individual updates to one batched `UPDATE`/`DELETE`.
+- [x] `hydrateOfflineTrainingSnapshot` wraps template/user-exercise/cycle/cache-meta writes in local transactions.
+- [x] Orphan-cleanup changed from N individual updates to one batched `UPDATE`/`DELETE`.
 - [ ] Recent workout hydration is measured and either stays separate with transactional `replaceLocalExercises` or gets its own batch wrapper.
 
 ### 2c. `runLocalMigrations` (`apps/expo/db/migrations.ts`)
@@ -104,7 +104,7 @@ After the concrete transaction wrappers are implemented and measured, revisit a 
 
 **Fix:** Wrap the versioned migration callback in `sqlite.withTransactionSync`. The base `CREATE TABLE` / `CREATE INDEX` block at the top can stay as one big `execSync` (it already is).
 
-- [ ] `applyVersionedMigration` wraps its callback in `withTransactionSync`.
+- [x] `applyVersionedMigration` wraps its callback in `withTransactionSync`.
 - [ ] Tested on a fresh install and on an existing database.
 
 ### 2d. Missing Composite Index on `local_workout_sets`
@@ -113,8 +113,8 @@ After the concrete transaction wrappers are implemented and measured, revisit a 
 
 **Fix:** Add a composite index on `(workoutExerciseId, isDeleted, setNumber)`. The common reads filter by `workout_exercise_id`, filter `is_deleted = 0`, and order by `set_number`.
 
-- [ ] Add index to local migrations: `CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise_deleted_order ON local_workout_sets (workout_exercise_id, is_deleted, set_number)`.
-- [ ] Add the same index to the base `CREATE INDEX` block for fresh installs.
+- [x] Add index to local migrations: `CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise_deleted_order ON local_workout_sets (workout_exercise_id, is_deleted, set_number)`.
+- [x] Add the same index to the base `CREATE INDEX` block for fresh installs.
 
 ### 2e. Missing Runnable Sync Queue Index
 
@@ -127,8 +127,8 @@ CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
   ON local_sync_queue (user_id, status, available_at);
 ```
 
-- [ ] Add index to fresh-install migration block.
-- [ ] Add index to a versioned migration for existing installs.
+- [x] Add index to fresh-install migration block.
+- [x] Add index to a versioned migration for existing installs.
 
 ### 2f. Local `lower(name)` Lookup
 
@@ -138,8 +138,8 @@ CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
 - Add a normalized-name column maintained on local writes.
 - Or add an expression index on `lower(name)` if Expo SQLite supports it reliably across target Android versions.
 
-- [ ] Choose normalized column vs expression index.
-- [ ] Add migration and update local exercise writes if using a normalized column.
+- [x] Choose normalized column vs expression index.
+- [x] Add migration for the chosen expression index (no local write changes needed).
 
 ### 2g. Draft Save Debounce is a Red Herring
 
@@ -175,9 +175,9 @@ CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
 - `scheduledInWeek` can likely be removed entirely because `cycleWorkouts` has already loaded every workout for the active cycle; compute this count in memory from `cycleWorkouts` instead of issuing another query.
 - `recentWorkouts` depends on `hasActiveProgram`, so it stays conditional.
 
-- [ ] `homeSummaryHandler` parallelizes independent queries.
-- [ ] `homeSummaryHandler` derives `workoutsTarget` from already-loaded `cycleWorkouts` where possible.
-- [ ] Existing tests in `home/summary.test.ts` still pass.
+- [x] `homeSummaryHandler` parallelizes independent queries.
+- [x] `homeSummaryHandler` derives `workoutsTarget` from already-loaded `cycleWorkouts` where possible.
+- [x] Existing tests in `home/summary.test.ts` still pass.
 
 ### 3b. Audit other D1 handlers
 
@@ -249,8 +249,8 @@ nameNormalized: text('name_normalized')
 
 Also consider querying by `libraryId` first since library exercises have deterministic IDs.
 
-- [ ] Add composite `(user_id, is_deleted, lower(name))` index or normalized column.
-- [ ] Add migration guardrail test for the chosen index.
+- [x] Add composite `(user_id, is_deleted, lower(name))` index or normalized column.
+- [x] Add migration guardrail test for the chosen index.
 - [ ] Or refactor `/last/:exerciseId` to query by `libraryId` before the text fallback.
 
 ### 3d. `chunkedQueryMany` Overhead on Small Lists
@@ -282,10 +282,10 @@ Important nuance: lowering `DEFAULT_STATEMENTS_PER_BATCH` to 45 only caps a sing
 
 **Recommendation:** Combine B + C. Add an optional `maxStatementsPerBatch` to `chunkedInsert` and set the default to 45, but also audit each handler's total query budget. Large callers on Paid can opt up only after the handler has an explicit budget and tests.
 
-- [ ] `chunkedInsert` accepts `maxStatementsPerBatch` and defaults to 45.
+- [x] `chunkedInsert` accepts `maxStatementsPerBatch` and defaults to 45.
 - [ ] Audit all `chunkedInsert` callers for total per-invocation query count, not just batch size.
-- [ ] Add input limits or split requests where one request can exceed the D1 free-tier query cap.
-- [ ] Add tests around chunking and statement-budget behavior.
+- [x] Add input limits or split requests where one request can exceed the D1 free-tier query cap.
+- [x] Add tests around chunking and statement-budget behavior.
 
 ---
 
@@ -304,7 +304,7 @@ Currently, there is no explicit error-handling or rollback plan for future `bulk
 - **Logging:** `chunkedInsert` should log chunk-level results for large operations so partial failures are traceable.
 
 ### Acceptance
-- [ ] `chunkedInsert` logs chunk-level results for multi-batch writes.
+- [x] `chunkedInsert` logs chunk-level results for multi-batch writes.
 - [ ] D1 callers that rely on atomicity (e.g., "clear then insert") document that a partial failure could leave the table in an inconsistent state, and suggest a compensating action (re-run the full operation).
 - [ ] If `bulkWrite` is added later, consider an explicit `atomic: boolean` flag for local SQLite only. D1 should not promise atomic behavior unless implemented with a strategy that is known to be safe for D1 limits.
 
@@ -335,9 +335,20 @@ cwebp -q 80 assets/splash.png -o assets/splash.webp
 pngquant --quality 60-80 assets/splash.png --output assets/splash-opt.png
 ```
 
-- [ ] Convert splash, icon, logo-horizontal, and adaptive-icon to WebP or optimized PNG.
+- [x] Convert splash, icon, logo-horizontal, and adaptive-icon to WebP or optimized PNG.
 - [ ] Update `app.json` asset paths if changing extensions.
 - [ ] Target: <200KB per asset (currently ~1.2MB avg).
+
+Current lossless PNG optimization baseline after metadata stripping:
+
+| File | Size |
+|------|------|
+| splash.png | 1.10MB |
+| logo-horizontal.png | 1.02MB |
+| icon.png | 1020KB |
+| adaptive-icon.png | 851KB |
+| favicon.png | 5.06KB |
+| Total | 3.96MB |
 
 ### 5b. Confirm Hermes JS Engine
 
@@ -351,7 +362,7 @@ pngquant --quality 60-80 assets/splash.png --output assets/splash-opt.png
 ```
 
 - [ ] Verify current release builds are using Hermes before claiming a size/startup improvement.
-- [ ] Optionally add `"jsEngine": "hermes"` to `app.json` under `expo.android` for explicitness.
+- [x] Optionally add `"jsEngine": "hermes"` to `app.json` under `expo.android` for explicitness.
 - [ ] Test release build on physical device.
 
 ### 5c. Enable ProGuard/R8 Code Shrinking
@@ -368,7 +379,7 @@ pngquant --quality 60-80 assets/splash.png --output assets/splash-opt.png
 }
 ```
 
-- [ ] Add `"enableProguardInReleaseBuilds": true` to production build profile.
+- [x] Add `"enableProguardInReleaseBuilds": true` to production build profile.
 - [ ] Add ProGuard rules file if any dependencies need keep rules (Reanimated, Worklets).
 
 ### 5d. Dependency Audit
@@ -400,21 +411,21 @@ Before changing assets or build flags, record:
 - Expo export JS bundle size
 - asset directory size
 
-- [ ] Add a repeatable size-report script or documented commands.
-- [ ] Record baseline sizes in this file or in a generated artifact.
+- [x] Add a repeatable size-report script or documented commands.
+- [x] Record baseline sizes in this file or in a generated artifact.
 
 ---
 
 ## 6. Testing Plan
 
-- [ ] Unit tests or mock tests for `withLocalTransaction` and transaction-wrapped local write helpers.
-- [ ] Unit tests for `chunkedInsert` `maxStatementsPerBatch` behavior.
-- [ ] Unit tests for transaction wrapping in `apps/expo/db` using an in-memory SQLite DB if possible, or mocked `withTransactionSync`.
+- [x] Unit tests or mock tests for `withLocalTransaction` and transaction-wrapped local write helpers.
+- [x] Unit tests for `chunkedInsert` `maxStatementsPerBatch` behavior.
+- [x] Unit tests for transaction wrapping in `apps/expo/db` using an in-memory SQLite DB if possible, or mocked `withTransactionSync`.
 - [ ] Performance baseline before/after for draft save on a 10-exercise x 5-set workout.
 - [ ] Performance baseline before/after for `hydrateOfflineTrainingSnapshot` with 50 recent workouts.
 - [ ] D1 query-count or statement-budget test for high-risk write handlers.
-- [ ] Android size baseline before/after asset/build changes.
-- [ ] Run `bun run check --fix` and `bun run test` before each PR.
+- [x] Android size baseline before/after asset/build changes.
+- [x] Run `bun run check` and `bun run test` before each PR.
 - [ ] Manual smoke test on Android: create a workout from a template, complete it, check that local DB still reads correctly.
 - [ ] Manual smoke test on web/D1: load home summary, verify no 500s from query limit exhaustion.
 

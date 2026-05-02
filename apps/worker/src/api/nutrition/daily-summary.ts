@@ -30,37 +30,34 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
     timezoneResult.timezone,
   );
 
-  const entries = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.userId, userId),
-        gte(schema.nutritionEntries.loggedAt, startOfDay),
-        lt(schema.nutritionEntries.loggedAt, endOfDay),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .orderBy(schema.nutritionEntries.createdAt)
-    .all();
-
-  const bodyStats = await db
-    .select()
-    .from(schema.userBodyStats)
-    .where(eq(schema.userBodyStats.userId, userId))
-    .get();
-
-  const trainingCtxRow = await db
-    .select()
-    .from(schema.nutritionTrainingContext)
-    .where(
-      and(
-        eq(schema.nutritionTrainingContext.userId, userId),
-        gte(schema.nutritionTrainingContext.createdAt, startOfDay),
-        lt(schema.nutritionTrainingContext.createdAt, endOfDay),
-      ),
-    )
-    .get();
+  const [entries, bodyStats, trainingCtxRow, whoopData] = await Promise.all([
+    db
+      .select()
+      .from(schema.nutritionEntries)
+      .where(
+        and(
+          eq(schema.nutritionEntries.userId, userId),
+          gte(schema.nutritionEntries.loggedAt, startOfDay),
+          lt(schema.nutritionEntries.loggedAt, endOfDay),
+          eq(schema.nutritionEntries.isDeleted, false),
+        ),
+      )
+      .orderBy(schema.nutritionEntries.createdAt)
+      .all(),
+    db.select().from(schema.userBodyStats).where(eq(schema.userBodyStats.userId, userId)).get(),
+    db
+      .select()
+      .from(schema.nutritionTrainingContext)
+      .where(
+        and(
+          eq(schema.nutritionTrainingContext.userId, userId),
+          gte(schema.nutritionTrainingContext.createdAt, startOfDay),
+          lt(schema.nutritionTrainingContext.createdAt, endOfDay),
+        ),
+      )
+      .get(),
+    getWhoopDataForDay(db, userId, date, timezoneResult.timezone),
+  ]);
 
   const trainingContext: TrainingContext | null = trainingCtxRow
     ? {
@@ -68,8 +65,6 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
         customLabel: trainingCtxRow.customLabel ?? undefined,
       }
     : null;
-
-  const whoopData = await getWhoopDataForDay(db, userId, date, timezoneResult.timezone);
 
   const whoopRecovery =
     whoopData.recoveryScore !== null

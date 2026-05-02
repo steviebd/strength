@@ -16,6 +16,7 @@
     "logs:android": "adb logcat -c && adb logcat -b main -b system -b crash -v time AndroidRuntime:E ReactNative:V ReactNativeJS:V ExpoModulesCore:V DEBUG:E libc:E System.err:W '*:S'",
     "logs:android:crash": "bun run scripts/capture-android-crash.ts",
     "typecheck": "bunx tsc --noEmit",
+    "size:android": "bun run scripts/android-size-report.ts",
     "build:android:staging": "bun run scripts/build-android-staging.ts",
     "build:android:prod": "bun run scripts/build-android-prod.ts"
   },

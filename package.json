@@ -15,6 +15,7 @@
     "dev:expo:staging": "cd apps/expo && bun run sync-env:staging && bun run dev:metro",
     "build:android:staging": "cd apps/expo && bun run build:android:staging",
     "build:android:prod": "cd apps/expo && bun run build:android:prod",
+    "size:android": "cd apps/expo && bun run size:android",
     "e2e:maestro": "infisical run --env=dev --project-config-dir . -- bun run scripts/run-maestro.ts",
     "e2e:maestro:auth": "infisical run --env=dev --project-config-dir . -- bun run scripts/run-maestro.ts apps/expo/.maestro/00-auth.yml",
     "e2e:maestro:workouts": "infisical run --env=dev --project-config-dir . -- bun run scripts/run-maestro.ts apps/expo/.maestro/10-workouts.yml",

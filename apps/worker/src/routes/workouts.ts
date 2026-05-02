@@ -20,6 +20,9 @@ import {
   advanceProgramCycleForWorkout,
 } from '../lib/program-helpers';
 
+const MAX_SYNC_COMPLETE_EXERCISES = 40;
+const MAX_SYNC_COMPLETE_SETS = 400;
+
 export function buildWorkoutUpdate(body: Record<string, unknown>) {
   const allowed: Record<string, unknown> = {};
   const keys = [
@@ -424,6 +427,21 @@ router.post(
 
       if (!syncOperationId || workoutInput.id !== id) {
         return c.json({ message: 'Invalid sync payload' }, 400);
+      }
+      if (
+        exerciseInputs.length > MAX_SYNC_COMPLETE_EXERCISES ||
+        setInputs.length > MAX_SYNC_COMPLETE_SETS
+      ) {
+        return c.json(
+          {
+            message: 'Sync payload is too large',
+            limits: {
+              exercises: MAX_SYNC_COMPLETE_EXERCISES,
+              sets: MAX_SYNC_COMPLETE_SETS,
+            },
+          },
+          413,
+        );
       }
 
       const existingOperation = await db

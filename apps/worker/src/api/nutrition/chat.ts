@@ -198,70 +198,68 @@ async function generateNutritionChatAssistantContent({
   }
 
   const { date, timezone } = dateResult;
-  const prefs = await db
-    .select()
-    .from(schema.userPreferences)
-    .where(eq(schema.userPreferences.userId, userId))
-    .get();
+  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
 
-  const bodyStats = await db
-    .select()
-    .from(schema.userBodyStats)
-    .where(eq(schema.userBodyStats.userId, userId))
-    .get();
-
-  const activeProgram = await db
-    .select()
-    .from(schema.userProgramCycles)
-    .where(
-      and(
-        eq(schema.userProgramCycles.userId, userId),
-        eq(schema.userProgramCycles.status, 'active'),
-      ),
-    )
-    .get();
+  const [prefs, bodyStats, activeProgram, entries, trainingContextRow, whoopData] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.userPreferences)
+        .where(eq(schema.userPreferences.userId, userId))
+        .get(),
+      db.select().from(schema.userBodyStats).where(eq(schema.userBodyStats.userId, userId)).get(),
+      db
+        .select()
+        .from(schema.userProgramCycles)
+        .where(
+          and(
+            eq(schema.userProgramCycles.userId, userId),
+            eq(schema.userProgramCycles.status, 'active'),
+          ),
+        )
+        .get(),
+      db
+        .select()
+        .from(schema.nutritionEntries)
+        .where(
+          and(
+            eq(schema.nutritionEntries.userId, userId),
+            gte(schema.nutritionEntries.loggedAt, startOfDay),
+            lt(schema.nutritionEntries.loggedAt, endOfDay),
+            eq(schema.nutritionEntries.isDeleted, false),
+          ),
+        )
+        .all() as Promise<
+        Array<{
+          calories: number | null;
+          proteinG: number | null;
+          carbsG: number | null;
+          fatG: number | null;
+        }>
+      >,
+      db
+        .select()
+        .from(schema.nutritionTrainingContext)
+        .where(
+          and(
+            eq(schema.nutritionTrainingContext.userId, userId),
+            gte(schema.nutritionTrainingContext.createdAt, startOfDay),
+            lt(schema.nutritionTrainingContext.createdAt, endOfDay),
+          ),
+        )
+        .get(),
+      getWhoopDataForDay(db, userId, date, timezone),
+    ]);
 
   const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
   const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
   const bodyweightKg = bodyStats?.bodyweightKg ?? null;
   const hasProgram = !!activeProgram;
 
-  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
-
-  const entries: Array<{
-    calories: number | null;
-    proteinG: number | null;
-    carbsG: number | null;
-    fatG: number | null;
-  }> = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.userId, userId),
-        gte(schema.nutritionEntries.loggedAt, startOfDay),
-        lt(schema.nutritionEntries.loggedAt, endOfDay),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .all();
-
   const totalCalories = entries.reduce((sum, e) => sum + (e.calories ?? 0), 0);
   const totalProteinG = entries.reduce((sum, e) => sum + (e.proteinG ?? 0), 0);
   const totalCarbsG = entries.reduce((sum, e) => sum + (e.carbsG ?? 0), 0);
   const totalFatG = entries.reduce((sum, e) => sum + (e.fatG ?? 0), 0);
-
-  const trainingContextRow = await db
-    .select()
-    .from(schema.nutritionTrainingContext)
-    .where(
-      and(
-        eq(schema.nutritionTrainingContext.userId, userId),
-        gte(schema.nutritionTrainingContext.createdAt, startOfDay),
-        lt(schema.nutritionTrainingContext.createdAt, endOfDay),
-      ),
-    )
-    .get();
 
   const trainingCtx: TrainingContext | null = trainingContextRow
     ? {
@@ -269,8 +267,6 @@ async function generateNutritionChatAssistantContent({
         customLabel: trainingContextRow.customLabel ?? undefined,
       }
     : null;
-
-  const whoopData = await getWhoopDataForDay(db, userId, date, timezone);
 
   const macroTargets = calculateMacroTargets(
     bodyweightKg ?? 80,

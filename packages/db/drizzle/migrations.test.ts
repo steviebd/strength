@@ -18,6 +18,7 @@ describe('migration guardrails', () => {
 
     expect(sql).toContain('idx_workouts_user_id_started_at');
     expect(sql).toContain('idx_workout_sets_workout_exercise_id');
+    expect(sql).toContain('idx_exercises_user_deleted_lower_name');
     expect(sql).toContain('idx_nutrition_entries_user_logged_at');
     expect(sql).toContain('idx_rate_limit_user_id_endpoint');
   });
