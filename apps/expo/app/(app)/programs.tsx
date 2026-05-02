@@ -25,6 +25,8 @@ import { apiFetch } from '@/lib/api';
 import { addPendingWorkout } from '@/lib/storage';
 import { createLocalWorkoutFromCurrentProgramCycle } from '@/db/workouts';
 import { authClient } from '@/lib/auth-client';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { generateId } from '@strength/db/client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { PageHeader } from '@/components/ui/app-primitives';
@@ -651,6 +653,7 @@ export default function ProgramsScreen() {
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const [values, setValues] = useState<OneRmValues>({
     squat: '',
     bench: '',
@@ -839,25 +842,37 @@ export default function ProgramsScreen() {
     }
 
     if (!selectedProgram) return;
+    if (!userId) return;
 
+    setOfflineMessage(null);
     setStartingProgram(true);
     try {
       const convertToKg = (value: number) => (weightUnit === 'lbs' ? value * LBS_TO_KG : value);
 
-      const cycle = await apiFetch<{ id: string }>('/api/programs', {
-        method: 'POST',
-        body: {
-          programSlug: selectedProgram.slug,
-          name: selectedProgram.name,
-          squat1rm: convertToKg(parseFloat(values.squat)),
-          bench1rm: convertToKg(parseFloat(values.bench)),
-          deadlift1rm: convertToKg(parseFloat(values.deadlift)),
-          ohp1rm: convertToKg(parseFloat(values.ohp)),
-          preferredGymDays,
-          preferredTimeOfDay: preferredTime,
-          programStartDate: programStartDate.toISOString().split('T')[0],
-          firstSessionDate: firstSessionDate.toISOString().split('T')[0],
-        },
+      const payload = {
+        programSlug: selectedProgram.slug,
+        name: selectedProgram.name,
+        squat1rm: convertToKg(parseFloat(values.squat)),
+        bench1rm: convertToKg(parseFloat(values.bench)),
+        deadlift1rm: convertToKg(parseFloat(values.deadlift)),
+        ohp1rm: convertToKg(parseFloat(values.ohp)),
+        preferredGymDays,
+        preferredTimeOfDay: preferredTime,
+        programStartDate: programStartDate.toISOString().split('T')[0],
+        firstSessionDate: firstSessionDate.toISOString().split('T')[0],
+      };
+
+      const cycle = await tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch<{ id: string }>('/api/programs', {
+            method: 'POST',
+            body: payload,
+          }),
+        userId,
+        entityType: 'program',
+        operation: 'start_program',
+        entityId: generateId(),
+        payload,
       });
 
       setShowStartModal(false);
@@ -875,7 +890,13 @@ export default function ProgramsScreen() {
         router.push(`/(app)/home?focusProgramId=${cycle.id}`);
       }
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
+      if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
+        setOfflineMessage(
+          "Unable to start program. Saved locally — will sync when you're back online.",
+        );
+      } else {
+        Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
+      }
     } finally {
       setStartingProgram(false);
     }
@@ -886,6 +907,7 @@ export default function ProgramsScreen() {
       return;
     }
 
+    setOfflineMessage(null);
     setOpeningProgramWorkoutId(program.id);
     try {
       if (userId) {
@@ -932,7 +954,13 @@ export default function ProgramsScreen() {
 
       router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
+      if (e instanceof Error && e.message === 'Network request failed') {
+        setOfflineMessage(
+          "Unable to open session. Saved locally — will sync when you're back online.",
+        );
+      } else {
+        Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
+      }
     } finally {
       setOpeningProgramWorkoutId(null);
     }
@@ -947,10 +975,21 @@ export default function ProgramsScreen() {
         onPress: async () => {
           setDeletingProgramId(program.id);
           try {
-            await apiFetch(`/api/programs/cycles/${program.id}`, { method: 'DELETE' });
+            await tryOnlineOrEnqueue({
+              apiCall: () => apiFetch(`/api/programs/cycles/${program.id}`, { method: 'DELETE' }),
+              userId: userId ?? '',
+              entityType: 'program',
+              operation: 'delete_program',
+              entityId: program.id,
+              payload: {},
+            });
             await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
           } catch (e) {
-            Alert.alert('Error', e instanceof Error ? e.message : 'Failed to delete program');
+            if (e instanceof OfflineError) {
+              setOfflineMessage(e.message);
+            } else {
+              Alert.alert('Error', e instanceof Error ? e.message : 'Failed to delete program');
+            }
           } finally {
             setDeletingProgramId(null);
           }
@@ -965,6 +1004,7 @@ export default function ProgramsScreen() {
   };
 
   const openStartModal = () => {
+    setOfflineMessage(null);
     if (latestOneRMs) {
       const toDisplay = (value: number | null) => {
         if (value === null) return '';
@@ -1036,6 +1076,20 @@ export default function ProgramsScreen() {
                     </View>
                   </View>
                   <View style={styles.activeCardButtons}>
+                    {offlineMessage && (
+                      <View
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: 'rgba(239, 68, 68, 0.2)',
+                          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                          paddingHorizontal: 16,
+                          paddingVertical: 12,
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                      </View>
+                    )}
                     <ActionButton
                       testID={`program-active-start-${program.id}`}
                       label={
@@ -1138,6 +1192,7 @@ export default function ProgramsScreen() {
               <Pressable
                 style={styles.backButton}
                 onPress={() => {
+                  setOfflineMessage(null);
                   setShowDetailModal(false);
                   setSelectedProgram(null);
                 }}
@@ -1220,7 +1275,13 @@ export default function ProgramsScreen() {
               keyboardDismissMode="interactive"
             >
               <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
-                <Pressable style={styles.backButton} onPress={() => setShowStartModal(false)}>
+                <Pressable
+                  style={styles.backButton}
+                  onPress={() => {
+                    setOfflineMessage(null);
+                    setShowStartModal(false);
+                  }}
+                >
                   <Ionicons name="chevron-back" size={24} color={colors.text} />
                 </Pressable>
                 <Text style={styles.modalTitle}>Enter 1RM</Text>
@@ -1661,6 +1722,23 @@ export default function ProgramsScreen() {
                     </Surface>
 
                     <View style={styles.scheduleButtons}>
+                      {offlineMessage && (
+                        <View
+                          style={{
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: 'rgba(239, 68, 68, 0.2)',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            marginBottom: spacing.md,
+                          }}
+                        >
+                          <Text style={{ fontSize: 14, color: colors.error }}>
+                            {offlineMessage}
+                          </Text>
+                        </View>
+                      )}
                       <Pressable
                         testID="program-confirm-start"
                         accessibilityLabel="program-confirm-start"
@@ -1683,6 +1761,7 @@ export default function ProgramsScreen() {
                       <Pressable
                         style={styles.secondaryButton}
                         onPress={() => {
+                          setOfflineMessage(null);
                           setReviewConfirmed(false);
                           setScheduleStep('schedule');
                           setTimeout(() => {

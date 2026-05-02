@@ -7,6 +7,7 @@ import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
 import { buildAuthCallbackURL } from '@/lib/auth-callback-url';
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
+import { platformStorage } from '@/lib/platform-storage';
 import { colors } from '@/theme';
 import Svg, { Path } from 'react-native-svg';
 
@@ -68,13 +69,17 @@ export default function SignUpScreen() {
       }
       router.replace(redirectUrl as any);
     } catch (error) {
-      setError(
-        error instanceof Error && error.message === 'Network request failed'
-          ? 'Unable to reach the auth server. Confirm the Worker is running and EXPO_PUBLIC_WORKER_BASE_URL points at a reachable host.'
-          : error instanceof Error
-            ? error.message
-            : 'Unable to create account.',
-      );
+      const isNetworkError = error instanceof Error && error.message === 'Network request failed';
+      if (isNetworkError) {
+        // Credentials are stored in platformStorage (SecureStore on native, localStorage on web).
+        platformStorage.setItem(
+          'auth_pending_signup',
+          JSON.stringify({ name, email, password, timestamp: Date.now() }),
+        );
+        setError("You're offline. We'll sign you in automatically when you're back online.");
+        return;
+      }
+      setError(error instanceof Error ? error.message : 'Unable to create account.');
     } finally {
       setIsEmailSubmitting(false);
     }
@@ -104,13 +109,12 @@ export default function SignUpScreen() {
       }
       router.replace(redirectUrl as any);
     } catch (error) {
-      setError(
-        error instanceof Error && error.message === 'Network request failed'
-          ? 'Unable to reach the auth server. Confirm the Worker is running and EXPO_PUBLIC_WORKER_BASE_URL points at a reachable host.'
-          : error instanceof Error
-            ? error.message
-            : 'Unable to sign up.',
-      );
+      const isNetworkError = error instanceof Error && error.message === 'Network request failed';
+      if (isNetworkError) {
+        setError("You're offline. We'll sign you in automatically when you're back online.");
+        return;
+      }
+      setError(error instanceof Error ? error.message : 'Unable to sign up.');
     } finally {
       setIsGoogleSubmitting(false);
     }

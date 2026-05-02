@@ -19,6 +19,7 @@ import {
 import { upsertServerWorkoutSnapshot } from './workouts';
 import type { Workout } from '@/context/WorkoutSessionContext';
 import type { Template } from '@/components/template/TemplateEditor/types';
+import { platformStorage } from '@/lib/platform-storage';
 
 const DIRTY_WORKOUT_STATUSES = ['pending', 'syncing', 'failed', 'conflict'];
 
@@ -424,7 +425,7 @@ export async function getCachedProgramSchedule(userId: string, cycleId: string, 
 export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
   const activePrograms = await getCachedActivePrograms(userId);
   const activeCycle = activePrograms[0] ?? null;
-  const latestOneRMs = activeCycle ? null : await getCachedLatestOneRMs(userId);
+  const latestOneRMs = activeCycle ? null : await getFallbackLatestOneRMsFromCycles(userId);
   let workout: any = null;
   let nextWorkout: any = null;
   if (activeCycle) {
@@ -495,25 +496,6 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
       isWhoopConnected: false,
     },
   };
-}
-
-async function getCachedLatestOneRMs(userId: string) {
-  const db = getLocalDb();
-  if (!db) return null;
-  return (
-    db
-      .select({
-        squat1rm: localProgramCycles.squat1rm,
-        bench1rm: localProgramCycles.bench1rm,
-        deadlift1rm: localProgramCycles.deadlift1rm,
-        ohp1rm: localProgramCycles.ohp1rm,
-      })
-      .from(localProgramCycles)
-      .where(eq(localProgramCycles.userId, userId))
-      .orderBy(desc(localProgramCycles.startedAt))
-      .limit(1)
-      .get() ?? null
-  );
 }
 
 async function getCachedRecentWorkoutHistory(userId: string, limit = 50) {
@@ -608,4 +590,51 @@ export async function updateLocalProgramCycleOneRMs(
   }
 
   db.update(localProgramCycles).set(update).where(eq(localProgramCycles.id, programCycleId)).run();
+}
+
+const PROGRAMS_CACHE_KEY = 'programs_catalog';
+const ONERMS_CACHE_KEY = 'latest_1rms';
+
+export async function getCachedProgramsCatalog(userId: string): Promise<any[] | null> {
+  const json = await platformStorage.getItemAsync(`${PROGRAMS_CACHE_KEY}_${userId}`);
+  return json ? JSON.parse(json) : null;
+}
+
+export async function cacheProgramsCatalog(userId: string, programs: any[]) {
+  await platformStorage.setItemAsync(`${PROGRAMS_CACHE_KEY}_${userId}`, JSON.stringify(programs));
+}
+
+export async function getCachedLatestOneRMs(userId: string): Promise<any | null> {
+  const json = await platformStorage.getItemAsync(`${ONERMS_CACHE_KEY}_${userId}`);
+  return json ? JSON.parse(json) : null;
+}
+
+export async function cacheLatestOneRMs(userId: string, oneRMs: any | null) {
+  if (oneRMs) {
+    await platformStorage.setItemAsync(`${ONERMS_CACHE_KEY}_${userId}`, JSON.stringify(oneRMs));
+  }
+}
+
+export async function getFallbackLatestOneRMsFromCycles(userId: string) {
+  const db = getLocalDb();
+  if (!db) return null;
+  const cycle = db
+    .select({
+      squat1rm: localProgramCycles.squat1rm,
+      bench1rm: localProgramCycles.bench1rm,
+      deadlift1rm: localProgramCycles.deadlift1rm,
+      ohp1rm: localProgramCycles.ohp1rm,
+    })
+    .from(localProgramCycles)
+    .where(eq(localProgramCycles.userId, userId))
+    .orderBy(desc(localProgramCycles.startedAt))
+    .limit(1)
+    .get();
+  if (!cycle) return null;
+  return {
+    squat1rm: cycle.squat1rm ?? null,
+    bench1rm: cycle.bench1rm ?? null,
+    deadlift1rm: cycle.deadlift1rm ?? null,
+    ohp1rm: cycle.ohp1rm ?? null,
+  };
 }

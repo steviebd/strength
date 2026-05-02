@@ -87,6 +87,7 @@ export const localTemplates = sqliteTable('local_templates', {
   description: text('description'),
   notes: text('notes'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  createdLocally: integer('created_locally', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
   serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),

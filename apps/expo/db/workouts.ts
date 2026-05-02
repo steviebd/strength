@@ -19,6 +19,7 @@ import {
   type LocalWorkout,
   type LocalWorkoutSet,
 } from './local-schema';
+import { enqueueSyncItem } from './sync-queue';
 import type { Workout, WorkoutExercise, WorkoutSet } from '@/context/WorkoutSessionContext';
 
 export type WorkoutSyncStatus = 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'conflict';
@@ -850,6 +851,7 @@ export async function saveLocalWorkoutDraft(
 export async function discardLocalWorkout(workoutId: string) {
   const db = getLocalDb();
   if (!db) return;
+  const now = new Date();
   withLocalTransaction(() => {
     const existing = db
       .select({ id: localWorkoutExercises.id })
@@ -858,13 +860,24 @@ export async function discardLocalWorkout(workoutId: string) {
       .all();
     const existingIds = existing.map((row) => row.id);
     if (existingIds.length > 0) {
-      db.delete(localWorkoutSets)
+      db.update(localWorkoutSets)
+        .set({ isDeleted: true, updatedAt: now })
         .where(inArray(localWorkoutSets.workoutExerciseId, existingIds))
         .run();
     }
-    db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
-    db.delete(localWorkouts).where(eq(localWorkouts.id, workoutId)).run();
+    db.update(localWorkoutExercises)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(eq(localWorkoutExercises.workoutId, workoutId))
+      .run();
+    db.update(localWorkouts)
+      .set({ isDeleted: true, syncStatus: 'pending', updatedAt: now })
+      .where(eq(localWorkouts.id, workoutId))
+      .run();
   });
+}
+
+export async function enqueueWorkoutDelete(userId: string, workoutId: string) {
+  return enqueueSyncItem(userId, 'workout', workoutId, 'delete_workout', {});
 }
 
 export async function buildWorkoutCompletionPayload(workoutId: string) {

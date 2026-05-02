@@ -1,5 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { platformStorage } from './platform-storage';
+
+const MAX_CACHED_CHAT_MESSAGES = 20;
 
 const STORAGE_KEYS = {
   PENDING_WORKOUTS: 'pending_workouts',
@@ -69,7 +70,7 @@ async function getNutritionChatMessages<T>(date: string): Promise<T[]> {
 
 async function setNutritionChatMessages<T>(date: string, messages: T[]): Promise<void> {
   const data: NutritionChatCache = {
-    messages,
+    messages: messages.slice(-MAX_CACHED_CHAT_MESSAGES),
     cachedAt: new Date().toISOString(),
   };
   platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date), JSON.stringify(data));
@@ -88,8 +89,10 @@ async function setNutritionChatDraft(date: string, draft: string): Promise<void>
   platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date), draft);
 }
 
+// Images are stored as base64 URIs in SecureStore (native) / localStorage (web).
+// If size limits are hit, the caller handles it (e.g. by compressing or clearing).
 async function getNutritionPendingImage(date: string): Promise<NutritionPendingImage | null> {
-  const data = await AsyncStorage.getItem(STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date));
+  const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date));
   if (!data) return null;
 
   try {
@@ -108,11 +111,15 @@ async function setNutritionPendingImage(
   const key = STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date);
 
   if (!image) {
-    await AsyncStorage.removeItem(key);
+    platformStorage.removeItem(key);
     return;
   }
 
-  await AsyncStorage.setItem(key, JSON.stringify(image));
+  platformStorage.setItem(key, JSON.stringify(image));
+}
+
+async function removeNutritionPendingImage(date: string): Promise<void> {
+  platformStorage.removeItem(STORAGE_KEYS.NUTRITION_PENDING_IMAGE(date));
 }
 
 export {
@@ -125,4 +132,5 @@ export {
   setNutritionChatDraft,
   getNutritionPendingImage,
   setNutritionPendingImage,
+  removeNutritionPendingImage,
 };

@@ -17,6 +17,7 @@ interface WeightPickerModalProps {
   onSave: (bodyweightKg: number) => Promise<void> | void;
   onSkip: () => Promise<void> | void;
   isSaving?: boolean;
+  offlineMessage?: string | null;
 }
 
 export function WeightPickerModal({
@@ -25,6 +26,7 @@ export function WeightPickerModal({
   onSave,
   onSkip,
   isSaving = false,
+  offlineMessage,
 }: WeightPickerModalProps) {
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,6 +71,12 @@ export function WeightPickerModal({
             />
             <Text style={styles.unitLabel}>{weightUnit}</Text>
           </View>
+
+          {offlineMessage && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.footer}>
@@ -155,6 +163,19 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.medium,
     color: colors.textMuted,
+  },
+  offlineBanner: {
+    marginTop: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${colors.error}50`,
+    backgroundColor: `${colors.error}10`,
+    padding: spacing.md,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
+    textAlign: 'center',
   },
   footer: {
     padding: spacing.md,

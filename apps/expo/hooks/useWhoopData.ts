@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { getTodayLocalDate } from '@/lib/timezone';
-import { getCachedWhoopData, cacheWhoopData } from '@/db/whoop';
+import { getCachedWhoopData, cacheWhoopData, type WhoopCacheData } from '@/db/whoop';
 import { authClient } from '@/lib/auth-client';
 
 interface WhoopRecovery {
@@ -30,52 +30,42 @@ interface UseWhoopDataResult {
 
 const STALENESS_MS = 15 * 60 * 1000;
 
-function isStale(timestamp: number): boolean {
-  return Date.now() - timestamp > STALENESS_MS;
+function toWhoopCache(cached: { data: WhoopCacheData; hydratedAt: Date }): WhoopCache {
+  return {
+    recovery:
+      cached.data.recoveryScore !== null
+        ? {
+            score: cached.data.recoveryScore,
+            status: cached.data.status,
+            hrv: cached.data.hrv,
+          }
+        : null,
+    cycle:
+      cached.data.caloriesBurned !== null
+        ? {
+            caloriesBurned: cached.data.caloriesBurned,
+            totalStrain: cached.data.totalStrain,
+          }
+        : null,
+    timestamp: cached.hydratedAt.getTime(),
+  };
 }
 
 export function useWhoopData(
   date: string = getTodayLocalDate(),
   timezone: string = 'UTC',
 ): UseWhoopDataResult {
-  const [data, setData] = useState<WhoopCache | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
-  const loadData = useCallback(async () => {
-    if (!userId) {
-      setIsLoading(false);
-      return;
-    }
+  const query = useQuery<WhoopCache | null>({
+    queryKey: ['whoop', userId, date, timezone],
+    queryFn: async () => {
+      if (!userId) return null;
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
       const cached = await getCachedWhoopData(userId, date, timezone);
-      if (cached && !isStale(cached.hydratedAt.getTime())) {
-        setData({
-          recovery:
-            cached.data.recoveryScore !== null
-              ? {
-                  score: cached.data.recoveryScore,
-                  status: cached.data.status,
-                  hrv: cached.data.hrv,
-                }
-              : null,
-          cycle:
-            cached.data.caloriesBurned !== null
-              ? {
-                  caloriesBurned: cached.data.caloriesBurned,
-                  totalStrain: cached.data.totalStrain,
-                }
-              : null,
-          timestamp: cached.hydratedAt.getTime(),
-        });
-        setIsLoading(false);
-        return;
+      if (cached) {
+        return toWhoopCache(cached);
       }
 
       const response = await apiFetch<{
@@ -83,12 +73,6 @@ export function useWhoopData(
         whoopCycle: WhoopCycle;
         whoopUpdatedAt: number | null;
       }>(`/api/nutrition/daily-summary?date=${date}`);
-
-      const fresh: WhoopCache = {
-        recovery: response.whoopRecovery,
-        cycle: response.whoopCycle,
-        timestamp: Date.now(),
-      };
 
       await cacheWhoopData(
         userId,
@@ -104,21 +88,20 @@ export function useWhoopData(
         response.whoopUpdatedAt,
       );
 
-      setData(fresh);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error('Failed to load WHOOP data'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [userId, date, timezone]);
+      return {
+        recovery: response.whoopRecovery,
+        cycle: response.whoopCycle,
+        timestamp: Date.now(),
+      };
+    },
+    staleTime: STALENESS_MS,
+    enabled: !!userId,
+  });
 
-  const refetch = useCallback(() => {
-    loadData();
-  }, [loadData]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  return { data, isLoading, error, refetch };
+  return {
+    data: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error as Error | null,
+    refetch: () => query.refetch(),
+  };
 }

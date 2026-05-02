@@ -120,6 +120,7 @@ export default function WorkoutsIndex() {
   const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
   const [localHistory, setLocalHistory] = useState<WorkoutHistoryItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
   const { width } = useWindowDimensions();
@@ -248,6 +249,7 @@ export default function WorkoutsIndex() {
     Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
 
   const handleStartWorkout = async () => {
+    setOfflineMessage(null);
     const name = workoutName.trim() || 'Workout';
     const workout = await startWorkout(name);
     if (workout?.id) {
@@ -257,10 +259,18 @@ export default function WorkoutsIndex() {
       return;
     }
 
+    if (workoutSessionError === 'Network request failed') {
+      setOfflineMessage(
+        "Unable to start workout. Saved locally — will sync when you're back online.",
+      );
+      return;
+    }
+
     Alert.alert('Unable to start workout', workoutSessionError ?? 'Please try again.');
   };
 
   const handleStartFromTemplate = async (template: Template) => {
+    setOfflineMessage(null);
     try {
       if (userId && template.id) {
         const templateExercises = template.exercises ?? [];
@@ -301,6 +311,12 @@ export default function WorkoutsIndex() {
         router.push(`/workout-session?workoutId=${workout.id}`);
       }
     } catch (e) {
+      if (e instanceof Error && e.message === 'Network request failed') {
+        setOfflineMessage(
+          "Unable to start workout. Saved locally — will sync when you're back online.",
+        );
+        return;
+      }
       Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
   };
@@ -321,11 +337,13 @@ export default function WorkoutsIndex() {
   }, [queryClient, userId]);
 
   const handleNewTemplate = () => {
+    setOfflineMessage(null);
     setEditingTemplate(null);
     setShowTemplateEditor(true);
   };
 
   const handleEditTemplate = (template: Template) => {
+    setOfflineMessage(null);
     setEditingTemplate(template);
     setShowTemplateEditor(true);
   };
@@ -570,12 +588,18 @@ export default function WorkoutsIndex() {
           options={[
             {
               label: 'Templates',
-              onPress: () => setView('templates'),
+              onPress: () => {
+                setOfflineMessage(null);
+                setView('templates');
+              },
               active: view === 'templates',
             },
             {
               label: 'History',
-              onPress: () => setView('history'),
+              onPress: () => {
+                setOfflineMessage(null);
+                setView('history');
+              },
               active: view === 'history',
             },
           ]}
@@ -600,7 +624,10 @@ export default function WorkoutsIndex() {
                         testID="workouts-start-custom"
                         label="Start custom workout"
                         icon="play"
-                        onPress={() => setShowStartWorkout(true)}
+                        onPress={() => {
+                          setOfflineMessage(null);
+                          setShowStartWorkout(true);
+                        }}
                         fullWidth
                       />
                       <Button
@@ -619,7 +646,10 @@ export default function WorkoutsIndex() {
                           testID="workouts-start-custom"
                           label="Start custom workout"
                           icon="play"
-                          onPress={() => setShowStartWorkout(true)}
+                          onPress={() => {
+                            setOfflineMessage(null);
+                            setShowStartWorkout(true);
+                          }}
                         />
                       </View>
                       <View style={styles.flex1}>
@@ -641,6 +671,21 @@ export default function WorkoutsIndex() {
 
             <View style={styles.templatesSection}>
               <SectionTitle title="Templates" />
+              {offlineMessage && (
+                <View
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.2)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                </View>
+              )}
               <TemplateList
                 onEditTemplate={handleEditTemplate}
                 onStartWorkout={handleStartFromTemplate}
@@ -712,7 +757,10 @@ export default function WorkoutsIndex() {
         visible={showStartWorkout}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowStartWorkout(false)}
+        onRequestClose={() => {
+          setOfflineMessage(null);
+          setShowStartWorkout(false);
+        }}
       >
         <View style={[styles.modalContent, { paddingTop: insets.top + 16 }]}>
           <View style={styles.modalHeader}>
@@ -722,12 +770,29 @@ export default function WorkoutsIndex() {
               label="Close"
               variant="ghost"
               size="sm"
-              onPress={() => setShowStartWorkout(false)}
+              onPress={() => {
+                setOfflineMessage(null);
+                setShowStartWorkout(false);
+              }}
             />
           </View>
 
           <Surface style={styles.modalSurface}>
             <View style={styles.modalForm}>
+              {offlineMessage && (
+                <View
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.2)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                </View>
+              )}
               <TextField
                 testID="workouts-custom-name"
                 label="WORKOUT NAME"

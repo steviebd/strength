@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
@@ -23,11 +23,13 @@ import {
   getNutritionChatDraft,
   getNutritionChatMessages,
   getNutritionPendingImage,
+  removeNutritionPendingImage,
   setNutritionChatDraft,
   setNutritionChatMessages,
   setNutritionPendingImage,
 } from '@/lib/storage';
-import { getCachedDailySummary, cacheDailySummary, invalidateDailySummary } from '@/db/nutrition';
+import { getCachedDailySummary, cacheDailySummary } from '@/db/nutrition';
+import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
@@ -39,6 +41,8 @@ import {
   resolveMealTypeForAnalysis,
   type MealAnalysis,
 } from '@/lib/nutritionChat';
+import { OfflineError } from '@/lib/offline-mutation';
+import { useNutritionMutations } from '@/hooks/useNutritionMutations';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -290,28 +294,10 @@ function buildChatExchanges(messages: ChatMessageData[]): ChatExchangeData[] {
   return exchanges;
 }
 
-function removeEntryFromSummary(summary: DailySummary | undefined, entryId: string) {
-  if (!summary) return summary;
-
-  const removedEntry = summary.entries.find((entry) => entry.id === entryId);
-  if (!removedEntry) return summary;
-
-  return {
-    ...summary,
-    entries: summary.entries.filter((entry) => entry.id !== entryId),
-    totals: {
-      calories: summary.totals.calories - (removedEntry.calories ?? 0),
-      proteinG: summary.totals.proteinG - (removedEntry.proteinG ?? 0),
-      carbsG: summary.totals.carbsG - (removedEntry.carbsG ?? 0),
-      fatG: summary.totals.fatG - (removedEntry.fatG ?? 0),
-    },
-  };
-}
-
 export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
-  const queryClient = useQueryClient();
   const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
   const { activeTimezone } = useUserPreferences();
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
@@ -334,6 +320,7 @@ export default function NutritionScreen() {
   const [hasRestoredLocalState, setHasRestoredLocalState] = useState(false);
   const [exchangeExpansion, setExchangeExpansion] = useState<Record<string, boolean>>({});
   const [savingAnalysisMessageId, setSavingAnalysisMessageId] = useState<string | null>(null);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const hasAppliedServerHistory = useRef(false);
   const messagesScrollRef = useRef<ScrollView | null>(null);
   const chatInputRef = useRef<TextInput | null>(null);
@@ -344,32 +331,17 @@ export default function NutritionScreen() {
 
   const { data: whoopData } = useWhoopData(date, activeTimezone ?? 'UTC');
 
-  const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
+  const { data: summary, refetch: refetchSummary } = useOfflineQuery<DailySummary>({
     queryKey: dailySummaryQueryKey,
-    queryFn: async () => {
-      const userId = session.data?.user?.id;
-      if (userId) {
-        const cached = await getCachedDailySummary(userId, date, activeTimezone ?? 'UTC');
-        if (cached) {
-          // Kick off background refresh without awaiting
-          apiFetch(buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone))
-            .then((fresh) => {
-              void cacheDailySummary(userId, date, activeTimezone ?? 'UTC', fresh);
-            })
-            .catch(() => {
-              // Offline is fine, serve cached
-            });
-          return cached as DailySummary;
-        }
-      }
-      const fresh = await apiFetch(
+    enabled: !!userId,
+    apiFn: () =>
+      apiFetch<DailySummary>(
         buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone),
-      );
-      if (userId) {
-        await cacheDailySummary(userId, date, activeTimezone ?? 'UTC', fresh);
-      }
-      return fresh as DailySummary;
-    },
+      ),
+    cacheFn: () =>
+      getCachedDailySummary(userId!, date, activeTimezone ?? 'UTC') as Promise<DailySummary | null>,
+    writeCacheFn: (data) => cacheDailySummary(userId!, date, activeTimezone ?? 'UTC', data),
+    fallbackToCacheOnError: true,
   });
 
   useEffect(() => {
@@ -514,82 +486,12 @@ export default function NutritionScreen() {
     };
   }, [historyQuery.refetch]);
 
-  const saveMealMutation = useMutation({
-    mutationFn: (data: {
-      name: string;
-      mealType: string;
-      calories: number;
-      protein: number;
-      carbs: number;
-      fat: number;
-    }) => {
-      const payload = {
-        name: data.name,
-        mealType: data.mealType,
-        calories: data.calories,
-        proteinG: data.protein,
-        carbsG: data.carbs,
-        fatG: data.fat,
-      };
-
-      return apiFetch('/api/nutrition/entries', {
-        method: 'POST',
-        body: payload,
-      });
-    },
-    onMutate: async () => {
-      const userId = session.data?.user?.id;
-      if (userId) {
-        await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
-      }
-    },
-    onSuccess: () => {
-      refetchSummary();
-    },
-  });
-
-  const deleteMealMutation = useMutation({
-    mutationFn: (id: string) => apiFetch(`/api/nutrition/entries/${id}`, { method: 'DELETE' }),
-    onMutate: async (entryId) => {
-      const userId = session.data?.user?.id;
-      if (userId) {
-        await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
-      }
-      await queryClient.cancelQueries({ queryKey: dailySummaryQueryKey });
-      const previousSummary = queryClient.getQueryData<DailySummary>(dailySummaryQueryKey);
-
-      queryClient.setQueryData<DailySummary | undefined>(dailySummaryQueryKey, (current) =>
-        removeEntryFromSummary(current, entryId),
-      );
-
-      return { previousSummary };
-    },
-    onError: (_error, _entryId, context) => {
-      if (context?.previousSummary) {
-        queryClient.setQueryData(dailySummaryQueryKey, context.previousSummary);
-      }
-    },
-    onSuccess: (_data, entryId) => {
-      clearSavedEntryFromMessages(entryId);
-      void queryClient.invalidateQueries({ queryKey: dailySummaryQueryKey });
-    },
-  });
-
-  const trainingContextMutation = useMutation({
-    mutationFn: (type: TrainingType) =>
-      apiFetch('/api/nutrition/training-context', {
-        method: 'POST',
-        body: { trainingType: type, date, timezone: activeTimezone },
-      }),
-    onMutate: async () => {
-      const userId = session.data?.user?.id;
-      if (userId) {
-        await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
-      }
-    },
-    onSuccess: () => {
-      refetchSummary();
-    },
+  const { saveMealMutation, deleteMealMutation, trainingContextMutation } = useNutritionMutations({
+    date,
+    activeTimezone,
+    dailySummaryQueryKey,
+    refetchSummary,
+    clearSavedEntryFromMessages,
   });
 
   const handleTrainingTypeChange = useCallback(
@@ -604,6 +506,10 @@ export default function NutritionScreen() {
     (entryId: string) => {
       deleteMealMutation.mutate(entryId, {
         onError: (error) => {
+          if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
+            setOfflineMessage("Saved locally. Will sync when you're back online.");
+            return;
+          }
           const message = error instanceof Error ? error.message : 'Unable to delete meal.';
           Alert.alert('Delete failed', message);
         },
@@ -624,7 +530,7 @@ export default function NutritionScreen() {
 
       setMessages((prev) => [...prev, userMsg]);
       setPendingImage(null);
-      void setNutritionPendingImage(localStateKey, null);
+      void removeNutritionPendingImage(localStateKey);
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
@@ -789,8 +695,12 @@ export default function NutritionScreen() {
           ),
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to save meal.';
-        Alert.alert('Save failed', message);
+        if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
+          setOfflineMessage("Saved locally. Will sync when you're back online.");
+        } else {
+          const message = error instanceof Error ? error.message : 'Unable to save meal.';
+          Alert.alert('Save failed', message);
+        }
       } finally {
         savingAnalysisMessageIds.current.delete(messageId);
         setSavingAnalysisMessageId((current) => (current === messageId ? null : current));
@@ -944,6 +854,12 @@ export default function NutritionScreen() {
                 guidance.
               </Text>
 
+              {offlineMessage ? (
+                <View style={styles.offlineBanner}>
+                  <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
+                </View>
+              ) : null}
+
               <View style={styles.quickActions}>
                 {quickPrompts.map((prompt) => (
                   <View key={`quick-prompt:${prompt}`} style={styles.quickActionSlot}>
@@ -1025,7 +941,7 @@ export default function NutritionScreen() {
                   pendingImageUri={pendingImage?.uri ?? null}
                   onClearImage={() => {
                     setPendingImage(null);
-                    void setNutritionPendingImage(localStateKey, null);
+                    void removeNutritionPendingImage(localStateKey);
                   }}
                 />
               </View>
@@ -1081,6 +997,17 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
     lineHeight: 22,
+    textAlign: 'center',
+  },
+  offlineBanner: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.base,
+    color: colors.textMuted,
     textAlign: 'center',
   },
 });

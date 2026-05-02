@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, or } from 'drizzle-orm';
+import { and, eq, inArray, lte, or, sql } from 'drizzle-orm';
 import { generateId } from '@strength/db/client';
 import { getLocalDb } from './client';
 import { localSyncQueue, type LocalSyncQueueItem } from './local-schema';
@@ -12,11 +12,13 @@ function nextAvailableAt(attemptCount: number) {
   return new Date(Date.now() + delay);
 }
 
-export async function enqueueWorkoutCompletion(
+export async function enqueueSyncItem(
   userId: string,
-  workoutId: string,
+  entityType: string,
+  entityId: string,
+  operation: string,
   payload: unknown,
-) {
+): Promise<string | null> {
   const db = getLocalDb();
   if (!db) return null;
 
@@ -26,9 +28,9 @@ export async function enqueueWorkoutCompletion(
     .values({
       id,
       userId,
-      entityType: 'workout',
-      entityId: workoutId,
-      operation: 'complete_workout',
+      entityType,
+      entityId,
+      operation,
       payloadJson: JSON.stringify(payload),
       status: 'pending',
       attemptCount: 0,
@@ -39,6 +41,14 @@ export async function enqueueWorkoutCompletion(
     })
     .run();
   return id;
+}
+
+export async function enqueueWorkoutCompletion(
+  userId: string,
+  workoutId: string,
+  payload: unknown,
+) {
+  return enqueueSyncItem(userId, 'workout', workoutId, 'complete_workout', payload);
 }
 
 export async function getRunnableSyncItems(
@@ -87,7 +97,7 @@ export async function markSyncItemStatus(
     .run();
 }
 
-export async function resetWorkoutSyncItems(workoutId: string) {
+export async function resetSyncItems(entityId: string) {
   const db = getLocalDb();
   if (!db) return;
   const now = new Date();
@@ -95,11 +105,32 @@ export async function resetWorkoutSyncItems(workoutId: string) {
     .set({ status: 'pending', availableAt: now, updatedAt: now, lastError: null })
     .where(
       and(
-        eq(localSyncQueue.entityId, workoutId),
+        eq(localSyncQueue.entityId, entityId),
         inArray(localSyncQueue.status, ['failed', 'conflict']),
       ),
     )
     .run();
+}
+
+export async function resetWorkoutSyncItems(workoutId: string) {
+  return resetSyncItems(workoutId);
+}
+
+export async function getPendingSyncItemCount(userId: string): Promise<number> {
+  const db = getLocalDb();
+  if (!db) return 0;
+
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(localSyncQueue)
+    .where(
+      and(
+        eq(localSyncQueue.userId, userId),
+        or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'failed')),
+      ),
+    )
+    .get();
+  return result?.count ?? 0;
 }
 
 export async function deleteSyncItem(id: string) {

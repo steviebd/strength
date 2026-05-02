@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { OfflineError } from '@/lib/offline-mutation';
 import { convertToDisplayWeight } from '@strength/db/client';
 import { colors, radius, spacing, typography, textRoles } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -25,6 +26,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const session = authClient.useSession();
   const user = session.data?.user;
   const displayName = user?.name || user?.email || 'Athlete';
@@ -104,7 +106,11 @@ export default function HomeScreen() {
 
       router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start workout');
+      if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
+        setOfflineMessage('Saved locally. Will sync when online.');
+      } else {
+        Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start workout');
+      }
     }
   };
 
@@ -187,6 +193,12 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               ))}
+            </View>
+          )}
+
+          {offlineMessage && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
             </View>
           )}
 
@@ -475,6 +487,16 @@ const styles = StyleSheet.create({
   workoutActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  offlineBanner: {
+    backgroundColor: 'rgba(251,146,60,0.15)',
+    borderRadius: 12,
+    padding: 12,
+  },
+  offlineBannerText: {
+    color: '#fdba74',
+    fontSize: 14,
+    fontWeight: '500',
   },
   metricsRow: {
     flexDirection: 'row',

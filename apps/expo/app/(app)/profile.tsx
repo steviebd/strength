@@ -16,6 +16,9 @@ import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { getLocalDb } from '@/db/client';
+import { localBodyStats } from '@/db/local-schema';
 import { getCachedBodyStats, cacheBodyStats } from '@/db/body-stats';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -166,11 +169,42 @@ export default function Profile() {
   });
 
   const saveBodyweightMutation = useMutation({
-    mutationFn: (bodyweightKg: number) =>
-      apiFetch('/api/nutrition/body-stats', {
-        method: 'POST',
-        body: { bodyweightKg },
-      }),
+    mutationFn: async (bodyweightKg: number) => {
+      const uid = session?.user?.id;
+      if (!uid) throw new Error('Not authenticated');
+      return tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch('/api/nutrition/body-stats', {
+            method: 'POST',
+            body: { bodyweightKg },
+          }),
+        userId: uid,
+        entityType: 'body_stats',
+        operation: 'update_body_stats',
+        entityId: uid,
+        payload: { bodyweightKg },
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          db.insert(localBodyStats)
+            .values({
+              userId: uid,
+              bodyweightKg,
+              recordedAt: now,
+              hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localBodyStats.userId,
+              set: {
+                bodyweightKg,
+                recordedAt: now,
+              },
+            })
+            .run();
+        },
+      });
+    },
     onSuccess: async (data, bodyweightKg) => {
       await recordBodyweight(bodyweightKg);
       const userId = session?.user?.id;
@@ -183,16 +217,59 @@ export default function Profile() {
   });
 
   const saveTargetsMutation = useMutation({
-    mutationFn: (targets: {
+    mutationFn: async (targets: {
       targetCalories?: number | null;
       targetProteinG?: number | null;
       targetCarbsG?: number | null;
       targetFatG?: number | null;
-    }) =>
-      apiFetch('/api/nutrition/body-stats', {
-        method: 'POST',
-        body: targets,
-      }),
+    }) => {
+      const uid = session?.user?.id;
+      if (!uid) throw new Error('Not authenticated');
+      return tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch('/api/nutrition/body-stats', {
+            method: 'POST',
+            body: targets,
+          }),
+        userId: uid,
+        entityType: 'body_stats',
+        operation: 'update_body_stats',
+        entityId: uid,
+        payload: targets,
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          db.insert(localBodyStats)
+            .values({
+              userId: uid,
+              targetCalories: targets.targetCalories ?? null,
+              targetProteinG: targets.targetProteinG ?? null,
+              targetCarbsG: targets.targetCarbsG ?? null,
+              targetFatG: targets.targetFatG ?? null,
+              hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localBodyStats.userId,
+              set: {
+                ...(targets.targetCalories !== undefined && {
+                  targetCalories: targets.targetCalories,
+                }),
+                ...(targets.targetProteinG !== undefined && {
+                  targetProteinG: targets.targetProteinG,
+                }),
+                ...(targets.targetCarbsG !== undefined && {
+                  targetCarbsG: targets.targetCarbsG,
+                }),
+                ...(targets.targetFatG !== undefined && {
+                  targetFatG: targets.targetFatG,
+                }),
+              },
+            })
+            .run();
+        },
+      });
+    },
     onSuccess: async (data) => {
       const userId = session?.user?.id;
       if (userId) {
@@ -623,6 +700,14 @@ export default function Profile() {
             </Pressable>
           </View>
         </View>
+
+        {saveBodyweightMutation.error instanceof OfflineError && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>
+              Changes saved locally. Will sync when you're back online.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.nutritionGoalsSection}>
           <View style={styles.nutritionGoalsHeader}>
@@ -1220,6 +1305,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+  },
+  offlineBanner: {
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: `${colors.error}50`,
+    backgroundColor: `${colors.error}10`,
+    padding: spacing.md,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
   },
   nutritionGoalsSection: {
     marginTop: spacing.md,

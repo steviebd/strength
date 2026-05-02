@@ -29,6 +29,7 @@ import {
 import { addPendingWorkout } from '@/lib/storage';
 import { authClient } from '@/lib/auth-client';
 import { createLocalWorkoutFromProgramCycleWorkout } from '@/db/workouts';
+import { OfflineError } from '@/lib/offline-mutation';
 import { colors, spacing, radius, typography } from '@/theme';
 
 function getMondayOfWeek(date: Date): Date {
@@ -328,6 +329,7 @@ export default function ProgramScheduleScreen() {
   const [startingWorkoutId, setStartingWorkoutId] = useState<string | null>(null);
   const [rescheduleModalWorkout, setRescheduleModalWorkout] =
     useState<ProgramScheduleWorkout | null>(null);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
 
   const allWorkouts = useMemo(() => {
     if (!schedule) return [];
@@ -419,8 +421,10 @@ export default function ProgramScheduleScreen() {
             `/workout-session?workoutId=${result.workoutId}&source=program&cycleId=${cycleId}`,
           );
         }
-      } catch {
-        // no-op
+      } catch (e) {
+        if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
+          setOfflineMessage('Saved locally. Will sync when online.');
+        }
       } finally {
         setStartingWorkoutId(null);
       }
@@ -447,8 +451,11 @@ export default function ProgramScheduleScreen() {
           scheduledAt,
         });
         setRescheduleModalWorkout(null);
-      } catch {
-        // no-op
+        setOfflineMessage(null);
+      } catch (e) {
+        if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
+          setOfflineMessage('Saved locally. Will sync when online.');
+        }
       }
     },
     [rescheduleWorkout],
@@ -480,6 +487,12 @@ export default function ProgramScheduleScreen() {
         <MetricTile label="Remaining" value={String(remainingCount)} tone="orange" />
         <MetricTile label="This Week" value={String(thisWeekCount)} tone="sky" />
       </View>
+
+      {offlineMessage && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
+        </View>
+      )}
 
       {unscheduledWorkouts.length > 0 && (
         <>
@@ -569,6 +582,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.lg,
+  },
+  offlineBanner: {
+    backgroundColor: 'rgba(251,146,60,0.15)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  offlineBannerText: {
+    color: colors.accentSecondary,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
   },
   dayCard: {
     padding: spacing.md,

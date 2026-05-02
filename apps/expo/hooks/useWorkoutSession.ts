@@ -10,6 +10,7 @@ import {
   completeLocalWorkout,
   createLocalWorkout,
   discardLocalWorkout,
+  enqueueWorkoutDelete,
   getLocalLastCompletedExerciseSnapshots,
   getLocalWorkout,
   markLocalCycleWorkoutComplete,
@@ -432,8 +433,10 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   const discardWorkout = useCallback(async () => {
     if (workout?.id) {
       try {
+        const userId = session.data?.user?.id;
+        if (!userId) return;
         await discardLocalWorkout(workout.id);
-        await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
+        await enqueueWorkoutDelete(userId, workout.id);
         await removePendingWorkout(workout.id);
       } catch {
         // no-op

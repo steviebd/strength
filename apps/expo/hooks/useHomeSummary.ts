@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { authClient } from '@/lib/auth-client';
 import { buildLocalHomeSummary } from '@/db/training-cache';
+import { useOfflineQuery } from './useOfflineQuery';
 
 type HomeScheduledWorkout = {
   cycleWorkoutId: string;
@@ -63,22 +63,14 @@ export function useHomeSummary() {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
-  return useQuery({
+  return useOfflineQuery({
     queryKey: ['homeSummary', activeTimezone],
-    queryFn: async () => {
-      try {
-        const response = await apiFetch<HomeSummaryResponse>(`/api/home/summary`);
-        return response;
-      } catch (error) {
-        if (userId) {
-          return (await buildLocalHomeSummary(
-            userId,
-            activeTimezone ?? 'UTC',
-          )) as HomeSummaryResponse;
-        }
-        throw error;
-      }
-    },
+    enabled: !!userId,
+    apiFn: () => apiFetch<HomeSummaryResponse>(`/api/home/summary`),
+    cacheFn: () =>
+      buildLocalHomeSummary(userId!, activeTimezone ?? 'UTC') as Promise<HomeSummaryResponse>,
+    writeCacheFn: async () => {},
+    fallbackToCacheOnError: true,
     refetchInterval: 60 * 1000,
   });
 }

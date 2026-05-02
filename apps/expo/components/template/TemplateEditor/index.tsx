@@ -19,6 +19,11 @@ import { ScreenScrollView } from '@/components/ui/Screen';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { useUndo } from '@/hooks/useUndo';
 import { apiFetch } from '@/lib/api';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { authClient } from '@/lib/auth-client';
+import { getLocalDb } from '@/db/client';
+import { localTemplates } from '@/db/local-schema';
+import { eq } from 'drizzle-orm';
 import type { SelectedExercise, Template, TemplateEditorProps } from './types';
 
 function generateId(): string {
@@ -178,21 +183,72 @@ function useTemplateEditorApi({
   const [isLoading, _setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   const saveTemplate = useCallback(async (): Promise<Template | null> => {
+    if (!userId) {
+      Alert.alert('Unable to save template', 'You must be signed in.');
+      return null;
+    }
     setIsSaving(true);
     setAutoSaveStatus('saving');
     try {
       const isNew = mode === 'create';
       const url = isNew ? '/api/templates' : `/api/templates/${templateId}`;
       const method = isNew ? 'POST' : 'PUT';
+      const entityId = isNew ? generateId() : templateId!;
 
-      const savedTemplate = await apiFetch<Template>(url, {
-        method,
-        body: {
+      const savedTemplate = await tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch<Template>(url, {
+            method,
+            body: {
+              name: formData.name,
+              description: formData.description || undefined,
+              notes: formData.notes || undefined,
+            },
+          }),
+        userId,
+        entityType: 'template',
+        operation: isNew ? 'create_template' : 'save_template',
+        entityId,
+        payload: {
           name: formData.name,
           description: formData.description || undefined,
           notes: formData.notes || undefined,
+        },
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          if (isNew) {
+            db.insert(localTemplates)
+              .values({
+                id: entityId,
+                userId,
+                name: formData.name,
+                description: formData.description ?? null,
+                notes: formData.notes ?? null,
+                isDeleted: false,
+                createdLocally: true,
+                createdAt: now,
+                updatedAt: now,
+                hydratedAt: now,
+              })
+              .run();
+          } else {
+            db.update(localTemplates)
+              .set({
+                name: formData.name,
+                description: formData.description ?? null,
+                notes: formData.notes ?? null,
+                updatedAt: now,
+              })
+              .where(eq(localTemplates.id, templateId!))
+              .run();
+          }
         },
       });
 
@@ -222,16 +278,20 @@ function useTemplateEditorApi({
       onSaved?.(savedTemplate);
       return savedTemplate;
     } catch (error) {
-      Alert.alert(
-        'Unable to save template',
-        error instanceof Error ? error.message : 'Please try again.',
-      );
+      if (error instanceof OfflineError || (error as any)?.name === 'OfflineError') {
+        setOfflineMessage("Changes saved locally. Will sync when you're back online.");
+      } else {
+        Alert.alert(
+          'Unable to save template',
+          error instanceof Error ? error.message : 'Please try again.',
+        );
+      }
       setAutoSaveStatus('idle');
       return null;
     } finally {
       setIsSaving(false);
     }
-  }, [mode, templateId, formData, selectedExercises, onSaved]);
+  }, [mode, templateId, formData, selectedExercises, onSaved, userId]);
 
   const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
     const newExerciseIds = new Set(selectedExercises.map((e) => e.exerciseId));
@@ -280,6 +340,8 @@ function useTemplateEditorApi({
     isLoading,
     isSaving,
     autoSaveStatus,
+    offlineMessage,
+    clearOfflineMessage: () => setOfflineMessage(null),
     saveTemplate,
   };
 }
@@ -319,7 +381,7 @@ export function TemplateEditor({
     pushUndo,
   } = useTemplateEditorState(initialFormData, initialExercises);
 
-  const { saveTemplate, isSaving } = useTemplateEditorApi({
+  const { saveTemplate, isSaving, offlineMessage, clearOfflineMessage } = useTemplateEditorApi({
     mode,
     templateId,
     formData,
@@ -395,14 +457,16 @@ export function TemplateEditor({
   );
 
   const handleSave = useCallback(async () => {
+    clearOfflineMessage();
     if (!validateForm()) return;
     const result = await saveTemplate();
     if (result && onSaved) {
       onSaved(result);
     }
-  }, [validateForm, saveTemplate, onSaved]);
+  }, [clearOfflineMessage, validateForm, saveTemplate, onSaved]);
 
   const handleCancel = useCallback(() => {
+    clearOfflineMessage();
     if (mode === 'create' && (formData.name || selectedExercises.length > 0)) {
       Alert.alert(
         'Discard Changes?',
@@ -419,7 +483,7 @@ export function TemplateEditor({
     } else {
       onClose?.();
     }
-  }, [mode, formData.name, selectedExercises.length, onClose]);
+  }, [clearOfflineMessage, mode, formData.name, selectedExercises.length, onClose]);
 
   const currentExercises = selectedExercises;
 
@@ -746,6 +810,23 @@ export function TemplateEditor({
           )}
         </View>
       </ScreenScrollView>
+
+      {offlineMessage && (
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(239, 68, 68, 0.2)',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            marginHorizontal: 16,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+        </View>
+      )}
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <View style={styles.footerButton}>

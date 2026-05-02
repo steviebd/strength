@@ -351,6 +351,15 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     `);
   });
 
+  applyVersionedMigration(sqlite, '20260503_local_templates_created_locally', () => {
+    addColumnIfMissing(
+      sqlite,
+      'local_templates',
+      'created_locally',
+      'created_locally INTEGER NOT NULL DEFAULT 0',
+    );
+  });
+
   applyVersionedMigration(sqlite, '20260502_local_cache_expansion', () => {
     sqlite.execSync(`
       CREATE TABLE IF NOT EXISTS local_last_workouts (
