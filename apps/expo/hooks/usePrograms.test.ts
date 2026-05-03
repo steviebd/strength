@@ -32,6 +32,22 @@ vi.mock('@/lib/api', () => ({
   apiFetch: vi.fn(),
 }));
 
+vi.mock('@/db/client', () => ({
+  getLocalDb: vi.fn(() => ({
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          get: vi.fn(() => ({ count: 0 })),
+        })),
+      })),
+    })),
+  })),
+}));
+
+vi.mock('@/db/local-schema', () => ({
+  localSyncQueue: {},
+}));
+
 vi.mock('@/db/workouts', () => ({
   cacheActivePrograms: vi.fn(),
 }));
