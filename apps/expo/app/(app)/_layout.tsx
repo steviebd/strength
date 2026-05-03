@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, AppState } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +16,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { TabIconWithBadge } from '@/components/TabIconWithBadge';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
 import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { getPendingSyncItemCount } from '@/db/sync-queue';
 
 const TAB_ICONS = {
@@ -308,8 +308,55 @@ function AppTabs() {
 
 export default function AppLayout() {
   const session = authClient.useSession();
+  const hasEverHadSession = useRef(false);
+  const hasTriedRecovery = useRef(false);
+  const refreshCountRef = useRef(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (session.isPending && !session.data) {
+  useEffect(() => {
+    if (session.data) {
+      hasEverHadSession.current = true;
+      hasTriedRecovery.current = false;
+    }
+  }, [session.data]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshCountRef.current++;
+        setIsRefreshing(true);
+        authClient.getSession().finally(() => {
+          if (--refreshCountRef.current <= 0) {
+            refreshCountRef.current = 0;
+            setIsRefreshing(false);
+          }
+        });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !session.data &&
+      hasEverHadSession.current &&
+      !session.isPending &&
+      !hasTriedRecovery.current &&
+      refreshCountRef.current === 0
+    ) {
+      hasTriedRecovery.current = true;
+      refreshCountRef.current++;
+      setIsRefreshing(true);
+      authClient.getSession().finally(() => {
+        if (--refreshCountRef.current <= 0) {
+          refreshCountRef.current = 0;
+          setIsRefreshing(false);
+        }
+      });
+    }
+  }, [session.data, session.isPending]);
+
+  if ((session.isPending || isRefreshing) && !session.data) {
     return (
       <View
         style={{

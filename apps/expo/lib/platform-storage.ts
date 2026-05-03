@@ -8,19 +8,24 @@ const createSecureStoreStorage = () => ({
     try {
       const result = SecureStore.getItem(key);
       return result as string | null;
-    } catch {
+    } catch (e) {
+      console.error(`[platform-storage] Failed to get ${key} from SecureStore:`, e);
       return null;
     }
   },
   setItem: (key: string, value: string): void => {
     try {
       SecureStore.setItem(key, value);
-    } catch {}
+    } catch (e) {
+      console.error(`[platform-storage] Failed to set ${key} in SecureStore:`, e);
+    }
   },
   removeItem: (key: string): void => {
     try {
       SecureStore.deleteItemAsync(key);
-    } catch {}
+    } catch (e) {
+      console.error(`[platform-storage] Failed to remove ${key} from SecureStore:`, e);
+    }
   },
   getItemAsync: (key: string): Promise<string | null> => {
     return SecureStore.getItemAsync(key);
