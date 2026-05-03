@@ -53,7 +53,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           },
           {
-            name: 'Leg Extension',
+            name: 'Leg Extensions',
             lift: 'squat' as const,
             sets: 3,
             reps: 15,
@@ -61,7 +61,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           },
           {
-            name: 'Leg Curl',
+            name: 'Leg Curls',
             lift: 'deadlift' as const,
             sets: 3,
             reps: 15,
@@ -167,9 +167,8 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
 
       workouts.push({
         weekNumber: week,
-        sessionNumber: workoutIndex,
-        sessionName:
-          session === 1 ? 'Lower Strength' : session === 2 ? 'Upper Strength' : 'Full Body',
+        sessionNumber: session,
+        sessionName: `Week ${week} - Workout ${session}`,
         exercises,
       });
     }

@@ -5,7 +5,9 @@ import { requireAuthContext } from '../auth';
 import { resolveUserTimezone, getUtcRangeForLocalDate } from '../../lib/timezone';
 import { getLatestOneRMsForUser } from '../../lib/program-helpers';
 
-function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name: string }> {
+function parseTargetLifts(
+  targetLifts: string | null | undefined,
+): Array<{ name: string; libraryId?: string; lift?: string }> {
   if (!targetLifts) return [];
   if (Array.isArray(targetLifts)) return targetLifts;
   try {
@@ -13,12 +15,12 @@ function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name:
     if (Array.isArray(parsed)) return parsed;
     if (parsed && typeof parsed === 'object') {
       const record = parsed as {
-        exercises?: Array<{ name?: string }>;
-        accessories?: Array<{ name?: string }>;
+        exercises?: Array<{ name?: string; libraryId?: string; lift?: string }>;
+        accessories?: Array<{ name?: string; libraryId?: string; lift?: string }>;
       };
       return [...(record.exercises ?? []), ...(record.accessories ?? [])]
         .filter((lift) => typeof lift?.name === 'string' && lift.name.length > 0)
-        .map((lift) => ({ name: lift.name as string }));
+        .map((lift) => ({ name: lift.name as string, libraryId: lift.libraryId, lift: lift.lift }));
     }
     return [];
   } catch {
@@ -74,15 +76,20 @@ function formatSleepDuration(milliseconds: number | null): string | null {
   return `${hours}h ${minutes}m`;
 }
 
-type GroupedExercise = { name: string; count: number };
+type GroupedExercise = { name: string; count: number; libraryId?: string; lift?: string };
 
-function groupConsecutiveExercises(names: string[]): GroupedExercise[] {
+function groupConsecutiveExercises(
+  items: Array<{ name: string; libraryId?: string; lift?: string }>,
+): GroupedExercise[] {
   const grouped: GroupedExercise[] = [];
-  for (const name of names) {
-    if (grouped.length > 0 && grouped[grouped.length - 1].name === name) {
-      grouped[grouped.length - 1].count++;
+  for (const item of items) {
+    const key = item.libraryId ?? item.lift ?? item.name;
+    const last = grouped[grouped.length - 1];
+    const lastKey = last ? (last.libraryId ?? last.lift ?? last.name) : null;
+    if (last && lastKey === key) {
+      last.count++;
     } else {
-      grouped.push({ name, count: 1 });
+      grouped.push({ name: item.name, count: 1, libraryId: item.libraryId, lift: item.lift });
     }
   }
   return grouped;
@@ -243,8 +250,7 @@ export async function homeSummaryHandler(c: any) {
 
   if (todayScheduledWorkout && activeCycle) {
     const parsedTargetLifts = parseTargetLifts(todayScheduledWorkout.targetLifts);
-    const exerciseNames = parsedTargetLifts.map((t: any) => t.name).filter(Boolean);
-    const exercises = groupConsecutiveExercises(exerciseNames);
+    const exercises = groupConsecutiveExercises(parsedTargetLifts);
 
     const cycleWorkout = todayScheduledWorkout;
     todayWorkoutOutput = {

@@ -222,8 +222,8 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
 
       workouts.push({
         weekNumber: week,
-        sessionNumber: workoutIndex,
-        sessionName: isLowerA ? 'Lower A' : isUpperA ? 'Upper A' : 'Full Body',
+        sessionNumber: session,
+        sessionName: `Week ${week} - Workout ${session}`,
         exercises,
       });
     }

@@ -42,7 +42,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
     workouts.push({
       weekNumber: week,
       sessionNumber: (week - 1) * 4 + 1,
-      sessionName: `Week ${week} - Day 1 (Squat/Bench)${isDeload ? ' (Deload)' : ''}`,
+      sessionName: `Week ${week} - Workout 1${isDeload ? ' (Deload)' : ''}`,
       exercises: [
         {
           name: 'Squat',
@@ -66,7 +66,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
     workouts.push({
       weekNumber: week,
       sessionNumber: (week - 1) * 4 + 2,
-      sessionName: `Week ${week} - Day 2 (Deadlift/OHP)${isDeload ? ' (Deload)' : ''}`,
+      sessionName: `Week ${week} - Workout 2${isDeload ? ' (Deload)' : ''}`,
       exercises: [
         {
           name: 'Deadlift',
@@ -90,7 +90,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
     workouts.push({
       weekNumber: week,
       sessionNumber: (week - 1) * 4 + 3,
-      sessionName: `Week ${week} - Day 3 (Squat/Bench)${isDeload ? ' (Deload)' : ''}`,
+      sessionName: `Week ${week} - Workout 3${isDeload ? ' (Deload)' : ''}`,
       exercises: [
         {
           name: 'Squat',
@@ -114,7 +114,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
     workouts.push({
       weekNumber: week,
       sessionNumber: (week - 1) * 4 + 4,
-      sessionName: `Week ${week} - Day 4 (Deadlift/OHP)${isDeload ? ' (Deload)' : ''}`,
+      sessionName: `Week ${week} - Workout 4${isDeload ? ' (Deload)' : ''}`,
       exercises: [
         {
           name: 'Deadlift',

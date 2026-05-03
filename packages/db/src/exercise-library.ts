@@ -107,13 +107,13 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'lat-pulldown',
-    name: 'Lat Pulldown',
+    name: 'Lat Pulldowns',
     muscleGroup: 'Back',
     description:
       'A cable exercise pulling a bar down to chest level while seated, effectively targeting the latissimus dorsi and upper back muscles.',
     videoTutorial: {
       youtubeId: 'https://www.youtube.com/shorts/diBoTD4-uG8',
-      title: 'How to Lat Pulldown',
+      title: 'How to Lat Pulldowns',
       coachName: 'ArielYu_Fit',
       keyCues: ['Pull to chest', 'Retract scapula', 'Arch back slightly', 'Control the release'],
     },
@@ -387,13 +387,13 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'leg-extension',
-    name: 'Leg Extension',
+    name: 'Leg Extensions',
     muscleGroup: 'Quads',
     description:
       'An isolation machine exercise extending the legs against resistance, directly targeting the quadriceps muscles.',
     videoTutorial: {
       youtubeId: 'https://www.youtube.com/shorts/2zZ3vkPsExQ',
-      title: 'How to Leg Extension',
+      title: 'How to Leg Extensions',
       coachName: 'LISAFIITT',
       keyCues: ['Pause at top', 'Full extension', 'Squeeze quads', 'Control the descent'],
     },
@@ -414,13 +414,13 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'leg-curl',
-    name: 'Leg Curl',
+    name: 'Leg Curls',
     muscleGroup: 'Hamstrings',
     description:
       'A machine isolation exercise curling the legs against resistance while lying down, directly targeting the hamstring muscles.',
     videoTutorial: {
       youtubeId: 'https://www.youtube.com/shorts/yjWAuFOjhuY',
-      title: 'How to Leg Curl',
+      title: 'How to Leg Curls',
       coachName: 'ArielYu_Fit',
       keyCues: ['Full contraction', 'Squeeze hamstrings', 'Control release', 'No cheating'],
     },
@@ -507,7 +507,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'box-jump',
-    name: 'Box Jump',
+    name: 'Box Jumps',
     muscleGroup: 'Cardio',
     description:
       'A plyometric exercise jumping onto a box, building explosive power and cardiovascular endurance.',

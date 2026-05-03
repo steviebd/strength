@@ -11,6 +11,7 @@ export const sheikoInfo: ProgramInfo = createProgramInfo({
   estimatedWeeks: 8,
   totalSessions: 32,
   category: 'powerlifting',
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const VOLUME_DAY = {

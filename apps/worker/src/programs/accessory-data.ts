@@ -149,7 +149,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
   },
   'lat-pulldowns': {
     id: 'lat-pulldowns',
-    name: 'Lat Pulldown',
+    name: 'Lat Pulldowns',
     category: 'pull',
     baseLift: 'deadlift',
     defaultPercentage: 0.5,
@@ -195,7 +195,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
   },
   'leg-extensions': {
     id: 'leg-extensions',
-    name: 'Leg Extension',
+    name: 'Leg Extensions',
     category: 'leg',
     baseLift: 'squat',
     defaultPercentage: 0.35,
@@ -213,7 +213,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
   },
   'leg-curls': {
     id: 'leg-curls',
-    name: 'Leg Curl',
+    name: 'Leg Curls',
     category: 'leg',
     baseLift: 'deadlift',
     defaultPercentage: 0.3,
@@ -231,7 +231,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
   },
   'box-jumps': {
     id: 'box-jumps',
-    name: 'Box Jump',
+    name: 'Box Jumps',
     category: 'leg',
     baseLift: null,
     defaultPercentage: null,

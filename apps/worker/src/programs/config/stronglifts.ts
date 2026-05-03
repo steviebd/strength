@@ -8,8 +8,8 @@ export const strongliftsInfo: ProgramInfo = createProgramInfo({
     'The classic beginner program that has helped millions get stronger. Simple, effective, and proven.',
   difficulty: 'beginner',
   daysPerWeek: 3,
-  estimatedWeeks: 8,
-  totalSessions: 24,
+  estimatedWeeks: 12,
+  totalSessions: 36,
   mainLifts: ['squat', 'bench', 'deadlift', 'ohp', 'row'] as LiftType[],
   category: 'general-strength',
 });

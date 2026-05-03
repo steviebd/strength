@@ -11,6 +11,7 @@ export const wendler531Info: ProgramInfo = createProgramInfo({
   estimatedWeeks: 12,
   totalSessions: 48,
   category: 'powerlifting',
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const WAVE_PERCENTAGES = {

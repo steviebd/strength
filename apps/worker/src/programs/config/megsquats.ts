@@ -11,6 +11,7 @@ export const megsquatsInfo: ProgramInfo = createProgramInfo({
   estimatedWeeks: 12,
   totalSessions: 36,
   category: "women's",
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const megsquatsAccessories: ProgramAccessory[] = [

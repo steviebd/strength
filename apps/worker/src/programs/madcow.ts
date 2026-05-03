@@ -86,7 +86,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
       workouts.push({
         weekNumber: week,
         sessionNumber: (week - 1) * 3 + session,
-        sessionName: `Week ${week} - ${isDayA ? 'Day A' : 'Day B'}${isDeload ? ' (Deload)' : ''}`,
+        sessionName: `Week ${week} - Workout ${session}${isDeload ? ' (Deload)' : ''}`,
         exercises,
       });
     }

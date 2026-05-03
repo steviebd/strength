@@ -54,7 +54,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           isAmrap: false,
         },
         {
-          name: t1Name,
+          name: `${t1Name} 1+`,
           lift: config.t1,
           libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
           sets: 1,
@@ -72,7 +72,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           isAmrap: false,
         },
         {
-          name: t2Name,
+          name: `${t2Name} 1+`,
           lift: config.t2,
           libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
           sets: 1,
@@ -82,17 +82,10 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         },
       ];
 
-      const dayNames = [
-        'Day 1 (Squat/OHP)',
-        'Day 2 (Bench/Squat)',
-        'Day 3 (Deadlift/OHP)',
-        'Day 4 (Bench/Deadlift)',
-      ];
-
       workouts.push({
         weekNumber: week,
         sessionNumber: (week - 1) * 4 + day,
-        sessionName: `Week ${week} - ${dayNames[day - 1]}`,
+        sessionName: `Week ${week} - Workout ${day}`,
         exercises,
       });
     }

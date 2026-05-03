@@ -10,6 +10,7 @@ export const madcowInfo: ProgramInfo = createProgramInfo({
   estimatedWeeks: 8,
   totalSessions: 24,
   category: 'powerlifting',
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const WEEK_PERCENTAGES = [

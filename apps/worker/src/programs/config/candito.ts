@@ -11,6 +11,7 @@ export const canditoInfo: ProgramInfo = createProgramInfo({
   estimatedWeeks: 6,
   totalSessions: 24,
   category: 'powerlifting',
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const STRENGTH_BLOCK = [

@@ -63,7 +63,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             targetWeight: calculateTargetWeight(lift.oneRM, week, 1, lift.lift),
           },
           {
-            name: lift.name,
+            name: `${lift.name} 2`,
             lift: lift.lift,
             libraryId: lift.libraryId,
             sets: 1,
@@ -71,7 +71,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
             targetWeight: calculateTargetWeight(lift.oneRM, week, 2, lift.lift),
           },
           {
-            name: lift.name,
+            name: `${lift.name} 3+`,
             lift: lift.lift,
             libraryId: lift.libraryId,
             sets: 1,
@@ -85,7 +85,7 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
         workouts.push({
           weekNumber,
           sessionNumber: (cycle - 1) * 4 + day,
-          sessionName: `Cycle ${cycle} - Week ${week} - ${lift.name}`,
+          sessionName: `Week ${weekNumber} - Workout ${day}`,
           exercises,
         });
       }

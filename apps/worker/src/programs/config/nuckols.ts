@@ -11,6 +11,7 @@ export const nuckolsInfo: ProgramInfo = createProgramInfo({
   estimatedWeeks: 8,
   totalSessions: 32,
   category: 'general-strength',
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const WAVE_1 = {
