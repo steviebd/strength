@@ -1,4 +1,4 @@
-CREATE TABLE `nutrition_chat_jobs` (
+CREATE TABLE IF NOT EXISTS `nutrition_chat_jobs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
@@ -14,4 +14,4 @@ CREATE TABLE `nutrition_chat_jobs` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `idx_nutrition_chat_jobs_user_status_created` ON `nutrition_chat_jobs` (`user_id`,`status`,`created_at`);
+CREATE INDEX IF NOT EXISTS `idx_nutrition_chat_jobs_user_status_created` ON `nutrition_chat_jobs` (`user_id`,`status`,`created_at`);

@@ -1,5 +1,8 @@
+import { sql, and, or, eq, inArray } from 'drizzle-orm';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { getLocalDb } from '@/db/client';
+import { localSyncQueue } from '@/db/local-schema';
 import { cacheActivePrograms } from '@/db/workouts';
 import {
   getCachedActivePrograms,
@@ -48,6 +51,22 @@ export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
     apiFn: () => apiFetch<ProgramListItem[]>('/api/programs'),
     cacheFn: () => getCachedProgramsCatalog(userId!),
     writeCacheFn: (data) => cacheProgramsCatalog(userId!, data),
+    isDirtyFn: async () => {
+      const db = getLocalDb();
+      if (!db) return false;
+      const result = db
+        .select({ count: sql<number>`count(*)` })
+        .from(localSyncQueue)
+        .where(
+          and(
+            eq(localSyncQueue.userId, userId!),
+            inArray(localSyncQueue.operation, ['start_program', 'delete_program']),
+            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+          ),
+        )
+        .get();
+      return (result?.count ?? 0) > 0;
+    },
     staleTime: 5 * 60 * 1000,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -88,6 +107,26 @@ export function useActivePrograms() {
           : null,
       ),
     writeCacheFn: (data) => cacheActivePrograms(userId!, data),
+    isDirtyFn: async () => {
+      const db = getLocalDb();
+      if (!db) return false;
+      const result = db
+        .select({ count: sql<number>`count(*)` })
+        .from(localSyncQueue)
+        .where(
+          and(
+            eq(localSyncQueue.userId, userId!),
+            eq(localSyncQueue.entityType, 'program'),
+            or(
+              eq(localSyncQueue.operation, 'start_cycle_workout'),
+              eq(localSyncQueue.operation, 'reschedule_workout'),
+            ),
+            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+          ),
+        )
+        .get();
+      return (result?.count ?? 0) > 0;
+    },
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

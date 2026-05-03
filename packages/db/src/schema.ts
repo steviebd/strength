@@ -1,4 +1,12 @@
-import { index, integer, real, sqliteTable, text, unique } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  unique,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -606,24 +614,34 @@ export const nutritionChatMessages = sqliteTable('nutrition_chat_messages', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-export const nutritionChatJobs = sqliteTable('nutrition_chat_jobs', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  status: text('status').notNull().default('pending'),
-  error: text('error'),
-  messagesJson: text('messages_json').notNull(),
-  date: text('date').notNull(),
-  hasImage: integer('has_image', { mode: 'boolean' }).default(false),
-  imageBase64: text('image_base64'),
-  assistantMessageId: text('assistant_message_id'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
-});
+export const nutritionChatJobs = sqliteTable(
+  'nutrition_chat_jobs',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('pending'),
+    error: text('error'),
+    messagesJson: text('messages_json').notNull(),
+    date: text('date').notNull(),
+    hasImage: integer('has_image', { mode: 'boolean' }).default(false),
+    imageBase64: text('image_base64'),
+    assistantMessageId: text('assistant_message_id'),
+    syncOperationId: text('sync_operation_id'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+  },
+  (table) => [
+    uniqueIndex('nutrition_chat_jobs_user_id_sync_operation_id_unique').on(
+      table.userId,
+      table.syncOperationId,
+    ),
+  ],
+);
 
 export const userBodyStats = sqliteTable('user_body_stats', {
   id: text('id')

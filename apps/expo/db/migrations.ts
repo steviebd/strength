@@ -410,4 +410,24 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       );
     `);
   });
+
+  applyVersionedMigration(sqlite, '20260503_chat_message_queue', () => {
+    sqlite.execSync(`CREATE TABLE IF NOT EXISTS local_chat_message_queue (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      timezone TEXT NOT NULL,
+      content TEXT NOT NULL,
+      has_image INTEGER NOT NULL DEFAULT 0,
+      image_base64 TEXT,
+      messages_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      job_id TEXT,
+      assistant_content TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`);
+  });
 }

@@ -3,7 +3,11 @@ import { ApiError, apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
 import { getLocalDb } from '@/db/client';
 import { cleanupStaleLocalData } from '@/db/local-cleanup';
-import { localTrainingCacheMeta, type LocalSyncQueueItem } from '@/db/local-schema';
+import {
+  localChatMessageQueue,
+  localTrainingCacheMeta,
+  type LocalSyncQueueItem,
+} from '@/db/local-schema';
 import {
   hydrateOfflineTrainingSnapshot,
   markLocalProgramAdvance,
@@ -58,6 +62,32 @@ function normalizeServerWorkout(response: SyncCompleteResponse): Workout {
   };
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function updateChatMessageStatus(
+  id: string,
+  status: 'pending' | 'sending' | 'sent' | 'failed',
+  assistantContentOrError?: string,
+) {
+  const db = getLocalDb();
+  if (!db) return;
+  const updates: any = { status, updatedAt: new Date() };
+  if (status === 'sent') {
+    updates.assistantContent = assistantContentOrError;
+  } else if (status === 'failed') {
+    updates.lastError = assistantContentOrError;
+    const existing = db
+      .select({ attemptCount: localChatMessageQueue.attemptCount })
+      .from(localChatMessageQueue)
+      .where(eq(localChatMessageQueue.id, id))
+      .get();
+    updates.attemptCount = (existing?.attemptCount ?? 0) + 1;
+  }
+  db.update(localChatMessageQueue).set(updates).where(eq(localChatMessageQueue.id, id)).run();
+}
+
 function getSyncEndpoint(item: LocalSyncQueueItem): { url: string; method: string } {
   switch (item.operation) {
     case 'delete_workout':
@@ -85,6 +115,8 @@ function getSyncEndpoint(item: LocalSyncQueueItem): { url: string; method: strin
       };
     case 'save_training_context':
       return { url: '/api/nutrition/training-context', method: 'POST' };
+    case 'send_chat_message':
+      return { url: '/api/nutrition/chat', method: 'POST' };
     case 'start_cycle_workout':
       return { url: `/api/programs/cycle-workouts/${item.entityId}/start`, method: 'POST' };
     default:
@@ -140,6 +172,61 @@ export async function runSyncQueue(userId: string) {
             await markWorkoutFailed(item.entityId, message);
             await markSyncItemStatus(item.id, 'failed', { error: message });
           }
+        }
+      } else if (item.operation === 'send_chat_message') {
+        if (item.attemptCount >= 5) {
+          await markSyncItemStatus(item.id, 'conflict', {
+            error: 'Chat message failed after 5 attempts',
+          });
+          await updateChatMessageStatus(item.entityId, 'failed', 'Failed after maximum retries');
+          continue;
+        }
+
+        await markSyncItemStatus(item.id, 'syncing');
+        await updateChatMessageStatus(item.entityId, 'sending');
+
+        const payload = JSON.parse(item.payloadJson);
+        try {
+          const chatResponse = await apiFetch<{ jobId: string }>('/api/nutrition/chat', {
+            method: 'POST',
+            body: {
+              messages: payload.messages,
+              date: payload.date,
+              timezone: payload.timezone,
+              hasImage: payload.hasImage,
+              imageBase64: payload.imageBase64,
+              syncOperationId: item.id,
+            },
+          });
+
+          const jobStartedAt = Date.now();
+          const CHAT_JOB_POLL_INTERVAL_MS = 1500;
+          const CHAT_JOB_TIMEOUT_MS = 3 * 60 * 1000;
+          let assistantContent = '';
+          while (Date.now() - jobStartedAt < CHAT_JOB_TIMEOUT_MS) {
+            const job = await apiFetch<{ status: string; content?: string; error?: string }>(
+              `/api/nutrition/chat/jobs/${chatResponse.jobId}`,
+            );
+            if (job.status === 'completed') {
+              assistantContent = job.content ?? '';
+              break;
+            }
+            if (job.status === 'failed') {
+              throw new Error(job.error ?? 'Chat job failed');
+            }
+            await delay(CHAT_JOB_POLL_INTERVAL_MS);
+          }
+          if (!assistantContent.trim()) {
+            throw new Error('Chat job timed out');
+          }
+
+          await markSyncItemStatus(item.id, 'done');
+          await deleteSyncItem(item.id);
+          await updateChatMessageStatus(item.entityId, 'sent', assistantContent);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await markSyncItemStatus(item.id, 'failed', { error: message });
+          await updateChatMessageStatus(item.entityId, 'failed', message);
         }
       } else {
         await markSyncItemStatus(item.id, 'syncing');

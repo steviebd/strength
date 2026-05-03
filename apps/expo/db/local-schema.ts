@@ -253,6 +253,24 @@ export const localWhoopData = sqliteTable(
   (table) => [primaryKey({ columns: [table.userId, table.date, table.timezone] })],
 );
 
+export const localChatMessageQueue = sqliteTable('local_chat_message_queue', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  date: text('date').notNull(),
+  timezone: text('timezone').notNull(),
+  content: text('content').notNull(),
+  hasImage: integer('has_image', { mode: 'boolean' }).notNull().default(false),
+  imageBase64: text('image_base64'),
+  messagesJson: text('messages_json').notNull(),
+  status: text('status').notNull().default('pending'),
+  jobId: text('job_id'),
+  assistantContent: text('assistant_content'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export type LocalUserPreferences = typeof localUserPreferences.$inferSelect;
 export type LocalWorkout = typeof localWorkouts.$inferSelect;
 export type LocalWorkoutExercise = typeof localWorkoutExercises.$inferSelect;

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, like } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, like, or } from 'drizzle-orm';
 import {
   formatLocalDate,
   getCurrentCycleWorkout,
@@ -9,6 +9,7 @@ import { getLocalDb, withLocalTransaction } from './client';
 import {
   localProgramCycleWorkouts,
   localProgramCycles,
+  localSyncQueue,
   localTemplateExercises,
   localTemplates,
   localTrainingCacheMeta,
@@ -40,6 +41,22 @@ function isDirtyWorkout(row: LocalWorkout | undefined) {
   return Boolean(row && DIRTY_WORKOUT_STATUSES.includes(row.syncStatus));
 }
 
+async function getEntitiesWithPendingSync(userId: string): Promise<Set<string>> {
+  const db = getLocalDb();
+  if (!db) return new Set();
+  const items = db
+    .select({ entityId: localSyncQueue.entityId })
+    .from(localSyncQueue)
+    .where(
+      and(
+        eq(localSyncQueue.userId, userId),
+        or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+      ),
+    )
+    .all();
+  return new Set(items.map((i) => i.entityId));
+}
+
 export type OfflineTrainingSnapshot = {
   generatedAt: string;
   templates: any[];
@@ -55,13 +72,30 @@ export async function hydrateOfflineTrainingSnapshot(
   const db = getLocalDb();
   if (!db) return;
 
+  const pendingSyncIds = await getEntitiesWithPendingSync(userId);
   const hydratedAt = new Date();
   const generatedAt = toDate(snapshot.generatedAt);
   const serverTemplateIds = new Set(snapshot.templates.map((template) => template.id));
   const activeCycleIds = new Set(snapshot.activeProgramCycles.map((entry) => entry.cycle.id));
 
+  const existingLocalTemplates = db
+    .select({
+      id: localTemplates.id,
+      isDeleted: localTemplates.isDeleted,
+      createdLocally: localTemplates.createdLocally,
+    })
+    .from(localTemplates)
+    .where(eq(localTemplates.userId, userId))
+    .all();
+  const localTemplateMap = new Map(existingLocalTemplates.map((t) => [t.id, t]));
+
   withLocalTransaction(() => {
     for (const template of snapshot.templates) {
+      const localTemplate = localTemplateMap.get(template.id);
+      if (localTemplate?.isDeleted && pendingSyncIds.has(template.id)) {
+        continue;
+      }
+
       db.insert(localTemplates)
         .values({
           id: template.id,
@@ -114,13 +148,8 @@ export async function hydrateOfflineTrainingSnapshot(
       }
     }
 
-    const existingTemplates = db
-      .select({ id: localTemplates.id })
-      .from(localTemplates)
-      .where(and(eq(localTemplates.userId, userId), eq(localTemplates.isDeleted, false)))
-      .all();
-    const orphanedTemplateIds = existingTemplates
-      .filter((template) => !serverTemplateIds.has(template.id))
+    const orphanedTemplateIds = existingLocalTemplates
+      .filter((template) => !serverTemplateIds.has(template.id) && !template.createdLocally)
       .map((template) => template.id);
     if (orphanedTemplateIds.length > 0) {
       db.update(localTemplates)
@@ -166,6 +195,11 @@ export async function hydrateOfflineTrainingSnapshot(
   withLocalTransaction(() => {
     for (const entry of snapshot.activeProgramCycles) {
       const cycle = entry.cycle;
+      const hasPendingSyncWorkout = (entry.workouts ?? []).some((w) => pendingSyncIds.has(w.id));
+      if (hasPendingSyncWorkout) {
+        continue;
+      }
+
       db.insert(localProgramCycles)
         .values({
           id: cycle.id,
@@ -267,6 +301,7 @@ export async function hydrateOfflineTrainingSnapshot(
   for (const workout of snapshot.recentWorkouts ?? []) {
     const existing = db.select().from(localWorkouts).where(eq(localWorkouts.id, workout.id)).get();
     if (isDirtyWorkout(existing)) continue;
+    if (pendingSyncIds.has(workout.id)) continue;
     await upsertServerWorkoutSnapshot(userId, workout);
   }
 

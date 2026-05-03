@@ -68,6 +68,7 @@ export async function getRunnableSyncItems(
         lte(localSyncQueue.availableAt, new Date()),
       ),
     )
+    .orderBy(localSyncQueue.createdAt)
     .limit(limit)
     .all();
 }

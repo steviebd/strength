@@ -873,6 +873,19 @@ export async function discardLocalWorkout(workoutId: string) {
       .set({ isDeleted: true, syncStatus: 'pending', updatedAt: now })
       .where(eq(localWorkouts.id, workoutId))
       .run();
+
+    // Clear the cycle workout link so the schedule shows Start again
+    const workoutRow = db
+      .select({ cycleWorkoutId: localWorkouts.cycleWorkoutId })
+      .from(localWorkouts)
+      .where(eq(localWorkouts.id, workoutId))
+      .get();
+    if (workoutRow?.cycleWorkoutId) {
+      db.update(localProgramCycleWorkouts)
+        .set({ workoutId: null, isComplete: false })
+        .where(eq(localProgramCycleWorkouts.id, workoutRow.cycleWorkoutId))
+        .run();
+    }
   });
 }
 

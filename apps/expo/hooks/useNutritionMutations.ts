@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { generateId } from '@strength/db/client';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { invalidateDailySummary } from '@/db/nutrition';
+import { getCachedDailySummary, cacheDailySummary, invalidateDailySummary } from '@/db/nutrition';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 
 interface MealEntry {
@@ -107,12 +107,94 @@ export function useNutritionMutations(options: {
         operation: 'save_meal',
         entityId: generateId(),
         payload,
+        onEnqueue: async () => {
+          const existing = (await getCachedDailySummary(
+            userId,
+            date,
+            activeTimezone ?? 'UTC',
+          )) as DailySummary | null;
+          const meal = {
+            id: generateId(),
+            name: data.name,
+            mealType: data.mealType,
+            calories: data.calories,
+            proteinG: data.protein,
+            carbsG: data.carbs,
+            fatG: data.fat,
+            loggedAt: null,
+          };
+          const updatedSummary = existing
+            ? {
+                ...existing,
+                entries: [...(existing.entries ?? []), meal],
+                totals: {
+                  calories: (existing.totals?.calories ?? 0) + meal.calories,
+                  proteinG: (existing.totals?.proteinG ?? 0) + meal.proteinG,
+                  carbsG: (existing.totals?.carbsG ?? 0) + meal.carbsG,
+                  fatG: (existing.totals?.fatG ?? 0) + meal.fatG,
+                },
+              }
+            : {
+                entries: [meal],
+                totals: {
+                  calories: meal.calories,
+                  proteinG: meal.proteinG,
+                  carbsG: meal.carbsG,
+                  fatG: meal.fatG,
+                },
+              };
+          await cacheDailySummary(userId, date, activeTimezone ?? 'UTC', updatedSummary);
+        },
       });
     },
-    onMutate: async () => {
+    onMutate: async (data) => {
       const userId = session.data?.user?.id;
       if (userId) {
         await invalidateDailySummary(userId, date, activeTimezone ?? 'UTC');
+      }
+      await queryClient.cancelQueries({ queryKey: dailySummaryQueryKey });
+      const previousSummary = queryClient.getQueryData<DailySummary>(dailySummaryQueryKey);
+
+      queryClient.setQueryData<DailySummary | undefined>(dailySummaryQueryKey, (old) => {
+        const meal = {
+          id: generateId(),
+          name: data.name,
+          mealType: data.mealType,
+          calories: data.calories,
+          proteinG: data.protein,
+          carbsG: data.carbs,
+          fatG: data.fat,
+          loggedAt: null,
+        };
+        if (!old) {
+          return {
+            entries: [meal],
+            totals: {
+              calories: meal.calories,
+              proteinG: meal.proteinG,
+              carbsG: meal.carbsG,
+              fatG: meal.fatG,
+            },
+          } as DailySummary;
+        }
+        return {
+          ...old,
+          entries: [...(old.entries ?? []), meal],
+          totals: {
+            calories: (old.totals?.calories ?? 0) + meal.calories,
+            proteinG: (old.totals?.proteinG ?? 0) + meal.proteinG,
+            carbsG: (old.totals?.carbsG ?? 0) + meal.carbsG,
+            fatG: (old.totals?.fatG ?? 0) + meal.fatG,
+          },
+        };
+      });
+
+      return { previousSummary };
+    },
+    onError: (error, _data, context) => {
+      if (error instanceof OfflineError) return;
+      if (context?.previousSummary) {
+        queryClient.setQueryData(dailySummaryQueryKey, context.previousSummary);
       }
     },
     onSuccess: () => {

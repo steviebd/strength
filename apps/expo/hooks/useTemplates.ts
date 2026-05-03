@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { sql, and, or, eq } from 'drizzle-orm';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { generateId } from '@strength/db/client';
 import { authClient } from '@/lib/auth-client';
@@ -8,7 +8,7 @@ import type { Template } from '@/components/template/TemplateEditor/types';
 import { cacheTemplates } from '@/db/workouts';
 import { getCachedTemplates } from '@/db/training-cache';
 import { getLocalDb } from '@/db/client';
-import { localTemplates } from '@/db/local-schema';
+import { localTemplates, localSyncQueue } from '@/db/local-schema';
 import { useOfflineQuery } from './useOfflineQuery';
 
 export type { Template };
@@ -24,6 +24,28 @@ export function useTemplates() {
     apiFn: () => apiFetch<Template[]>('/api/templates'),
     cacheFn: () => getCachedTemplates(userId!),
     writeCacheFn: (data) => cacheTemplates(userId!, data),
+    isDirtyFn: async () => {
+      const db = getLocalDb();
+      if (!db) return false;
+      const locallyCreated = db
+        .select({ count: sql<number>`count(*)` })
+        .from(localTemplates)
+        .where(and(eq(localTemplates.userId, userId!), eq(localTemplates.createdLocally, true)))
+        .get();
+      if ((locallyCreated?.count ?? 0) > 0) return true;
+      const pending = db
+        .select({ count: sql<number>`count(*)` })
+        .from(localSyncQueue)
+        .where(
+          and(
+            eq(localSyncQueue.userId, userId!),
+            eq(localSyncQueue.entityType, 'template'),
+            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+          ),
+        )
+        .get();
+      return (pending?.count ?? 0) > 0;
+    },
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

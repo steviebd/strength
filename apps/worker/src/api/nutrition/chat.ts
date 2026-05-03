@@ -25,6 +25,7 @@ interface ChatRequest {
   hasImage: boolean;
   imageBase64?: string;
   timezone?: string;
+  syncOperationId?: string;
 }
 
 interface QueuedChatPayload {
@@ -349,6 +350,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     hasImage = false,
     imageBase64,
     timezone: requestedTimezone,
+    syncOperationId,
   } = body;
   if (!validateChatMessages(messages)) {
     return c.json({ error: 'Messages are required' }, 400);
@@ -370,6 +372,22 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: dateResult.error }, 400);
   }
 
+  if (syncOperationId) {
+    const existing = await db
+      .select()
+      .from(schema.nutritionChatJobs)
+      .where(
+        and(
+          eq(schema.nutritionChatJobs.userId, userId),
+          eq(schema.nutritionChatJobs.syncOperationId, syncOperationId),
+        ),
+      )
+      .get();
+    if (existing) {
+      return c.json({ jobId: existing.id });
+    }
+  }
+
   const userMessageContent = messages[messages.length - 1].content;
   await db.insert(schema.nutritionChatMessages).values({
     userId,
@@ -389,6 +407,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     date: dateResult.date,
     hasImage: hasImageFlag,
     imageBase64: hasImageFlag ? imageBase64 : null,
+    syncOperationId: syncOperationId ?? null,
     createdAt: now,
     updatedAt: now,
   });

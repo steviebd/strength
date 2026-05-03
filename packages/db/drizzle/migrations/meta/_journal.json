@@ -8,6 +8,20 @@
       "when": 1777176526978,
       "tag": "0000_swift_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1777770873275,
+      "tag": "0001_needy_natasha_romanoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777770873276,
+      "tag": "0007_add_sync_operation_id",
+      "breakpoints": true
     }
   ]
 }

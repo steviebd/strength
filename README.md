@@ -93,7 +93,7 @@ Secrets are injected by Infisical at runtime. No `.env` file.
 | Secret | Notes |
 |--------|-------|
 | `APP_ENV` | `development` |
-| `BETTER_AUTH_SECRET` | Generate a long random string |
+| `BETTER_AUTH_SECRET` | `openssl rand -hex 32` |
 | `WORKER_BASE_URL` | `http://<lan-ip>:8787` (local dev) |
 | `EXPO_PUBLIC_WORKER_BASE_URL` | Same as `WORKER_BASE_URL` |
 | `CLOUDFLARE_D1_ID` | Remote dev D1 UUID |
