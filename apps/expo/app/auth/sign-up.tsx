@@ -4,7 +4,7 @@ import { Link, router } from 'expo-router';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
-import { buildAuthCallbackURL } from '@/lib/auth-callback-url';
+import { buildAuthCallbackURL, nativeGoogleAuthReturnToKey } from '@/lib/auth-callback-url';
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
 import { platformStorage } from '@/lib/platform-storage';
@@ -91,10 +91,12 @@ export default function SignUpScreen() {
 
     try {
       const callbackURL = buildAuthCallbackURL(redirectUrl);
+      platformStorage.setItem(nativeGoogleAuthReturnToKey, redirectUrl);
       const result = await authClient.signIn.social({
         provider: 'google',
         callbackURL,
         errorCallbackURL: callbackURL,
+        requestSignUp: true,
       });
 
       if (result.error) {
@@ -107,6 +109,7 @@ export default function SignUpScreen() {
         setError('Sign-in was not completed. Please try again.');
         return;
       }
+      platformStorage.removeItem(nativeGoogleAuthReturnToKey);
       router.replace(redirectUrl as any);
     } catch (error) {
       const isNetworkError = error instanceof Error && error.message === 'Network request failed';

@@ -3,7 +3,9 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { persistAuthCallbackCookie } from '@/lib/auth-callback-cookie';
+import { nativeGoogleAuthReturnToKey } from '@/lib/auth-callback-url';
 import { waitForSessionReady } from '@/lib/auth-session';
+import { platformStorage } from '@/lib/platform-storage';
 import { colors, typography } from '@/theme';
 
 export default function AuthCallback() {
@@ -36,7 +38,9 @@ export default function AuthCallback() {
       if (cancelled) return;
 
       if (ready) {
-        router.replace((returnTo || '/(app)/home') as any);
+        const storedReturnTo = platformStorage.getItem(nativeGoogleAuthReturnToKey);
+        platformStorage.removeItem(nativeGoogleAuthReturnToKey);
+        router.replace((returnTo || storedReturnTo || '/(app)/home') as any);
       } else {
         setError('Unable to complete sign-in. Please try again.');
       }
