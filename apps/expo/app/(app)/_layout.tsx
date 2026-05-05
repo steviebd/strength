@@ -372,7 +372,7 @@ export default function AppLayout() {
   }
 
   if (!session.data) {
-    return <Redirect href="/auth/sign-in?returnTo=/(app)/home" />;
+    return <Redirect href="/" />;
   }
 
   return (

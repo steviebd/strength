@@ -126,6 +126,7 @@ Staging and production apps can be installed side-by-side because they use diffe
 
 | Secret | Notes |
 |--------|-------|
+| `RATE_LIMIT_REQUEST_PER_HOUR` | Overrides the default rate limit of 1000 req/hr per user per endpoint |
 | `AI_GATEWAY_NAME` | Cloudflare AI Gateway ID |
 | `AI_MODEL_NAME` | Model name (defaults in worker) |
 

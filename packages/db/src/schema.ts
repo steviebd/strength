@@ -580,6 +580,9 @@ export const _rateLimitUserIdEndpointIdx = index('idx_rate_limit_user_id_endpoin
 export const _rateLimitWindowStartIdx = index('idx_rate_limit_window_start').on(
   rateLimit.windowStart,
 );
+export const _rateLimitUserIdEndpointUniqueIdx = uniqueIndex(
+  'rate_limit_user_id_endpoint_unique',
+).on(rateLimit.userId, rateLimit.endpoint);
 
 export const nutritionEntries = sqliteTable('nutrition_entries', {
   id: text('id')

@@ -3,6 +3,11 @@ import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core/table';
 
 type DbClient = DrizzleD1Database<Record<string, unknown>>;
 
+export interface ChunkedInsertOnConflictConfig {
+  target: any;
+  set: Record<string, any>;
+}
+
 export const DEFAULT_CHUNK_SIZE = 100;
 export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_MAX_QUERY_PARAMS = 100;
@@ -131,6 +136,7 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     chunkSize?: number;
     maxQueryParams?: number;
     maxStatementsPerBatch?: number;
+    onConflictDoUpdate?: ChunkedInsertOnConflictConfig;
   },
 ): Promise<number> {
   const {
@@ -139,6 +145,7 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     chunkSize = DEFAULT_CHUNK_SIZE,
     maxQueryParams = DEFAULT_MAX_QUERY_PARAMS,
     maxStatementsPerBatch = DEFAULT_STATEMENTS_PER_BATCH,
+    onConflictDoUpdate,
   } = config;
 
   if (rows.length === 0) return 0;
@@ -157,7 +164,16 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
 
   for (let i = 0; i < chunks.length; i += maxStatementsPerBatch) {
     const batchChunks = chunks.slice(i, i + maxStatementsPerBatch);
-    const statements = batchChunks.map((chunk) => db.insert(table).values(chunk));
+    const statements = batchChunks.map((chunk) => {
+      const stmt = db.insert(table).values(chunk) as any;
+      if (onConflictDoUpdate) {
+        return stmt.onConflictDoUpdate({
+          target: onConflictDoUpdate.target,
+          set: onConflictDoUpdate.set,
+        });
+      }
+      return stmt;
+    });
     const results = await db.batch(statements as any);
     const batchInsertedRows = results.reduce((sum, r) => sum + r.rowsAffected, 0);
     insertedRows += batchInsertedRows;

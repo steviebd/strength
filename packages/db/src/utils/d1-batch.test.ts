@@ -400,4 +400,143 @@ describe('chunkedInsert', () => {
     expect(batchCalls.length).toBe(1);
     expect(batchCalls[0].length).toBe(6);
   });
+
+  it('should return 0 for empty rows with onConflictDoUpdate', async () => {
+    const inserted = await chunkedInsert(undefined as any, {
+      table: {} as any,
+      rows: [],
+      onConflictDoUpdate: {
+        target: 'id',
+        set: { id: 'excluded.id' as any },
+      },
+    });
+
+    expect(inserted).toBe(0);
+  });
+});
+
+describe('chunkedInsert with onConflictDoUpdate', () => {
+  it('should call onConflictDoUpdate on each statement when config is provided', async () => {
+    let onConflictCalls = 0;
+    let receivedConfigs: any[] = [];
+
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => {
+          const base = {
+            prepare: () => ({
+              getQuery: () => ({ sql: '?', params: [] }),
+            }),
+          };
+          return {
+            ...base,
+            onConflictDoUpdate: (config: any) => {
+              onConflictCalls++;
+              receivedConfigs.push(config);
+              return base;
+            },
+          };
+        },
+      }),
+      batch: async (statements: unknown[][]) => {
+        return statements.map(() => ({ rowsAffected: 1 }));
+      },
+    };
+
+    const rows = Array.from({ length: 50 }, (_, i) => ({ id: String(i) }));
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      chunkSize: 25,
+      maxQueryParams: 9999,
+      onConflictDoUpdate: {
+        target: 'my_column',
+        set: { col: 'excluded.col' as any },
+      },
+    });
+
+    expect(onConflictCalls).toBe(2);
+    expect(inserted).toBe(2);
+    expect(receivedConfigs[0].target).toBe('my_column');
+    expect(receivedConfigs[1].target).toBe('my_column');
+  });
+
+  it('should batch upsert statements correctly', async () => {
+    const batchCalls: unknown[][][] = [];
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => {
+          const base = {
+            prepare: () => ({
+              getQuery: () => ({ sql: '?', params: [] }),
+            }),
+          };
+          return {
+            ...base,
+            onConflictDoUpdate: (_config: any) => base,
+          };
+        },
+      }),
+      batch: async (statements: unknown[][]) => {
+        batchCalls.push(statements);
+        return statements.map(() => ({ rowsAffected: 1 }));
+      },
+    };
+
+    const rows = Array.from({ length: 250 }, (_, i) => ({ id: String(i) }));
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      chunkSize: 1,
+      maxStatementsPerBatch: 45,
+      onConflictDoUpdate: {
+        target: 'id',
+        set: { id: 'excluded.id' as any },
+      },
+    });
+
+    expect(inserted).toBe(250);
+    expect(batchCalls.length).toBe(6);
+    expect(batchCalls[0].length).toBe(45);
+    expect(batchCalls[5].length).toBe(25);
+  });
+
+  it('should work with single-chunk upsert', async () => {
+    let onConflictCalled = false;
+
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => {
+          const base = {
+            prepare: () => ({
+              getQuery: () => ({ sql: '?', params: [] }),
+            }),
+          };
+          return {
+            ...base,
+            onConflictDoUpdate: (_config: any) => {
+              onConflictCalled = true;
+              return base;
+            },
+          };
+        },
+      }),
+      batch: async (statements: unknown[][]) => {
+        return statements.map(() => ({ rowsAffected: 2 }));
+      },
+    };
+
+    const rows = [{ id: 'a' }, { id: 'b' }];
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows,
+      onConflictDoUpdate: {
+        target: 'id',
+        set: { id: 'excluded.id' as any },
+      },
+    });
+
+    expect(onConflictCalled).toBe(true);
+    expect(inserted).toBe(2);
+  });
 });

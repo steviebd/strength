@@ -162,7 +162,9 @@ export function Button({
   }));
 
   return (
-    <Animated.View style={[animatedStyle, { minWidth: 0, flexShrink: 1 }]}>
+    <Animated.View
+      style={[animatedStyle, { minWidth: 0, flexShrink: 1 }, fullWidth && styles.fullWidth]}
+    >
       <Pressable
         testID={testID}
         accessibilityLabel={testID ?? (typeof label === 'string' ? label : undefined)}
@@ -240,6 +242,7 @@ const styles = StyleSheet.create({
   text: {
     minWidth: 0,
     flexShrink: 1,
+    textAlign: 'center',
   },
   customContent: {
     minWidth: 0,

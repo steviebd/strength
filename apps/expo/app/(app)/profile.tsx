@@ -479,7 +479,7 @@ export default function Profile() {
     platformStorage.removeItem('auth_pending_signin');
     platformStorage.removeItem('auth_pending_signup');
     authClient.signOut();
-    router.replace('/auth/sign-in');
+    router.replace('/');
   };
 
   const loadWhoopStatus = async () => {

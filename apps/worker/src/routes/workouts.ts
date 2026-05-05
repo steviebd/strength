@@ -514,26 +514,34 @@ router.post(
         .run();
     }
 
-    const resolvedExerciseRows: (typeof schema.workoutExercises.$inferInsert)[] = [];
+    // Validate exercise input shape first
     for (const exercise of exerciseInputs) {
       if (!exercise?.id || !exercise.exerciseId || exercise.orderIndex === undefined) {
         return c.json({ message: 'Invalid exercise data' }, 400);
       }
+    }
 
+    // Batch ownership check: one query instead of one per exercise
+    const allExerciseIds = exerciseInputs.map((exercise: any) => exercise.exerciseId);
+    const ownedExercises = await db
+      .select({ id: schema.exercises.id })
+      .from(schema.exercises)
+      .where(
+        and(
+          inArray(schema.exercises.id, allExerciseIds),
+          eq(schema.exercises.userId, userId),
+          eq(schema.exercises.isDeleted, false),
+        ),
+      )
+      .all();
+
+    const ownedSet = new Set(ownedExercises.map((exercise) => exercise.id));
+
+    const resolvedExerciseRows: (typeof schema.workoutExercises.$inferInsert)[] = [];
+    for (const exercise of exerciseInputs) {
       let resolvedExerciseId = exercise.exerciseId;
-      const ownedExercise = await db
-        .select({ id: schema.exercises.id })
-        .from(schema.exercises)
-        .where(
-          and(
-            eq(schema.exercises.id, exercise.exerciseId),
-            eq(schema.exercises.userId, userId),
-            eq(schema.exercises.isDeleted, false),
-          ),
-        )
-        .get();
 
-      if (!ownedExercise) {
+      if (!ownedSet.has(resolvedExerciseId)) {
         if (exercise.libraryId || exercise.name) {
           resolvedExerciseId = await getOrCreateExerciseForUser(
             db,
