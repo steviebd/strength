@@ -98,6 +98,21 @@ describe('CORS origin', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com');
   });
 
+  test('prod allows configured trusted web origin', async () => {
+    const req = new Request('https://api.example.com/api/health', {
+      headers: { origin: 'https://fit.example.com' },
+    });
+    const res = await app.fetch(req, {
+      APP_ENV: 'production',
+      WORKER_BASE_URL: 'https://api.example.com',
+      BETTER_AUTH_TRUSTED_ORIGINS: 'https://fit.example.com',
+      APP_SCHEME: 'strength',
+      DB: {} as D1Database,
+      BETTER_AUTH_SECRET: 'secret',
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://fit.example.com');
+  });
+
   test('prod denies unknown origin', async () => {
     const req = new Request('https://app.example.com/api/health', {
       headers: { origin: 'https://evil.com' },

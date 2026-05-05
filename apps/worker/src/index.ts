@@ -44,9 +44,24 @@ type Variables = {
 
 const app = new Hono<{ Bindings: WorkerEnv; Variables: Variables }>();
 
+function parseTrustedOrigins(value: string | undefined) {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 function getAllowedOrigins(env: WorkerEnv): { origins: string[]; baseURLOrigin?: string } {
   const appScheme = env.APP_SCHEME ?? 'strength';
-  const origins: string[] = [`${appScheme}://`, 'exp://'];
+  const origins: string[] = [
+    `${appScheme}://`,
+    'exp://',
+    ...parseTrustedOrigins(env.BETTER_AUTH_TRUSTED_ORIGINS),
+  ];
   let baseURLOrigin: string | undefined;
   const baseURL = env.WORKER_BASE_URL;
   if (baseURL) {

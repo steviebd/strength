@@ -118,7 +118,7 @@ export function resolveCookiePolicy(
   if (!isDevMode && baseURLIsHttps) {
     return {
       secure: true,
-      sameSite: 'strict',
+      sameSite: 'lax',
     };
   }
 

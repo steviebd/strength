@@ -113,17 +113,17 @@ describe('resolveCookiePolicy', () => {
     });
   });
 
-  test('production with https returns strict', () => {
+  test('production with https returns lax so OAuth callback redirects can include state cookies', () => {
     expect(resolveCookiePolicy('https://example.com', 'https', 'production')).toEqual({
       secure: true,
-      sameSite: 'strict',
+      sameSite: 'lax',
     });
   });
 
-  test('production with https and http client protocol still returns strict', () => {
+  test('production with https and http client protocol still returns lax', () => {
     expect(resolveCookiePolicy('https://example.com', 'http', 'production')).toEqual({
       secure: true,
-      sameSite: 'strict',
+      sameSite: 'lax',
     });
   });
 });
