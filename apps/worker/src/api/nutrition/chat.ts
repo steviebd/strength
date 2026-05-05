@@ -63,6 +63,12 @@ function validateChatMessages(messages: ChatRequest['messages']) {
   );
 }
 
+/**
+ * Validates the image rate limit for a user.
+ * NOTE: This is a soft limit with approximate enforcement. A small race
+ * window exists between the count query and the subsequent user message
+ * insert, so concurrent requests may occasionally exceed the limit by 1.
+ */
 async function validateImageRateLimit({
   db,
   userId,
@@ -268,7 +274,7 @@ async function generateNutritionChatAssistantContent({
   }
 
   const combinedSystemPrompt = `${systemPrompt}\n\n${structuredContextPrompt}`;
-  const priorMessages = messages.slice(0, -1).map(compactNutritionChatHistoryMessage);
+  const priorMessages = messages.slice(0, -1).slice(-20).map(compactNutritionChatHistoryMessage);
   const userMessage = { role: 'user' as const, content: userContent };
   const aiMessages = [...priorMessages, userMessage];
 
@@ -276,22 +282,23 @@ async function generateNutritionChatAssistantContent({
   let assistantMessageId: string;
 
   const model = getModel(env);
-  const result = await generateText({
-    model,
-    system: combinedSystemPrompt,
-    messages: aiMessages,
-  });
-  assistantContent = result.text;
-  assistantMessageId = crypto.randomUUID();
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 30000);
 
-  await db.insert(schema.nutritionChatMessages).values({
-    id: assistantMessageId,
-    userId,
-    role: 'assistant',
-    content: assistantContent,
-    hasImage: false,
-    createdAt: new Date(),
-  });
+  try {
+    const result = await generateText({
+      model,
+      system: combinedSystemPrompt,
+      messages: aiMessages,
+      abortSignal: abortController.signal,
+    });
+    assistantContent = result.text;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  assistantContent = assistantContent.slice(0, 10_000);
+  assistantMessageId = crypto.randomUUID();
 
   return { content: assistantContent, assistantMessageId };
 }
@@ -365,6 +372,10 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   const hasImageFlag = hasImage && !!imageBase64;
+  if (hasImageFlag && imageBase64 && imageBase64.length > 683_594) {
+    return c.json({ error: 'Image too large' }, 413);
+  }
+
   const imageAllowed = await validateImageRateLimit({ db, userId, hasImage: hasImageFlag });
   if (!imageAllowed) {
     return c.json({ error: 'Rate limit exceeded', code: 'RATE_LIMITED' }, 429);
@@ -375,44 +386,67 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: dateResult.error }, 400);
   }
 
+  const userMessageContent = messages[messages.length - 1].content;
+  const jobId = crypto.randomUUID();
+  const now = new Date();
+
   if (syncOperationId) {
-    const existing = await db
-      .select()
-      .from(schema.nutritionChatJobs)
-      .where(
-        and(
-          eq(schema.nutritionChatJobs.userId, userId),
-          eq(schema.nutritionChatJobs.syncOperationId, syncOperationId),
-        ),
-      )
-      .get();
-    if (existing) {
-      return c.json({ jobId: existing.id });
+    const jobInsertResult = await db
+      .insert(schema.nutritionChatJobs)
+      .values({
+        id: jobId,
+        userId,
+        status: 'pending',
+        messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
+        date: dateResult.date,
+        hasImage: hasImageFlag,
+        imageBase64: hasImageFlag ? imageBase64 : null,
+        syncOperationId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({
+        target: [schema.nutritionChatJobs.userId, schema.nutritionChatJobs.syncOperationId],
+      })
+      .run();
+
+    if ((jobInsertResult.meta?.changes ?? 0) === 0) {
+      const existing = await db
+        .select()
+        .from(schema.nutritionChatJobs)
+        .where(
+          and(
+            eq(schema.nutritionChatJobs.userId, userId),
+            eq(schema.nutritionChatJobs.syncOperationId, syncOperationId),
+          ),
+        )
+        .get();
+      if (existing) {
+        return c.json({ jobId: existing.id });
+      }
+      return c.json({ error: 'Failed to create chat job' }, 500);
     }
+  } else {
+    await db.insert(schema.nutritionChatJobs).values({
+      id: jobId,
+      userId,
+      status: 'pending',
+      messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
+      date: dateResult.date,
+      hasImage: hasImageFlag,
+      imageBase64: hasImageFlag ? imageBase64 : null,
+      syncOperationId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
-  const userMessageContent = messages[messages.length - 1].content;
   await db.insert(schema.nutritionChatMessages).values({
     userId,
     role: 'user',
     content: userMessageContent,
     hasImage: hasImageFlag,
     createdAt: new Date(),
-  });
-
-  const jobId = crypto.randomUUID();
-  const now = new Date();
-  await db.insert(schema.nutritionChatJobs).values({
-    id: jobId,
-    userId,
-    status: 'pending',
-    messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
-    date: dateResult.date,
-    hasImage: hasImageFlag,
-    imageBase64: hasImageFlag ? imageBase64 : null,
-    syncOperationId: syncOperationId ?? null,
-    createdAt: now,
-    updatedAt: now,
   });
 
   if (!c.env.NUTRITION_CHAT_QUEUE) {
@@ -478,10 +512,17 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
     return;
   }
 
-  await db
+  const statusUpdateResult = await db
     .update(schema.nutritionChatJobs)
     .set({ status: 'processing', updatedAt: new Date() })
-    .where(eq(schema.nutritionChatJobs.id, job.id));
+    .where(
+      and(eq(schema.nutritionChatJobs.id, job.id), eq(schema.nutritionChatJobs.status, 'pending')),
+    )
+    .run();
+
+  if ((statusUpdateResult.meta?.changes ?? 0) === 0) {
+    return; // another worker took it
+  }
 
   try {
     const payload = JSON.parse(job.messagesJson) as ChatRequest['messages'] | QueuedChatPayload;
@@ -503,6 +544,15 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
     if (!assistant.content.trim()) {
       throw new Error('The assistant returned an empty response.');
     }
+
+    await db.insert(schema.nutritionChatMessages).values({
+      id: assistant.assistantMessageId,
+      userId: job.userId,
+      role: 'assistant',
+      content: assistant.content,
+      hasImage: false,
+      createdAt: new Date(),
+    });
 
     await db
       .update(schema.nutritionChatJobs)

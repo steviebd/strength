@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
-import { chunkedQueryMany, getProgramCycleWithWorkouts } from '@strength/db';
+import { chunkedQueryMany } from '@strength/db';
 import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
 
@@ -27,6 +27,7 @@ async function listTemplatesForSnapshot(db: any, userId: string) {
     .from(schema.templates)
     .where(and(eq(schema.templates.userId, userId), eq(schema.templates.isDeleted, false)))
     .orderBy(desc(schema.templates.createdAt))
+    .limit(50)
     .all();
 
   const templateIds = templates.map((template: any) => template.id);
@@ -93,13 +94,18 @@ async function listUserExercisesForSnapshot(db: any, userId: string) {
     .from(schema.exercises)
     .where(and(eq(schema.exercises.userId, userId), eq(schema.exercises.isDeleted, false)))
     .orderBy(desc(schema.exercises.createdAt))
+    .limit(200)
     .all();
 }
 
 async function listActiveProgramCyclesForSnapshot(db: any, userId: string) {
-  const cycles = await db
+  const rows = await db
     .select()
     .from(schema.userProgramCycles)
+    .leftJoin(
+      schema.programCycleWorkouts,
+      eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+    )
     .where(
       and(
         eq(schema.userProgramCycles.userId, userId),
@@ -109,14 +115,23 @@ async function listActiveProgramCyclesForSnapshot(db: any, userId: string) {
     .orderBy(desc(schema.userProgramCycles.startedAt))
     .all();
 
-  const result = [];
-  for (const cycle of cycles) {
-    const cycleWithWorkouts = await getProgramCycleWithWorkouts(db, cycle.id, userId);
-    if (cycleWithWorkouts) {
-      result.push(cycleWithWorkouts);
+  const cyclesMap = new Map<string, { cycle: any; workouts: any[] }>();
+  for (const row of rows) {
+    const cycle = row.userProgramCycles;
+    const workout = row.programCycleWorkouts;
+    if (!cyclesMap.has(cycle.id)) {
+      cyclesMap.set(cycle.id, { cycle, workouts: [] });
+    }
+    if (workout) {
+      cyclesMap.get(cycle.id)!.workouts.push(workout);
     }
   }
-  return result;
+
+  for (const entry of cyclesMap.values()) {
+    entry.workouts.sort((a, b) => a.weekNumber - b.weekNumber || a.sessionNumber - b.sessionNumber);
+  }
+
+  return Array.from(cyclesMap.values());
 }
 
 async function listRecentWorkoutsForSnapshot(db: any, userId: string, limit: number) {

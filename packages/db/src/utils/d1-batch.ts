@@ -136,6 +136,7 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     chunkSize?: number;
     maxQueryParams?: number;
     maxStatementsPerBatch?: number;
+    maxRounds?: number;
     onConflictDoUpdate?: ChunkedInsertOnConflictConfig;
   },
 ): Promise<number> {
@@ -145,6 +146,7 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     chunkSize = DEFAULT_CHUNK_SIZE,
     maxQueryParams = DEFAULT_MAX_QUERY_PARAMS,
     maxStatementsPerBatch = DEFAULT_STATEMENTS_PER_BATCH,
+    maxRounds = 100,
     onConflictDoUpdate,
   } = config;
 
@@ -161,8 +163,13 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
   const chunks = chunkArray(rows, safeChunkSize);
 
   let insertedRows = 0;
+  let rounds = 0;
 
   for (let i = 0; i < chunks.length; i += maxStatementsPerBatch) {
+    rounds++;
+    if (rounds > maxRounds) {
+      throw new Error(`chunkedInsert exceeded maxRounds (${maxRounds})`);
+    }
     const batchChunks = chunks.slice(i, i + maxStatementsPerBatch);
     const statements = batchChunks.map((chunk) => {
       const stmt = db.insert(table).values(chunk) as any;
@@ -175,7 +182,7 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
       return stmt;
     });
     const results = await db.batch(statements as any);
-    const batchInsertedRows = results.reduce((sum, r) => sum + r.rowsAffected, 0);
+    const batchInsertedRows = results.reduce((sum, r) => sum + getRowsAffected(r), 0);
     insertedRows += batchInsertedRows;
     if (chunks.length > maxStatementsPerBatch) {
       console.info('chunkedInsert batch completed', {
@@ -187,4 +194,21 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
   }
 
   return insertedRows;
+}
+
+function getRowsAffected(result: unknown): number {
+  if (!result || typeof result !== 'object') {
+    return 0;
+  }
+
+  if ('rowsAffected' in result && typeof result.rowsAffected === 'number') {
+    return result.rowsAffected;
+  }
+
+  const meta = 'meta' in result ? result.meta : null;
+  if (meta && typeof meta === 'object' && 'changes' in meta && typeof meta.changes === 'number') {
+    return meta.changes;
+  }
+
+  return 0;
 }

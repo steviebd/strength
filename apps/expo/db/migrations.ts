@@ -2,6 +2,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 type TableColumn = { name: string };
 
+const WORKOUT_TYPE_TRAINING = 'training';
+const WORKOUT_TYPE_ONE_RM_TEST = 'one_rm_test';
+
 function getColumnNames(sqlite: SQLiteDatabase, tableName: string) {
   try {
     return new Set(
@@ -31,6 +34,7 @@ function addLocalWorkoutStartColumns(sqlite: SQLiteDatabase) {
     ['template_id', 'template_id TEXT'],
     ['program_cycle_id', 'program_cycle_id TEXT'],
     ['cycle_workout_id', 'cycle_workout_id TEXT'],
+    ['workout_type', `workout_type TEXT NOT NULL DEFAULT '${WORKOUT_TYPE_TRAINING}'`],
     ['name', "name TEXT NOT NULL DEFAULT 'Workout'"],
     ['started_at', 'started_at INTEGER NOT NULL DEFAULT 0'],
     ['completed_at', 'completed_at INTEGER'],
@@ -208,36 +212,31 @@ function addLocalWorkoutSessionCacheColumns(sqlite: SQLiteDatabase) {
 function createLocalIndexes(sqlite: SQLiteDatabase) {
   sqlite.execSync(`
     CREATE INDEX IF NOT EXISTS idx_local_workouts_user_history
-      ON local_workouts (user_id, completed_at, started_at);
-    CREATE INDEX IF NOT EXISTS idx_local_workouts_user_active
-      ON local_workouts (user_id, completed_at, is_deleted);
+      ON local_workouts (user_id, is_deleted, started_at);
     CREATE INDEX IF NOT EXISTS idx_local_workout_exercises_workout
       ON local_workout_exercises (workout_id, order_index);
     CREATE INDEX IF NOT EXISTS idx_local_workout_exercises_lower_name
       ON local_workout_exercises (lower(name));
-    CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise
-      ON local_workout_sets (workout_exercise_id, set_number);
     CREATE INDEX IF NOT EXISTS idx_local_templates_user
-      ON local_templates (user_id, is_deleted, updated_at);
+      ON local_templates (user_id, is_deleted, created_at);
     CREATE INDEX IF NOT EXISTS idx_local_user_exercises_user_name
       ON local_user_exercises (user_id, name);
     CREATE INDEX IF NOT EXISTS idx_local_program_cycles_user_status
-      ON local_program_cycles (user_id, status);
+      ON local_program_cycles (user_id, status, started_at);
     CREATE INDEX IF NOT EXISTS idx_local_program_cycle_workouts_cycle_order
       ON local_program_cycle_workouts (cycle_id, week_number, session_number);
-    CREATE INDEX IF NOT EXISTS idx_local_sync_queue_runnable
-      ON local_sync_queue (status, available_at);
     CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise_deleted_order
       ON local_workout_sets (workout_exercise_id, is_deleted, set_number);
     CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
-      ON local_sync_queue (user_id, status, available_at);
+      ON local_sync_queue (user_id, status, available_at, created_at);
   `);
 }
 
 function hasMigration(sqlite: SQLiteDatabase, id: string) {
   try {
     const rows = sqlite.getAllSync<{ id: string }>(
-      `SELECT id FROM local_schema_migrations WHERE id = '${id}' LIMIT 1`,
+      'SELECT id FROM local_schema_migrations WHERE id = ? LIMIT 1',
+      [id],
     );
     return rows.length > 0;
   } catch {
@@ -251,8 +250,9 @@ function applyVersionedMigration(sqlite: SQLiteDatabase, id: string, migrate: ()
   }
   sqlite.withTransactionSync(() => {
     migrate();
-    sqlite.execSync(
-      `INSERT OR REPLACE INTO local_schema_migrations (id, applied_at) VALUES ('${id}', ${Date.now()})`,
+    sqlite.runSync(
+      'INSERT OR REPLACE INTO local_schema_migrations (id, applied_at) VALUES (?, ?)',
+      [id, Date.now()],
     );
   });
 }
@@ -288,6 +288,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       template_id TEXT,
       program_cycle_id TEXT,
       cycle_workout_id TEXT,
+      workout_type TEXT NOT NULL DEFAULT 'training',
       name TEXT NOT NULL,
       started_at INTEGER NOT NULL,
       completed_at INTEGER,
@@ -448,6 +449,18 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS local_pending_workouts (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'program',
+      program_cycle_id TEXT NOT NULL,
+      cycle_workout_id TEXT NOT NULL,
+      exercises_json TEXT NOT NULL,
+      exercise_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   applyVersionedMigration(sqlite, '20260428_training_cache_columns', () => {
@@ -508,12 +521,46 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     addLocalWorkoutSessionCacheColumns(sqlite);
   });
 
+  applyVersionedMigration(sqlite, '20260505_local_workout_type', () => {
+    addColumnIfMissing(
+      sqlite,
+      'local_workouts',
+      'workout_type',
+      `workout_type TEXT NOT NULL DEFAULT '${WORKOUT_TYPE_TRAINING}'`,
+    );
+    sqlite.execSync(`
+      UPDATE local_workouts
+      SET workout_type = '${WORKOUT_TYPE_ONE_RM_TEST}'
+      WHERE name = '1RM Test';
+      CREATE INDEX IF NOT EXISTS idx_local_workouts_user_type_history
+        ON local_workouts (user_id, workout_type, is_deleted, started_at);
+    `);
+  });
+
   applyVersionedMigration(sqlite, '20260505_local_workout_session_cache_columns', () => {
     addLocalWorkoutSessionCacheColumns(sqlite);
   });
 
   applyVersionedMigration(sqlite, '20260502_performance_indexes', () => {
     createLocalIndexes(sqlite);
+  });
+
+  applyVersionedMigration(sqlite, '20260505_local_index_cleanup', () => {
+    sqlite.execSync(`
+      DROP INDEX IF EXISTS idx_local_workouts_user_active;
+      DROP INDEX IF EXISTS idx_local_workout_sets_exercise;
+      DROP INDEX IF EXISTS idx_local_sync_queue_runnable;
+      DROP INDEX IF EXISTS idx_local_workouts_user_history;
+      DROP INDEX IF EXISTS idx_local_templates_user;
+      DROP INDEX IF EXISTS idx_local_program_cycles_user_status;
+      DROP INDEX IF EXISTS idx_local_sync_queue_user_runnable;
+      DROP INDEX IF EXISTS idx_local_workouts_user_type_history;
+    `);
+    createLocalIndexes(sqlite);
+    sqlite.execSync(`
+      CREATE INDEX IF NOT EXISTS idx_local_workouts_user_type_history
+        ON local_workouts (user_id, workout_type, is_deleted, started_at);
+    `);
   });
 
   applyVersionedMigration(sqlite, '20260503_local_templates_created_locally', () => {
@@ -576,6 +623,10 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     `);
   });
 
+  applyVersionedMigration(sqlite, '20260505_clear_last_workout_cache_after_workout_type', () => {
+    sqlite.execSync('DELETE FROM local_last_workouts');
+  });
+
   applyVersionedMigration(sqlite, '20260503_chat_message_queue', () => {
     sqlite.execSync(`CREATE TABLE IF NOT EXISTS local_chat_message_queue (
       id TEXT PRIMARY KEY,
@@ -593,6 +644,20 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       last_error TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
+    )`);
+  });
+
+  applyVersionedMigration(sqlite, '20260505_local_pending_workouts', () => {
+    sqlite.execSync(`CREATE TABLE IF NOT EXISTS local_pending_workouts (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'program',
+      program_cycle_id TEXT NOT NULL,
+      cycle_workout_id TEXT NOT NULL,
+      exercises_json TEXT NOT NULL,
+      exercise_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
     )`);
   });
 

@@ -35,8 +35,6 @@ router.get(
           expiresAt: session.expiresAt,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
-          ipAddress: session.ipAddress,
-          userAgent: session.userAgent,
         }
       : null;
 

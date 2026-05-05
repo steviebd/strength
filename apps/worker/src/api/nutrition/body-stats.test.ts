@@ -27,7 +27,7 @@ describe('body stats handlers', () => {
 
   test('inserts stats when none exist', async () => {
     const db = createMockDb({
-      get: [null, { id: 'stats-1', userId: 'user-1', bodyweightKg: 90, targetCalories: 2800 }],
+      get: [{ id: 'stats-1', userId: 'user-1', bodyweightKg: 90, targetCalories: 2800 }],
     });
     const { upsertBodyStatsHandler } = await import('./body-stats');
     const response = await upsertBodyStatsHandler(
@@ -49,10 +49,7 @@ describe('body stats handlers', () => {
 
   test('updates stats when existing row exists', async () => {
     const db = createMockDb({
-      get: [
-        { id: 'stats-1', userId: 'user-1' },
-        { id: 'stats-1', userId: 'user-1', bodyweightKg: 91 },
-      ],
+      get: [{ id: 'stats-1', userId: 'user-1', bodyweightKg: 91 }],
     });
     const { upsertBodyStatsHandler } = await import('./body-stats');
     const response = await upsertBodyStatsHandler(
@@ -60,7 +57,7 @@ describe('body stats handlers', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(db._calls.sets[0]).toMatchObject({ bodyweightKg: 91 });
-    expect(db._calls.sets[0]).not.toHaveProperty('isDeleted');
+    expect(db._calls.values[0]).toMatchObject({ userId: 'user-1', bodyweightKg: 91 });
+    expect(db._calls.values[0]).not.toHaveProperty('isDeleted');
   });
 });

@@ -1,7 +1,7 @@
 import type { WorkerEnv } from '../auth';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
-import { and, eq, max, sql } from 'drizzle-orm';
+import { and, eq, lt, max, sql } from 'drizzle-orm';
 import { chunkedInsert } from '@strength/db';
 import {
   whoopBodyMeasurement,
@@ -20,6 +20,7 @@ import {
   getWhoopProfile as getWhoopProfileWithToken,
 } from './client';
 import { isWhoopAuthError } from './errors';
+import { acquireLock, releaseLock } from './token-rotation';
 import {
   type WhoopBodyMeasurement,
   type WhoopCycle,
@@ -40,7 +41,6 @@ interface SyncResult {
 }
 
 const DAYS_BACK = 365;
-const OVERLAP_DAYS = 7;
 
 function getScoreTier(score: number): 'low' | 'medium' | 'high' {
   if (score < 40) return 'low';
@@ -67,8 +67,9 @@ export function getSyncStartDate(
     return maxLookback;
   }
 
-  const withOverlap = new Date(date.getTime() - OVERLAP_DAYS * 24 * 60 * 60 * 1000);
-  return withOverlap > maxLookback ? withOverlap : maxLookback;
+  const latestDay = new Date(date);
+  latestDay.setUTCHours(0, 0, 0, 0);
+  return latestDay > maxLookback ? latestDay : maxLookback;
 }
 
 export async function upsertWhoopProfile(
@@ -724,6 +725,13 @@ export async function syncAllWhoopData(
 
   const isInitial = options.isInitialSync ?? false;
 
+  const syncLockId = `whoop-sync-${userId}`;
+  const lockAcquired = await acquireLock(db, syncLockId, 5 * 60 * 1000);
+  if (!lockAcquired) {
+    result.errors.push('Sync already in progress');
+    return result;
+  }
+
   try {
     try {
       const profile = await getWhoopProfileWithToken(db, env, userId);
@@ -767,88 +775,78 @@ export async function syncAllWhoopData(
     const cycleStart = getSyncStartDate(latestCycle?.maxStart, isInitial);
     const sleepStart = getSyncStartDate(latestSleep?.maxStart, isInitial);
 
-    // Fetch all data categories in parallel with independent error handling
-    let workouts: WhoopWorkout[] = [];
-    let recoveries: WhoopRecovery[] = [];
-    let cycles: WhoopCycle[] = [];
-    let sleepRecords: WhoopSleep[] = [];
-    let measurements: WhoopBodyMeasurement[] = [];
-
-    await Promise.all([
-      (async () => {
-        try {
-          workouts = await fetchWorkoutsWithToken(db, env, userId, workoutStart);
-        } catch (e) {
-          result.errors.push(`Workouts: ${formatSyncError(e)}`);
-        }
-      })(),
-      (async () => {
-        try {
-          recoveries = await fetchRecoveriesWithToken(db, env, userId, recoveryStart);
-        } catch (e) {
-          result.errors.push(`Recovery: ${formatSyncError(e)}`);
-        }
-      })(),
-      (async () => {
-        try {
-          cycles = await fetchCyclesWithToken(db, env, userId, cycleStart);
-        } catch (e) {
-          const msg = formatSyncError(e);
-          if (e && typeof e === 'object' && 'status' in e && e.status === 403) {
-            // no-op
-          } else {
-            result.errors.push(`Cycles: ${msg}`);
-          }
-        }
-      })(),
-      (async () => {
-        try {
-          sleepRecords = await fetchSleepWithToken(db, env, userId, sleepStart);
-        } catch (e) {
-          result.errors.push(`Sleep: ${formatSyncError(e)}`);
-        }
-      })(),
-      (async () => {
-        try {
-          measurements = await fetchBodyMeasurementsWithToken(db, env, userId);
-        } catch (e) {
-          result.errors.push(`Body Measurements: ${formatSyncError(e)}`);
-        }
-      })(),
-    ]);
-
-    // Batch insert each category
+    // Fetch and upsert each category sequentially to cap peak memory
     try {
+      const workouts = await fetchWorkoutsWithToken(db, env, userId, workoutStart);
       result.workouts = await syncWorkouts(db, userId, workouts);
     } catch (e) {
-      result.errors.push(`Workouts insert: ${formatSyncError(e)}`);
+      result.errors.push(`Workouts: ${formatSyncError(e)}`);
     }
 
     try {
+      const recoveries = await fetchRecoveriesWithToken(db, env, userId, recoveryStart);
       result.recovery = await syncRecoveries(db, userId, recoveries);
     } catch (e) {
-      result.errors.push(`Recovery insert: ${formatSyncError(e)}`);
+      result.errors.push(`Recovery: ${formatSyncError(e)}`);
     }
 
     try {
+      const cycles = await fetchCyclesWithToken(db, env, userId, cycleStart);
       result.cycles = await syncCycles(db, userId, cycles);
     } catch (e) {
-      result.errors.push(`Cycles insert: ${formatSyncError(e)}`);
+      const msg = formatSyncError(e);
+      if (e && typeof e === 'object' && 'status' in e && e.status === 403) {
+        // no-op
+      } else {
+        result.errors.push(`Cycles: ${msg}`);
+      }
     }
 
     try {
+      const sleepRecords = await fetchSleepWithToken(db, env, userId, sleepStart);
       result.sleep = await syncSleepRecords(db, userId, sleepRecords);
     } catch (e) {
-      result.errors.push(`Sleep insert: ${formatSyncError(e)}`);
+      result.errors.push(`Sleep: ${formatSyncError(e)}`);
     }
 
     try {
+      const measurements = await fetchBodyMeasurementsWithToken(db, env, userId);
       result.bodyMeasurements = await syncBodyMeasurements(db, userId, measurements);
     } catch (e) {
-      result.errors.push(`Body Measurements insert: ${formatSyncError(e)}`);
+      result.errors.push(`Body Measurements: ${formatSyncError(e)}`);
+    }
+
+    // Prune rawData for WHOOP records older than 30 days
+    try {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      await db
+        .update(whoopRecovery)
+        .set({ rawData: null })
+        .where(and(eq(whoopRecovery.userId, userId), lt(whoopRecovery.date, cutoff)));
+      await db
+        .update(whoopCycle)
+        .set({ rawData: null })
+        .where(and(eq(whoopCycle.userId, userId), lt(whoopCycle.start, cutoff)));
+      await db
+        .update(whoopSleep)
+        .set({ rawData: null })
+        .where(and(eq(whoopSleep.userId, userId), lt(whoopSleep.start, cutoff)));
+      await db
+        .update(whoopBodyMeasurement)
+        .set({ rawData: null })
+        .where(
+          and(
+            eq(whoopBodyMeasurement.userId, userId),
+            lt(whoopBodyMeasurement.measurementDate, cutoff),
+          ),
+        );
+    } catch {
+      // silently ignore cleanup errors so they don't fail the sync
     }
   } catch (e) {
     result.errors.push(`Sync error: ${formatSyncError(e)}`);
+  } finally {
+    await releaseLock(db, syncLockId);
   }
 
   return result;

@@ -360,6 +360,47 @@ describe('chunkedInsert', () => {
     expect(inserted).toBe(1);
   });
 
+  it('should read D1 rows affected from meta changes', async () => {
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => ({
+          prepare: () => ({
+            getQuery: () => ({ sql: '?', params: [] }),
+          }),
+        }),
+      }),
+      batch: async () => [{ success: true, meta: { changes: 2 } }],
+    };
+
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows: [{ id: 'a' }, { id: 'b' }],
+      chunkSize: 100,
+    });
+
+    expect(inserted).toBe(2);
+  });
+
+  it('should treat missing row counts as zero', async () => {
+    const db = {
+      insert: () => ({
+        values: (_chunk: unknown[]) => ({
+          prepare: () => ({
+            getQuery: () => ({ sql: '?', params: [] }),
+          }),
+        }),
+      }),
+      batch: async () => [{ success: true }],
+    };
+
+    const inserted = await chunkedInsert(db as any, {
+      table: {} as any,
+      rows: [{ id: 'a' }],
+    });
+
+    expect(inserted).toBe(0);
+  });
+
   it('should reduce insert chunk size when rows are too wide for the query param budget', async () => {
     const batchCalls: unknown[][][] = [];
     const db = {

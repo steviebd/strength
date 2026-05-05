@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { authClient } from '@/lib/auth-client';
 import { getPendingSyncItemCount } from '@/db/sync-queue';
-import { colors } from '@/theme';
+import { colors, radius, spacing } from '@/theme';
 
 export function OfflineBanner() {
   const { isOffline } = useNetworkStatus();
@@ -40,12 +40,13 @@ export function OfflineBanner() {
     return (
       <View
         style={{
-          height: 38,
+          minHeight: 38,
           backgroundColor: colors.surface,
           alignItems: 'center',
           justifyContent: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
+          borderRadius: radius.md,
+          marginBottom: spacing.sm,
+          paddingVertical: 10,
         }}
       >
         <Text
@@ -65,12 +66,13 @@ export function OfflineBanner() {
     return (
       <View
         style={{
-          height: 38,
+          minHeight: 38,
           backgroundColor: colors.surface,
           alignItems: 'center',
           justifyContent: 'center',
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
+          borderRadius: radius.md,
+          marginBottom: spacing.sm,
+          paddingVertical: 10,
         }}
       >
         <Text

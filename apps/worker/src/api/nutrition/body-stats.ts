@@ -29,19 +29,31 @@ export const upsertBodyStatsHandler = createHandler(async (c, { userId, db }) =>
     return c.json({ error: 'Invalid request body' }, 400);
   }
 
-  const existing = await db
-    .select()
-    .from(schema.userBodyStats)
-    .where(eq(schema.userBodyStats.userId, userId))
-    .get();
+  if (body.bodyweightKg !== undefined && (body.bodyweightKg < 0 || body.bodyweightKg > 500)) {
+    return c.json({ error: 'bodyweightKg must be between 0 and 500' }, 400);
+  }
+  if (body.heightCm !== undefined && (body.heightCm < 0 || body.heightCm > 300)) {
+    return c.json({ error: 'heightCm must be between 0 and 300' }, 400);
+  }
 
   const now = new Date();
-  let stats;
-
-  if (existing) {
-    stats = await db
-      .update(schema.userBodyStats)
-      .set({
+  const stats = await db
+    .insert(schema.userBodyStats)
+    .values({
+      userId,
+      bodyweightKg: body.bodyweightKg ?? null,
+      heightCm: body.heightCm ?? null,
+      targetCalories: body.targetCalories ?? null,
+      targetProteinG: body.targetProteinG ?? null,
+      targetCarbsG: body.targetCarbsG ?? null,
+      targetFatG: body.targetFatG ?? null,
+      recordedAt: body.recordedAt ? new Date(body.recordedAt) : null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: schema.userBodyStats.userId,
+      set: {
         ...(body.bodyweightKg !== undefined && { bodyweightKg: body.bodyweightKg }),
         ...(body.heightCm !== undefined && { heightCm: body.heightCm }),
         ...(body.targetCalories !== undefined && { targetCalories: body.targetCalories }),
@@ -50,28 +62,10 @@ export const upsertBodyStatsHandler = createHandler(async (c, { userId, db }) =>
         ...(body.targetFatG !== undefined && { targetFatG: body.targetFatG }),
         ...(body.recordedAt && { recordedAt: new Date(body.recordedAt) }),
         updatedAt: now,
-      })
-      .where(eq(schema.userBodyStats.userId, userId))
-      .returning()
-      .get();
-  } else {
-    stats = await db
-      .insert(schema.userBodyStats)
-      .values({
-        userId,
-        bodyweightKg: body.bodyweightKg ?? null,
-        heightCm: body.heightCm ?? null,
-        targetCalories: body.targetCalories ?? null,
-        targetProteinG: body.targetProteinG ?? null,
-        targetCarbsG: body.targetCarbsG ?? null,
-        targetFatG: body.targetFatG ?? null,
-        recordedAt: body.recordedAt ? new Date(body.recordedAt) : null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
-  }
+      },
+    })
+    .returning()
+    .get();
 
   return c.json(stats);
 });

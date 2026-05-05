@@ -71,6 +71,7 @@ vi.mock('@/db/last-workouts', () => ({
 }));
 
 vi.mock('@strength/db/client', () => ({
+  WORKOUT_TYPE_ONE_RM_TEST: 'one_rm_test',
   generateId: vi.fn(() => 'generated-id'),
   exerciseLibrary: [],
 }));

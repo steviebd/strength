@@ -12,11 +12,15 @@ vi.mock('./auth', async (importOriginal) => {
 });
 
 function createContext() {
+  const store = new Map<string, unknown>();
   return {
     env: { DB: {}, APP_ENV: 'development' },
     req: { url: 'http://localhost:8787/api/test', raw: { headers: new Headers() } },
     get(_key: string) {
       return undefined;
+    },
+    set(key: string, value: unknown) {
+      store.set(key, value);
     },
     json(body: unknown, status = 200) {
       return Response.json(body, { status });

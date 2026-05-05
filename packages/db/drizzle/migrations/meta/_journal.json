@@ -22,6 +22,41 @@
       "when": 1777770873276,
       "tag": "0007_add_sync_operation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1777981434210,
+      "tag": "0003_hard_edwin_jarvis",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777981961053,
+      "tag": "0004_awesome_vivisector",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777983656023,
+      "tag": "0005_flimsy_morlocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777985917207,
+      "tag": "0006_aromatic_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777987200000,
+      "tag": "0009_workout_type",
+      "breakpoints": true
     }
   ]
 }

@@ -127,11 +127,11 @@ export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): 
   }
 
   if (result.data === null && result.error === null) {
-    return undefined as T;
+    return null as T;
   }
 
   if (!result.data || (typeof result.data === 'string' && !result.data.trim())) {
-    return undefined as T;
+    return null as T;
   }
 
   return result.data as T;

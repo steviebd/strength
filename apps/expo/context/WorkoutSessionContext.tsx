@@ -28,6 +28,7 @@ export interface WorkoutExercise {
 export interface Workout {
   id: string;
   name: string;
+  workoutType?: 'training' | 'one_rm_test';
   templateId?: string | null;
   programCycleId?: string | null;
   cycleWorkoutId?: string | null;

@@ -176,23 +176,25 @@ router.put(
       deadlift1rm !== undefined ||
       ohp1rm !== undefined;
 
-    if (hasOneRMUpdate) {
-      updated = await updateProgramCycleOneRMs(db, userId, cycleId, {
-        squat1rm,
-        bench1rm,
-        deadlift1rm,
-        ohp1rm,
-      });
-    }
-
     if (currentWeek !== undefined || currentSession !== undefined || isComplete === true) {
       const cycle = await getProgramCycleById(db, cycleId, userId);
       if (!cycle) {
         return c.json({ message: 'Program cycle not found' }, 404);
       }
+    }
+
+    await db.transaction(async (tx) => {
+      if (hasOneRMUpdate) {
+        updated = await updateProgramCycleOneRMs(tx, userId, cycleId, {
+          squat1rm,
+          bench1rm,
+          deadlift1rm,
+          ohp1rm,
+        });
+      }
 
       if (currentWeek !== undefined || currentSession !== undefined) {
-        updated = await db
+        updated = await tx
           .update(schema.userProgramCycles)
           .set({
             ...(currentWeek !== undefined && { currentWeek }),
@@ -210,9 +212,9 @@ router.put(
       }
 
       if (isComplete === true) {
-        updated = await completeProgramCycle(db, cycleId, userId);
+        updated = await completeProgramCycle(tx, cycleId, userId);
       }
-    }
+    });
 
     if (!updated) {
       return c.json({ message: 'Program cycle not found' }, 404);
@@ -493,8 +495,17 @@ router.post(
     });
     if (cycleData instanceof Response) return cycleData;
 
+    if (cycleData.isComplete) {
+      return c.json({ message: 'Cycle already completed' }, 409);
+    }
+
     const totalSessionsCompleted = cycleData.totalSessionsCompleted ?? 0;
     const newSessionsCompleted = totalSessionsCompleted + 1;
+
+    if (newSessionsCompleted > cycleData.totalSessionsPlanned) {
+      return c.json({ message: 'Invalid session count' }, 400);
+    }
+
     const cycleWorkouts = await db
       .select({
         id: schema.programCycleWorkouts.id,
@@ -515,7 +526,7 @@ router.post(
         .set({
           currentWeek: nextCycleWorkout.weekNumber,
           currentSession: nextCycleWorkout.sessionNumber,
-          totalSessionsCompleted: newSessionsCompleted,
+          totalSessionsCompleted: sql`${schema.userProgramCycles.totalSessionsCompleted} + 1`,
           updatedAt: new Date(),
         })
         .where(
@@ -527,11 +538,14 @@ router.post(
         .returning()
         .get();
     } else {
-      result = await completeProgramCycle(db, cycleId, userId);
+      const completed = await completeProgramCycle(db, cycleId, userId);
+      if (!completed) {
+        return c.json({ message: 'Cycle already completed' }, 409);
+      }
       result = await db
         .update(schema.userProgramCycles)
         .set({
-          totalSessionsCompleted: newSessionsCompleted,
+          totalSessionsCompleted: sql`${schema.userProgramCycles.totalSessionsCompleted} + 1`,
         })
         .where(
           and(
@@ -614,7 +628,18 @@ router.put(
     const updated = await db
       .update(schema.programCycleWorkouts)
       .set({ scheduledAt: new Date(scheduledAt), updatedAt: new Date() })
-      .where(eq(schema.programCycleWorkouts.id, cycleWorkoutId))
+      .where(
+        and(
+          eq(schema.programCycleWorkouts.id, cycleWorkoutId),
+          inArray(
+            schema.programCycleWorkouts.cycleId,
+            db
+              .select({ id: schema.userProgramCycles.id })
+              .from(schema.userProgramCycles)
+              .where(eq(schema.userProgramCycles.userId, userId)),
+          ),
+        ),
+      )
       .returning()
       .get();
 

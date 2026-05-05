@@ -21,6 +21,7 @@ import {
 } from '../lib/program-helpers';
 import { pickAllowedKeys } from '../lib/validation';
 import { getWorkoutAggregates } from '../lib/workout-helpers';
+import { recomputeHomeSummary } from '../api/home/summary';
 
 const MAX_SYNC_COMPLETE_EXERCISES = 40;
 const MAX_SYNC_COMPLETE_SETS = 400;
@@ -34,6 +35,16 @@ function parseDateInput(value: unknown): Date | null {
     return Number.isNaN(date.getTime()) ? null : date;
   }
   return null;
+}
+
+function resolveWorkoutType(input: { workoutType?: unknown; name?: unknown }) {
+  if (input.workoutType === schema.WORKOUT_TYPE_ONE_RM_TEST) {
+    return schema.WORKOUT_TYPE_ONE_RM_TEST;
+  }
+  if (input.name === '1RM Test') {
+    return schema.WORKOUT_TYPE_ONE_RM_TEST;
+  }
+  return schema.WORKOUT_TYPE_TRAINING;
 }
 
 async function fetchWorkoutSyncSnapshot(db: any, workoutId: string) {
@@ -87,10 +98,12 @@ function buildWorkoutSyncResponse(snapshot: any) {
 router.get(
   '/',
   createHandler(async (c, { userId, db }) => {
-    const limit = parseInt(c.req.query('limit') || '10', 10);
+    const rawLimit = parseInt(c.req.query('limit') || '10', 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 10;
     const results = await db
       .select({
         id: schema.workouts.id,
+        workoutType: schema.workouts.workoutType,
         name: schema.workouts.name,
         notes: schema.workouts.notes,
         startedAt: schema.workouts.startedAt,
@@ -154,6 +167,7 @@ router.post(
         notFoundBody: { message: 'Template not found' },
       });
       if (template instanceof Response) return template;
+      // Template isDeleted=false already verified by requireOwnedRecord above.
     }
 
     const workout = await db
@@ -161,6 +175,7 @@ router.post(
       .values({
         userId,
         name,
+        workoutType: schema.WORKOUT_TYPE_TRAINING,
         templateId: templateId || null,
         notes: notes || null,
         startedAt: now,
@@ -358,7 +373,38 @@ router.delete(
         workoutId: null,
         updatedAt: now,
       })
-      .where(eq(schema.programCycleWorkouts.workoutId, id))
+      .where(
+        and(
+          eq(schema.programCycleWorkouts.workoutId, id),
+          inArray(
+            schema.programCycleWorkouts.cycleId,
+            db
+              .select({ id: schema.userProgramCycles.id })
+              .from(schema.userProgramCycles)
+              .where(eq(schema.userProgramCycles.userId, userId)),
+          ),
+        ),
+      )
+      .run();
+
+    await db
+      .update(schema.workoutExercises)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(eq(schema.workoutExercises.workoutId, id))
+      .run();
+
+    await db
+      .update(schema.workoutSets)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(
+        inArray(
+          schema.workoutSets.workoutExerciseId,
+          db
+            .select({ id: schema.workoutExercises.id })
+            .from(schema.workoutExercises)
+            .where(eq(schema.workoutExercises.workoutId, id)),
+        ),
+      )
       .run();
 
     return c.json({ success: result.success });
@@ -395,20 +441,35 @@ router.post(
       );
     }
 
-    const existingOperation = await db
-      .select()
-      .from(schema.workoutSyncOperations)
-      .where(
-        and(
-          eq(schema.workoutSyncOperations.id, syncOperationId),
-          eq(schema.workoutSyncOperations.userId, userId),
-        ),
-      )
-      .get();
+    const syncInsertResult = await db
+      .insert(schema.workoutSyncOperations)
+      .values({
+        id: syncOperationId,
+        userId,
+        workoutId: id,
+        status: 'applied',
+        requestHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .onConflictDoNothing()
+      .run();
 
-    if (existingOperation) {
-      const snapshot = await fetchWorkoutSyncSnapshot(db, existingOperation.workoutId);
-      return c.json(buildWorkoutSyncResponse(snapshot));
+    if ((syncInsertResult.meta?.changes ?? 0) === 0) {
+      const existingOperation = await db
+        .select()
+        .from(schema.workoutSyncOperations)
+        .where(
+          and(
+            eq(schema.workoutSyncOperations.id, syncOperationId),
+            eq(schema.workoutSyncOperations.userId, userId),
+          ),
+        )
+        .get();
+      if (existingOperation) {
+        const snapshot = await fetchWorkoutSyncSnapshot(db, existingOperation.workoutId);
+        return c.json(buildWorkoutSyncResponse(snapshot));
+      }
     }
 
     const existingWorkout = await db
@@ -473,6 +534,7 @@ router.post(
       userId,
       templateId: workoutInput.templateId ?? null,
       programCycleId: workoutInput.programCycleId ?? null,
+      workoutType: resolveWorkoutType(workoutInput),
       name: workoutInput.name.trim(),
       notes: workoutInput.notes ?? null,
       startedAt,
@@ -488,6 +550,7 @@ router.post(
         .set({
           templateId: workoutValues.templateId,
           programCycleId: workoutValues.programCycleId,
+          workoutType: workoutValues.workoutType,
           name: workoutValues.name,
           notes: workoutValues.notes,
           startedAt,
@@ -564,6 +627,23 @@ router.post(
         isAmrap: exercise.isAmrap ?? false,
         updatedAt: now,
       });
+    }
+
+    if (resolvedExerciseRows.length > 0) {
+      const resolvedExerciseIds = resolvedExerciseRows.map((row) => row.exerciseId);
+      const softDeletedExercises = await db
+        .select({ id: schema.exercises.id })
+        .from(schema.exercises)
+        .where(
+          and(
+            inArray(schema.exercises.id, resolvedExerciseIds),
+            eq(schema.exercises.isDeleted, true),
+          ),
+        )
+        .all();
+      if (softDeletedExercises.length > 0) {
+        return c.json({ message: 'One or more exercises have been deleted' }, 400);
+      }
     }
 
     await chunkedInsert(db, { table: schema.workoutExercises, rows: resolvedExerciseRows });
@@ -644,19 +724,11 @@ router.post(
     }
 
     await advanceProgramCycleForWorkout(db, userId, id);
-
-    await db
-      .insert(schema.workoutSyncOperations)
-      .values({
-        id: syncOperationId,
-        userId,
-        workoutId: id,
-        status: 'applied',
-        requestHash: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    try {
+      await recomputeHomeSummary(db, userId);
+    } catch {
+      // ignore cache recompute failures
+    }
 
     const snapshot = await fetchWorkoutSyncSnapshot(db, id);
     let programAdvance: Record<string, unknown> | undefined;
@@ -696,12 +768,15 @@ router.put(
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
     const workout = await db
-      .select({ startedAt: schema.workouts.startedAt })
+      .select({ startedAt: schema.workouts.startedAt, completedAt: schema.workouts.completedAt })
       .from(schema.workouts)
       .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
       .get();
     if (!workout) {
       return c.json({ message: 'Workout not found' }, 404);
+    }
+    if (workout.completedAt) {
+      return c.json({ message: 'Workout already completed' }, 409);
     }
     const now = new Date();
     const aggregates = await getWorkoutAggregates(db, id);
@@ -722,6 +797,11 @@ router.put(
       .get();
 
     await advanceProgramCycleForWorkout(db, userId, id);
+    try {
+      await recomputeHomeSummary(db, userId);
+    } catch {
+      // ignore cache recompute failures
+    }
 
     return c.json({ ...result, exerciseCount: aggregates?.exerciseCount ?? 0 });
   }),
@@ -736,6 +816,7 @@ router.post(
       notFoundBody: { message: 'Workout not found' },
     });
     if (workout instanceof Response) return workout;
+    // Parent workout isDeleted=false already verified by requireOwnedRecord above.
     const body = await c.req.json();
     const { exerciseId, orderIndex } = body;
     if (!exerciseId || orderIndex === undefined) {

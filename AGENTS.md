@@ -90,6 +90,10 @@ Root `tsconfig.json` extends `expo/tsconfig.base` with `strict: true`. Each pack
 
 Secrets are injected by Infisical at runtime. There is no `.env` file in the repo.
 
+## Public Endpoints
+
+`GET /api/programs` is intentionally unauthenticated — it returns static program metadata (names, descriptions, difficulty, etc.) that does not vary by user.
+
 ## Package Manager
 
 Bun (bun@1.2.9). Use `bun install`, `bun run`, etc. Do not use npm/yarn/pnpm.

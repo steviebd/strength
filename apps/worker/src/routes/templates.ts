@@ -1,8 +1,9 @@
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import * as schema from '@strength/db';
-import { chunkedQueryMany, chunkedInsert } from '@strength/db';
+import { chunkedQueryMany } from '@strength/db';
 import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
+import type { AppDb } from '../api/auth';
 import { requireOwnedRecord } from '../api/guards';
 import { pickAllowedKeys } from '../lib/validation';
 
@@ -367,49 +368,65 @@ router.post(
   '/:id/copy',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    const original = await requireOwnedRecord({ userId, db }, schema.templates, id, {
-      extraConditions: [eq(schema.templates.isDeleted, false)],
-      notFoundBody: { message: 'Template not found' },
+    const newTemplate = await db.transaction(async (tx) => {
+      const original = await requireOwnedRecord(
+        { userId, db: tx as unknown as AppDb },
+        schema.templates,
+        id,
+        {
+          extraConditions: [eq(schema.templates.isDeleted, false)],
+          notFoundBody: { message: 'Template not found' },
+        },
+      );
+      if (original instanceof Response) return original;
+
+      const now = new Date();
+      const insertedTemplate = await tx
+        .insert(schema.templates)
+        .values({
+          userId,
+          name: `${original.name} (Copy)`,
+          description: original.description,
+          notes: original.notes,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+
+      const originalExercises = await tx
+        .select()
+        .from(schema.templateExercises)
+        .where(eq(schema.templateExercises.templateId, id))
+        .orderBy(schema.templateExercises.orderIndex)
+        .all();
+
+      if (originalExercises.length > 0) {
+        await tx.insert(schema.templateExercises).values(
+          originalExercises.map((te) => ({
+            templateId: insertedTemplate.id,
+            exerciseId: te.exerciseId,
+            orderIndex: te.orderIndex,
+            targetWeight: te.targetWeight,
+            addedWeight: te.addedWeight,
+            sets: te.sets,
+            reps: te.reps,
+            repsRaw: te.repsRaw,
+            isAmrap: te.isAmrap,
+            isAccessory: te.isAccessory,
+            isRequired: te.isRequired,
+            setNumber: te.setNumber,
+          })),
+        );
+      }
+
+      return insertedTemplate;
     });
-    if (original instanceof Response) return original;
-    const now = new Date();
-    const newTemplate = await db
-      .insert(schema.templates)
-      .values({
-        userId,
-        name: `${original.name} (Copy)`,
-        description: original.description,
-        notes: original.notes,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
-    const originalExercises = await db
-      .select()
-      .from(schema.templateExercises)
-      .where(eq(schema.templateExercises.templateId, id))
-      .orderBy(schema.templateExercises.orderIndex)
-      .all();
-    if (originalExercises.length > 0) {
-      await chunkedInsert(db, {
-        table: schema.templateExercises,
-        rows: originalExercises.map((te) => ({
-          templateId: newTemplate.id,
-          exerciseId: te.exerciseId,
-          orderIndex: te.orderIndex,
-          targetWeight: te.targetWeight,
-          addedWeight: te.addedWeight,
-          sets: te.sets,
-          reps: te.reps,
-          repsRaw: te.repsRaw,
-          isAmrap: te.isAmrap,
-          isAccessory: te.isAccessory,
-          isRequired: te.isRequired,
-          setNumber: te.setNumber,
-        })),
-      });
+
+    if (newTemplate instanceof Response) {
+      return newTemplate;
     }
+
     return c.json(newTemplate, 201);
   }),
 );

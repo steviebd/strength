@@ -140,24 +140,34 @@ async function fetchWhoopJson<T>(
     });
   }
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
-  if (!response.ok) {
-    const error = await response.text();
-    const err = new Error(
-      `WHOOP API error for ${endpoint}: ${response.status} - ${error}`,
-    ) as Error & { status?: number };
-    err.status = response.status;
-    throw err;
+  try {
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      const err = new Error(
+        `WHOOP API error for ${endpoint}: ${response.status} - ${error}`,
+      ) as Error & { status?: number };
+      err.status = response.status;
+      throw err;
+    }
+
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return (await response.json()) as T;
 }
+
+const WHOOP_COLLECTION_MAX_PAGES = 50;
 
 async function fetchWhoopCollection<T>(
   endpoint: string,
@@ -167,8 +177,17 @@ async function fetchWhoopCollection<T>(
   const records: T[] = [];
   let nextToken: string | null | undefined;
   const baseParams = params ?? {};
+  let pageCount = 0;
 
   do {
+    pageCount++;
+    if (pageCount > WHOOP_COLLECTION_MAX_PAGES) {
+      console.warn(
+        `WHOOP collection ${endpoint} exceeded max page count (${WHOOP_COLLECTION_MAX_PAGES})`,
+      );
+      break;
+    }
+
     const pageParams: Record<string, string | number> = {
       limit: WHOOP_COLLECTION_PAGE_LIMIT,
       ...baseParams,

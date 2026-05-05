@@ -11,10 +11,13 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { authClient } from '@/lib/auth-client';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { updateLocalProgramCycleOneRMs } from '@/db/training-cache';
+import { runSyncQueue } from '@/lib/workout-sync';
 import { colors, radius, spacing, typography } from '@/theme';
 
 type ProgramCycleResponse = {
@@ -74,6 +77,7 @@ const LIFT_FIELDS: LiftField[] = [
 export default function ProgramOneRMTestScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const session = authClient.useSession();
   const { cycleId, workoutId, squatMax, benchMax, deadliftMax, ohpMax } = useLocalSearchParams<{
     cycleId?: string;
     workoutId?: string;
@@ -156,20 +160,6 @@ export default function ProgramOneRMTestScreen() {
 
     setSaving(true);
     try {
-      await apiFetch(`/api/programs/cycles/${cycleId}`, {
-        method: 'PUT',
-        body: payload,
-      });
-
-      try {
-        await apiFetch(`/api/programs/cycles/${cycleId}/1rm-test-workout`, {
-          method: 'PUT',
-          body: payload,
-        });
-      } catch {
-        // Saving cycle data is still useful if a test workout was not created yet.
-      }
-
       await updateLocalProgramCycleOneRMs(cycleId, {
         squat1rm: squat,
         bench1rm: bench,
@@ -181,17 +171,63 @@ export default function ProgramOneRMTestScreen() {
         startingOhp1rm: (payload.startingOhp1rm as number | null) ?? null,
         isComplete: true,
       });
+
+      const userId = session.data?.user?.id;
+      if (!userId) {
+        throw new Error('Not signed in');
+      }
+
+      let savedOffline = false;
+      try {
+        await tryOnlineOrEnqueue({
+          apiCall: () =>
+            apiFetch(`/api/programs/cycles/${cycleId}`, {
+              method: 'PUT',
+              body: payload,
+            }),
+          userId,
+          entityType: 'program_cycle',
+          entityId: cycleId,
+          operation: 'update_program_1rms',
+          payload,
+        });
+      } catch (e) {
+        if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
+          savedOffline = true;
+        } else {
+          throw e;
+        }
+      }
+
+      try {
+        await apiFetch(`/api/programs/cycles/${cycleId}/1rm-test-workout`, {
+          method: 'PUT',
+          body: payload,
+        });
+      } catch {
+        // Saving cycle data is still useful if a test workout was not created yet.
+      }
+
+      if (savedOffline) {
+        void runSyncQueue(userId);
+      }
+
       await queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
       await queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
 
-      Alert.alert('Saved', '1RMs updated and the program was marked complete.');
+      Alert.alert(
+        'Saved',
+        savedOffline
+          ? '1RMs saved locally and will sync in the background.'
+          : '1RMs updated and the program was marked complete.',
+      );
       router.replace('/(app)/programs');
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to save 1RMs');
     } finally {
       setSaving(false);
     }
-  }, [cycle, cycleId, queryClient, router, values, weightUnit]);
+  }, [cycle, cycleId, queryClient, router, session.data?.user?.id, values, weightUnit]);
 
   const hasUnsavedChanges = useMemo(
     () =>

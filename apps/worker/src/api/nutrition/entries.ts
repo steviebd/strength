@@ -34,6 +34,7 @@ export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
       ),
     )
     .orderBy(schema.nutritionEntries.createdAt)
+    .limit(50)
     .all();
 
   return c.json(entries);
@@ -60,6 +61,19 @@ export const createEntryHandler = createHandler(async (c, { userId, db }) => {
 
   if (!name) {
     return c.json({ error: 'name is required' }, 400);
+  }
+
+  if (calories !== undefined && (calories < 0 || calories > 50000)) {
+    return c.json({ error: 'calories must be between 0 and 50000' }, 400);
+  }
+  if (proteinG !== undefined && (proteinG < 0 || proteinG > 1000)) {
+    return c.json({ error: 'proteinG must be between 0 and 1000' }, 400);
+  }
+  if (carbsG !== undefined && (carbsG < 0 || carbsG > 2000)) {
+    return c.json({ error: 'carbsG must be between 0 and 2000' }, 400);
+  }
+  if (fatG !== undefined && (fatG < 0 || fatG > 1000)) {
+    return c.json({ error: 'fatG must be between 0 and 1000' }, 400);
   }
 
   const timezoneResult = await resolveUserTimezone(db, userId);

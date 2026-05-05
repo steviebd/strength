@@ -1,4 +1,7 @@
+import { eq } from 'drizzle-orm';
 import { platformStorage } from './platform-storage';
+import { getLocalDb } from '../db/client';
+import { localPendingWorkouts } from '../db/local-schema';
 
 const MAX_CACHED_CHAT_MESSAGES = 20;
 
@@ -36,26 +39,60 @@ interface NutritionPendingImage {
 }
 
 async function getPendingWorkouts(): Promise<PendingWorkout[]> {
-  const data = platformStorage.getItem(STORAGE_KEYS.PENDING_WORKOUTS);
-  if (!data) return [];
-  try {
-    return JSON.parse(data) as PendingWorkout[];
-  } catch {
-    return [];
-  }
+  const db = getLocalDb();
+  if (!db) return [];
+  const rows = db.select().from(localPendingWorkouts).all();
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    startedAt: row.startedAt,
+    completedAt: null,
+    source: row.source as 'program',
+    programCycleId: row.programCycleId,
+    cycleWorkoutId: row.cycleWorkoutId,
+    exercises: row.exercisesJson ? JSON.parse(row.exercisesJson) : [],
+    exerciseCount: row.exerciseCount,
+    durationMinutes: null,
+    totalVolume: null,
+    totalSets: null,
+  }));
 }
 
 async function addPendingWorkout(workout: PendingWorkout): Promise<void> {
-  const workouts = await getPendingWorkouts();
-  const byId = new Map(workouts.map((existing) => [existing.id, existing]));
-  byId.set(workout.id, workout);
-  platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, JSON.stringify(Array.from(byId.values())));
+  const db = getLocalDb();
+  if (!db) return;
+  db.insert(localPendingWorkouts)
+    .values({
+      id: workout.id,
+      name: workout.name,
+      startedAt: workout.startedAt,
+      source: workout.source,
+      programCycleId: workout.programCycleId,
+      cycleWorkoutId: workout.cycleWorkoutId,
+      exercisesJson: JSON.stringify(workout.exercises),
+      exerciseCount: workout.exerciseCount,
+      createdAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: localPendingWorkouts.id,
+      set: {
+        name: workout.name,
+        startedAt: workout.startedAt,
+        source: workout.source,
+        programCycleId: workout.programCycleId,
+        cycleWorkoutId: workout.cycleWorkoutId,
+        exercisesJson: JSON.stringify(workout.exercises),
+        exerciseCount: workout.exerciseCount,
+        createdAt: new Date(),
+      },
+    })
+    .run();
 }
 
 async function removePendingWorkout(workoutId: string): Promise<void> {
-  const workouts = await getPendingWorkouts();
-  const filtered = workouts.filter((w) => w.id !== workoutId);
-  platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, JSON.stringify(filtered));
+  const db = getLocalDb();
+  if (!db) return;
+  db.delete(localPendingWorkouts).where(eq(localPendingWorkouts.id, workoutId)).run();
 }
 
 async function getNutritionChatMessages<T>(date: string): Promise<T[]> {

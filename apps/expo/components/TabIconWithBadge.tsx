@@ -9,7 +9,7 @@ export function TabIconWithBadge({
   focused,
 }: {
   icon: { active: string; inactive: string };
-  hasBadge: boolean;
+  hasBadge?: boolean;
   color: string;
   focused: boolean;
 }) {

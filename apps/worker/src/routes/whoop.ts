@@ -12,7 +12,11 @@ import {
   getWhoopProfileByUserId,
 } from '../whoop/user';
 import { revokeWhoopIntegration } from '../whoop/token-rotation';
-import { buildWhoopAuthorizationUrl } from '../whoop/auth';
+import {
+  buildWhoopAuthorizationUrl,
+  generateCodeChallenge,
+  generateCodeVerifier,
+} from '../whoop/auth';
 import { resolveWorkerEnv } from '../auth';
 import {
   encodeWhoopOAuthState,
@@ -74,15 +78,19 @@ router.post(
       return c.json({ error: 'BETTER_AUTH_SECRET is missing from the worker environment' }, 500);
     }
 
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = await generateCodeChallenge(codeVerifier);
+
     const state = await encodeWhoopOAuthState(resolvedEnv.BETTER_AUTH_SECRET, {
       nonce: crypto.randomUUID(),
       userId,
+      codeVerifier,
       ...(returnTo ? { returnTo } : {}),
     });
 
-    const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri);
+    const authUrl = buildWhoopAuthorizationUrl(resolvedEnv, state, redirectUri, codeChallenge);
 
-    return c.json({ authUrl, state });
+    return c.json({ authUrl, state, codeVerifier });
   }),
 );
 
@@ -201,7 +209,8 @@ router.get(
       );
     }
 
-    const days = parseInt(c.req.query('days') ?? '30', 10);
+    const rawDays = parseInt(c.req.query('days') ?? '30', 10);
+    const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 30;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     try {
@@ -212,22 +221,26 @@ router.get(
           .select()
           .from(whoopRecovery)
           .where(eq(whoopRecovery.userId, userId))
-          .orderBy(desc(whoopRecovery.date)),
+          .orderBy(desc(whoopRecovery.date))
+          .limit(100),
         db
           .select()
           .from(whoopSleep)
           .where(and(eq(whoopSleep.userId, userId), gt(whoopSleep.start, since)))
-          .orderBy(desc(whoopSleep.start)),
+          .orderBy(desc(whoopSleep.start))
+          .limit(100),
         db
           .select()
           .from(whoopCycle)
           .where(and(eq(whoopCycle.userId, userId), gt(whoopCycle.start, since)))
-          .orderBy(desc(whoopCycle.start)),
+          .orderBy(desc(whoopCycle.start))
+          .limit(100),
         db
           .select()
           .from(whoopWorkout)
           .where(and(eq(whoopWorkout.userId, userId), gt(whoopWorkout.start, since)))
-          .orderBy(desc(whoopWorkout.start)),
+          .orderBy(desc(whoopWorkout.start))
+          .limit(100),
       ]);
 
       const normalizedRecovery = recovery.map((row) => {
@@ -307,9 +320,12 @@ router.get(
         });
       });
 
-      const uniqueCyclesById = normalizedCycles.filter(
-        (c, i, arr) => arr.findIndex((x) => x.whoopCycleId === c.whoopCycleId) === i,
-      );
+      const seenCycleIds = new Set<string>();
+      const uniqueCyclesById = normalizedCycles.filter((c) => {
+        if (seenCycleIds.has(c.whoopCycleId)) return false;
+        seenCycleIds.add(c.whoopCycleId);
+        return true;
+      });
 
       const normalizedWorkouts = workouts.map((row) => {
         const score = parseJsonObject(row.score);

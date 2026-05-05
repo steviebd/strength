@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/d1';
 import type { Context } from 'hono';
-import { createAuth, type WorkerEnv } from '../auth';
+import { createAuth, resolveBaseURL, type WorkerEnv } from '../auth';
 import * as schema from '@strength/db';
 
 type AuthInstance = ReturnType<typeof createAuth>;
@@ -11,6 +11,7 @@ type AuthSession = AuthInstance['$Infer']['Session']['session'];
 export type AppVariables = {
   user: AuthUser | null;
   session: AuthSession | null;
+  auth: AuthInstance | null;
 };
 
 type AppContext = Context<{ Bindings: WorkerEnv; Variables: AppVariables }>;
@@ -29,21 +30,23 @@ export type AuthContext = {
 };
 
 function getAuthHeaders(c: any) {
-  const headers = new Headers(c.req.raw.headers);
-  const expoOrigin = headers.get('expo-origin');
-  const originalOrigin = headers.get('origin');
-
-  if (!originalOrigin && expoOrigin) {
-    headers.set('origin', expoOrigin);
-  }
-
-  return headers;
+  // Do not trust client-provided expo-origin as origin replacement
+  return new Headers(c.req.raw.headers);
 }
 
 export function getAuth(c: any) {
+  const cached = c.get('auth');
+  if (cached) {
+    return cached;
+  }
+
   const headers = getAuthHeaders(c);
-  const origin = headers.get('origin') ?? undefined;
-  return createAuth(c.env as WorkerEnv, headers, origin);
+  const clientOrigin = headers.get('origin');
+  // For native clients without standard Origin header, use the worker's configured base URL
+  const origin = clientOrigin || resolveBaseURL(c.env as WorkerEnv) || undefined;
+  const auth = createAuth(c.env as WorkerEnv, headers, origin);
+  c.set('auth', auth);
+  return auth;
 }
 
 async function loadAuthSession(c: any) {
@@ -64,6 +67,11 @@ export async function populateAuthContext(c: any) {
   return { user, session };
 }
 
+/**
+ * Returns the current auth session. Callers MUST check for null before using
+ * the returned user/session — this function does not throw on unauthenticated
+ * requests.
+ */
 export async function requireAuth(c: any) {
   const resolvedSession = await loadAuthSession(c);
 

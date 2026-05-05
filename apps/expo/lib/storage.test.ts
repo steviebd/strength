@@ -14,6 +14,14 @@ vi.mock('./platform-storage', () => ({
   },
 }));
 
+vi.mock('../db/client', () => ({
+  getLocalDb: vi.fn(() => null),
+}));
+
+vi.mock('../db/local-schema', () => ({
+  localPendingWorkouts: {},
+}));
+
 beforeEach(() => {
   Object.keys(storage).forEach((key) => delete storage[key]);
   vi.resetModules();

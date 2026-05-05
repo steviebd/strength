@@ -1,4 +1,5 @@
 import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { WORKOUT_TYPE_TRAINING } from '@strength/db/client';
 
 export const localSchemaMigrations = sqliteTable('local_schema_migrations', {
   id: text('id').primaryKey(),
@@ -32,6 +33,7 @@ export const localWorkouts = sqliteTable('local_workouts', {
   templateId: text('template_id'),
   programCycleId: text('program_cycle_id'),
   cycleWorkoutId: text('cycle_workout_id'),
+  workoutType: text('workout_type').notNull().default(WORKOUT_TYPE_TRAINING),
   name: text('name').notNull(),
   startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
@@ -269,6 +271,18 @@ export const localChatMessageQueue = sqliteTable('local_chat_message_queue', {
   lastError: text('last_error'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localPendingWorkouts = sqliteTable('local_pending_workouts', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  startedAt: text('started_at').notNull(),
+  source: text('source').notNull().default('program'),
+  programCycleId: text('program_cycle_id').notNull(),
+  cycleWorkoutId: text('cycle_workout_id').notNull(),
+  exercisesJson: text('exercises_json').notNull(),
+  exerciseCount: integer('exercise_count').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
 export type LocalUserPreferences = typeof localUserPreferences.$inferSelect;

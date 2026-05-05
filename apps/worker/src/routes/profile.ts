@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { isValidTimeZone } from '@strength/db';
 import { createRouter } from '../lib/router';
@@ -22,26 +22,26 @@ export function serializePreferences(
 router.get(
   '/preferences',
   createHandler(async (c, { userId, db }) => {
-    let prefs = await db
+    const now = new Date();
+    await db
+      .insert(schema.userPreferences)
+      .values({
+        userId,
+        weightUnit: 'kg',
+        timezone: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing();
+
+    const prefs = await db
       .select()
       .from(schema.userPreferences)
       .where(eq(schema.userPreferences.userId, userId))
       .get();
 
     if (!prefs) {
-      const now = new Date();
-      const result = await db
-        .insert(schema.userPreferences)
-        .values({
-          userId,
-          weightUnit: 'kg',
-          timezone: null,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-      prefs = result;
+      return c.json({ message: 'Failed to create preferences' }, 500);
     }
 
     const bodyStats = await db
@@ -85,43 +85,72 @@ router.put(
       return c.json({ message: 'Invalid timezone' }, 400);
     }
 
-    const existing = await db
-      .select()
-      .from(schema.userPreferences)
-      .where(eq(schema.userPreferences.userId, userId))
-      .get();
+    let result: typeof schema.userPreferences.$inferSelect | undefined;
 
-    const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
-    const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
-    const nextWeightPromptedAt =
-      weightPromptedAt === undefined
-        ? (existing?.weightPromptedAt ?? null)
-        : weightPromptedAt
-          ? new Date(weightPromptedAt)
-          : null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const existing = await db
+        .select()
+        .from(schema.userPreferences)
+        .where(eq(schema.userPreferences.userId, userId))
+        .get();
 
-    const now = new Date();
-    const result = await db
-      .insert(schema.userPreferences)
-      .values({
-        userId,
-        weightUnit: nextWeightUnit,
-        timezone: nextTimezone,
-        weightPromptedAt: nextWeightPromptedAt,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: schema.userPreferences.userId,
-        set: {
-          weightUnit: nextWeightUnit,
-          timezone: nextTimezone,
-          weightPromptedAt: nextWeightPromptedAt,
-          updatedAt: now,
-        },
-      })
-      .returning()
-      .get();
+      const now = new Date();
+      const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
+      const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
+      const nextWeightPromptedAt =
+        weightPromptedAt === undefined
+          ? (existing?.weightPromptedAt ?? null)
+          : weightPromptedAt
+            ? new Date(weightPromptedAt)
+            : null;
+
+      if (existing) {
+        const updated = await db
+          .update(schema.userPreferences)
+          .set({
+            weightUnit: nextWeightUnit,
+            timezone: nextTimezone,
+            weightPromptedAt: nextWeightPromptedAt,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.userPreferences.userId, userId),
+              eq(schema.userPreferences.updatedAt, existing.updatedAt),
+            ),
+          )
+          .returning()
+          .get();
+
+        if (updated) {
+          result = updated;
+          break;
+        }
+      } else {
+        const inserted = await db
+          .insert(schema.userPreferences)
+          .values({
+            userId,
+            weightUnit: nextWeightUnit,
+            timezone: nextTimezone,
+            weightPromptedAt: nextWeightPromptedAt,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .returning()
+          .get();
+
+        if (inserted) {
+          result = inserted;
+          break;
+        }
+      }
+    }
+
+    if (!result) {
+      return c.json({ message: 'Conflict updating preferences, please retry' }, 409);
+    }
 
     const bodyStats = await db
       .select()

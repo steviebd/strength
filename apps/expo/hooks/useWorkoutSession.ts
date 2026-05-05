@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
 import { getLastWorkout, setLastWorkout } from '@/db/last-workouts';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { generateId } from '@strength/db/client';
+import { generateId, WORKOUT_TYPE_ONE_RM_TEST } from '@strength/db/client';
 import { exerciseLibrary } from '@strength/db/client';
 import {
   completeLocalWorkout,
@@ -91,6 +91,7 @@ function buildDirectCompletionPayload(workout: Workout, exercises: WorkoutExerci
       templateId: workout.templateId ?? null,
       programCycleId: workout.programCycleId ?? null,
       cycleWorkoutId: workout.cycleWorkoutId ?? null,
+      workoutType: workout.workoutType ?? null,
       startedAt: workout.startedAt,
       completedAt: completedAt.toISOString(),
       notes: workout.notes ?? null,
@@ -390,7 +391,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       if ((workout as any).cycleWorkoutId) {
         await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
       }
-      if (session.data?.user) {
+      if (session.data?.user && workout.workoutType !== WORKOUT_TYPE_ONE_RM_TEST) {
         const userId = session.data.user.id;
         for (const exercise of latestExercises) {
           const completedSets = (exercise.sets ?? []).filter((s) => s.isComplete);
@@ -547,7 +548,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       setExercisesAndRef((prev) =>
         prev.map((ex) => ({
           ...ex,
-          sets: (ex.sets ?? []).map((s) => (s.id === setId ? { ...s, ...updates } : s)),
+          sets: (ex.sets ?? []).map((s) => {
+            if (s.id !== setId) return s;
+            const next = { ...s, ...updates };
+            if ('isComplete' in updates && !('completedAt' in updates)) {
+              next.completedAt = updates.isComplete
+                ? (s.completedAt ?? new Date().toISOString())
+                : null;
+            }
+            return next;
+          }),
         })),
       );
     },

@@ -13,7 +13,8 @@ router.get(
     const search = c.req.query('search');
     const conditions = [eq(schema.exercises.userId, userId), eq(schema.exercises.isDeleted, false)];
     if (search) {
-      conditions.push(like(schema.exercises.name, `%${search}%`));
+      const escapedSearch = search.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+      conditions.push(like(schema.exercises.name, `%${escapedSearch}%`));
     }
     const results = await db
       .select({
@@ -28,6 +29,7 @@ router.get(
       .from(schema.exercises)
       .where(and(...conditions))
       .orderBy(desc(schema.exercises.createdAt))
+      .limit(50)
       .all();
     return c.json(results);
   }),

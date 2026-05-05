@@ -35,7 +35,7 @@ describe('training context handler', () => {
   test('inserts and updates training context rows', async () => {
     const { upsertTrainingContextHandler } = await import('./training-context');
     const insertDb = createMockDb({
-      get: [null, { trainingType: 'powerlifting', customLabel: null }],
+      get: [{ trainingType: 'powerlifting', customLabel: null }],
     });
     const inserted = await upsertTrainingContextHandler(
       createTestContext({
@@ -52,10 +52,7 @@ describe('training context handler', () => {
     });
 
     const updateDb = createMockDb({
-      get: [
-        { id: 'ctx-1', userId: 'user-1' },
-        { trainingType: 'custom', customLabel: 'Meet prep' },
-      ],
+      get: [{ trainingType: 'custom', customLabel: 'Meet prep' }],
     });
     const updated = await upsertTrainingContextHandler(
       createTestContext({
@@ -66,7 +63,7 @@ describe('training context handler', () => {
     );
 
     expect(updated.status).toBe(200);
-    expect(updateDb._calls.sets[0]).toMatchObject({
+    expect(updateDb._calls.values[0]).toMatchObject({
       trainingType: 'custom',
       customLabel: 'Meet prep',
     });

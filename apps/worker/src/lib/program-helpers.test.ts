@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { WORKOUT_TYPE_ONE_RM_TEST } from '@strength/db';
 import {
   normalizeProgramSetCount,
   normalizeProgramReps,
@@ -11,6 +12,7 @@ import {
   createOneRMTestWorkout,
   createWorkoutFromProgramCycleWorkout,
   advanceProgramCycleForWorkout,
+  completeProgramCycle,
 } from './program-helpers';
 
 vi.mock('@strength/db', async (importOriginal) => {
@@ -354,6 +356,10 @@ function createMockDb() {
         return {
           returning: () => ({ get: async () => ({ id: 'test-id' }) }),
           run: async () => ({ success: true }),
+          onConflictDoNothing: () => ({
+            returning: () => ({ get: async () => ({ id: 'test-id' }) }),
+            run: async () => ({ success: true }),
+          }),
           onConflictDoUpdate: () => ({
             returning: () => ({ get: async () => ({ id: 'test-id' }) }),
             run: async () => ({ success: true }),
@@ -471,6 +477,7 @@ describe('advanceProgramCycleForWorkout', () => {
     db.get = async () => ({
       id: 'workout-1',
       name: '1RM Test',
+      workoutType: WORKOUT_TYPE_ONE_RM_TEST,
       programCycleId: 'cycle-1',
       isDeleted: false,
     });
@@ -483,5 +490,30 @@ describe('advanceProgramCycleForWorkout', () => {
       isComplete: true,
     });
     expect(db._updatedCycleWorkouts[0].completedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('completeProgramCycle', () => {
+  test('returns an already completed cycle when completion is repeated', async () => {
+    const completedCycle = {
+      id: 'cycle-1',
+      userId: 'user-1',
+      status: 'completed',
+      isComplete: true,
+      completedAt: new Date(),
+    };
+    const db = createMockDb();
+    db.update = () => ({
+      set: () => ({
+        where: () => ({
+          returning: () => ({
+            get: async () => undefined,
+          }),
+        }),
+      }),
+    });
+    db.get = async () => completedCycle;
+
+    await expect(completeProgramCycle(db, 'cycle-1', 'user-1')).resolves.toEqual(completedCycle);
   });
 });

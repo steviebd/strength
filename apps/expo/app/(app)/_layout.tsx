@@ -12,12 +12,10 @@ import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { getLocalDb } from '@/db/client';
 import { localBodyStats } from '@/db/local-schema';
 import { useTrainingSync } from '@/hooks/useTrainingSync';
-import { OfflineBanner } from '@/components/OfflineBanner';
 import { TabIconWithBadge } from '@/components/TabIconWithBadge';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
 import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
 import { useEffect, useState, useRef } from 'react';
-import { getPendingSyncItemCount } from '@/db/sync-queue';
 
 const TAB_ICONS = {
   home: {
@@ -106,38 +104,9 @@ function AppTabs() {
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    if (!userId) return;
-
-    let mounted = true;
-
-    const fetchCount = async () => {
-      try {
-        const count = await getPendingSyncItemCount(userId);
-        if (mounted) {
-          setPendingCount(count);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    void fetchCount();
-    const interval = setInterval(fetchCount, 5000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [userId]);
-
-  const hasBadge = pendingCount > 0;
 
   return (
     <>
-      <OfflineBanner />
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -171,12 +140,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.home.title,
             tabBarIcon: ({ color, focused }) => (
-              <TabIconWithBadge
-                icon={TAB_ICONS.home}
-                hasBadge={hasBadge}
-                color={color}
-                focused={focused}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.home} color={color} focused={focused} />
             ),
           }}
         />
@@ -185,12 +149,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.workouts.title,
             tabBarIcon: ({ color, focused }) => (
-              <TabIconWithBadge
-                icon={TAB_ICONS.workouts}
-                hasBadge={hasBadge}
-                color={color}
-                focused={focused}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.workouts} color={color} focused={focused} />
             ),
           }}
         />
@@ -199,12 +158,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.programs.title,
             tabBarIcon: ({ color, focused }) => (
-              <TabIconWithBadge
-                icon={TAB_ICONS.programs}
-                hasBadge={hasBadge}
-                color={color}
-                focused={focused}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.programs} color={color} focused={focused} />
             ),
           }}
         />
@@ -213,12 +167,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.nutrition.title,
             tabBarIcon: ({ color, focused }) => (
-              <TabIconWithBadge
-                icon={TAB_ICONS.nutrition}
-                hasBadge={hasBadge}
-                color={color}
-                focused={focused}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.nutrition} color={color} focused={focused} />
             ),
           }}
         />
@@ -227,12 +176,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.profile.title,
             tabBarIcon: ({ color, focused }) => (
-              <TabIconWithBadge
-                icon={TAB_ICONS.profile}
-                hasBadge={hasBadge}
-                color={color}
-                focused={focused}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.profile} color={color} focused={focused} />
             ),
           }}
         />

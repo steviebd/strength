@@ -44,6 +44,12 @@ vi.mock('@/theme', () => ({
     error: '#ef4444',
     warning: '#f59e0b',
   },
+  radius: {
+    md: 8,
+  },
+  spacing: {
+    sm: 8,
+  },
 }));
 
 vi.mock('@/hooks/useNetworkStatus', () => ({

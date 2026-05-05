@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   AppState,
@@ -160,7 +161,6 @@ function getSuggestedPrompts(trainingType: TrainingType) {
 const CHAT_HISTORY_PAGE_SIZE = 5;
 const CHAT_FOCUS_HISTORY_OFFSET = 260;
 const NUTRITION_BOTTOM_INSET = 120;
-const CHAT_JOB_POLL_INTERVAL_MS = 1500;
 const CHAT_JOB_TIMEOUT_MS = 3 * 60 * 1000;
 
 function delay(ms: number) {
@@ -605,6 +605,7 @@ export default function NutritionScreen() {
         });
 
         const jobStartedAt = Date.now();
+        let pollInterval = 1000;
         while (Date.now() - jobStartedAt < CHAT_JOB_TIMEOUT_MS) {
           const job = await apiFetch<ChatJobResponse>(`/api/nutrition/chat/jobs/${response.jobId}`);
 
@@ -617,7 +618,8 @@ export default function NutritionScreen() {
             throw new Error(job.error ?? 'The assistant could not complete that request.');
           }
 
-          await delay(CHAT_JOB_POLL_INTERVAL_MS);
+          await delay(pollInterval);
+          pollInterval = Math.min(pollInterval * 2, 16000);
         }
 
         if (!assistantContent.trim()) {
@@ -691,84 +693,91 @@ export default function NutritionScreen() {
     [userId],
   );
 
-  useEffect(() => {
-    if (!userId) return;
-    const interval = setInterval(() => {
-      const db = getLocalDb();
-      if (!db) return;
-
-      const completed = db
-        .select()
-        .from(localChatMessageQueue)
-        .where(
-          and(
-            eq(localChatMessageQueue.userId, userId),
-            eq(localChatMessageQueue.date, date),
-            eq(localChatMessageQueue.timezone, activeTimezone ?? 'UTC'),
-            eq(localChatMessageQueue.status, 'sent'),
-          ),
-        )
-        .all();
-
-      if (completed.length > 0) {
-        setMessages((prev) => {
-          const updated = [...prev];
-          for (const item of completed) {
-            const idx = updated.findIndex(
-              (m) => m.role === 'assistant' && m.queueId === item.id && m.isPlaceholder,
-            );
-            if (idx !== -1 && item.assistantContent) {
-              updated[idx] = {
-                ...updated[idx],
-                content: item.assistantContent,
-                isPlaceholder: false,
-                status: undefined,
-                queueId: undefined,
-              };
-            }
-          }
-          return updated;
-        });
-
-        for (const item of completed) {
-          db.delete(localChatMessageQueue).where(eq(localChatMessageQueue.id, item.id)).run();
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      const pollStartedAt = Date.now();
+      const interval = setInterval(() => {
+        if (Date.now() - pollStartedAt > CHAT_JOB_TIMEOUT_MS) {
+          clearInterval(interval);
+          return;
         }
-      }
+        const db = getLocalDb();
+        if (!db) return;
 
-      const failed = db
-        .select()
-        .from(localChatMessageQueue)
-        .where(
-          and(
-            eq(localChatMessageQueue.userId, userId),
-            eq(localChatMessageQueue.date, date),
-            eq(localChatMessageQueue.timezone, activeTimezone ?? 'UTC'),
-            eq(localChatMessageQueue.status, 'failed'),
-          ),
-        )
-        .all();
+        const completed = db
+          .select()
+          .from(localChatMessageQueue)
+          .where(
+            and(
+              eq(localChatMessageQueue.userId, userId),
+              eq(localChatMessageQueue.date, date),
+              eq(localChatMessageQueue.timezone, activeTimezone ?? 'UTC'),
+              eq(localChatMessageQueue.status, 'sent'),
+            ),
+          )
+          .all();
 
-      if (failed.length > 0) {
-        setMessages((prev) => {
-          const updated = [...prev];
-          for (const item of failed) {
-            const idx = updated.findIndex(
-              (m) => m.role === 'assistant' && m.queueId === item.id && m.isPlaceholder,
-            );
-            if (idx !== -1 && updated[idx].status !== 'failed') {
-              updated[idx] = {
-                ...updated[idx],
-                isPlaceholder: true,
-                status: 'failed',
-              };
+        if (completed.length > 0) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            for (const item of completed) {
+              const idx = updated.findIndex(
+                (m) => m.role === 'assistant' && m.queueId === item.id && m.isPlaceholder,
+              );
+              if (idx !== -1 && item.assistantContent) {
+                updated[idx] = {
+                  ...updated[idx],
+                  content: item.assistantContent,
+                  isPlaceholder: false,
+                  status: undefined,
+                  queueId: undefined,
+                };
+              }
             }
+            return updated;
+          });
+
+          for (const item of completed) {
+            db.delete(localChatMessageQueue).where(eq(localChatMessageQueue.id, item.id)).run();
           }
-          return updated;
-        });
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [userId, date, activeTimezone]);
+        }
+
+        const failed = db
+          .select()
+          .from(localChatMessageQueue)
+          .where(
+            and(
+              eq(localChatMessageQueue.userId, userId),
+              eq(localChatMessageQueue.date, date),
+              eq(localChatMessageQueue.timezone, activeTimezone ?? 'UTC'),
+              eq(localChatMessageQueue.status, 'failed'),
+            ),
+          )
+          .all();
+
+        if (failed.length > 0) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            for (const item of failed) {
+              const idx = updated.findIndex(
+                (m) => m.role === 'assistant' && m.queueId === item.id && m.isPlaceholder,
+              );
+              if (idx !== -1 && updated[idx].status !== 'failed') {
+                updated[idx] = {
+                  ...updated[idx],
+                  isPlaceholder: true,
+                  status: 'failed',
+                };
+              }
+            }
+            return updated;
+          });
+        }
+      }, 2000);
+      return () => clearInterval(interval);
+    }, [userId, date, activeTimezone]),
+  );
 
   const loadOlderHistory = useCallback(async () => {
     if (!historyCursor || isLoadingMoreHistory) {

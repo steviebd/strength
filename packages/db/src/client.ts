@@ -1,4 +1,9 @@
-export { generateId } from './schema';
+export {
+  WORKOUT_TYPE_ONE_RM_TEST,
+  WORKOUT_TYPE_TRAINING,
+  generateId,
+  type WorkoutType,
+} from './schema';
 export { exerciseLibrary, type ExerciseLibraryItem } from './exercise-library';
 export { convertToDisplayWeight, convertToStorageWeight } from './utils/units';
 export {

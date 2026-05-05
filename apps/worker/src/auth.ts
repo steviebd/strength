@@ -204,9 +204,35 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
     }),
     emailAndPassword: {
       enabled: true,
+      revokeSessionsOnPasswordReset: true,
       password: {
         hash: hashPassword,
         verify: verifyPassword,
+      },
+    },
+    databaseHooks: {
+      account: {
+        update: {
+          after: async (account, context) => {
+            if (!context) return;
+            const path = context.path;
+            const isPasswordChange =
+              path?.endsWith('/change-password') ||
+              path?.endsWith('/reset-password') ||
+              (path?.endsWith('/update-user') &&
+                (context.body?.password || context.body?.newPassword));
+            if (!isPasswordChange) return;
+
+            const sessions = await context.context.internalAdapter.listSessions(account.userId);
+            const currentToken = context.context.session?.session?.token;
+            const tokensToDelete = sessions
+              .filter((s) => s.token !== currentToken)
+              .map((s) => s.token);
+            if (tokensToDelete.length > 0) {
+              await context.context.internalAdapter.deleteSessions(tokensToDelete);
+            }
+          },
+        },
       },
     },
     session: {

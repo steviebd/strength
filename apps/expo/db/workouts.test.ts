@@ -21,6 +21,8 @@ vi.mock('./sync-queue', () => ({
 }));
 
 vi.mock('@strength/db/client', () => ({
+  WORKOUT_TYPE_TRAINING: 'training',
+  WORKOUT_TYPE_ONE_RM_TEST: 'one_rm_test',
   generateId: vi.fn(() => 'test-id-123'),
 }));
 
@@ -46,6 +48,7 @@ function createMockDb() {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         where: vi.fn(() => ({
+          all: vi.fn(() => []),
           limit: vi.fn(() => ({
             all: vi.fn(() => []),
           })),
@@ -113,6 +116,42 @@ describe('discardLocalWorkout', () => {
 
     expect(mockDb.update).toHaveBeenCalledTimes(2);
     expect(mockDb.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('createLocalWorkout', () => {
+  test('regenerates duplicate zero IDs before inserting local exercise rows', async () => {
+    const { createLocalWorkout } = await import('./workouts');
+
+    await createLocalWorkout('user-1', {
+      name: 'Workout',
+      exercises: [
+        {
+          id: '00000000-0000-4000-8000-000000000000',
+          exerciseId: 'exercise-1',
+          name: 'Squat',
+          orderIndex: 0,
+          sets: [
+            {
+              id: '00000000-0000-4000-8000-000000000000',
+              setNumber: 1,
+            },
+            {
+              id: '00000000-0000-4000-8000-000000000000',
+              setNumber: 2,
+            },
+          ],
+        },
+      ],
+    });
+
+    const insertedValues = mockDb.insert.mock.results.map((result: any) => {
+      const values = result.value.values as ReturnType<typeof vi.fn>;
+      return values.mock.calls[0][0];
+    });
+    const setRows = insertedValues.filter((row: any) => row.workoutExerciseId);
+
+    expect(setRows.map((row: any) => row.id)).toEqual(['test-id-123', 'test-id-123-11']);
   });
 });
 

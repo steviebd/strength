@@ -20,6 +20,7 @@ function pickProgramOneRM(input: unknown, fallback: number | null | undefined) {
   return typeof input === 'number' && Number.isFinite(input) && input > 0 ? input : (fallback ?? 0);
 }
 
+// Static program metadata — intentionally public (no auth required)
 router.get('/', async (c) => {
   const { PROGRAMS } = await import('../programs');
   const programsList = Object.values(PROGRAMS).map((p) => ({
@@ -97,7 +98,9 @@ router.post(
     const programStartAt = startDate.getTime();
 
     const scheduleOptions = {
-      preferredDays: preferredGymDays || ['monday', 'wednesday', 'friday'],
+      preferredDays: preferredGymDays?.length
+        ? preferredGymDays
+        : ['monday', 'wednesday', 'friday'],
       preferredTimeOfDay: preferredTimeOfDay || 'morning',
     };
 

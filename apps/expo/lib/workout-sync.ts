@@ -108,6 +108,8 @@ function getSyncEndpoint(item: LocalSyncQueueItem): { url: string; method: strin
       return { url: `/api/programs`, method: 'POST' };
     case 'delete_program':
       return { url: `/api/programs/cycles/${item.entityId}`, method: 'DELETE' };
+    case 'update_program_1rms':
+      return { url: `/api/programs/cycles/${item.entityId}`, method: 'PUT' };
     case 'reschedule_workout':
       return {
         url: `/api/programs/cycle-workouts/${item.entityId}/schedule`,

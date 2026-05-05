@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import { exercises, generateId } from '../schema';
 import type { ExerciseLibraryItem } from '../exercise-library';
@@ -118,8 +118,30 @@ export async function getOrCreateExerciseForUser(
       createdAt: now,
       updatedAt: now,
     })
+    .onConflictDoNothing({
+      target: [exercises.userId, sql`lower(${exercises.name})`],
+    })
     .returning({ id: exercises.id })
     .get();
 
-  return created.id;
+  if (created) {
+    return created.id;
+  }
+
+  // Fallback: another request created it concurrently
+  const fallback = await db
+    .select({ id: exercises.id })
+    .from(exercises)
+    .where(
+      and(
+        eq(exercises.userId, userId),
+        eq(sql`lower(${exercises.name})`, exerciseName.toLowerCase()),
+      ),
+    )
+    .get();
+
+  if (!fallback) {
+    throw new Error('Failed to create or find exercise');
+  }
+  return fallback.id;
 }

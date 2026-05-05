@@ -16,11 +16,12 @@ describe('migration guardrails', () => {
   test('contains declared performance indexes for high-traffic tables', () => {
     const sql = allMigrationSql();
 
-    expect(sql).toContain('idx_workouts_user_id_started_at');
-    expect(sql).toContain('idx_workout_sets_workout_exercise_id');
+    expect(sql).toContain('idx_workouts_user_deleted_started_at');
+    expect(sql).toContain('idx_workouts_user_deleted_completed_at');
+    expect(sql).toContain('idx_workout_sets_exercise_set_number');
     expect(sql).toContain('idx_exercises_user_deleted_lower_name');
-    expect(sql).toContain('idx_nutrition_entries_user_logged_at');
-    expect(sql).toContain('idx_rate_limit_user_id_endpoint');
+    expect(sql).toContain('idx_templates_user_deleted_created_at');
+    expect(sql).toContain('rate_limit_user_id_endpoint_unique');
   });
 
   test('contains uniqueness needed for safe user/provider upserts', () => {

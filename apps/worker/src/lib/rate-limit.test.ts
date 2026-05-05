@@ -1,25 +1,15 @@
 import { describe, expect, test } from 'vitest';
-import { checkRateLimit, getRateLimitPerHour } from './rate-limit';
+import { checkRateLimit, getRateLimitPerHour, getRateLimitByEndpoint } from './rate-limit';
 
-interface MockConfig {
-  insertThrows: boolean;
-  selectResults: (Record<string, unknown> | null)[];
-  updateChanges: number;
-}
-
-function createDb(config: MockConfig) {
+function createDb(config: { selectResults: (Record<string, unknown> | null)[] }) {
   let selectIndex = 0;
 
   return {
     insert: () => ({
       values: () => ({
-        run: config.insertThrows
-          ? async () => {
-              throw new Error(
-                'SQLITE_CONSTRAINT: UNIQUE constraint failed: rate_limit.user_id, rate_limit.endpoint',
-              );
-            }
-          : async () => ({ success: true }),
+        onConflictDoUpdate: () => ({
+          run: async () => ({ success: true }),
+        }),
       }),
     }),
     select: () => ({
@@ -37,13 +27,6 @@ function createDb(config: MockConfig) {
               updatedAt: new Date(),
             };
           },
-        }),
-      }),
-    }),
-    update: () => ({
-      set: () => ({
-        where: () => ({
-          run: async () => ({ meta: { changes: config.updateChanges } }),
         }),
       }),
     }),
@@ -68,9 +51,29 @@ describe('getRateLimitPerHour', () => {
   });
 });
 
+describe('getRateLimitByEndpoint', () => {
+  test('returns 20 for auth sign-in endpoints', () => {
+    expect(getRateLimitByEndpoint('/api/auth/sign-in/email')).toBe(20);
+  });
+
+  test('returns 20 for auth sign-up endpoints', () => {
+    expect(getRateLimitByEndpoint('/api/auth/sign-up/email')).toBe(20);
+  });
+
+  test('returns 60 for nutrition chat', () => {
+    expect(getRateLimitByEndpoint('/api/nutrition/chat')).toBe(60);
+  });
+
+  test('returns 500 for other endpoints', () => {
+    expect(getRateLimitByEndpoint('/api/workouts')).toBe(500);
+  });
+});
+
 describe('checkRateLimit', () => {
   test('allows first request and inserts row', async () => {
-    const db = createDb({ insertThrows: false, selectResults: [], updateChanges: 0 });
+    const now = Date.now();
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+    const db = createDb({ selectResults: [makeRow(1, windowStart)] });
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(9);
@@ -81,9 +84,7 @@ describe('checkRateLimit', () => {
     const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
 
     const db = createDb({
-      insertThrows: true,
-      selectResults: [makeRow(3, windowStart), makeRow(4, windowStart)],
-      updateChanges: 1,
+      selectResults: [makeRow(4, windowStart)],
     });
 
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
@@ -93,14 +94,10 @@ describe('checkRateLimit', () => {
 
   test('resets old window and allows after hour', async () => {
     const now = Date.now();
-    const oldWindowStart = new Date(
-      Math.floor((now - 2 * 60 * 60 * 1000) / (60 * 60 * 1000)) * (60 * 60 * 1000),
-    );
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
 
     const db = createDb({
-      insertThrows: true,
-      selectResults: [makeRow(10, oldWindowStart)],
-      updateChanges: 1,
+      selectResults: [makeRow(1, windowStart)],
     });
 
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
@@ -113,9 +110,7 @@ describe('checkRateLimit', () => {
     const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
 
     const db = createDb({
-      insertThrows: true,
-      selectResults: [makeRow(10, windowStart), makeRow(10, windowStart)],
-      updateChanges: 0,
+      selectResults: [makeRow(11, windowStart)],
     });
 
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
@@ -129,9 +124,7 @@ describe('checkRateLimit', () => {
     const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
 
     const db = createDb({
-      insertThrows: true,
-      selectResults: [makeRow(1, windowStart), makeRow(2, windowStart)],
-      updateChanges: 1,
+      selectResults: [makeRow(2, windowStart)],
     });
 
     const result = await checkRateLimit(db, 'user-1', 'test', 10);

@@ -1,5 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import {
+  WORKOUT_TYPE_ONE_RM_TEST,
+  WORKOUT_TYPE_TRAINING,
   consolidateProgramTargetLifts,
   getCurrentCycleWorkout,
   generateId,
@@ -22,6 +24,8 @@ import {
 import { enqueueSyncItem } from './sync-queue';
 import { removePendingWorkout } from '../lib/storage';
 import type { Workout, WorkoutExercise, WorkoutSet } from '@/context/WorkoutSessionContext';
+
+type WorkoutType = 'training' | 'one_rm_test';
 
 export type WorkoutSyncStatus = 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'conflict';
 
@@ -100,6 +104,34 @@ function toIso(value: Date | string | number | null | undefined) {
   return date ? date.toISOString() : null;
 }
 
+function isZeroUuid(id: string | null | undefined) {
+  return id === '00000000-0000-4000-8000-000000000000';
+}
+
+function resolveWorkoutType(input: { workoutType?: string | null; name?: string | null }) {
+  if (input.workoutType === WORKOUT_TYPE_ONE_RM_TEST) {
+    return WORKOUT_TYPE_ONE_RM_TEST;
+  }
+  if (input.name === '1RM Test') {
+    return WORKOUT_TYPE_ONE_RM_TEST;
+  }
+  return WORKOUT_TYPE_TRAINING;
+}
+
+function generateUniqueId(usedIds: Set<string>, requestedId?: string | null) {
+  let id =
+    requestedId && !isZeroUuid(requestedId) && !usedIds.has(requestedId)
+      ? requestedId
+      : generateId();
+  let attempts = 0;
+  while (isZeroUuid(id) || usedIds.has(id)) {
+    attempts++;
+    id = attempts > 10 ? `${generateId()}-${attempts}` : generateId();
+  }
+  usedIds.add(id);
+  return id;
+}
+
 function asWorkoutSet(row: LocalWorkoutSet): WorkoutSet {
   return {
     id: row.id,
@@ -118,6 +150,7 @@ function asWorkout(row: LocalWorkout, exercises: WorkoutExercise[]): Workout {
   return {
     id: row.id,
     name: row.name,
+    workoutType: resolveWorkoutType(row) as WorkoutType,
     startedAt: toIso(row.startedAt) ?? new Date().toISOString(),
     completedAt: toIso(row.completedAt),
     notes: row.notes ?? null,
@@ -174,8 +207,11 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
       db.delete(localWorkoutExercises).where(eq(localWorkoutExercises.workoutId, workoutId)).run();
     }
 
+    const usedExerciseIds = new Set<string>();
+    const usedSetIds = new Set<string>();
+
     for (const exercise of exercises) {
-      const workoutExerciseId = exercise.id ?? generateId();
+      const workoutExerciseId = generateUniqueId(usedExerciseIds, exercise.id);
       db.insert(localWorkoutExercises)
         .values({
           id: workoutExerciseId,
@@ -194,9 +230,10 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
         .run();
 
       for (const set of exercise.sets ?? []) {
+        const setId = generateUniqueId(usedSetIds, set.id);
         db.insert(localWorkoutSets)
           .values({
-            id: set.id ?? generateId(),
+            id: setId,
             workoutExerciseId,
             setNumber: set.setNumber,
             weight: set.weight ?? null,
@@ -222,6 +259,7 @@ export async function createLocalWorkout(
     templateId?: string | null;
     programCycleId?: string | null;
     cycleWorkoutId?: string | null;
+    workoutType?: WorkoutType;
     startedAt?: Date | string | number;
     exercises?: LocalExerciseInput[];
   },
@@ -239,6 +277,7 @@ export async function createLocalWorkout(
         templateId: input.templateId ?? null,
         programCycleId: input.programCycleId ?? null,
         cycleWorkoutId: input.cycleWorkoutId ?? null,
+        workoutType: input.workoutType ?? resolveWorkoutType(input),
         name: input.name,
         startedAt: toDate(input.startedAt) ?? now,
         completedAt: null,
@@ -264,6 +303,7 @@ export async function createLocalWorkout(
           templateId: input.templateId ?? null,
           programCycleId: input.programCycleId ?? null,
           cycleWorkoutId: input.cycleWorkoutId ?? null,
+          workoutType: input.workoutType ?? resolveWorkoutType(input),
           isDeleted: false,
           syncStatus: 'local',
           syncOperationId: null,
@@ -427,11 +467,14 @@ export async function getLocalLastCompletedExerciseSnapshots(
       and(
         eq(localWorkouts.userId, userId),
         eq(localWorkouts.isDeleted, false),
+        eq(localWorkouts.workoutType, WORKOUT_TYPE_TRAINING),
+        eq(localWorkoutExercises.isDeleted, false),
         isNotNull(localWorkouts.completedAt),
         or(...historyIdentityConditions),
       ),
     )
     .orderBy(desc(localWorkouts.completedAt))
+    .limit(1000)
     .all();
 
   const latestByOriginalId = new Map<
@@ -473,6 +516,7 @@ export async function getLocalLastCompletedExerciseSnapshots(
       ),
     )
     .orderBy(localWorkoutSets.setNumber)
+    .limit(1000)
     .all();
 
   const setsByWorkoutExerciseId = new Map<string, typeof setRows>();
@@ -776,6 +820,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
         templateId: (serverWorkout as any).templateId ?? null,
         programCycleId: (serverWorkout as any).programCycleId ?? null,
         cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
+        workoutType: resolveWorkoutType(serverWorkout),
         name: serverWorkout.name,
         startedAt: toDate(serverWorkout.startedAt) ?? now,
         completedAt,
@@ -801,6 +846,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
           templateId: (serverWorkout as any).templateId ?? null,
           programCycleId: (serverWorkout as any).programCycleId ?? null,
           cycleWorkoutId: (serverWorkout as any).cycleWorkoutId ?? null,
+          workoutType: resolveWorkoutType(serverWorkout),
           startedAt: toDate(serverWorkout.startedAt) ?? now,
           completedAt,
           totalVolume: serverWorkout.totalVolume ?? null,
@@ -860,6 +906,7 @@ export async function completeLocalWorkout(
       templateId: (workout as any).templateId ?? null,
       programCycleId: (workout as any).programCycleId ?? null,
       cycleWorkoutId: (workout as any).cycleWorkoutId ?? null,
+      workoutType: resolveWorkoutType(workout),
       exercises: [],
     });
   }
@@ -873,6 +920,7 @@ export async function completeLocalWorkout(
         totalVolume: totals.totalVolume,
         totalSets: totals.totalSets,
         durationMinutes: totals.durationMinutes,
+        workoutType: resolveWorkoutType(workout),
         updatedAt: totals.completedAt,
         syncStatus: 'pending',
         syncOperationId,
@@ -925,6 +973,7 @@ export async function saveLocalWorkoutDraft(
       templateId: (workout as any).templateId ?? null,
       programCycleId: (workout as any).programCycleId ?? null,
       cycleWorkoutId: (workout as any).cycleWorkoutId ?? null,
+      workoutType: resolveWorkoutType(workout),
       exercises: [],
     });
   }
@@ -938,6 +987,7 @@ export async function saveLocalWorkoutDraft(
         templateId: (workout as any).templateId ?? existing?.templateId ?? null,
         programCycleId: (workout as any).programCycleId ?? existing?.programCycleId ?? null,
         cycleWorkoutId: (workout as any).cycleWorkoutId ?? existing?.cycleWorkoutId ?? null,
+        workoutType: resolveWorkoutType(workout),
         updatedAt: now,
         syncStatus: existing?.syncStatus === 'synced' ? 'synced' : 'local',
       })
@@ -1032,6 +1082,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
       templateId: local.templateId,
       programCycleId: local.programCycleId,
       cycleWorkoutId: local.cycleWorkoutId,
+      workoutType: local.workoutType ?? resolveWorkoutType(local),
       startedAt: workout.startedAt,
       completedAt: workout.completedAt,
       notes: workout.notes,
@@ -1112,6 +1163,7 @@ export async function cacheTemplates(userId: string, templates: any[]) {
   const db = getLocalDb();
   if (!db) return;
   const hydratedAt = new Date();
+  const allExercises: any[] = [];
   for (const template of templates) {
     db.insert(localTemplates)
       .values({
@@ -1140,25 +1192,26 @@ export async function cacheTemplates(userId: string, templates: any[]) {
       .where(eq(localTemplateExercises.templateId, template.id))
       .run();
     for (const exercise of template.exercises ?? []) {
-      db.insert(localTemplateExercises)
-        .values({
-          id: exercise.id,
-          templateId: template.id,
-          exerciseId: exercise.exerciseId,
-          name: exercise.name,
-          muscleGroup: exercise.muscleGroup ?? null,
-          orderIndex: exercise.orderIndex ?? 0,
-          targetWeight: exercise.targetWeight ?? null,
-          addedWeight: exercise.addedWeight ?? 0,
-          sets: exercise.sets ?? null,
-          reps: exercise.reps ?? null,
-          repsRaw: exercise.repsRaw ?? null,
-          isAmrap: exercise.isAmrap ?? false,
-          isAccessory: exercise.isAccessory ?? false,
-          isRequired: exercise.isRequired !== false,
-        })
-        .run();
+      allExercises.push({
+        id: exercise.id,
+        templateId: template.id,
+        exerciseId: exercise.exerciseId,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup ?? null,
+        orderIndex: exercise.orderIndex ?? 0,
+        targetWeight: exercise.targetWeight ?? null,
+        addedWeight: exercise.addedWeight ?? 0,
+        sets: exercise.sets ?? null,
+        reps: exercise.reps ?? null,
+        repsRaw: exercise.repsRaw ?? null,
+        isAmrap: exercise.isAmrap ?? false,
+        isAccessory: exercise.isAccessory ?? false,
+        isRequired: exercise.isRequired !== false,
+      });
     }
+  }
+  if (allExercises.length > 0) {
+    db.insert(localTemplateExercises).values(allExercises).run();
   }
 }
 

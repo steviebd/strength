@@ -2,6 +2,7 @@ import { type ReactNode, type RefObject } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { spacing } from '@/theme';
+import { OfflineBanner } from '../OfflineBanner';
 import { Screen, ScreenScrollView, type ScreenScrollViewProps } from './Screen';
 
 interface PageLayoutProps {
@@ -32,6 +33,7 @@ export function PageLayout({
         horizontalPadding={20}
         {...screenScrollViewProps}
       >
+        <OfflineBanner />
         {headerType !== 'none' && header}
         {children}
       </ScreenScrollView>

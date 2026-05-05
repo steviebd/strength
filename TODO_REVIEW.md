@@ -457,13 +457,6 @@ Pros/cons for the three options:
 
 ### Phase 4 — Security Hardening
 
-- [ ] **4.1** Rotate secrets and remove plaintext from `wrangler.toml`
-  - Rotate all secrets that have been in plaintext on disk
-  - Use `wrangler secret put` for: BETTER_AUTH_SECRET, ENCRYPTION_MASTER_KEY, GOOGLE_CLIENT_SECRET, WHOOP_CLIENT_SECRET, WHOOP_WEBHOOK_SECRET
-  - Update `generate-wrangler-config.ts` to stop writing secrets into the generated config
-  - Update `.gitignore` if needed (already ignores wrangler.toml, verify it's working)
-  - **Effort**: Ops (~30 min)
-
 - [ ] **4.2** Add request body size limit globally
   - **File**: `apps/worker/src/index.ts`
   - Configure Hono body size limit (e.g., 1 MB) on all routes
@@ -610,12 +603,6 @@ Pros/cons for the three options:
   - `credentials: 'include'` in `api.ts:90` already supports this
   - **Effort**: Small (~15 lines after verifying Better Auth behavior)
 
-- [ ] **4.23** Add field-level encryption for PII columns
-  - **File**: `packages/db/src/schema.ts`, `apps/worker/src/utils/crypto.ts`
-  - Encrypt `user.email`, `whoopProfile.email`, `whoopProfile.firstName`, `whoopProfile.lastName` at application layer
-  - Use existing AES-GCM encryption utility with `ENCRYPTION_MASTER_KEY`
-  - **Migration**: New migration for encrypted columns (expand column sizes)
-  - **Effort**: Large (~80 lines + migration + migration script for existing data)
 
 ---
 
@@ -687,7 +674,6 @@ Phase 3
 └── 3.9 local workout history LIMIT (no deps)
 
 Phase 4 (depends on 3.1 for rate limiter, 3.2 for schema)
-├── 4.1 rotate secrets (ops)
 ├── 4.2 body size limit
 ├── 4.3 image base64 validation
 ├── 4.4 security headers
@@ -709,7 +695,6 @@ Phase 4 (depends on 3.1 for rate limiter, 3.2 for schema)
 ├── 4.20 session invalidation on password change
 ├── 4.21 Math.random() fallback replacement
 ├── 4.22 httpOnly cookies for web auth
-└── 4.23 PII field-level encryption (needs new migration)
 ```
 
 ## Estimated Total Effort
@@ -719,7 +704,7 @@ Phase 4 (depends on 3.1 for rate limiter, 3.2 for schema)
 | Phase 1 | 27 items | 2 migrations | ~500 lines across 25+ files |
 | Phase 2 | 22 items | 2 migrations (materialized table + indexes) | ~280 lines + migrations |
 | Phase 3 | 9 items | none | ~120 lines |
-| Phase 4 | 23 items | 1 migration (PII encryption) | ~280 lines + ops |
+| Phase 4 | 21 items | none | ~280 lines + ops |
 
 ---
 
@@ -733,5 +718,4 @@ Phase 4 (depends on 3.1 for rate limiter, 3.2 for schema)
 6. **WHOOP `rawData` strategy**: Option A (drop columns entirely), B (nullify >30 days), or C (move to R2)? Option B is lowest risk; verify UI never displays raw data.
 7. **CSRF token for native app**: The native Expo app doesn't use cookies normally — will the double-submit cookie pattern work with Expo's HTTP client? Verify `expo-secure-store` can store/retrieve the CSRF cookie value.
 8. **PKCE for WHOOP OAuth**: WHOOP may not support PKCE on their `/oauth/authorize` and `/oauth/token` endpoints. Verify the WHOOP API docs before implementing.
-9. **PII encryption scope**: Should `user.email` and `whoopProfile.email` be encrypted, or is this over-engineering? Email is needed for login/notification lookups — encrypted columns can't be indexed for equality searches without deterministic encryption.
 10. **Better Auth session behavior**: Verify v1.6.9 behavior for session invalidation on password change and `httpOnly` cookie support for web before implementing #4.20 and #4.22.

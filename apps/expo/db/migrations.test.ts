@@ -29,6 +29,7 @@ function createSqliteMock() {
       }
       return [];
     }),
+    runSync: vi.fn(() => ({ changes: 1, lastInsertRowId: 1 })),
     withTransactionSync: vi.fn((fn: () => void) => fn()),
   };
 
@@ -40,6 +41,7 @@ describe('local migration performance indexes', () => {
     expect(migrationSource).toContain('idx_local_workout_sets_exercise_deleted_order');
     expect(migrationSource).toContain('idx_local_sync_queue_user_runnable');
     expect(migrationSource).toContain('idx_local_workout_exercises_lower_name');
+    expect(migrationSource).toContain('idx_local_workouts_user_type_history');
   });
 
   test('wraps versioned migrations in a transaction', () => {
