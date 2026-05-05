@@ -49,7 +49,7 @@ export function ExerciseLogger({
   const totalSets = sets.length;
   const allCompleted = completedSets === totalSets && totalSets > 0;
 
-  const isAmrapSet = exercise.isAmrap ?? exercise.name.endsWith('3+');
+  const isAmrapSet = exercise.isAmrap ?? false;
 
   const handleSetUpdate = useCallback(
     (index: number, updatedSet: WorkoutSetData) => {

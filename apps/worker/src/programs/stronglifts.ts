@@ -1,8 +1,7 @@
 import { roundToPlate } from './utils';
-import { generateWorkoutAccessories } from './accessory-data';
 import { strongliftsInfo, getStrongliftsAccessories } from './config/stronglifts';
 import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
-import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
+import { createLinearProgramGenerator } from './factory';
 
 function calculateTargetWeight(
   estimatedOneRM: number,
@@ -15,91 +14,64 @@ function calculateTargetWeight(
   return roundToPlate(baseWeight + progression * 2.5);
 }
 
-function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
-  const workouts: ProgramWorkout[] = [];
-  let workoutIndex = 0;
-
-  for (let week = 1; week <= 12; week++) {
-    for (let session = 1; session <= 3; session++) {
-      workoutIndex++;
-      const isDayA = session % 2 === 1;
-
-      const exercises = [
-        {
-          name: 'Squat',
-          lift: 'squat' as const,
-          sets: 5,
-          reps: 5,
-          targetWeight: calculateTargetWeight(oneRMs.squat, week, workoutIndex, 'squat'),
-          libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
-        },
-        ...(isDayA
-          ? [
-              {
-                name: 'Bench Press',
-                lift: 'bench' as const,
-                sets: 5,
-                reps: 5,
-                targetWeight: calculateTargetWeight(oneRMs.bench, week, workoutIndex, 'bench'),
-                libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
-              },
-              {
-                name: 'Barbell Row',
-                lift: 'row' as const,
-                sets: 5,
-                reps: 5,
-                targetWeight: calculateTargetWeight(oneRMs.bench * 0.6, week, workoutIndex, 'row'),
-                libraryId: LIFT_TYPE_LIBRARY_ID['row'],
-              },
-            ]
-          : [
-              {
-                name: 'Overhead Press',
-                lift: 'ohp' as const,
-                sets: 5,
-                reps: 5,
-                targetWeight: calculateTargetWeight(oneRMs.ohp, week, workoutIndex, 'ohp'),
-                libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
-              },
-              {
-                name: 'Deadlift',
-                lift: 'deadlift' as const,
-                sets: 5,
-                reps: 5,
-                targetWeight: calculateTargetWeight(
-                  oneRMs.deadlift,
-                  week,
-                  workoutIndex,
-                  'deadlift',
-                ),
-                libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
-              },
-            ]),
-      ];
-
-      workouts.push({
-        weekNumber: week,
-        sessionNumber: session,
-        sessionName: `Week ${week} - Workout ${session}`,
-        exercises,
-      });
-    }
-  }
-
-  for (const workout of workouts) {
-    const accessories = getStrongliftsAccessories(workout.weekNumber, workout.sessionNumber);
-    if (accessories.length > 0) {
-      workout.accessories = generateWorkoutAccessories(accessories, oneRMs);
-    }
-  }
-
-  return workouts;
-}
-
-export const stronglifts: ProgramConfig = {
+export const stronglifts = createLinearProgramGenerator({
   info: strongliftsInfo,
-  generateWorkouts,
+  weeks: 12,
+  daysPerWeek: 3,
+  buildExercises: ({ week, day, oneRMs, workoutIndex }) => {
+    const isDayA = day % 2 === 1;
+
+    return [
+      {
+        name: 'Squat',
+        lift: 'squat' as const,
+        sets: 5,
+        reps: 5,
+        targetWeight: calculateTargetWeight(oneRMs.squat, week, workoutIndex, 'squat'),
+        libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
+      },
+      ...(isDayA
+        ? [
+            {
+              name: 'Bench Press',
+              lift: 'bench' as const,
+              sets: 5,
+              reps: 5,
+              targetWeight: calculateTargetWeight(oneRMs.bench, week, workoutIndex, 'bench'),
+              libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
+            },
+            {
+              name: 'Barbell Row',
+              lift: 'row' as const,
+              sets: 5,
+              reps: 5,
+              targetWeight: calculateTargetWeight(oneRMs.bench * 0.6, week, workoutIndex, 'row'),
+              libraryId: LIFT_TYPE_LIBRARY_ID['row'],
+            },
+          ]
+        : [
+            {
+              name: 'Overhead Press',
+              lift: 'ohp' as const,
+              sets: 5,
+              reps: 5,
+              targetWeight: calculateTargetWeight(oneRMs.ohp, week, workoutIndex, 'ohp'),
+              libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
+            },
+            {
+              name: 'Deadlift',
+              lift: 'deadlift' as const,
+              sets: 5,
+              reps: 5,
+              targetWeight: calculateTargetWeight(oneRMs.deadlift, week, workoutIndex, 'deadlift'),
+              libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
+            },
+          ]),
+    ];
+  },
+  getAccessories: getStrongliftsAccessories,
   calculateTargetWeight,
-};
+  getSessionNumber: ({ day }) => day,
+});
 
 export default stronglifts;

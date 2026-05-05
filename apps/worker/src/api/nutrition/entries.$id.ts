@@ -1,12 +1,15 @@
 import { eq, and } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
-import { requireOwnedNutritionEntry } from '../guards';
+import { requireOwnedRecord } from '../guards';
 
 export const getEntryHandler = createHandler(async (c, { userId, db }) => {
   const id = c.req.param('id') as string;
 
-  const entry = await requireOwnedNutritionEntry({ db, userId }, id);
+  const entry = await requireOwnedRecord({ db, userId }, schema.nutritionEntries, id, {
+    extraConditions: [eq(schema.nutritionEntries.isDeleted, false)],
+    notFoundBody: { error: 'Nutrition entry not found' },
+  });
   if (entry instanceof Response) return entry;
 
   return c.json(entry);
@@ -15,7 +18,10 @@ export const getEntryHandler = createHandler(async (c, { userId, db }) => {
 export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
   const id = c.req.param('id') as string;
 
-  const existing = await requireOwnedNutritionEntry({ db, userId }, id);
+  const existing = await requireOwnedRecord({ db, userId }, schema.nutritionEntries, id, {
+    extraConditions: [eq(schema.nutritionEntries.isDeleted, false)],
+    notFoundBody: { error: 'Nutrition entry not found' },
+  });
   if (existing instanceof Response) return existing;
 
   let body: {
@@ -74,7 +80,10 @@ export const updateEntryHandler = createHandler(async (c, { userId, db }) => {
 export const deleteEntryHandler = createHandler(async (c, { userId, db }) => {
   const id = c.req.param('id') as string;
 
-  const existing = await requireOwnedNutritionEntry({ db, userId }, id);
+  const existing = await requireOwnedRecord({ db, userId }, schema.nutritionEntries, id, {
+    extraConditions: [eq(schema.nutritionEntries.isDeleted, false)],
+    notFoundBody: { error: 'Nutrition entry not found' },
+  });
   if (existing instanceof Response) return existing;
 
   if (existing.isDeleted) {

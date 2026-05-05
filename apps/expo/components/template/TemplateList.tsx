@@ -76,14 +76,16 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
               <SectionTitle title="Exercises" />
               <View style={styles.exerciseList}>
                 {template.exercises.slice(0, 3).map((ex) => (
-                  <View key={`template-exercise:${ex.id}`} style={styles.exerciseRow}>
-                    <Text style={styles.exerciseName} numberOfLines={1}>
-                      {ex.name}
-                    </Text>
-                    <Text style={styles.exerciseSets}>
-                      {ex.sets} × {ex.reps}
-                      {ex.isAmrap ? '+' : ''}
-                    </Text>
+                  <View key={`template-exercise:${ex.id}`}>
+                    <View style={styles.exerciseRow}>
+                      <Text style={styles.exerciseName} numberOfLines={1}>
+                        {ex.name}
+                      </Text>
+                      <Text style={styles.exerciseSets}>
+                        {ex.sets} × {ex.reps}
+                      </Text>
+                    </View>
+                    {ex.isAmrap && <Text style={styles.amrapBadge}>AMRAP</Text>}
                   </View>
                 ))}
                 {template.exercises.length > 3 && (
@@ -224,5 +226,11 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     fontSize: 16,
+  },
+  amrapBadge: {
+    fontSize: 10,
+    color: colors.accent,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });

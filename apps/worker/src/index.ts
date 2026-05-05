@@ -22,6 +22,7 @@ import {
   resolveWhoopRedirectBaseURL,
 } from './lib/whoop-oauth';
 import { checkRateLimit, getRateLimitPerHour } from './lib/rate-limit';
+import { escapeHtml } from './utils/html';
 
 import healthRouter from './routes/health';
 import profileRouter from './routes/profile';
@@ -43,16 +44,18 @@ type Variables = {
 
 const app = new Hono<{ Bindings: WorkerEnv; Variables: Variables }>();
 
-function getAllowedOrigins(env: WorkerEnv): string[] {
+function getAllowedOrigins(env: WorkerEnv): { origins: string[]; baseURLOrigin?: string } {
   const appScheme = env.APP_SCHEME ?? 'strength';
   const origins: string[] = [`${appScheme}://`, 'exp://'];
+  let baseURLOrigin: string | undefined;
   const baseURL = env.WORKER_BASE_URL;
   if (baseURL) {
     try {
-      origins.push(new URL(baseURL).origin);
+      baseURLOrigin = new URL(baseURL).origin;
+      origins.push(baseURLOrigin);
     } catch {}
   }
-  return origins;
+  return { origins, baseURLOrigin };
 }
 
 function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
@@ -66,28 +69,12 @@ function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
   return allowed;
 }
 
-function escapeHtml(unsafe: string): string {
-  return unsafe
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
 app.use(
   '/api/*',
   cors({
     origin: (origin, c) => {
       const env = c.env as WorkerEnv;
-      const allowedOrigins = getAllowedOrigins(env);
-      const baseURL = env.WORKER_BASE_URL;
-      let baseURLOrigin: string | undefined;
-      if (baseURL) {
-        try {
-          baseURLOrigin = new URL(baseURL).origin;
-        } catch {}
-      }
+      const { origins: allowedOrigins, baseURLOrigin } = getAllowedOrigins(env);
 
       if (!origin) {
         return undefined;

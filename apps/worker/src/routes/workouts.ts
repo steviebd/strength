@@ -9,7 +9,7 @@ import {
 import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
 import {
-  requireOwnedWorkout,
+  requireOwnedRecord,
   requireOwnedWorkoutExercise,
   requireOwnedWorkoutSet,
 } from '../api/guards';
@@ -19,39 +19,11 @@ import {
   getLastCompletedExerciseSnapshots,
   advanceProgramCycleForWorkout,
 } from '../lib/program-helpers';
+import { pickAllowedKeys } from '../lib/validation';
+import { getWorkoutAggregates } from '../lib/workout-helpers';
 
 const MAX_SYNC_COMPLETE_EXERCISES = 40;
 const MAX_SYNC_COMPLETE_SETS = 400;
-
-export function buildWorkoutUpdate(body: Record<string, unknown>) {
-  const allowed: Record<string, unknown> = {};
-  const keys = [
-    'name',
-    'notes',
-    'startedAt',
-    'completedAt',
-    'totalVolume',
-    'totalSets',
-    'durationMinutes',
-  ];
-  for (const key of keys) {
-    if (key in body) {
-      allowed[key] = body[key];
-    }
-  }
-  return allowed;
-}
-
-export function buildWorkoutSetUpdate(body: Record<string, unknown>) {
-  const allowed: Record<string, unknown> = {};
-  const keys = ['setNumber', 'weight', 'reps', 'rpe', 'isComplete'];
-  for (const key of keys) {
-    if (key in body) {
-      allowed[key] = body[key];
-    }
-  }
-  return allowed;
-}
 
 const router = createRouter();
 
@@ -116,163 +88,156 @@ router.get(
   '/',
   createHandler(async (c, { userId, db }) => {
     const limit = parseInt(c.req.query('limit') || '10', 10);
-    try {
-      const results = await db
-        .select({
-          id: schema.workouts.id,
-          name: schema.workouts.name,
-          notes: schema.workouts.notes,
-          startedAt: schema.workouts.startedAt,
-          completedAt: schema.workouts.completedAt,
-          createdAt: schema.workouts.createdAt,
-          totalVolume: schema.workouts.totalVolume,
-          totalSets: schema.workouts.totalSets,
-          durationMinutes: schema.workouts.durationMinutes,
-        })
-        .from(schema.workouts)
-        .where(and(eq(schema.workouts.userId, userId), eq(schema.workouts.isDeleted, false)))
-        .orderBy(desc(schema.workouts.startedAt))
-        .limit(limit)
-        .all();
+    const results = await db
+      .select({
+        id: schema.workouts.id,
+        name: schema.workouts.name,
+        notes: schema.workouts.notes,
+        startedAt: schema.workouts.startedAt,
+        completedAt: schema.workouts.completedAt,
+        createdAt: schema.workouts.createdAt,
+        totalVolume: schema.workouts.totalVolume,
+        totalSets: schema.workouts.totalSets,
+        durationMinutes: schema.workouts.durationMinutes,
+      })
+      .from(schema.workouts)
+      .where(and(eq(schema.workouts.userId, userId), eq(schema.workouts.isDeleted, false)))
+      .orderBy(desc(schema.workouts.startedAt))
+      .limit(limit)
+      .all();
 
-      const workoutIds = results.map((w) => w.id);
-      if (workoutIds.length === 0) {
-        return c.json(results.map((w) => ({ ...w, exerciseCount: 0 })));
-      }
-
-      const exerciseCounts = await chunkedQuery(db, {
-        ids: workoutIds,
-        mergeKey: 'workoutId',
-        builder: (chunk) =>
-          db
-            .select({
-              workoutId: schema.workoutExercises.workoutId,
-              exerciseCount: sql<number>`count(${schema.workoutExercises.id})`,
-            })
-            .from(schema.workoutExercises)
-            .where(inArray(schema.workoutExercises.workoutId, chunk))
-            .groupBy(schema.workoutExercises.workoutId)
-            .all(),
-      });
-
-      const exerciseCountMap = new Map(
-        exerciseCounts.map((ec) => [ec.workoutId, ec.exerciseCount]),
-      );
-
-      return c.json(
-        results.map((w) => ({
-          ...w,
-          exerciseCount: exerciseCountMap.get(w.id) ?? 0,
-        })),
-      );
-    } catch {
-      return c.json({ message: 'Failed to fetch workouts' }, 500);
+    const workoutIds = results.map((w) => w.id);
+    if (workoutIds.length === 0) {
+      return c.json(results.map((w) => ({ ...w, exerciseCount: 0 })));
     }
+
+    const exerciseCounts = await chunkedQuery(db, {
+      ids: workoutIds,
+      mergeKey: 'workoutId',
+      builder: (chunk) =>
+        db
+          .select({
+            workoutId: schema.workoutExercises.workoutId,
+            exerciseCount: sql<number>`count(${schema.workoutExercises.id})`,
+          })
+          .from(schema.workoutExercises)
+          .where(inArray(schema.workoutExercises.workoutId, chunk))
+          .groupBy(schema.workoutExercises.workoutId)
+          .all(),
+    });
+
+    const exerciseCountMap = new Map(exerciseCounts.map((ec) => [ec.workoutId, ec.exerciseCount]));
+
+    return c.json(
+      results.map((w) => ({
+        ...w,
+        exerciseCount: exerciseCountMap.get(w.id) ?? 0,
+      })),
+    );
   }),
 );
 
 router.post(
   '/',
   createHandler(async (c, { userId, db }) => {
-    try {
-      const body = await c.req.json();
-      const { name, templateId, notes } = body;
-      if (!name) {
-        return c.json({ message: 'Name is required' }, 400);
-      }
-
-      const now = new Date();
-      if (templateId) {
-        const { requireOwnedTemplate } = await import('../api/guards');
-        const template = await requireOwnedTemplate({ userId, db }, templateId);
-        if (template instanceof Response) return template;
-      }
-
-      const workout = await db
-        .insert(schema.workouts)
-        .values({
-          userId,
-          name,
-          templateId: templateId || null,
-          notes: notes || null,
-          startedAt: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-      if (templateId) {
-        const templateExercisesResult = await db
-          .select()
-          .from(schema.templateExercises)
-          .where(eq(schema.templateExercises.templateId, templateId))
-          .orderBy(schema.templateExercises.orderIndex)
-          .all();
-
-        const exerciseIds = templateExercisesResult.map((te) => te.exerciseId);
-        const historySnapshots = await getLastCompletedExerciseSnapshots(db, userId, exerciseIds);
-        type Snapshot = {
-          exerciseId: string;
-          workoutDate: string | null;
-          sets: {
-            weight: number | null;
-            reps: number | null;
-            rpe: number | null;
-            setNumber: number | null;
-          }[];
-        };
-        const snapshotByExerciseId = new Map<string, Snapshot>(
-          historySnapshots.map((s) => [s.exerciseId, s]),
-        );
-
-        const workoutExerciseRows = templateExercisesResult.map((templateExercise, i) => ({
-          id: schema.generateId(),
-          workoutId: workout.id,
-          exerciseId: templateExercise.exerciseId,
-          orderIndex: i,
-          isAmrap: templateExercise.isAmrap ?? false,
-          updatedAt: now,
-        }));
-
-        await chunkedInsert(db, { table: schema.workoutExercises, rows: workoutExerciseRows });
-
-        const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
-        for (let i = 0; i < templateExercisesResult.length; i++) {
-          const templateExercise = templateExercisesResult[i];
-          const workoutExerciseId = workoutExerciseRows[i].id;
-          const historySnapshot = snapshotByExerciseId.get(templateExercise.exerciseId);
-
-          const historySetCount = historySnapshot?.sets.length ?? 0;
-          const plannedSetCount = Math.max(1, templateExercise.sets ?? 3);
-          const setCount = historySetCount > 0 ? historySetCount : plannedSetCount;
-          const setRows = Array.from({ length: setCount }, (_, s) => {
-            const historySet = historySnapshot?.sets[s];
-            const plannedReps = templateExercise.isAmrap ? null : (templateExercise.reps ?? 0);
-            return {
-              workoutExerciseId,
-              setNumber: s + 1,
-              weight:
-                historySet?.weight ??
-                (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0),
-              reps: historySet?.reps ?? plannedReps,
-              rpe: historySet?.rpe ?? null,
-              isComplete: false,
-              createdAt: now,
-              updatedAt: now,
-            };
-          });
-
-          allSetRows.push(...setRows);
-        }
-
-        if (allSetRows.length > 0) {
-          await chunkedInsert(db, { table: schema.workoutSets, rows: allSetRows });
-        }
-      }
-      return c.json(workout, 201);
-    } catch {
-      return c.json({ message: 'Failed to create workout' }, 500);
+    const body = await c.req.json();
+    const { name, templateId, notes } = body;
+    if (!name) {
+      return c.json({ message: 'Name is required' }, 400);
     }
+
+    const now = new Date();
+    if (templateId) {
+      const { requireOwnedRecord: requireOwnedTemplate } = await import('../api/guards');
+      const template = await requireOwnedTemplate({ userId, db }, schema.templates, templateId, {
+        extraConditions: [eq(schema.templates.isDeleted, false)],
+        notFoundBody: { message: 'Template not found' },
+      });
+      if (template instanceof Response) return template;
+    }
+
+    const workout = await db
+      .insert(schema.workouts)
+      .values({
+        userId,
+        name,
+        templateId: templateId || null,
+        notes: notes || null,
+        startedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    if (templateId) {
+      const templateExercisesResult = await db
+        .select()
+        .from(schema.templateExercises)
+        .where(eq(schema.templateExercises.templateId, templateId))
+        .orderBy(schema.templateExercises.orderIndex)
+        .all();
+
+      const exerciseIds = templateExercisesResult.map((te) => te.exerciseId);
+      const historySnapshots = await getLastCompletedExerciseSnapshots(db, userId, exerciseIds);
+      type Snapshot = {
+        exerciseId: string;
+        workoutDate: string | null;
+        sets: {
+          weight: number | null;
+          reps: number | null;
+          rpe: number | null;
+          setNumber: number | null;
+        }[];
+      };
+      const snapshotByExerciseId = new Map<string, Snapshot>(
+        historySnapshots.map((s) => [s.exerciseId, s]),
+      );
+
+      const workoutExerciseRows = templateExercisesResult.map((templateExercise, i) => ({
+        id: schema.generateId(),
+        workoutId: workout.id,
+        exerciseId: templateExercise.exerciseId,
+        orderIndex: i,
+        isAmrap: templateExercise.isAmrap ?? false,
+        updatedAt: now,
+      }));
+
+      await chunkedInsert(db, { table: schema.workoutExercises, rows: workoutExerciseRows });
+
+      const allSetRows: (typeof schema.workoutSets.$inferInsert)[] = [];
+      for (let i = 0; i < templateExercisesResult.length; i++) {
+        const templateExercise = templateExercisesResult[i];
+        const workoutExerciseId = workoutExerciseRows[i].id;
+        const historySnapshot = snapshotByExerciseId.get(templateExercise.exerciseId);
+
+        const historySetCount = historySnapshot?.sets.length ?? 0;
+        const plannedSetCount = Math.max(1, templateExercise.sets ?? 3);
+        const setCount = Math.max(plannedSetCount, historySetCount);
+        const setRows = Array.from({ length: setCount }, (_, s) => {
+          const historySet = historySnapshot?.sets[s];
+          const plannedReps = templateExercise.isAmrap ? null : (templateExercise.reps ?? 0);
+          return {
+            workoutExerciseId,
+            setNumber: s + 1,
+            weight:
+              historySet?.weight ??
+              (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0),
+            reps: historySet?.reps ?? plannedReps,
+            rpe: historySet?.rpe ?? null,
+            isComplete: false,
+            createdAt: now,
+            updatedAt: now,
+          };
+        });
+
+        allSetRows.push(...setRows);
+      }
+
+      if (allSetRows.length > 0) {
+        await chunkedInsert(db, { table: schema.workoutSets, rows: allSetRows });
+      }
+    }
+    return c.json(workout, 201);
   }),
 );
 
@@ -280,85 +245,72 @@ router.get(
   '/:id',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const workout = await requireOwnedWorkout({ userId, db }, id);
-      if (workout instanceof Response) return workout;
-      const aggregates = await db
-        .select({
-          totalSets: sql<number>`COALESCE(SUM(CASE WHEN ${schema.workoutSets.isComplete} = 1 THEN 1 ELSE 0 END), 0)`,
-          totalVolume: sql<number>`COALESCE(SUM(CASE WHEN ${schema.workoutSets.isComplete} = 1 AND ${schema.workoutSets.weight} > 0 THEN ${schema.workoutSets.weight} * ${schema.workoutSets.reps} ELSE 0 END), 0)`,
-          exerciseCount: sql<number>`COUNT(DISTINCT ${schema.workoutExercises.id})`,
-        })
-        .from(schema.workoutExercises)
-        .leftJoin(
-          schema.workoutSets,
-          eq(schema.workoutExercises.id, schema.workoutSets.workoutExerciseId),
-        )
-        .where(eq(schema.workoutExercises.workoutId, id))
-        .get();
-      const exercisesResult = await db
-        .select({
-          id: schema.workoutExercises.id,
-          exerciseId: schema.workoutExercises.exerciseId,
-          orderIndex: schema.workoutExercises.orderIndex,
-          notes: schema.workoutExercises.notes,
-          isAmrap: schema.workoutExercises.isAmrap,
-          name: schema.exercises.name,
-          muscleGroup: schema.exercises.muscleGroup,
-          libraryId: schema.exercises.libraryId,
-        })
-        .from(schema.workoutExercises)
-        .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
-        .where(eq(schema.workoutExercises.workoutId, id))
-        .orderBy(schema.workoutExercises.orderIndex)
-        .all();
+    const workout = await requireOwnedRecord({ userId, db }, schema.workouts, id, {
+      extraConditions: [eq(schema.workouts.isDeleted, false)],
+      notFoundBody: { message: 'Workout not found' },
+    });
+    if (workout instanceof Response) return workout;
+    const aggregates = await getWorkoutAggregates(db, id);
+    const exercisesResult = await db
+      .select({
+        id: schema.workoutExercises.id,
+        exerciseId: schema.workoutExercises.exerciseId,
+        orderIndex: schema.workoutExercises.orderIndex,
+        notes: schema.workoutExercises.notes,
+        isAmrap: schema.workoutExercises.isAmrap,
+        name: schema.exercises.name,
+        muscleGroup: schema.exercises.muscleGroup,
+        libraryId: schema.exercises.libraryId,
+      })
+      .from(schema.workoutExercises)
+      .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
+      .where(eq(schema.workoutExercises.workoutId, id))
+      .orderBy(schema.workoutExercises.orderIndex)
+      .all();
 
-      const exerciseIds = exercisesResult.map((e: any) => e.id);
-      const allSets = await chunkedQueryMany(db, {
-        ids: exerciseIds,
-        chunkSize: 100,
-        builder: (chunk) =>
-          db
-            .select({
-              id: schema.workoutSets.id,
-              workoutExerciseId: schema.workoutSets.workoutExerciseId,
-              setNumber: schema.workoutSets.setNumber,
-              weight: schema.workoutSets.weight,
-              reps: schema.workoutSets.reps,
-              rpe: schema.workoutSets.rpe,
-              isComplete: schema.workoutSets.isComplete,
-              completedAt: schema.workoutSets.completedAt,
-              createdAt: schema.workoutSets.createdAt,
-            })
-            .from(schema.workoutSets)
-            .where(inArray(schema.workoutSets.workoutExerciseId, chunk))
-            .orderBy(schema.workoutSets.setNumber)
-            .all(),
-      });
+    const exerciseIds = exercisesResult.map((e: any) => e.id);
+    const allSets = await chunkedQueryMany(db, {
+      ids: exerciseIds,
+      chunkSize: 100,
+      builder: (chunk) =>
+        db
+          .select({
+            id: schema.workoutSets.id,
+            workoutExerciseId: schema.workoutSets.workoutExerciseId,
+            setNumber: schema.workoutSets.setNumber,
+            weight: schema.workoutSets.weight,
+            reps: schema.workoutSets.reps,
+            rpe: schema.workoutSets.rpe,
+            isComplete: schema.workoutSets.isComplete,
+            completedAt: schema.workoutSets.completedAt,
+            createdAt: schema.workoutSets.createdAt,
+          })
+          .from(schema.workoutSets)
+          .where(inArray(schema.workoutSets.workoutExerciseId, chunk))
+          .orderBy(schema.workoutSets.setNumber)
+          .all(),
+    });
 
-      const setsByExerciseId = new Map<string, typeof allSets>();
-      for (const set of allSets) {
-        const eid = set.workoutExerciseId as string;
-        if (!setsByExerciseId.has(eid)) setsByExerciseId.set(eid, []);
-        setsByExerciseId.get(eid)!.push(set);
-      }
-
-      const exercisesWithSets = exercisesResult.map((e: any) => ({
-        ...e,
-        sets: setsByExerciseId.get(e.id) ?? [],
-      }));
-
-      return c.json({
-        ...workout,
-        totalVolume: aggregates?.totalVolume ?? 0,
-        totalSets: aggregates?.totalSets ?? 0,
-        durationMinutes: workout.durationMinutes ?? 0,
-        exerciseCount: aggregates?.exerciseCount ?? 0,
-        exercises: exercisesWithSets,
-      });
-    } catch {
-      return c.json({ message: 'Failed to fetch workout' }, 500);
+    const setsByExerciseId = new Map<string, typeof allSets>();
+    for (const set of allSets) {
+      const eid = set.workoutExerciseId as string;
+      if (!setsByExerciseId.has(eid)) setsByExerciseId.set(eid, []);
+      setsByExerciseId.get(eid)!.push(set);
     }
+
+    const exercisesWithSets = exercisesResult.map((e: any) => ({
+      ...e,
+      sets: setsByExerciseId.get(e.id) ?? [],
+    }));
+
+    return c.json({
+      ...workout,
+      totalVolume: aggregates?.totalVolume ?? 0,
+      totalSets: aggregates?.totalSets ?? 0,
+      durationMinutes: workout.durationMinutes ?? 0,
+      exerciseCount: aggregates?.exerciseCount ?? 0,
+      exercises: exercisesWithSets,
+    });
   }),
 );
 
@@ -366,22 +318,26 @@ router.put(
   '/:id',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const body = await c.req.json();
-      const allowed = buildWorkoutUpdate(body);
-      const result = await db
-        .update(schema.workouts)
-        .set({ ...allowed, updatedAt: new Date() })
-        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
-        .returning()
-        .get();
-      if (!result) {
-        return c.json({ message: 'Workout not found' }, 404);
-      }
-      return c.json(result);
-    } catch {
-      return c.json({ message: 'Failed to update workout' }, 500);
+    const body = await c.req.json();
+    const allowed = pickAllowedKeys(body, [
+      'name',
+      'notes',
+      'startedAt',
+      'completedAt',
+      'totalVolume',
+      'totalSets',
+      'durationMinutes',
+    ]);
+    const result = await db
+      .update(schema.workouts)
+      .set({ ...allowed, updatedAt: new Date() })
+      .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      .returning()
+      .get();
+    if (!result) {
+      return c.json({ message: 'Workout not found' }, 404);
     }
+    return c.json(result);
   }),
 );
 
@@ -389,27 +345,23 @@ router.delete(
   '/:id',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const now = new Date();
-      const result = await db
-        .update(schema.workouts)
-        .set({ isDeleted: true, updatedAt: now })
-        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
-        .run();
+    const now = new Date();
+    const result = await db
+      .update(schema.workouts)
+      .set({ isDeleted: true, updatedAt: now })
+      .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      .run();
 
-      await db
-        .update(schema.programCycleWorkouts)
-        .set({
-          workoutId: null,
-          updatedAt: now,
-        })
-        .where(eq(schema.programCycleWorkouts.workoutId, id))
-        .run();
+    await db
+      .update(schema.programCycleWorkouts)
+      .set({
+        workoutId: null,
+        updatedAt: now,
+      })
+      .where(eq(schema.programCycleWorkouts.workoutId, id))
+      .run();
 
-      return c.json({ success: result.success });
-    } catch {
-      return c.json({ message: 'Failed to delete workout' }, 500);
-    }
+    return c.json({ success: result.success });
   }),
 );
 
@@ -418,320 +370,316 @@ router.post(
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
 
-    try {
-      const body = await c.req.json();
-      const syncOperationId = typeof body.syncOperationId === 'string' ? body.syncOperationId : '';
-      const workoutInput = body.workout ?? {};
-      const exerciseInputs = Array.isArray(body.exercises) ? body.exercises : [];
-      const setInputs = Array.isArray(body.sets) ? body.sets : [];
+    const body = await c.req.json();
+    const syncOperationId = typeof body.syncOperationId === 'string' ? body.syncOperationId : '';
+    const workoutInput = body.workout ?? {};
+    const exerciseInputs = Array.isArray(body.exercises) ? body.exercises : [];
+    const setInputs = Array.isArray(body.sets) ? body.sets : [];
 
-      if (!syncOperationId || workoutInput.id !== id) {
-        return c.json({ message: 'Invalid sync payload' }, 400);
-      }
-      if (
-        exerciseInputs.length > MAX_SYNC_COMPLETE_EXERCISES ||
-        setInputs.length > MAX_SYNC_COMPLETE_SETS
-      ) {
-        return c.json(
-          {
-            message: 'Sync payload is too large',
-            limits: {
-              exercises: MAX_SYNC_COMPLETE_EXERCISES,
-              sets: MAX_SYNC_COMPLETE_SETS,
-            },
+    if (!syncOperationId || workoutInput.id !== id) {
+      return c.json({ message: 'Invalid sync payload' }, 400);
+    }
+    if (
+      exerciseInputs.length > MAX_SYNC_COMPLETE_EXERCISES ||
+      setInputs.length > MAX_SYNC_COMPLETE_SETS
+    ) {
+      return c.json(
+        {
+          message: 'Sync payload is too large',
+          limits: {
+            exercises: MAX_SYNC_COMPLETE_EXERCISES,
+            sets: MAX_SYNC_COMPLETE_SETS,
           },
-          413,
-        );
-      }
+        },
+        413,
+      );
+    }
 
-      const existingOperation = await db
-        .select()
-        .from(schema.workoutSyncOperations)
+    const existingOperation = await db
+      .select()
+      .from(schema.workoutSyncOperations)
+      .where(
+        and(
+          eq(schema.workoutSyncOperations.id, syncOperationId),
+          eq(schema.workoutSyncOperations.userId, userId),
+        ),
+      )
+      .get();
+
+    if (existingOperation) {
+      const snapshot = await fetchWorkoutSyncSnapshot(db, existingOperation.workoutId);
+      return c.json(buildWorkoutSyncResponse(snapshot));
+    }
+
+    const existingWorkout = await db
+      .select()
+      .from(schema.workouts)
+      .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      .get();
+
+    if (existingWorkout?.isDeleted) {
+      return c.json({ message: 'Workout was deleted on the server', code: 'deleted' }, 409);
+    }
+
+    if (existingWorkout?.completedAt) {
+      return c.json(
+        { message: 'Workout is already completed on the server', code: 'completed' },
+        409,
+      );
+    }
+
+    if (workoutInput.templateId) {
+      const template = await db
+        .select({ id: schema.templates.id })
+        .from(schema.templates)
         .where(
           and(
-            eq(schema.workoutSyncOperations.id, syncOperationId),
-            eq(schema.workoutSyncOperations.userId, userId),
+            eq(schema.templates.id, workoutInput.templateId),
+            eq(schema.templates.userId, userId),
+            eq(schema.templates.isDeleted, false),
+          ),
+        )
+        .get();
+      if (!template) {
+        return c.json({ message: 'Template not found', code: 'template_not_found' }, 409);
+      }
+    }
+
+    if (workoutInput.programCycleId) {
+      const cycle = await db
+        .select({ id: schema.userProgramCycles.id })
+        .from(schema.userProgramCycles)
+        .where(
+          and(
+            eq(schema.userProgramCycles.id, workoutInput.programCycleId),
+            eq(schema.userProgramCycles.userId, userId),
+          ),
+        )
+        .get();
+      if (!cycle) {
+        return c.json({ message: 'Program cycle not found', code: 'cycle_not_found' }, 409);
+      }
+    }
+
+    const startedAt = parseDateInput(workoutInput.startedAt);
+    const completedAt = parseDateInput(workoutInput.completedAt) ?? new Date();
+    if (!startedAt || typeof workoutInput.name !== 'string' || workoutInput.name.trim() === '') {
+      return c.json({ message: 'Invalid workout data' }, 400);
+    }
+
+    const now = new Date();
+    const workoutValues = {
+      id,
+      userId,
+      templateId: workoutInput.templateId ?? null,
+      programCycleId: workoutInput.programCycleId ?? null,
+      name: workoutInput.name.trim(),
+      notes: workoutInput.notes ?? null,
+      startedAt,
+      createdAt: existingWorkout?.createdAt ?? startedAt,
+      updatedAt: now,
+    };
+
+    if (!existingWorkout) {
+      await db.insert(schema.workouts).values(workoutValues).run();
+    } else {
+      await db
+        .update(schema.workouts)
+        .set({
+          templateId: workoutValues.templateId,
+          programCycleId: workoutValues.programCycleId,
+          name: workoutValues.name,
+          notes: workoutValues.notes,
+          startedAt,
+          updatedAt: now,
+        })
+        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+        .run();
+    }
+
+    const existingExercises = await db
+      .select({ id: schema.workoutExercises.id })
+      .from(schema.workoutExercises)
+      .where(eq(schema.workoutExercises.workoutId, id))
+      .all();
+    const existingExerciseIds = existingExercises.map((exercise) => exercise.id);
+    if (existingExerciseIds.length > 0) {
+      await db
+        .delete(schema.workoutSets)
+        .where(inArray(schema.workoutSets.workoutExerciseId, existingExerciseIds))
+        .run();
+      await db
+        .delete(schema.workoutExercises)
+        .where(eq(schema.workoutExercises.workoutId, id))
+        .run();
+    }
+
+    const resolvedExerciseRows: (typeof schema.workoutExercises.$inferInsert)[] = [];
+    for (const exercise of exerciseInputs) {
+      if (!exercise?.id || !exercise.exerciseId || exercise.orderIndex === undefined) {
+        return c.json({ message: 'Invalid exercise data' }, 400);
+      }
+
+      let resolvedExerciseId = exercise.exerciseId;
+      const ownedExercise = await db
+        .select({ id: schema.exercises.id })
+        .from(schema.exercises)
+        .where(
+          and(
+            eq(schema.exercises.id, exercise.exerciseId),
+            eq(schema.exercises.userId, userId),
+            eq(schema.exercises.isDeleted, false),
           ),
         )
         .get();
 
-      if (existingOperation) {
-        const snapshot = await fetchWorkoutSyncSnapshot(db, existingOperation.workoutId);
-        return c.json(buildWorkoutSyncResponse(snapshot));
+      if (!ownedExercise) {
+        if (exercise.libraryId || exercise.name) {
+          resolvedExerciseId = await getOrCreateExerciseForUser(
+            db,
+            userId,
+            exercise.name ?? 'Exercise',
+            undefined,
+            exercise.libraryId,
+          );
+        } else {
+          resolvedExerciseId = await resolveToUserExerciseId(db, userId, exercise.exerciseId);
+        }
       }
 
-      const existingWorkout = await db
-        .select()
-        .from(schema.workouts)
-        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      resolvedExerciseRows.push({
+        id: exercise.id,
+        workoutId: id,
+        exerciseId: resolvedExerciseId,
+        orderIndex: exercise.orderIndex,
+        notes: exercise.notes ?? null,
+        isAmrap: exercise.isAmrap ?? false,
+        updatedAt: now,
+      });
+    }
+
+    await chunkedInsert(db, { table: schema.workoutExercises, rows: resolvedExerciseRows });
+
+    const exerciseIdSet = new Set(resolvedExerciseRows.map((exercise) => exercise.id));
+    const setRows: (typeof schema.workoutSets.$inferInsert)[] = [];
+    let totalSets = 0;
+    let totalVolume = 0;
+
+    for (const set of setInputs) {
+      if (!set?.id || !exerciseIdSet.has(set.workoutExerciseId) || set.setNumber === undefined) {
+        return c.json({ message: 'Invalid set data' }, 400);
+      }
+
+      const isComplete = set.isComplete === true;
+      if (isComplete) {
+        totalSets++;
+        if (typeof set.weight === 'number' && typeof set.reps === 'number') {
+          totalVolume += set.weight * set.reps;
+        }
+      }
+
+      setRows.push({
+        id: set.id,
+        workoutExerciseId: set.workoutExerciseId,
+        setNumber: set.setNumber,
+        weight: set.weight ?? null,
+        reps: set.reps ?? null,
+        rpe: set.rpe ?? null,
+        isComplete,
+        completedAt: isComplete ? (parseDateInput(set.completedAt) ?? completedAt) : null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
+
+    const elapsedMs = completedAt.getTime() - startedAt.getTime();
+    const rawMinutes = Math.round(elapsedMs / 60000);
+    const durationMinutes = rawMinutes > 0 && rawMinutes <= 1440 ? rawMinutes : null;
+
+    await db
+      .update(schema.workouts)
+      .set({
+        completedAt,
+        totalVolume,
+        totalSets,
+        durationMinutes,
+        updatedAt: now,
+      })
+      .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      .run();
+
+    if (workoutInput.cycleWorkoutId) {
+      const ownedCycleWorkout = await db
+        .select({ id: schema.programCycleWorkouts.id })
+        .from(schema.programCycleWorkouts)
+        .innerJoin(
+          schema.userProgramCycles,
+          eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
+        )
+        .where(
+          and(
+            eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId),
+            eq(schema.userProgramCycles.userId, userId),
+          ),
+        )
         .get();
 
-      if (existingWorkout?.isDeleted) {
-        return c.json({ message: 'Workout was deleted on the server', code: 'deleted' }, 409);
-      }
-
-      if (existingWorkout?.completedAt) {
-        return c.json(
-          { message: 'Workout is already completed on the server', code: 'completed' },
-          409,
-        );
-      }
-
-      if (workoutInput.templateId) {
-        const template = await db
-          .select({ id: schema.templates.id })
-          .from(schema.templates)
-          .where(
-            and(
-              eq(schema.templates.id, workoutInput.templateId),
-              eq(schema.templates.userId, userId),
-              eq(schema.templates.isDeleted, false),
-            ),
-          )
-          .get();
-        if (!template) {
-          return c.json({ message: 'Template not found', code: 'template_not_found' }, 409);
-        }
-      }
-
-      if (workoutInput.programCycleId) {
-        const cycle = await db
-          .select({ id: schema.userProgramCycles.id })
-          .from(schema.userProgramCycles)
-          .where(
-            and(
-              eq(schema.userProgramCycles.id, workoutInput.programCycleId),
-              eq(schema.userProgramCycles.userId, userId),
-            ),
-          )
-          .get();
-        if (!cycle) {
-          return c.json({ message: 'Program cycle not found', code: 'cycle_not_found' }, 409);
-        }
-      }
-
-      const startedAt = parseDateInput(workoutInput.startedAt);
-      const completedAt = parseDateInput(workoutInput.completedAt) ?? new Date();
-      if (!startedAt || typeof workoutInput.name !== 'string' || workoutInput.name.trim() === '') {
-        return c.json({ message: 'Invalid workout data' }, 400);
-      }
-
-      const now = new Date();
-      const workoutValues = {
-        id,
-        userId,
-        templateId: workoutInput.templateId ?? null,
-        programCycleId: workoutInput.programCycleId ?? null,
-        name: workoutInput.name.trim(),
-        notes: workoutInput.notes ?? null,
-        startedAt,
-        createdAt: existingWorkout?.createdAt ?? startedAt,
-        updatedAt: now,
-      };
-
-      if (!existingWorkout) {
-        await db.insert(schema.workouts).values(workoutValues).run();
-      } else {
+      if (ownedCycleWorkout) {
         await db
-          .update(schema.workouts)
-          .set({
-            templateId: workoutValues.templateId,
-            programCycleId: workoutValues.programCycleId,
-            name: workoutValues.name,
-            notes: workoutValues.notes,
-            startedAt,
-            updatedAt: now,
-          })
-          .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+          .update(schema.programCycleWorkouts)
+          .set({ workoutId: id, updatedAt: now })
+          .where(eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId))
           .run();
       }
-
-      const existingExercises = await db
-        .select({ id: schema.workoutExercises.id })
-        .from(schema.workoutExercises)
-        .where(eq(schema.workoutExercises.workoutId, id))
-        .all();
-      const existingExerciseIds = existingExercises.map((exercise) => exercise.id);
-      if (existingExerciseIds.length > 0) {
-        await db
-          .delete(schema.workoutSets)
-          .where(inArray(schema.workoutSets.workoutExerciseId, existingExerciseIds))
-          .run();
-        await db
-          .delete(schema.workoutExercises)
-          .where(eq(schema.workoutExercises.workoutId, id))
-          .run();
-      }
-
-      const resolvedExerciseRows: (typeof schema.workoutExercises.$inferInsert)[] = [];
-      for (const exercise of exerciseInputs) {
-        if (!exercise?.id || !exercise.exerciseId || exercise.orderIndex === undefined) {
-          return c.json({ message: 'Invalid exercise data' }, 400);
-        }
-
-        let resolvedExerciseId = exercise.exerciseId;
-        const ownedExercise = await db
-          .select({ id: schema.exercises.id })
-          .from(schema.exercises)
-          .where(
-            and(
-              eq(schema.exercises.id, exercise.exerciseId),
-              eq(schema.exercises.userId, userId),
-              eq(schema.exercises.isDeleted, false),
-            ),
-          )
-          .get();
-
-        if (!ownedExercise) {
-          if (exercise.libraryId || exercise.name) {
-            resolvedExerciseId = await getOrCreateExerciseForUser(
-              db,
-              userId,
-              exercise.name ?? 'Exercise',
-              undefined,
-              exercise.libraryId,
-            );
-          } else {
-            resolvedExerciseId = await resolveToUserExerciseId(db, userId, exercise.exerciseId);
-          }
-        }
-
-        resolvedExerciseRows.push({
-          id: exercise.id,
-          workoutId: id,
-          exerciseId: resolvedExerciseId,
-          orderIndex: exercise.orderIndex,
-          notes: exercise.notes ?? null,
-          isAmrap: exercise.isAmrap ?? false,
-          updatedAt: now,
-        });
-      }
-
-      await chunkedInsert(db, { table: schema.workoutExercises, rows: resolvedExerciseRows });
-
-      const exerciseIdSet = new Set(resolvedExerciseRows.map((exercise) => exercise.id));
-      const setRows: (typeof schema.workoutSets.$inferInsert)[] = [];
-      let totalSets = 0;
-      let totalVolume = 0;
-
-      for (const set of setInputs) {
-        if (!set?.id || !exerciseIdSet.has(set.workoutExerciseId) || set.setNumber === undefined) {
-          return c.json({ message: 'Invalid set data' }, 400);
-        }
-
-        const isComplete = set.isComplete === true;
-        if (isComplete) {
-          totalSets++;
-          if (typeof set.weight === 'number' && typeof set.reps === 'number') {
-            totalVolume += set.weight * set.reps;
-          }
-        }
-
-        setRows.push({
-          id: set.id,
-          workoutExerciseId: set.workoutExerciseId,
-          setNumber: set.setNumber,
-          weight: set.weight ?? null,
-          reps: set.reps ?? null,
-          rpe: set.rpe ?? null,
-          isComplete,
-          completedAt: isComplete ? (parseDateInput(set.completedAt) ?? completedAt) : null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
-
-      const elapsedMs = completedAt.getTime() - startedAt.getTime();
-      const rawMinutes = Math.round(elapsedMs / 60000);
-      const durationMinutes = rawMinutes > 0 && rawMinutes <= 1440 ? rawMinutes : null;
-
-      await db
-        .update(schema.workouts)
-        .set({
-          completedAt,
-          totalVolume,
-          totalSets,
-          durationMinutes,
-          updatedAt: now,
-        })
-        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
-        .run();
-
-      if (workoutInput.cycleWorkoutId) {
-        const ownedCycleWorkout = await db
-          .select({ id: schema.programCycleWorkouts.id })
-          .from(schema.programCycleWorkouts)
-          .innerJoin(
-            schema.userProgramCycles,
-            eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
-          )
-          .where(
-            and(
-              eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId),
-              eq(schema.userProgramCycles.userId, userId),
-            ),
-          )
-          .get();
-
-        if (ownedCycleWorkout) {
-          await db
-            .update(schema.programCycleWorkouts)
-            .set({ workoutId: id, updatedAt: now })
-            .where(eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId))
-            .run();
-        }
-      }
-
-      await advanceProgramCycleForWorkout(db, userId, id);
-
-      await db
-        .insert(schema.workoutSyncOperations)
-        .values({
-          id: syncOperationId,
-          userId,
-          workoutId: id,
-          status: 'applied',
-          requestHash: null,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run();
-
-      const snapshot = await fetchWorkoutSyncSnapshot(db, id);
-      let programAdvance: Record<string, unknown> | undefined;
-      if (workoutInput.programCycleId) {
-        const cycle = await db
-          .select({
-            id: schema.userProgramCycles.id,
-            currentWeek: schema.userProgramCycles.currentWeek,
-            currentSession: schema.userProgramCycles.currentSession,
-            status: schema.userProgramCycles.status,
-          })
-          .from(schema.userProgramCycles)
-          .where(
-            and(
-              eq(schema.userProgramCycles.id, workoutInput.programCycleId),
-              eq(schema.userProgramCycles.userId, userId),
-            ),
-          )
-          .get();
-        programAdvance = cycle
-          ? {
-              programCycleId: cycle.id,
-              completedCycleWorkoutId: workoutInput.cycleWorkoutId ?? undefined,
-              currentWeek: cycle.currentWeek,
-              currentSession: cycle.currentSession,
-              status: cycle.status,
-            }
-          : undefined;
-      }
-
-      return c.json({ ...buildWorkoutSyncResponse(snapshot), programAdvance });
-    } catch {
-      return c.json({ message: 'Failed to sync completed workout' }, 500);
     }
+
+    await advanceProgramCycleForWorkout(db, userId, id);
+
+    await db
+      .insert(schema.workoutSyncOperations)
+      .values({
+        id: syncOperationId,
+        userId,
+        workoutId: id,
+        status: 'applied',
+        requestHash: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    const snapshot = await fetchWorkoutSyncSnapshot(db, id);
+    let programAdvance: Record<string, unknown> | undefined;
+    if (workoutInput.programCycleId) {
+      const cycle = await db
+        .select({
+          id: schema.userProgramCycles.id,
+          currentWeek: schema.userProgramCycles.currentWeek,
+          currentSession: schema.userProgramCycles.currentSession,
+          status: schema.userProgramCycles.status,
+        })
+        .from(schema.userProgramCycles)
+        .where(
+          and(
+            eq(schema.userProgramCycles.id, workoutInput.programCycleId),
+            eq(schema.userProgramCycles.userId, userId),
+          ),
+        )
+        .get();
+      programAdvance = cycle
+        ? {
+            programCycleId: cycle.id,
+            completedCycleWorkoutId: workoutInput.cycleWorkoutId ?? undefined,
+            currentWeek: cycle.currentWeek,
+            currentSession: cycle.currentSession,
+            status: cycle.status,
+          }
+        : undefined;
+    }
+
+    return c.json({ ...buildWorkoutSyncResponse(snapshot), programAdvance });
   }),
 );
 
@@ -739,51 +687,35 @@ router.put(
   '/:id/complete',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const workout = await db
-        .select({ startedAt: schema.workouts.startedAt })
-        .from(schema.workouts)
-        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
-        .get();
-      if (!workout) {
-        return c.json({ message: 'Workout not found' }, 404);
-      }
-      const now = new Date();
-      const aggregates = await db
-        .select({
-          totalSets: sql<number>`COALESCE(SUM(CASE WHEN ${schema.workoutSets.isComplete} = 1 THEN 1 ELSE 0 END), 0)`,
-          totalVolume: sql<number>`COALESCE(SUM(CASE WHEN ${schema.workoutSets.isComplete} = 1 AND ${schema.workoutSets.weight} > 0 THEN ${schema.workoutSets.weight} * ${schema.workoutSets.reps} ELSE 0 END), 0)`,
-          exerciseCount: sql<number>`COUNT(DISTINCT ${schema.workoutExercises.id})`,
-        })
-        .from(schema.workoutExercises)
-        .leftJoin(
-          schema.workoutSets,
-          eq(schema.workoutExercises.id, schema.workoutSets.workoutExerciseId),
-        )
-        .where(eq(schema.workoutExercises.workoutId, id))
-        .get();
-      const elapsedMs = now.getTime() - new Date(workout.startedAt).getTime();
-      const rawMinutes = Math.round(elapsedMs / 60000);
-      const durationMinutes = rawMinutes > 0 && rawMinutes <= 1440 ? rawMinutes : null;
-      const result = await db
-        .update(schema.workouts)
-        .set({
-          completedAt: now,
-          totalVolume: aggregates?.totalVolume ?? 0,
-          totalSets: aggregates?.totalSets ?? 0,
-          durationMinutes,
-          updatedAt: now,
-        })
-        .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
-        .returning()
-        .get();
-
-      await advanceProgramCycleForWorkout(db, userId, id);
-
-      return c.json({ ...result, exerciseCount: aggregates?.exerciseCount ?? 0 });
-    } catch {
-      return c.json({ message: 'Failed to complete workout' }, 500);
+    const workout = await db
+      .select({ startedAt: schema.workouts.startedAt })
+      .from(schema.workouts)
+      .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      .get();
+    if (!workout) {
+      return c.json({ message: 'Workout not found' }, 404);
     }
+    const now = new Date();
+    const aggregates = await getWorkoutAggregates(db, id);
+    const elapsedMs = now.getTime() - new Date(workout.startedAt).getTime();
+    const rawMinutes = Math.round(elapsedMs / 60000);
+    const durationMinutes = rawMinutes > 0 && rawMinutes <= 1440 ? rawMinutes : null;
+    const result = await db
+      .update(schema.workouts)
+      .set({
+        completedAt: now,
+        totalVolume: aggregates?.totalVolume ?? 0,
+        totalSets: aggregates?.totalSets ?? 0,
+        durationMinutes,
+        updatedAt: now,
+      })
+      .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
+      .returning()
+      .get();
+
+    await advanceProgramCycleForWorkout(db, userId, id);
+
+    return c.json({ ...result, exerciseCount: aggregates?.exerciseCount ?? 0 });
   }),
 );
 
@@ -791,30 +723,29 @@ router.post(
   '/:id/exercises',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const workout = await requireOwnedWorkout({ userId, db }, id);
-      if (workout instanceof Response) return workout;
-      const body = await c.req.json();
-      const { exerciseId, orderIndex } = body;
-      if (!exerciseId || orderIndex === undefined) {
-        return c.json({ message: 'exerciseId and orderIndex are required' }, 400);
-      }
-      const resolvedExerciseId = await resolveToUserExerciseId(db, userId, exerciseId);
-      const now = new Date();
-      const result = await db
-        .insert(schema.workoutExercises)
-        .values({
-          workoutId: id,
-          exerciseId: resolvedExerciseId,
-          orderIndex,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-      return c.json(result, 201);
-    } catch {
-      return c.json({ message: 'Failed to add exercise to workout' }, 500);
+    const workout = await requireOwnedRecord({ userId, db }, schema.workouts, id, {
+      extraConditions: [eq(schema.workouts.isDeleted, false)],
+      notFoundBody: { message: 'Workout not found' },
+    });
+    if (workout instanceof Response) return workout;
+    const body = await c.req.json();
+    const { exerciseId, orderIndex } = body;
+    if (!exerciseId || orderIndex === undefined) {
+      return c.json({ message: 'exerciseId and orderIndex are required' }, 400);
     }
+    const resolvedExerciseId = await resolveToUserExerciseId(db, userId, exerciseId);
+    const now = new Date();
+    const result = await db
+      .insert(schema.workoutExercises)
+      .values({
+        workoutId: id,
+        exerciseId: resolvedExerciseId,
+        orderIndex,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    return c.json(result, 201);
   }),
 );
 
@@ -822,57 +753,52 @@ router.delete(
   '/:id/exercises/:exerciseId',
   createHandler(async (c, { userId, db }) => {
     const { id, exerciseId } = c.req.param();
-    try {
-      const workout = await requireOwnedWorkout({ userId, db }, id);
-      if (workout instanceof Response) return workout;
-      const result = await db
-        .delete(schema.workoutExercises)
-        .where(
-          and(
-            eq(schema.workoutExercises.workoutId, id),
-            eq(schema.workoutExercises.exerciseId, exerciseId),
-          ),
-        )
-        .run();
-      return c.json({ success: result.success });
-    } catch {
-      return c.json({ message: 'Failed to remove exercise from workout' }, 500);
-    }
+    const workout = await requireOwnedRecord({ userId, db }, schema.workouts, id, {
+      extraConditions: [eq(schema.workouts.isDeleted, false)],
+      notFoundBody: { message: 'Workout not found' },
+    });
+    if (workout instanceof Response) return workout;
+    const result = await db
+      .delete(schema.workoutExercises)
+      .where(
+        and(
+          eq(schema.workoutExercises.workoutId, id),
+          eq(schema.workoutExercises.exerciseId, exerciseId),
+        ),
+      )
+      .run();
+    return c.json({ success: result.success });
   }),
 );
 
 router.post(
   '/sets',
   createHandler(async (c, { userId, db }) => {
-    try {
-      const body = await c.req.json();
-      const { workoutExerciseId, setNumber, weight, reps, rpe, isComplete } = body;
-      if (!workoutExerciseId || setNumber === undefined) {
-        return c.json({ message: 'workoutExerciseId and setNumber are required' }, 400);
-      }
-      const we = await requireOwnedWorkoutExercise({ userId, db }, workoutExerciseId);
-      if (we instanceof Response) return we;
-
-      const now = new Date();
-      const result = await db
-        .insert(schema.workoutSets)
-        .values({
-          workoutExerciseId,
-          setNumber,
-          weight: weight || null,
-          reps: reps || null,
-          rpe: rpe || null,
-          isComplete: isComplete || false,
-          ...(isComplete ? { completedAt: now } : {}),
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-      return c.json(result, 201);
-    } catch {
-      return c.json({ message: 'Failed to create set' }, 500);
+    const body = await c.req.json();
+    const { workoutExerciseId, setNumber, weight, reps, rpe, isComplete } = body;
+    if (!workoutExerciseId || setNumber === undefined) {
+      return c.json({ message: 'workoutExerciseId and setNumber are required' }, 400);
     }
+    const we = await requireOwnedWorkoutExercise({ userId, db }, workoutExerciseId);
+    if (we instanceof Response) return we;
+
+    const now = new Date();
+    const result = await db
+      .insert(schema.workoutSets)
+      .values({
+        workoutExerciseId,
+        setNumber,
+        weight: weight || null,
+        reps: reps || null,
+        rpe: rpe || null,
+        isComplete: isComplete || false,
+        ...(isComplete ? { completedAt: now } : {}),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+    return c.json(result, 201);
   }),
 );
 
@@ -880,27 +806,23 @@ router.put(
   '/sets/:id',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const set = await requireOwnedWorkoutSet({ userId, db }, id);
-      if (set instanceof Response) return set;
-      const body = await c.req.json();
-      const allowed = buildWorkoutSetUpdate(body);
-      const updateData: any = { ...allowed, updatedAt: new Date() };
-      if (body.isComplete === true) {
-        updateData.completedAt = new Date();
-      } else if (body.isComplete === false) {
-        updateData.completedAt = null;
-      }
-      const result = await db
-        .update(schema.workoutSets)
-        .set(updateData)
-        .where(eq(schema.workoutSets.id, id))
-        .returning()
-        .get();
-      return c.json(result);
-    } catch {
-      return c.json({ message: 'Failed to update set' }, 500);
+    const set = await requireOwnedWorkoutSet({ userId, db }, id);
+    if (set instanceof Response) return set;
+    const body = await c.req.json();
+    const allowed = pickAllowedKeys(body, ['setNumber', 'weight', 'reps', 'rpe', 'isComplete']);
+    const updateData: any = { ...allowed, updatedAt: new Date() };
+    if (body.isComplete === true) {
+      updateData.completedAt = new Date();
+    } else if (body.isComplete === false) {
+      updateData.completedAt = null;
     }
+    const result = await db
+      .update(schema.workoutSets)
+      .set(updateData)
+      .where(eq(schema.workoutSets.id, id))
+      .returning()
+      .get();
+    return c.json(result);
   }),
 );
 
@@ -908,14 +830,10 @@ router.delete(
   '/sets/:id',
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
-    try {
-      const set = await requireOwnedWorkoutSet({ userId, db }, id);
-      if (set instanceof Response) return set;
-      const result = await db.delete(schema.workoutSets).where(eq(schema.workoutSets.id, id)).run();
-      return c.json({ success: result.success });
-    } catch {
-      return c.json({ message: 'Failed to delete set' }, 500);
-    }
+    const set = await requireOwnedWorkoutSet({ userId, db }, id);
+    if (set instanceof Response) return set;
+    const result = await db.delete(schema.workoutSets).where(eq(schema.workoutSets.id, id)).run();
+    return c.json({ success: result.success });
   }),
 );
 
@@ -924,44 +842,40 @@ router.get(
   createHandler(async (c, { userId, db }) => {
     const exerciseId = c.req.param('exerciseId') as string;
     const exerciseName = c.req.query('name')?.trim();
-    try {
-      let snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
+    let snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
 
-      if (!snapshot && exerciseName) {
-        const matchingExercises = await db
-          .select({ id: schema.exercises.id })
-          .from(schema.exercises)
-          .where(
-            and(
-              eq(schema.exercises.userId, userId),
-              eq(schema.exercises.isDeleted, false),
-              sql`lower(${schema.exercises.name}) = ${exerciseName.toLowerCase()}`,
-            ),
-          )
-          .all();
-        const matchingIds = matchingExercises.map((exercise: { id: string }) => exercise.id);
-        const snapshots = await getLastCompletedExerciseSnapshots(db, userId, matchingIds);
-        snapshot = snapshots[0] ?? null;
-      }
-
-      if (!snapshot) {
-        return c.json(null);
-      }
-
-      return c.json({
-        exerciseId,
-        workoutDate: snapshot.workoutDate,
-        sets: snapshot.sets.map(
-          (set: { weight: number | null; reps: number | null; rpe: number | null }) => ({
-            weight: set.weight,
-            reps: set.reps,
-            rpe: set.rpe,
-          }),
-        ),
-      });
-    } catch {
-      return c.json({ message: 'Failed to fetch last workout data' }, 500);
+    if (!snapshot && exerciseName) {
+      const matchingExercises = await db
+        .select({ id: schema.exercises.id })
+        .from(schema.exercises)
+        .where(
+          and(
+            eq(schema.exercises.userId, userId),
+            eq(schema.exercises.isDeleted, false),
+            sql`lower(${schema.exercises.name}) = ${exerciseName.toLowerCase()}`,
+          ),
+        )
+        .all();
+      const matchingIds = matchingExercises.map((exercise: { id: string }) => exercise.id);
+      const snapshots = await getLastCompletedExerciseSnapshots(db, userId, matchingIds);
+      snapshot = snapshots[0] ?? null;
     }
+
+    if (!snapshot) {
+      return c.json(null);
+    }
+
+    return c.json({
+      exerciseId,
+      workoutDate: snapshot.workoutDate,
+      sets: snapshot.sets.map(
+        (set: { weight: number | null; reps: number | null; rpe: number | null }) => ({
+          weight: set.weight,
+          reps: set.reps,
+          rpe: set.rpe,
+        }),
+      ),
+    });
   }),
 );
 

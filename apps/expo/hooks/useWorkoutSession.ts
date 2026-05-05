@@ -10,7 +10,6 @@ import {
   completeLocalWorkout,
   createLocalWorkout,
   discardLocalWorkout,
-  enqueueWorkoutDelete,
   getLocalLastCompletedExerciseSnapshots,
   getLocalWorkout,
   markLocalCycleWorkoutComplete,
@@ -305,24 +304,18 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       setError(null);
       try {
         const local = await createLocalWorkout(session.data.user.id, { name });
-        const workoutData =
-          local ??
-          ({
-            id: generateId(),
-            name,
-            startedAt: new Date().toISOString(),
-            completedAt: null,
-            notes: null,
-            exercises: [],
-          } satisfies Workout);
-        setWorkout(workoutData);
+        if (!local) {
+          setError('Failed to create workout locally. Please try again.');
+          return null;
+        }
+        setWorkout(local);
         setExercisesAndRef([]);
         setDuration(0);
         startTimeRef.current = new Date();
         timerRef.current = setInterval(() => {
           setDuration((d) => d + 1);
         }, 1000);
-        return workoutData;
+        return local;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to start workout');
         return null;
@@ -435,8 +428,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       try {
         const userId = session.data?.user?.id;
         if (!userId) return;
-        await discardLocalWorkout(workout.id);
-        await enqueueWorkoutDelete(userId, workout.id);
+        if (draftSaveTimerRef.current) {
+          clearTimeout(draftSaveTimerRef.current);
+          draftSaveTimerRef.current = null;
+        }
+        await discardLocalWorkout(workout.id, workout.cycleWorkoutId);
         await removePendingWorkout(workout.id);
       } catch {
         // no-op
@@ -495,7 +491,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         orderIndex: exercisesRef.current.length,
         sets: newSets,
         notes: null,
-        isAmrap: exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'),
+        isAmrap: exercise.isAmrap ?? false,
       };
       setExercisesAndRef((prev) => {
         const next = [...prev, newWorkoutExercise];

@@ -105,7 +105,7 @@ function getSyncEndpoint(item: LocalSyncQueueItem): { url: string; method: strin
     case 'update_body_stats':
       return { url: `/api/nutrition/body-stats`, method: 'POST' };
     case 'start_program':
-      return { url: `/api/programs/cycles`, method: 'POST' };
+      return { url: `/api/programs`, method: 'POST' };
     case 'delete_program':
       return { url: `/api/programs/cycles/${item.entityId}`, method: 'DELETE' };
     case 'reschedule_workout':
@@ -117,8 +117,6 @@ function getSyncEndpoint(item: LocalSyncQueueItem): { url: string; method: strin
       return { url: '/api/nutrition/training-context', method: 'POST' };
     case 'send_chat_message':
       return { url: '/api/nutrition/chat', method: 'POST' };
-    case 'start_cycle_workout':
-      return { url: `/api/programs/cycle-workouts/${item.entityId}/start`, method: 'POST' };
     default:
       throw new Error(`Unsupported sync operation: ${item.operation}`);
   }

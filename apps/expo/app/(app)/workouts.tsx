@@ -30,11 +30,11 @@ import { WorkoutCard } from '@/components/workout/WorkoutCard';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
-import { getPendingWorkouts, addPendingWorkout, removePendingWorkout } from '@/lib/storage';
 import { authClient } from '@/lib/auth-client';
 import {
   cacheTemplates,
   createLocalWorkoutFromCurrentProgramCycle,
+  createLocalWorkoutFromProgramCycleWorkoutDefinition,
   createLocalWorkoutFromTemplate,
   getLocalLastCompletedExerciseSnapshots,
   listLocalWorkoutHistory,
@@ -44,6 +44,9 @@ import {
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
+import { getLocalDb } from '@/db/client';
+import { eq } from 'drizzle-orm';
+import { localTemplateExercises } from '@/db/local-schema';
 import type { Template } from '@/components/template/TemplateEditor/types';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -59,20 +62,6 @@ interface WorkoutHistoryItem {
   exerciseCount: number | null;
   syncStatus?: WorkoutSyncStatus;
   lastSyncError?: string | null;
-}
-
-interface PendingWorkout {
-  id: string;
-  name: string;
-  startedAt: string;
-  completedAt: null;
-  source: 'program';
-  programCycleId: string;
-  cycleWorkoutId: string;
-  exerciseCount: number;
-  durationMinutes: null;
-  totalVolume: null;
-  totalSets: null;
 }
 
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
@@ -117,7 +106,6 @@ export default function WorkoutsIndex() {
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [opening1RMTestId, setOpening1RMTestId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
-  const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
   const [localHistory, setLocalHistory] = useState<WorkoutHistoryItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
@@ -125,11 +113,6 @@ export default function WorkoutsIndex() {
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
   const { width } = useWindowDimensions();
   const isNarrow = width < 400;
-
-  const loadPendingWorkouts = useCallback(async () => {
-    const workouts = await getPendingWorkouts();
-    setPendingWorkouts(workouts);
-  }, []);
 
   const loadLocalHistory = useCallback(async () => {
     if (!userId) {
@@ -147,7 +130,6 @@ export default function WorkoutsIndex() {
       }
 
       try {
-        await loadPendingWorkouts();
         await Promise.all([
           queryClient.refetchQueries({ queryKey: ['templates'] }),
           queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
@@ -160,13 +142,12 @@ export default function WorkoutsIndex() {
         }
       }
     },
-    [loadLocalHistory, loadPendingWorkouts, queryClient],
+    [loadLocalHistory, queryClient],
   );
 
   useEffect(() => {
-    void loadPendingWorkouts();
     void loadLocalHistory();
-  }, [loadLocalHistory, loadPendingWorkouts]);
+  }, [loadLocalHistory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -176,11 +157,10 @@ export default function WorkoutsIndex() {
 
   useEffect(() => {
     if (view === 'history') {
-      void loadPendingWorkouts();
       void loadLocalHistory();
       void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     }
-  }, [loadLocalHistory, loadPendingWorkouts, view, queryClient]);
+  }, [loadLocalHistory, view, queryClient]);
 
   useEffect(() => {
     if (params.focusProgramId && activePrograms.length > 0) {
@@ -235,15 +215,10 @@ export default function WorkoutsIndex() {
     for (const item of localHistory) {
       byId.set(item.id, item);
     }
-    for (const pending of pendingWorkouts) {
-      if (!byId.has(pending.id)) {
-        byId.set(pending.id, { ...pending, syncStatus: 'local', lastSyncError: null });
-      }
-    }
     return Array.from(byId.values()).sort(
       (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
     );
-  }, [localHistory, pendingWorkouts, workoutHistory]);
+  }, [localHistory, workoutHistory]);
 
   const getDisplaySessionNumber = (program: ActiveProgram) =>
     Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
@@ -260,9 +235,7 @@ export default function WorkoutsIndex() {
     }
 
     if (workoutSessionError === 'Network request failed') {
-      setOfflineMessage(
-        "Unable to start workout. Saved locally — will sync when you're back online.",
-      );
+      setOfflineMessage('Unable to start workout. Please try again.');
       return;
     }
 
@@ -272,51 +245,89 @@ export default function WorkoutsIndex() {
   const handleStartFromTemplate = async (template: Template) => {
     setOfflineMessage(null);
     try {
-      if (userId && template.id) {
-        const templateExercises = template.exercises ?? [];
-        const exerciseIds = templateExercises.map((exercise) => exercise.exerciseId);
-        const localHistory = await getLocalLastCompletedExerciseSnapshots(
-          userId,
-          exerciseIds,
-          templateExercises.map((exercise) => exercise.name),
-        );
-        const usableLocalHistory = localHistory.filter(hasUsableHistory);
-        const localHistoryIds = new Set(usableLocalHistory.map((snapshot) => snapshot.exerciseId));
-        const d1History = await Promise.all(
-          templateExercises
-            .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
-            .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
-        );
-        const historySnapshots = [
-          ...usableLocalHistory,
-          ...d1History.filter(
-            (snapshot): snapshot is ExerciseHistorySnapshot =>
-              snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
-          ),
-        ];
-        const local = await createLocalWorkoutFromTemplate(userId, template.id, historySnapshots);
-        if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}`);
-          return;
-        }
-      }
-      const workout = await apiFetch<{ id: string }>('/api/workouts', {
-        method: 'POST',
-        body: {
-          name: template.name,
-          templateId: template.id,
-        },
-      });
-      if (workout?.id) {
-        router.push(`/workout-session?workoutId=${workout.id}`);
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message === 'Network request failed') {
-        setOfflineMessage(
-          "Unable to start workout. Saved locally — will sync when you're back online.",
-        );
+      if (!userId || !template.id) {
+        Alert.alert('Error', 'Unable to start workout. Please try again.');
         return;
       }
+
+      // Get template exercises from local DB (not from the template object which may not have exercises)
+      const db = getLocalDb();
+      const cachedTemplateExercises =
+        db
+          ?.select()
+          .from(localTemplateExercises)
+          .where(eq(localTemplateExercises.templateId, template.id))
+          .orderBy(localTemplateExercises.orderIndex)
+          .all() ?? [];
+
+      let templateExercises =
+        cachedTemplateExercises.length > 0 ? cachedTemplateExercises : (template.exercises ?? []);
+
+      if (templateExercises.length === 0) {
+        const remoteTemplate = await apiFetch<any>(`/api/templates/${template.id}`);
+        templateExercises = (remoteTemplate.exercises ?? []).map((ex: any, index: number) => ({
+          exerciseId: ex.exerciseId,
+          name: ex.name ?? ex.exercise?.name ?? 'Exercise',
+          muscleGroup: ex.muscleGroup ?? ex.exercise?.muscleGroup ?? null,
+          sets: ex.sets ?? 3,
+          reps: ex.reps ?? 10,
+          isAmrap: ex.isAmrap ?? false,
+          targetWeight: ex.targetWeight ?? 0,
+          addedWeight: ex.addedWeight ?? 0,
+          orderIndex: ex.orderIndex ?? index,
+        }));
+      }
+
+      if (templateExercises.length === 0) {
+        Alert.alert('Error', 'No exercises found for this template.');
+        return;
+      }
+
+      const exerciseIds = templateExercises.map((exercise) => exercise.exerciseId);
+      const localHistory = await getLocalLastCompletedExerciseSnapshots(
+        userId,
+        exerciseIds,
+        templateExercises.map((exercise) => exercise.name),
+      );
+      const usableLocalHistory = localHistory.filter(hasUsableHistory);
+      const localHistoryIds = new Set(usableLocalHistory.map((snapshot) => snapshot.exerciseId));
+      const d1History = await Promise.all(
+        templateExercises
+          .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
+          .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
+      );
+      const historySnapshots = [
+        ...usableLocalHistory,
+        ...d1History.filter(
+          (snapshot): snapshot is ExerciseHistorySnapshot =>
+            snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
+        ),
+      ];
+
+      const local = await createLocalWorkoutFromTemplate(
+        userId,
+        template.id,
+        historySnapshots,
+        templateExercises.map((ex, index) => ({
+          exerciseId: ex.exerciseId,
+          name: ex.name,
+          muscleGroup: ex.muscleGroup ?? null,
+          sets: ex.sets ?? 3,
+          reps: ex.reps ?? 10,
+          isAmrap: ex.isAmrap ?? false,
+          targetWeight: ex.targetWeight ?? 0,
+          addedWeight: ex.addedWeight ?? 0,
+          orderIndex: ex.orderIndex ?? index,
+        })),
+      );
+
+      if (local?.id) {
+        router.push(`/workout-session?workoutId=${local.id}`);
+        return;
+      }
+
+      Alert.alert('Error', 'Failed to create workout. Please try again.');
+    } catch (e) {
       Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
   };
@@ -357,25 +368,19 @@ export default function WorkoutsIndex() {
   const handleOpenCurrentProgramWorkout = async (program: ActiveProgram) => {
     setOpeningProgramWorkoutId(program.id);
     try {
-      if (userId) {
-        const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
-        if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}&source=program`);
-          return;
-        }
+      if (!userId) {
+        Alert.alert('Error', 'User not found. Please sign in again.');
+        return;
       }
-      const result = await apiFetch<{
-        workoutId: string;
-        cycleWorkoutId?: string;
-        sessionName: string;
-        created: boolean;
-        completed: boolean;
-      }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
-        method: 'POST',
-        body: {},
-      });
 
-      if (result.completed) {
+      const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
+      if (local?.id) {
+        router.push(`/workout-session?workoutId=${local.id}&source=program`);
+        return;
+      }
+
+      const definition = await apiFetch<any>(`/api/programs/cycles/${program.id}/workouts/current`);
+      if (definition.isComplete) {
         Alert.alert(
           'Session Already Completed',
           'This program session has already been completed.',
@@ -384,37 +389,18 @@ export default function WorkoutsIndex() {
         return;
       }
 
-      await addPendingWorkout({
-        id: result.workoutId,
-        name: result.sessionName,
-        startedAt: new Date().toISOString(),
-        completedAt: null,
-        source: 'program',
-        programCycleId: program.id,
-        cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
-        exercises: [],
-        exerciseCount: 0,
-        durationMinutes: null,
-        totalVolume: null,
-        totalSets: null,
-      });
-      setPendingWorkouts((prev) => [
-        ...prev,
-        {
-          id: result.workoutId,
-          name: result.sessionName,
-          startedAt: new Date().toISOString(),
-          completedAt: null,
-          source: 'program',
-          programCycleId: program.id,
-          cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
-          exerciseCount: 0,
-          durationMinutes: null,
-          totalVolume: null,
-          totalSets: null,
-        },
-      ]);
-      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
+        userId,
+        definition,
+      );
+      if (!remoteLocal?.id) {
+        Alert.alert('Error', 'Failed to create workout. Please try again.');
+        return;
+      }
+
+      router.push(
+        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleId=${program.id}&cycleWorkoutId=${remoteLocal.cycleWorkoutId ?? definition.id}`,
+      );
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
     } finally {
@@ -440,11 +426,6 @@ export default function WorkoutsIndex() {
     } finally {
       setOpening1RMTestId(null);
     }
-  };
-
-  const handleDeletePendingWorkout = async (workoutId: string) => {
-    await removePendingWorkout(workoutId);
-    setPendingWorkouts((prev) => prev.filter((p) => p.id !== workoutId));
   };
 
   const _handleDeleteProgram = (program: ActiveProgram) => {
@@ -692,7 +673,7 @@ export default function WorkoutsIndex() {
               />
             </View>
           </View>
-        ) : isLoadingHistory && pendingWorkouts.length === 0 ? (
+        ) : isLoadingHistory ? (
           <View style={styles.centerLoading}>
             <ActivityIndicator size="large" color={colors.accentSecondary} />
           </View>
@@ -720,8 +701,7 @@ export default function WorkoutsIndex() {
                 item.syncStatus === 'pending' ||
                 item.syncStatus === 'syncing' ||
                 item.syncStatus === 'failed' ||
-                item.syncStatus === 'conflict' ||
-                pendingWorkouts.some((p) => p.id === item.id);
+                item.syncStatus === 'conflict';
               return (
                 <WorkoutCard
                   key={`workout-history:${item.id}`}
@@ -739,11 +719,6 @@ export default function WorkoutsIndex() {
                   onRetry={
                     item.syncStatus === 'failed' || item.syncStatus === 'conflict'
                       ? () => handleRetrySync(item.id)
-                      : undefined
-                  }
-                  onDelete={
-                    isPending && !item.syncStatus
-                      ? () => handleDeletePendingWorkout(item.id)
                       : undefined
                   }
                 />

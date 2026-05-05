@@ -169,6 +169,36 @@ describe('runSyncQueue', () => {
     expect(deleteSyncItem).toHaveBeenCalledWith('item-1');
   });
 
+  test('processes start_program via the program creation endpoint', async () => {
+    mockedGetRunnableSyncItems.mockResolvedValue([
+      {
+        id: 'item-program',
+        userId: 'user-1',
+        entityType: 'program',
+        entityId: 'program-1',
+        operation: 'start_program',
+        payloadJson: '{"programSlug":"stronglifts-5x5","name":"StrongLifts 5x5"}',
+        status: 'pending',
+        attemptCount: 0,
+        lastError: null,
+        availableAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    apiFetchMock.mockResolvedValue({ id: 'cycle-1' });
+
+    const { runSyncQueue } = await import('./workout-sync');
+    await runSyncQueue('user-1');
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/programs', {
+      method: 'POST',
+      body: { programSlug: 'stronglifts-5x5', name: 'StrongLifts 5x5' },
+    });
+    expect(markSyncItemStatus).toHaveBeenCalledWith('item-program', 'done');
+    expect(deleteSyncItem).toHaveBeenCalledWith('item-program');
+  });
+
   test('marks generic operation as conflict on 4xx', async () => {
     mockedGetRunnableSyncItems.mockResolvedValue([
       {

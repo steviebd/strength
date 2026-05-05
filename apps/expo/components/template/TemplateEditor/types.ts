@@ -6,6 +6,7 @@ export interface TemplateExercise {
   sets: number;
   reps: number;
   targetWeight: number;
+  addedWeight?: number;
   isAmrap: boolean;
   isAccessory: boolean;
   isRequired: boolean;

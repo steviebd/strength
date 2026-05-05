@@ -43,3 +43,29 @@ export function calculateMacroTargets(
     fatG,
   };
 }
+
+export interface NutritionEntryLike {
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+}
+
+export function sumNutritionEntries(entries: NutritionEntryLike[]): {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+} {
+  let calories = 0;
+  let proteinG = 0;
+  let carbsG = 0;
+  let fatG = 0;
+  for (const entry of entries) {
+    calories += entry.calories ?? 0;
+    proteinG += entry.proteinG ?? 0;
+    carbsG += entry.carbsG ?? 0;
+    fatG += entry.fatG ?? 0;
+  }
+  return { calories, proteinG, carbsG, fatG };
+}

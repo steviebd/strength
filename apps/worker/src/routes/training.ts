@@ -199,25 +199,21 @@ async function listRecentWorkoutsForSnapshot(db: any, userId: string, limit: num
 router.get(
   '/offline-snapshot',
   createHandler(async (c, { userId, db }) => {
-    try {
-      const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 50);
-      const [templates, userExercises, activeProgramCycles, recentWorkouts] = await Promise.all([
-        listTemplatesForSnapshot(db, userId),
-        listUserExercisesForSnapshot(db, userId),
-        listActiveProgramCyclesForSnapshot(db, userId),
-        listRecentWorkoutsForSnapshot(db, userId, recentWorkoutLimit),
-      ]);
+    const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 50);
+    const [templates, userExercises, activeProgramCycles, recentWorkouts] = await Promise.all([
+      listTemplatesForSnapshot(db, userId),
+      listUserExercisesForSnapshot(db, userId),
+      listActiveProgramCyclesForSnapshot(db, userId),
+      listRecentWorkoutsForSnapshot(db, userId, recentWorkoutLimit),
+    ]);
 
-      return c.json({
-        generatedAt: new Date().toISOString(),
-        templates,
-        userExercises,
-        activeProgramCycles,
-        recentWorkouts,
-      });
-    } catch {
-      return c.json({ message: 'Failed to build offline training snapshot' }, 500);
-    }
+    return c.json({
+      generatedAt: new Date().toISOString(),
+      templates,
+      userExercises,
+      activeProgramCycles,
+      recentWorkouts,
+    });
   }),
 );
 

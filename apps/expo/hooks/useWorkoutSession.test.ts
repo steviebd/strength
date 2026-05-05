@@ -87,7 +87,7 @@ beforeEach(() => {
 });
 
 describe('useWorkoutSession', () => {
-  test('discardWorkout enqueues a delete_workout sync item', async () => {
+  test('discardWorkout only discards local in-progress state', async () => {
     stateValues[0] = {
       id: 'workout-1',
       name: 'Test Workout',
@@ -102,11 +102,10 @@ describe('useWorkoutSession', () => {
 
     await result.discardWorkout();
 
-    const { discardLocalWorkout, enqueueWorkoutDelete } = await import('@/db/workouts');
+    const { discardLocalWorkout } = await import('@/db/workouts');
     const { removePendingWorkout } = await import('@/lib/storage');
 
-    expect(discardLocalWorkout).toHaveBeenCalledWith('workout-1');
-    expect(enqueueWorkoutDelete).toHaveBeenCalledWith('user-1', 'workout-1');
+    expect(discardLocalWorkout).toHaveBeenCalledWith('workout-1', undefined);
     expect(removePendingWorkout).toHaveBeenCalledWith('workout-1');
   });
 });

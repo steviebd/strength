@@ -304,6 +304,22 @@ export async function updateProgramCycleOneRMs(
     .get();
 }
 
+export async function completeProgramCycle(db: any, cycleId: string, userId: string) {
+  return db
+    .update(schema.userProgramCycles)
+    .set({
+      status: 'completed',
+      isComplete: true,
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(schema.userProgramCycles.id, cycleId), eq(schema.userProgramCycles.userId, userId)),
+    )
+    .returning()
+    .get();
+}
+
 export async function createWorkoutFromProgramCycleWorkout(
   db: any,
   userId: string,
@@ -439,6 +455,79 @@ export async function createWorkoutFromProgramCycleWorkout(
   return workoutValues;
 }
 
+export async function startCycleWorkout(
+  db: any,
+  userId: string,
+  cycleWorkout: { id: string; workoutId?: string | null; sessionName: string; cycleId: string },
+) {
+  if (cycleWorkout.workoutId) {
+    const existingWorkout = await db
+      .select({
+        id: schema.workouts.id,
+        name: schema.workouts.name,
+        completedAt: schema.workouts.completedAt,
+        isDeleted: schema.workouts.isDeleted,
+      })
+      .from(schema.workouts)
+      .where(
+        and(
+          eq(schema.workouts.id, cycleWorkout.workoutId),
+          eq(schema.workouts.userId, userId),
+          eq(schema.workouts.isDeleted, false),
+        ),
+      )
+      .get();
+
+    if (existingWorkout) {
+      const exerciseCount = await db
+        .select({ count: sql<number>`count(${schema.workoutExercises.id})` })
+        .from(schema.workoutExercises)
+        .where(eq(schema.workoutExercises.workoutId, existingWorkout.id))
+        .get();
+
+      if ((exerciseCount?.count ?? 0) === 0) {
+        const parsedTargetLifts = parseProgramTargetLifts((cycleWorkout as any).targetLifts);
+        if (parsedTargetLifts.all.length > 0) {
+          const workout = await createWorkoutFromProgramCycleWorkout(
+            db,
+            userId,
+            cycleWorkout.cycleId,
+            cycleWorkout,
+          );
+
+          return {
+            workoutId: workout.id,
+            sessionName: workout.name,
+            created: true,
+            completed: false,
+          };
+        }
+      }
+
+      return {
+        workoutId: existingWorkout.id,
+        sessionName: existingWorkout.name,
+        created: false,
+        completed: !!existingWorkout.completedAt,
+      };
+    }
+  }
+
+  const workout = await createWorkoutFromProgramCycleWorkout(
+    db,
+    userId,
+    cycleWorkout.cycleId,
+    cycleWorkout,
+  );
+
+  return {
+    workoutId: workout.id,
+    sessionName: workout.name,
+    created: true,
+    completed: false,
+  };
+}
+
 export async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId: string) {
   const workout = await db
     .select({
@@ -452,22 +541,7 @@ export async function advanceProgramCycleForWorkout(db: any, userId: string, wor
     .get();
 
   if (workout?.name === '1RM Test' && workout.programCycleId && workout.isDeleted === false) {
-    const now = new Date();
-    await db
-      .update(schema.userProgramCycles)
-      .set({
-        status: 'completed',
-        isComplete: true,
-        completedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(schema.userProgramCycles.id, workout.programCycleId),
-          eq(schema.userProgramCycles.userId, userId),
-        ),
-      )
-      .run();
+    await completeProgramCycle(db, workout.programCycleId, userId);
     return;
   }
 
@@ -535,30 +609,37 @@ export async function advanceProgramCycleForWorkout(db: any, userId: string, wor
     .where(eq(schema.programCycleWorkouts.id, linkedCycleWorkout.id))
     .run();
 
-  const cycleUpdate: Record<string, unknown> = {
-    totalSessionsCompleted: linkedCycleWorkout.totalSessionsCompleted + 1,
-    updatedAt: now,
-  };
-
   if (nextCycleWorkout) {
-    cycleUpdate.currentWeek = nextCycleWorkout.weekNumber;
-    cycleUpdate.currentSession = nextCycleWorkout.sessionNumber;
+    await db
+      .update(schema.userProgramCycles)
+      .set({
+        totalSessionsCompleted: linkedCycleWorkout.totalSessionsCompleted + 1,
+        currentWeek: nextCycleWorkout.weekNumber,
+        currentSession: nextCycleWorkout.sessionNumber,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
+          eq(schema.userProgramCycles.userId, userId),
+        ),
+      )
+      .run();
   } else {
-    cycleUpdate.status = 'completed';
-    cycleUpdate.isComplete = true;
-    cycleUpdate.completedAt = now;
+    await completeProgramCycle(db, linkedCycleWorkout.cycleId, userId);
+    await db
+      .update(schema.userProgramCycles)
+      .set({
+        totalSessionsCompleted: linkedCycleWorkout.totalSessionsCompleted + 1,
+      })
+      .where(
+        and(
+          eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
+          eq(schema.userProgramCycles.userId, userId),
+        ),
+      )
+      .run();
   }
-
-  await db
-    .update(schema.userProgramCycles)
-    .set(cycleUpdate)
-    .where(
-      and(
-        eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
-        eq(schema.userProgramCycles.userId, userId),
-      ),
-    )
-    .run();
 }
 
 export async function resolveToUserExerciseId(

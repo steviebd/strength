@@ -2,6 +2,7 @@ import { eq, and, gte, lt } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
+import { validateDateParam } from '../../lib/validation';
 
 export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
   const timezoneResult = await resolveUserTimezone(db, userId);
@@ -11,17 +12,13 @@ export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
 
   const date = c.req.query('date');
 
-  if (!date) {
-    return c.json({ error: 'date query parameter is required' }, 400);
-  }
-
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(date)) {
-    return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
+  const validated = validateDateParam(date);
+  if (!validated.valid) {
+    return validated.response;
   }
 
   const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
-    date,
+    validated.date,
     timezoneResult.timezone,
   );
 

@@ -194,6 +194,86 @@ describe('consolidateProgramTargetLifts', () => {
     expect(consolidated[0].segments).toHaveLength(2);
     expect(consolidated[1].name).toBe('Bench Press');
   });
+
+  test('groups exercises by libraryId even when exerciseId differs', () => {
+    const parsed = parseProgramTargetLifts(
+      JSON.stringify({
+        exercises: [
+          {
+            name: 'Squat',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            exerciseId: 'ex-a',
+            sets: 3,
+            reps: 5,
+            targetWeight: 100,
+          },
+          {
+            name: 'Squat 2',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            exerciseId: 'ex-b',
+            sets: 1,
+            reps: 5,
+            targetWeight: 120,
+          },
+          {
+            name: 'Squat 3+',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            exerciseId: 'ex-c',
+            sets: 1,
+            reps: 5,
+            targetWeight: 140,
+            isAmrap: true,
+          },
+        ],
+      }),
+    );
+
+    const consolidated = consolidateProgramTargetLifts(parsed.all);
+
+    expect(consolidated).toHaveLength(1);
+    expect(consolidated[0].name).toBe('Squat');
+    expect(consolidated[0].sets).toBe(5);
+    expect(consolidated[0].isAmrap).toBe(true);
+    expect(consolidated[0].segments).toHaveLength(3);
+  });
+
+  test('groups accessories by accessoryId regardless of libraryId presence', () => {
+    const parsed = parseProgramTargetLifts(
+      JSON.stringify({
+        exercises: [
+          {
+            name: 'Bench Press',
+            lift: 'bench',
+            libraryId: 'barbell-bench-press',
+            sets: 3,
+            reps: 5,
+            targetWeight: 80,
+          },
+        ],
+        accessories: [
+          {
+            name: 'Dips',
+            accessoryId: 'dips',
+            isAccessory: true,
+            sets: 3,
+            reps: '50-100 reps total',
+          },
+          { name: 'Dips', accessoryId: 'dips', isAccessory: true, sets: 2, reps: 15 },
+        ],
+      }),
+    );
+
+    const consolidated = consolidateProgramTargetLifts(parsed.all);
+
+    expect(consolidated).toHaveLength(2);
+    expect(consolidated[0].name).toBe('Bench Press');
+    expect(consolidated[1].name).toBe('Dips');
+    expect(consolidated[1].sets).toBe(5);
+    expect(consolidated[1].segments).toHaveLength(2);
+  });
 });
 
 describe('getOneRMsFromCompletedTestSetRows', () => {
@@ -289,6 +369,12 @@ function createMockDb() {
             updatedCycleWorkouts.push(vals);
             return { success: true };
           },
+          returning: () => ({
+            get: async () => {
+              updatedCycleWorkouts.push(vals);
+              return { ...vals, id: 'test-cycle-id' };
+            },
+          }),
         }),
       }),
     }),

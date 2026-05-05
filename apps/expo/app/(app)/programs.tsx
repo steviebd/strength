@@ -22,8 +22,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
-import { addPendingWorkout } from '@/lib/storage';
-import { createLocalWorkoutFromCurrentProgramCycle } from '@/db/workouts';
+import {
+  createLocalWorkoutFromCurrentProgramCycle,
+  createLocalWorkoutFromProgramCycleWorkoutDefinition,
+} from '@/db/workouts';
 import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { generateId } from '@strength/db/client';
@@ -917,18 +919,12 @@ export default function ProgramsScreen() {
           return;
         }
       }
-      const result = await apiFetch<{
-        workoutId: string;
-        cycleWorkoutId?: string;
-        sessionName: string;
-        created: boolean;
-        completed: boolean;
-      }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
-        method: 'POST',
-        body: {},
-      });
+      if (!userId) {
+        throw new Error('Not authenticated');
+      }
 
-      if (result.completed) {
+      const definition = await apiFetch<any>(`/api/programs/cycles/${program.id}/workouts/current`);
+      if (definition.isComplete) {
         Alert.alert(
           'Session Already Completed',
           'This program session has already been completed.',
@@ -937,27 +933,20 @@ export default function ProgramsScreen() {
         return;
       }
 
-      await addPendingWorkout({
-        id: result.workoutId,
-        name: result.sessionName,
-        startedAt: new Date().toISOString(),
-        completedAt: null,
-        source: 'program',
-        programCycleId: program.id,
-        cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
-        exercises: [],
-        exerciseCount: 0,
-        durationMinutes: null,
-        totalVolume: null,
-        totalSets: null,
-      });
+      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
+        userId,
+        definition,
+      );
+      if (!remoteLocal?.id) {
+        throw new Error('Failed to open current session');
+      }
 
-      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+      router.push(
+        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleId=${program.id}&cycleWorkoutId=${remoteLocal.cycleWorkoutId ?? definition.id}`,
+      );
     } catch (e) {
       if (e instanceof Error && e.message === 'Network request failed') {
-        setOfflineMessage(
-          "Unable to open session. Saved locally — will sync when you're back online.",
-        );
+        setOfflineMessage('Unable to open session while offline.');
       } else {
         Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
       }

@@ -26,7 +26,6 @@ import {
   useRescheduleWorkout,
   type ProgramScheduleWorkout,
 } from '@/hooks/useProgramSchedule';
-import { addPendingWorkout } from '@/lib/storage';
 import { authClient } from '@/lib/auth-client';
 import { createLocalWorkoutFromProgramCycleWorkout } from '@/db/workouts';
 import { OfflineError } from '@/lib/offline-mutation';
@@ -403,27 +402,17 @@ export default function ProgramScheduleScreen() {
         }
         const result = await startWorkout.mutateAsync(cycleWorkoutId);
         if (result.workoutId) {
-          await addPendingWorkout({
-            id: result.workoutId,
-            name: result.sessionName,
-            startedAt: new Date().toISOString(),
-            completedAt: null,
-            source: 'program',
-            programCycleId: cycleId ?? '',
-            cycleWorkoutId: cycleWorkoutId,
-            exercises: [],
-            exerciseCount: 0,
-            durationMinutes: null,
-            totalVolume: null,
-            totalSets: null,
-          });
           router.push(
-            `/workout-session?workoutId=${result.workoutId}&source=program&cycleId=${cycleId}`,
+            `/workout-session?workoutId=${result.workoutId}&source=program&cycleId=${cycleId}&cycleWorkoutId=${cycleWorkoutId}`,
           );
         }
       } catch (e) {
         if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
-          setOfflineMessage('Saved locally. Will sync when online.');
+          setOfflineMessage('Unable to start workout while offline.');
+        } else {
+          setOfflineMessage(
+            e instanceof Error ? e.message : 'Failed to start workout. Please try again.',
+          );
         }
       } finally {
         setStartingWorkoutId(null);

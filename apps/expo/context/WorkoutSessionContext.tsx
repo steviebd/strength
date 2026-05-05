@@ -48,6 +48,7 @@ export interface Exercise {
   name: string;
   muscleGroup: string;
   description: string;
+  isAmrap?: boolean;
   videoTutorial?: {
     youtubeId: string;
     title: string;

@@ -156,13 +156,17 @@ export function parseProgramTargetLifts(targetLifts: string | null | undefined) 
 }
 
 export function getProgramTargetLiftKey(targetLift: NormalizedProgramTargetLift): string {
-  return (
-    targetLift.exerciseId ??
-    targetLift.libraryId ??
-    targetLift.accessoryId ??
-    targetLift.lift ??
-    targetLift.name.trim().toLowerCase()
-  );
+  const baseKey =
+    targetLift.libraryId ?? targetLift.exerciseId ?? targetLift.accessoryId ?? targetLift.lift;
+
+  if (baseKey) {
+    return baseKey;
+  }
+
+  return targetLift.name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+\d+\+?$/, '');
 }
 
 export function consolidateProgramTargetLifts(targetLifts: NormalizedProgramTargetLift[]) {

@@ -20,7 +20,10 @@ import {
 import { PageLayout } from '@/components/ui/PageLayout';
 import { useHomeSummary } from '@/hooks/useHomeSummary';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { createLocalWorkoutFromProgramCycleWorkout } from '@/db/workouts';
+import {
+  createLocalWorkoutFromProgramCycleWorkout,
+  createLocalWorkoutFromProgramCycleWorkoutDefinition,
+} from '@/db/workouts';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -89,25 +92,32 @@ export default function HomeScreen() {
           return;
         }
       }
-      const result = await apiFetch<{
-        workoutId: string;
-        sessionName: string;
-        created: boolean;
-        completed: boolean;
-      }>(`/api/programs/cycle-workouts/${startableCycleWorkoutId}/start`, {
-        method: 'POST',
-        body: {},
-      });
+      if (!user?.id) {
+        throw new Error('Not authenticated');
+      }
 
-      if (result.completed) {
+      const definition = await apiFetch<any>(
+        `/api/programs/cycle-workouts/${startableCycleWorkoutId}`,
+      );
+      if (definition.isComplete) {
         Alert.alert('Already Completed', 'This workout has already been completed.');
         return;
       }
 
-      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
+        user.id,
+        definition,
+      );
+      if (!remoteLocal?.id) {
+        throw new Error('Failed to start workout');
+      }
+
+      router.push(
+        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleWorkoutId=${startableCycleWorkoutId}`,
+      );
     } catch (e) {
       if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
-        setOfflineMessage('Saved locally. Will sync when online.');
+        setOfflineMessage('Unable to start workout while offline.');
       } else {
         Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start workout');
       }

@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest';
+import { eq } from 'drizzle-orm';
+import * as schema from '@strength/db';
 import type { AuthContext } from './auth';
 import {
   requireOwnedProgramCycleWorkout,
-  requireOwnedTemplate,
+  requireOwnedRecord,
   requireOwnedWorkoutSet,
 } from './guards';
 
@@ -41,15 +43,25 @@ function createAuthContext(row: unknown): AuthContext {
 }
 
 describe('ownership guards', () => {
-  test('returns an owned template row', async () => {
+  test('returns an owned record row', async () => {
     const row = { id: 'template-1', userId: 'user-1' };
-    const result = await requireOwnedTemplate(createAuthContext(row), 'template-1');
+    const result = await requireOwnedRecord(
+      createAuthContext(row),
+      schema.templates,
+      'template-1',
+      { extraConditions: [eq(schema.templates.isDeleted, false)] },
+    );
 
     expect(result).toBe(row);
   });
 
-  test("returns 404 for another user's template", async () => {
-    const result = await requireOwnedTemplate(createAuthContext(undefined), 'template-1');
+  test("returns 404 for another user's record", async () => {
+    const result = await requireOwnedRecord(
+      createAuthContext(undefined),
+      schema.templates,
+      'template-1',
+      { extraConditions: [eq(schema.templates.isDeleted, false)] },
+    );
 
     expect(result).toBeInstanceOf(Response);
     expect((result as Response).status).toBe(404);

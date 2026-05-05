@@ -47,8 +47,9 @@ async function getPendingWorkouts(): Promise<PendingWorkout[]> {
 
 async function addPendingWorkout(workout: PendingWorkout): Promise<void> {
   const workouts = await getPendingWorkouts();
-  workouts.push(workout);
-  platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, JSON.stringify(workouts));
+  const byId = new Map(workouts.map((existing) => [existing.id, existing]));
+  byId.set(workout.id, workout);
+  platformStorage.setItem(STORAGE_KEYS.PENDING_WORKOUTS, JSON.stringify(Array.from(byId.values())));
 }
 
 async function removePendingWorkout(workoutId: string): Promise<void> {

@@ -1,5 +1,18 @@
 import { describe, expect, test } from 'vitest';
-import { validateDateParam } from './validation';
+import { pickAllowedKeys, validateDateParam } from './validation';
+
+describe('pickAllowedKeys', () => {
+  test('allows specified keys and rejects others', () => {
+    const result = pickAllowedKeys({ name: 'A', notes: 'B', evil: true }, ['name', 'notes']);
+    expect(result).toEqual({ name: 'A', notes: 'B' });
+    expect(result).not.toHaveProperty('evil');
+  });
+
+  test('returns empty object when no allowed keys present', () => {
+    const result = pickAllowedKeys({ id: '1', userId: 'u1' }, ['name']);
+    expect(result).toEqual({});
+  });
+});
 
 describe('validateDateParam', () => {
   test('accepts YYYY-MM-DD dates', () => {

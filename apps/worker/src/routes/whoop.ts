@@ -112,35 +112,28 @@ router.post(
       );
     }
 
-    try {
-      const result = await syncAllWhoopData(db, c.env, userId, { isInitialSync: false });
-      const authError = result.errors.find(
-        (message) =>
-          message.includes('WHOOP_SESSION_EXPIRED') ||
-          message.includes('WHOOP_REAUTH_REQUIRED') ||
-          message.includes('Please reconnect WHOOP') ||
-          message.includes('Please re-authorize'),
-      );
-      if (authError) {
-        return c.json(
-          {
-            error: 'WHOOP_REAUTH_REQUIRED',
-            message: authError,
-          },
-          401,
-        );
-      }
-
-      return c.json({
-        success: result.errors.length === 0,
-        ...result,
-      });
-    } catch (e) {
+    const result = await syncAllWhoopData(db, c.env, userId, { isInitialSync: false });
+    const authError = result.errors.find(
+      (message) =>
+        message.includes('WHOOP_SESSION_EXPIRED') ||
+        message.includes('WHOOP_REAUTH_REQUIRED') ||
+        message.includes('Please reconnect WHOOP') ||
+        message.includes('Please re-authorize'),
+    );
+    if (authError) {
       return c.json(
-        { message: 'Sync failed', error: e instanceof Error ? e.message : 'Unknown' },
-        500,
+        {
+          error: 'WHOOP_REAUTH_REQUIRED',
+          message: authError,
+        },
+        401,
       );
     }
+
+    return c.json({
+      success: result.errors.length === 0,
+      ...result,
+    });
   }),
 );
 
@@ -356,12 +349,8 @@ router.get(
 router.post(
   '/disconnect',
   createHandler(async (c, { userId, db }) => {
-    try {
-      await revokeWhoopIntegration(db, userId);
-      return c.json({ success: true });
-    } catch {
-      return c.json({ message: 'Disconnect failed' }, 500);
-    }
+    await revokeWhoopIntegration(db, userId);
+    return c.json({ success: true });
   }),
 );
 

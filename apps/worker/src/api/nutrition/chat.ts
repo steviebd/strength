@@ -16,7 +16,8 @@ import { createDb, createHandler } from '../auth';
 import { formatLocalDate } from '@strength/db';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
 import { getWhoopDataForDay } from '../../lib/whoop-queries';
-import { calculateMacroTargets } from '../../lib/nutrition';
+import { calculateMacroTargets, sumNutritionEntries } from '../../lib/nutrition';
+import { validateDateParam } from '../../lib/validation';
 import type { NutritionChatQueueMessage, WorkerEnv } from '../../auth';
 
 interface ChatRequest {
@@ -103,15 +104,15 @@ async function resolveChatDate({
   }
 
   const timezone = timezoneResult.timezone;
-  const date =
-    requestedDate === undefined
-      ? formatLocalDate(new Date(), timezone)
-      : /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
-        ? requestedDate
-        : null;
-
-  if (!date) {
-    return { error: 'Valid date (YYYY-MM-DD) is required' };
+  let date: string;
+  if (requestedDate === undefined) {
+    date = formatLocalDate(new Date(), timezone);
+  } else {
+    const validated = validateDateParam(requestedDate);
+    if (!validated.valid) {
+      return { error: 'Valid date (YYYY-MM-DD) is required' };
+    }
+    date = validated.date;
   }
 
   return { date, timezone };
@@ -199,10 +200,12 @@ async function generateNutritionChatAssistantContent({
   const bodyweightKg = bodyStats?.bodyweightKg ?? null;
   const hasProgram = !!activeProgram;
 
-  const totalCalories = entries.reduce((sum, e) => sum + (e.calories ?? 0), 0);
-  const totalProteinG = entries.reduce((sum, e) => sum + (e.proteinG ?? 0), 0);
-  const totalCarbsG = entries.reduce((sum, e) => sum + (e.carbsG ?? 0), 0);
-  const totalFatG = entries.reduce((sum, e) => sum + (e.fatG ?? 0), 0);
+  const {
+    calories: totalCalories,
+    proteinG: totalProteinG,
+    carbsG: totalCarbsG,
+    fatG: totalFatG,
+  } = sumNutritionEntries(entries);
 
   const trainingCtx: TrainingContext | null = trainingContextRow
     ? {
@@ -536,8 +539,9 @@ export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => 
     return c.json({ error: timezoneResult.error }, 400);
   }
 
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
+  const validated = validateDateParam(date);
+  if (!validated.valid) {
+    return validated.response;
   }
 
   const parsedLimit = Number.parseInt(limitParam ?? '5', 10);
@@ -545,7 +549,7 @@ export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => 
   const beforeTimestamp = before ? Number.parseInt(before, 10) : Number.NaN;
 
   const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
-    date,
+    validated.date,
     timezoneResult.timezone,
   );
 

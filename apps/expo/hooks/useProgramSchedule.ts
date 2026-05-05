@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { eq, and, or, sql } from 'drizzle-orm';
 import { apiFetch } from '@/lib/api';
@@ -7,7 +6,7 @@ import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { getCachedProgramSchedule } from '@/db/training-cache';
 import { getLocalDb } from '@/db/client';
 import { localProgramCycleWorkouts, localSyncQueue } from '@/db/local-schema';
-import { generateId } from '@strength/db/client';
+import { createLocalWorkoutFromProgramCycleWorkoutDefinition } from '@/db/workouts';
 import { useOfflineQuery } from './useOfflineQuery';
 import { tryOnlineOrEnqueue, OfflineError } from '@/lib/offline-mutation';
 
@@ -58,10 +57,7 @@ export function useProgramSchedule(cycleId: string) {
         .where(
           and(
             eq(localSyncQueue.userId, userId),
-            or(
-              eq(localSyncQueue.operation, 'start_cycle_workout'),
-              eq(localSyncQueue.operation, 'reschedule_workout'),
-            ),
+            eq(localSyncQueue.operation, 'reschedule_workout'),
             or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
           ),
         )
@@ -75,55 +71,39 @@ export function useStartCycleWorkout() {
   const queryClient = useQueryClient();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
-  const workoutIdMap = useRef(new Map<string, string>()).current;
 
   return useMutation({
     mutationFn: async (cycleWorkoutId: string) => {
       if (!userId) {
-        return apiFetch<{
-          workoutId: string;
-          sessionName: string;
-          created: boolean;
-          completed: boolean;
-          programCycleId: string;
-        }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/start`, {
-          method: 'POST',
-          body: {},
-        });
+        throw new Error('Not authenticated');
       }
-      const workoutId = workoutIdMap.get(cycleWorkoutId) ?? generateId();
-      workoutIdMap.set(cycleWorkoutId, workoutId);
-      return tryOnlineOrEnqueue({
-        apiCall: () =>
-          apiFetch<{
-            workoutId: string;
-            sessionName: string;
-            created: boolean;
-            completed: boolean;
-            programCycleId: string;
-          }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/start`, {
-            method: 'POST',
-            body: {},
-          }),
-        userId,
-        entityType: 'program',
-        operation: 'start_cycle_workout',
-        entityId: cycleWorkoutId,
-        payload: {},
-        onEnqueue: async () => {
-          const db = getLocalDb();
-          if (!db) return;
-          db.update(localProgramCycleWorkouts)
-            .set({ workoutId })
-            .where(eq(localProgramCycleWorkouts.id, cycleWorkoutId))
-            .run();
-        },
-      });
+
+      const definition = await apiFetch<any>(`/api/programs/cycle-workouts/${cycleWorkoutId}`);
+      if (definition.isComplete) {
+        return {
+          workoutId: definition.workoutId ?? '',
+          sessionName: definition.sessionName,
+          created: false,
+          completed: true,
+          programCycleId: definition.cycleId,
+        };
+      }
+
+      const local = await createLocalWorkoutFromProgramCycleWorkoutDefinition(userId, definition);
+      if (!local?.id) {
+        throw new Error('Failed to create workout locally. Please try again.');
+      }
+
+      return {
+        workoutId: local.id,
+        sessionName: local.name,
+        created: true,
+        completed: false,
+        programCycleId: local.programCycleId ?? definition.cycleId,
+      };
     },
     onMutate: async (cycleWorkoutId: string) => {
       if (!userId) return {};
-      const workoutId = generateId();
-      workoutIdMap.set(cycleWorkoutId, workoutId);
 
       const db = getLocalDb();
       if (!db) return {};
@@ -138,17 +118,6 @@ export function useStartCycleWorkout() {
       const queryKey = ['programSchedule', cycleId];
       await queryClient.cancelQueries({ queryKey });
       const previousSchedule = queryClient.getQueryData(queryKey);
-      queryClient.setQueryData(queryKey, (old: any) => {
-        if (!old) return old;
-        const updateWorkout = (w: any) =>
-          w.cycleWorkoutId === cycleWorkoutId ? { ...w, workoutId } : w;
-        return {
-          ...old,
-          thisWeek: old.thisWeek?.map(updateWorkout),
-          upcoming: old.upcoming?.map(updateWorkout),
-          completed: old.completed?.map(updateWorkout),
-        };
-      });
       return { previousSchedule, cycleId };
     },
     onError: (error, _cycleWorkoutId, context) => {

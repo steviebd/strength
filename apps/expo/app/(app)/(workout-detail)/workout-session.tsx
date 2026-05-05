@@ -70,10 +70,11 @@ export default function WorkoutSessionScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const isNarrowHeader = windowWidth < 400;
-  const { workoutId, source, cycleId, programName } = useLocalSearchParams<{
+  const { workoutId, source, cycleId, cycleWorkoutId, programName } = useLocalSearchParams<{
     workoutId?: string;
     source?: string;
     cycleId?: string;
+    cycleWorkoutId?: string;
     programName?: string;
   }>();
   const {
@@ -137,9 +138,13 @@ export default function WorkoutSessionScreen() {
 
   useEffect(() => {
     if (loadedWorkout) {
-      loadWorkout(loadedWorkout);
+      loadWorkout({
+        ...loadedWorkout,
+        cycleWorkoutId: loadedWorkout.cycleWorkoutId ?? cycleWorkoutId ?? null,
+        programCycleId: loadedWorkout.programCycleId ?? cycleId ?? null,
+      });
     }
-  }, [loadedWorkout, loadWorkout]);
+  }, [cycleId, cycleWorkoutId, loadedWorkout, loadWorkout]);
 
   const getSetRef = useCallback((setId: string) => {
     if (!setRefsRef.current.has(setId)) {
@@ -211,6 +216,7 @@ export default function WorkoutSessionScreen() {
   const isViewingCompleted = !!workoutId && !!workout?.completedAt;
   const isProgramSession = source === 'program';
   const isProgramOneRMTest = source === 'program-1rm-test';
+  const hasLoadedRequestedWorkout = !!workoutId && workout?.id === workoutId;
 
   const computedVolume = exercises.reduce((total, ex) => {
     return (
@@ -373,6 +379,18 @@ export default function WorkoutSessionScreen() {
     return null;
   }, [exercises]);
 
+  const handleDiscardWorkout = useCallback(async () => {
+    await discardWorkout();
+    const programCycleId =
+      workout?.programCycleId ?? (typeof cycleId === 'string' ? cycleId : null);
+    if (isProgramSession && programCycleId) {
+      queryClient.invalidateQueries({ queryKey: ['programSchedule', programCycleId] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
+    queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
+    queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+  }, [cycleId, discardWorkout, isProgramSession, queryClient, workout?.programCycleId]);
+
   const executeCompleteWorkout = useCallback(async () => {
     await completeWorkout();
     const completedWorkoutId = workoutId ?? workout?.id;
@@ -450,7 +468,7 @@ export default function WorkoutSessionScreen() {
     }
   }, [findFirstIncompleteSet, scrollToExerciseIndex, executeCompleteWorkout]);
 
-  if (workoutId && isLoadingWorkout) {
+  if (workoutId && isLoadingWorkout && !hasLoadedRequestedWorkout) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -459,7 +477,7 @@ export default function WorkoutSessionScreen() {
     );
   }
 
-  if (workoutId && loadError) {
+  if (workoutId && loadError && !hasLoadedRequestedWorkout) {
     return (
       <View style={[styles.container, styles.centered, { paddingHorizontal: spacing.lg }]}>
         <Text style={styles.errorTitle}>Error Loading Workout</Text>
@@ -531,7 +549,7 @@ export default function WorkoutSessionScreen() {
                 e.sets.some((s) => (s.weight !== null && s.weight > 0) || s.isComplete),
               );
               const doDiscard = async () => {
-                await discardWorkout();
+                await handleDiscardWorkout();
                 router.push('/(app)/workouts');
               };
               if (isProgramOneRMTest && hasEnteredData) {

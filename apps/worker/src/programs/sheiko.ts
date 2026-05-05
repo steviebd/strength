@@ -1,8 +1,7 @@
 import { roundToPlate } from './utils';
-import { generateWorkoutAccessories } from './accessory-data';
 import { sheikoInfo, VOLUME_DAY, INTENSITY_DAY, getSheikoAccessories } from './config/sheiko';
 import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
-import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
+import { createLinearProgramGenerator } from './factory';
 
 function calculateTargetWeight(
   estimatedOneRM: number,
@@ -30,20 +29,17 @@ function calculateTargetWeight(
   return roundToPlate(estimatedOneRM * percentage);
 }
 
-function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
-  const workouts: ProgramWorkout[] = [];
-
-  for (let week = 1; week <= 8; week++) {
+export const sheiko = createLinearProgramGenerator({
+  info: sheikoInfo,
+  weeks: 8,
+  daysPerWeek: 4,
+  buildExercises: ({ week, day, oneRMs }) => {
     const isVolumeWeek = week % 2 === 1;
     const isDeload = week === 8;
-
     const weekConfig = isVolumeWeek ? VOLUME_DAY : INTENSITY_DAY;
 
-    workouts.push({
-      weekNumber: week,
-      sessionNumber: (week - 1) * 4 + 1,
-      sessionName: `Week ${week} - Workout 1${isDeload ? ' (Deload)' : ''}`,
-      exercises: [
+    if (day === 1) {
+      return [
         {
           name: 'Squat',
           lift: 'squat' as const,
@@ -60,14 +56,11 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           reps: isDeload ? 3 : weekConfig.bench.reps,
           targetWeight: calculateTargetWeight(oneRMs.bench, week, 1, 'bench', isVolumeWeek),
         },
-      ],
-    });
+      ];
+    }
 
-    workouts.push({
-      weekNumber: week,
-      sessionNumber: (week - 1) * 4 + 2,
-      sessionName: `Week ${week} - Workout 2${isDeload ? ' (Deload)' : ''}`,
-      exercises: [
+    if (day === 2) {
+      return [
         {
           name: 'Deadlift',
           lift: 'deadlift' as const,
@@ -84,14 +77,11 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           reps: isDeload ? 3 : weekConfig.ohp.reps,
           targetWeight: calculateTargetWeight(oneRMs.ohp, week, 1, 'ohp', isVolumeWeek),
         },
-      ],
-    });
+      ];
+    }
 
-    workouts.push({
-      weekNumber: week,
-      sessionNumber: (week - 1) * 4 + 3,
-      sessionName: `Week ${week} - Workout 3${isDeload ? ' (Deload)' : ''}`,
-      exercises: [
+    if (day === 3) {
+      return [
         {
           name: 'Squat',
           lift: 'squat' as const,
@@ -108,49 +98,35 @@ function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
           reps: isDeload ? 3 : weekConfig.bench.reps,
           targetWeight: calculateTargetWeight(oneRMs.bench, week, 2, 'bench', isVolumeWeek),
         },
-      ],
-    });
-
-    workouts.push({
-      weekNumber: week,
-      sessionNumber: (week - 1) * 4 + 4,
-      sessionName: `Week ${week} - Workout 4${isDeload ? ' (Deload)' : ''}`,
-      exercises: [
-        {
-          name: 'Deadlift',
-          lift: 'deadlift' as const,
-          libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
-          sets: isDeload ? 2 : weekConfig.deadlift.sets - 1,
-          reps: isDeload ? 2 : weekConfig.deadlift.reps,
-          targetWeight: calculateTargetWeight(oneRMs.deadlift, week, 2, 'deadlift', isVolumeWeek),
-        },
-        {
-          name: 'Overhead Press',
-          lift: 'ohp' as const,
-          libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
-          sets: isDeload ? 2 : weekConfig.ohp.sets - 1,
-          reps: isDeload ? 3 : weekConfig.ohp.reps,
-          targetWeight: calculateTargetWeight(oneRMs.ohp, week, 2, 'ohp', isVolumeWeek),
-        },
-      ],
-    });
-  }
-
-  for (const workout of workouts) {
-    const accessories = getSheikoAccessories(workout.weekNumber, workout.sessionNumber);
-    if (accessories.length > 0) {
-      workout.accessories = generateWorkoutAccessories(accessories, oneRMs);
+      ];
     }
-  }
 
-  return workouts;
-}
-
-export const sheiko: ProgramConfig = {
-  info: sheikoInfo,
-  generateWorkouts,
+    return [
+      {
+        name: 'Deadlift',
+        lift: 'deadlift' as const,
+        libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
+        sets: isDeload ? 2 : weekConfig.deadlift.sets - 1,
+        reps: isDeload ? 2 : weekConfig.deadlift.reps,
+        targetWeight: calculateTargetWeight(oneRMs.deadlift, week, 2, 'deadlift', isVolumeWeek),
+      },
+      {
+        name: 'Overhead Press',
+        lift: 'ohp' as const,
+        libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
+        sets: isDeload ? 2 : weekConfig.ohp.sets - 1,
+        reps: isDeload ? 3 : weekConfig.ohp.reps,
+        targetWeight: calculateTargetWeight(oneRMs.ohp, week, 2, 'ohp', isVolumeWeek),
+      },
+    ];
+  },
+  getAccessories: getSheikoAccessories,
   calculateTargetWeight: (oneRM, week, session, lift) =>
     calculateTargetWeight(oneRM, week, session, lift, true),
-};
+  getSessionName: ({ week, day }) => {
+    const isDeload = week === 8;
+    return `Week ${week} - Workout ${day}${isDeload ? ' (Deload)' : ''}`;
+  },
+});
 
 export default sheiko;

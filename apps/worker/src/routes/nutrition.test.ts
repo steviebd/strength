@@ -1,19 +1,21 @@
 import { describe, expect, test, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import * as schema from '@strength/db';
 import { Hono } from 'hono';
 
-const requireOwnedNutritionEntry = vi.hoisted(() => vi.fn());
+const requireOwnedRecord = vi.hoisted(() => vi.fn());
 
 vi.mock('../api/auth', () => ({
   createHandler: (handler: any) => (c: any) => handler(c, { userId: 'user-1', db: c.env.DB }),
 }));
 
 vi.mock('../api/guards', () => ({
-  requireOwnedNutritionEntry,
+  requireOwnedRecord,
 }));
 
 describe('nutrition routes', () => {
   test('routes DELETE /entries/:id to the nutrition entry delete handler', async () => {
-    requireOwnedNutritionEntry.mockResolvedValue({
+    requireOwnedRecord.mockResolvedValue({
       id: 'entry-1',
       userId: 'user-1',
       isDeleted: false,
@@ -37,6 +39,14 @@ describe('nutrition routes', () => {
     );
 
     expect(res.status).toBe(204);
-    expect(requireOwnedNutritionEntry).toHaveBeenCalledWith({ db, userId: 'user-1' }, 'entry-1');
+    expect(requireOwnedRecord).toHaveBeenCalledWith(
+      { db, userId: 'user-1' },
+      schema.nutritionEntries,
+      'entry-1',
+      {
+        extraConditions: [eq(schema.nutritionEntries.isDeleted, false)],
+        notFoundBody: { error: 'Nutrition entry not found' },
+      },
+    );
   });
 });

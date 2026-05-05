@@ -35,14 +35,19 @@ export async function getOrCreateExerciseForUser(
 ): Promise<string> {
   if (libraryId) {
     const now = new Date();
+    const libraryItem = exerciseLibrary.find((e) => e.id === libraryId);
+    const canonicalName = libraryItem?.name ?? exerciseName;
+    const canonicalMuscleGroup = libraryItem?.muscleGroup ?? inferMuscleGroup(liftType);
+    const canonicalDescription = libraryItem?.description ?? null;
+
     const result = await db
       .insert(exercises)
       .values({
         id: generateId(),
         userId,
-        name: exerciseName,
-        muscleGroup: inferMuscleGroup(liftType),
-        description: null,
+        name: canonicalName,
+        muscleGroup: canonicalMuscleGroup,
+        description: canonicalDescription,
         libraryId,
         createdAt: now,
         updatedAt: now,
@@ -50,8 +55,8 @@ export async function getOrCreateExerciseForUser(
       .onConflictDoUpdate({
         target: [exercises.userId, exercises.libraryId],
         set: {
-          name: exerciseName,
-          muscleGroup: inferMuscleGroup(liftType),
+          muscleGroup: canonicalMuscleGroup,
+          description: canonicalDescription,
           updatedAt: now,
         },
       })

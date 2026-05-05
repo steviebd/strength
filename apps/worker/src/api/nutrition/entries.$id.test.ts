@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createMockDb } from '../../test/mock-db';
 import { createTestContext } from '../../test/handler';
 
-const requireOwnedNutritionEntry = vi.hoisted(() => vi.fn());
+const requireOwnedRecord = vi.hoisted(() => vi.fn());
 
 vi.mock('../auth', () => ({
   createHandler: (handler: any) => (c: any) => handler(c, { userId: 'user-1', db: c._db }),
 }));
 
 vi.mock('../guards', () => ({
-  requireOwnedNutritionEntry,
+  requireOwnedRecord,
 }));
 
 describe('nutrition entry by id handlers', () => {
@@ -18,9 +18,7 @@ describe('nutrition entry by id handlers', () => {
   });
 
   test('returns 404 from ownership guard without leaking data', async () => {
-    requireOwnedNutritionEntry.mockResolvedValue(
-      Response.json({ message: 'Not found' }, { status: 404 }),
-    );
+    requireOwnedRecord.mockResolvedValue(Response.json({ message: 'Not found' }, { status: 404 }));
     const { getEntryHandler } = await import('./entries.$id');
     const response = await getEntryHandler(
       createTestContext({ db: createMockDb(), params: { id: 'entry-1' } }),
@@ -30,7 +28,7 @@ describe('nutrition entry by id handlers', () => {
   });
 
   test('updates only allowed entry fields and rejects invalid loggedAt', async () => {
-    requireOwnedNutritionEntry.mockResolvedValue({ id: 'entry-1', userId: 'user-1' });
+    requireOwnedRecord.mockResolvedValue({ id: 'entry-1', userId: 'user-1' });
     const { updateEntryHandler } = await import('./entries.$id');
 
     const invalid = await updateEntryHandler(
@@ -61,7 +59,7 @@ describe('nutrition entry by id handlers', () => {
   });
 
   test('soft deletes owned entries', async () => {
-    requireOwnedNutritionEntry.mockResolvedValue({
+    requireOwnedRecord.mockResolvedValue({
       id: 'entry-1',
       userId: 'user-1',
       isDeleted: false,

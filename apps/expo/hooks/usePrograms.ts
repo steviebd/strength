@@ -117,10 +117,7 @@ export function useActivePrograms() {
           and(
             eq(localSyncQueue.userId, userId!),
             eq(localSyncQueue.entityType, 'program'),
-            or(
-              eq(localSyncQueue.operation, 'start_cycle_workout'),
-              eq(localSyncQueue.operation, 'reschedule_workout'),
-            ),
+            eq(localSyncQueue.operation, 'reschedule_workout'),
             or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
           ),
         )
