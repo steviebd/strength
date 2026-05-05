@@ -35,8 +35,7 @@
         "APP_NAME": "strength"
       },
       "android": {
-        "buildType": "app-bundle",
-        "enableProguardInReleaseBuilds": true
+        "buildType": "app-bundle"
       }
     },
     "production-apk": {
@@ -45,8 +44,7 @@
         "APP_NAME": "strength"
       },
       "android": {
-        "buildType": "apk",
-        "enableProguardInReleaseBuilds": true
+        "buildType": "apk"
       }
     }
   },

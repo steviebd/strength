@@ -1,291 +1,201 @@
-# Database Operations Improvements Plan
+# Database Operations Improvements Work Order
 
 ## Overview
 
-6 items to reduce complexity and speed up D1/local SQLite performance. Order is priority-weighted (critical → nice-to-have). Items are self-contained but can interact; see Dependencies section at bottom.
+Implement the database operation improvements below. This file is a work order for another
+agent: treat the examples as implementation guidance, not code to copy verbatim. Preserve the
+repo's existing Drizzle/D1 patterns and run the verification commands at the end.
+
+The highest priority item is the rate limiter because it has real correctness risk under
+concurrency. The Whoop and sync-complete items are performance/maintainability work.
 
 ---
 
-## 1. Fix Rate Limit Race Condition
+## 1. Fix Rate Limit Concurrency
 
 **Priority:** Critical  
-**File:** `apps/worker/src/lib/rate-limit.ts`  
-**Effort:** Small (changes to ~10 lines)
+**Files:** `apps/worker/src/lib/rate-limit.ts`, `packages/db/src/schema.ts`,
+`packages/db/drizzle/migrations/`  
+**Effort:** Small/medium
 
 ### Problem
 
-The current pattern is **read-then-write**, which has a classic race:
-
-```
-Request A: SELECT requests=5 → OK → UPDATE requests=6
-Request B: SELECT requests=5 → OK → UPDATE requests=6
-Result:    Only 6 requests counted instead of 7
-```
-
-Two concurrent requests both read `requests=5` before either writes, so both pass the limit check and both write 6.
-
-### Fix
-
-Replace the read-then-write increment at lines 66-73:
+`checkRateLimit` currently uses read-then-write:
 
 ```typescript
-// BEFORE (race-prone)
+const existing = await db.select().from(schema.rateLimit).where(...).get();
+// ...
 await db
   .update(schema.rateLimit)
-  .set({
-    requests: existing.requests + 1,
-    updatedAt: new Date(now),
-  })
+  .set({ requests: existing.requests + 1 })
   .where(eq(schema.rateLimit.id, existing.id))
   .run();
-
-return { allowed: true, remaining: limitPerHour - (existing.requests + 1) };
 ```
 
-With an atomic update that checks the limit server-side:
+This has two races:
 
-```typescript
-// AFTER (atomic — D1 executes the WHERE condition atomically)
-import { sql } from 'drizzle-orm';
+1. Existing-row increment race:
 
-const result = await db
-  .update(schema.rateLimit)
-  .set({
-    requests: sql`requests + 1`,
-    updatedAt: new Date(now),
-  })
-  .where(
-    and(
-      eq(schema.rateLimit.id, existing.id),
-      sql`requests < ${limitPerHour}`,
-    ),
-  )
-  .run();
-
-if (result.rowsAffected === 0) {
-  // Limit was hit between our SELECT and UPDATE — reject (or re-read)
-  const retryAfter = Math.ceil((existingWindowStart + 60 * 60 * 1000 - now) / 1000);
-  return { allowed: false, remaining: 0, retryAfter: retryAfter > 0 ? retryAfter : 0 };
-}
-
-return { allowed: true, remaining: limitPerHour - (existing.requests + 1) };
+```text
+Request A: SELECT requests=5 -> OK -> UPDATE requests=6
+Request B: SELECT requests=5 -> OK -> UPDATE requests=6
+Result: only 6 requests counted instead of 7
 ```
+
+2. First-request insert race:
+
+The `rate_limit` table currently has indexes on `user_id`, `endpoint`, and `window_start`, but no
+unique constraint for `(user_id, endpoint)`. Concurrent first requests for the same user/endpoint can
+insert duplicate limiter rows, after which future reads with `.get()` are ambiguous.
+
+### Requirements
+
+- Add a unique constraint for one active rate-limit row per `(userId, endpoint)`.
+  - Update `packages/db/src/schema.ts`.
+  - Add a Drizzle migration in `packages/db/drizzle/migrations/`.
+  - Confirm existing data cleanup/backfill needs before applying the unique constraint. If duplicate
+    rows can already exist, the migration must consolidate or delete duplicates safely.
+- Replace the non-atomic increment with server-side SQL such as `requests = requests + 1`.
+- Check the limit in the same update statement, for example `WHERE requests < ${limitPerHour}` for
+  the current window.
+- Handle the first-insert race with the new unique constraint. Acceptable approaches:
+  - Use insert/upsert logic keyed by `(userId, endpoint)`, or
+  - Attempt insert, catch unique conflict, then fall through to the atomic update path.
+- Preserve reset behavior when the stored `windowStart` is older than the current hour.
+- Confirm the actual Drizzle D1 `.run()` return shape before using it. Existing tests may mock
+  `rowsAffected`, but Cloudflare D1 exposes changed row counts through result metadata such as
+  `meta.changes`. Implement this in the shape that passes real typecheck and tests.
 
 ### Verification
 
-- Unit test with concurrent `checkRateLimit` calls hitting the limit boundary
-- D1's `sql` template literal is already used elsewhere in this codebase (whoop sync uses `sql\`excluded.*\``)
+- Add focused Vitest coverage for:
+  - incrementing below the limit,
+  - rejecting at/over the limit,
+  - resetting an old window,
+  - duplicate insert/upsert behavior at first request where practical.
+- Run `bun run check`.
+- Run `bun run test`.
 
 ---
 
-## 2. Batch Whoop Sync Chunks into db.batch()
+## 2. Batch Whoop Sync Chunks into `db.batch()`
 
-**Priority:** High (performance)  
-**File:** `apps/worker/src/whoop/sync.ts`  
-**Effort:** Medium (refactor 5 sync functions, ~60 lines each)
+**Priority:** High  
+**Files:** `apps/worker/src/whoop/sync.ts`, `packages/db/src/utils/d1-batch.ts`,
+`packages/db/src/utils/d1-batch.test.ts`  
+**Effort:** Medium
 
 ### Problem
 
-Each `sync*` function (lines 403-705) loops over data in `BATCH_SIZE=50` chunks and for each chunk does:
+Each Whoop `sync*` function loops over `BATCH_SIZE=50` chunks and executes one D1 request per chunk:
 
 ```typescript
 await db
   .insert(whoopWorkout)
   .values(values)
-  .onConflictDoUpdate({ ... })
+  .onConflictDoUpdate({ ... });
 ```
 
-This is **one round trip to D1 per chunk**. Syncing 200 workouts = 4 round trips. 365 days of whoop data (initial sync) can mean hundreds of round trips across 5 data types. Each D1 round trip has ~10-50ms latency regardless of data size.
+Initial syncs can produce many chunks across workouts, recoveries, cycles, sleep, and body
+measurements. The existing `chunkedInsert` helper already batches plain inserts, but it does not
+support `onConflictDoUpdate`, so Whoop sync cannot use it yet.
 
-### Fix
+### Preferred Fix
 
-Group multiple chunks into a single `db.batch()` call to reduce round trips by a factor of `maxStatementsPerBatch` (default 45). The optimal pattern is identical to what `chunkedInsert` already does internally — but `chunkedInsert` doesn't support `onConflictDoUpdate`.
+Extend `packages/db/src/utils/d1-batch.ts` so callers can build batched insert statements with
+`onConflictDoUpdate`.
 
-**Option A (preferred): Extend `chunkedInsert` to support `onConflictDoUpdate`**
+Implementation notes:
 
-Add an optional `onConflict` config to `chunkedInsert` in `packages/db/src/utils/d1-batch.ts`:
+- Keep the existing safe chunk-size logic from `getSafeInsertChunkSize`.
+- Keep `maxStatementsPerBatch` behavior.
+- Preserve return count semantics. For upserts, decide whether the function should return input row
+  count or affected row count, then keep all callers/tests consistent.
+- The generic TypeScript shape for Drizzle's `onConflictDoUpdate` is subtle. Do not copy a brittle
+  `Parameters<ReturnType<typeof db.insert<T>>...>` type if it does not typecheck. Prefer a pragmatic
+  local config type that preserves useful typing at call sites and passes `bun run check`.
+- Whoop sync uses `sql\`excluded.column_name\`` in conflict update sets. Preserve the existing
+  target columns and update columns exactly unless there is a tested reason to change them.
+
+Expected usage shape:
 
 ```typescript
-export async function chunkedInsert<T extends AnySQLiteTable>(
-  db: DbClient,
-  config: {
-    table: T;
-    rows: T['$inferInsert'][];
-    chunkSize?: number;
-    maxQueryParams?: number;
-    maxStatementsPerBatch?: number;
-    onConflict?: {
-      target: Parameters<ReturnType<typeof db.insert<T>>['onConflictDoUpdate']>[0];
-      set: Parameters<ReturnType<typeof db.insert<T>>['onConflictDoUpdate']>[1];
-    };
+return chunkedInsert(db, {
+  table: whoopWorkout,
+  rows: workouts.map((workout) => mapWorkoutRow(userId, workout)),
+  onConflictDoUpdate: {
+    target: whoopWorkout.whoopWorkoutId,
+    set: {
+      userId: sql`excluded.user_id`,
+      updatedAt: sql`excluded.updated_at`,
+      // preserve existing set fields
+    },
   },
-): Promise<number> {
-  // ... existing chunking + batching logic ...
-  // In the statement-building loop, change:
-  const stmt = db.insert(table).values(chunk);
-  if (config.onConflict) {
-    statements.push(stmt.onConflictDoUpdate(config.onConflict));
-  } else {
-    statements.push(stmt);
-  }
-  // ...
-}
+});
 ```
 
-Then convert each `sync*` function to:
-
-```typescript
-async function syncWorkouts(db, userId, workouts): Promise<number> {
-  const rows = workouts.map(workout => ({ /* existing value mapping */ }));
-  return chunkedInsert(db, {
-    table: whoopWorkout,
-    rows,
-    onConflict: { target: whoopWorkout.whoopWorkoutId, set: { /* excluded.* */ } },
-  });
-}
-```
-
-This eliminates all manual chunking loops from `sync.ts` and reduces it by ~300 lines.
-
-**Option B (simpler, no chunkedInsert change):** Wrap existing per-chunk calls in batches:
-
-```typescript
-async function syncWorkouts(db, userId, workouts): Promise<number> {
-  const values = workouts.map(workout => ({ /* value mapping */ }));
-  const chunks = chunkArray(values, BATCH_SIZE);
-  const maxPerBatch = DEFAULT_STATEMENTS_PER_BATCH;
-
-  for (let i = 0; i < chunks.length; i += maxPerBatch) {
-    const batchChunks = chunks.slice(i, i + maxPerBatch);
-    const statements = batchChunks.map(chunk =>
-      db.insert(whoopWorkout).values(chunk).onConflictDoUpdate({ ... })
-    );
-    await db.batch(statements);
-  }
-}
-```
-
-Option A is strongly preferred because it reduces the sync functions to 5-10 lines each and eliminates duplicated chunking logic.
-
-### Caveat
-
-The whoop batch sync uses `sql\`excluded.column_name\`` for the `set` clause. The `onConflict` config passed to `chunkedInsert` must be compatible with Drizzle's typed `onConflictDoUpdate` API. Since whoop sync already uses `sql` template literals (raw SQL), this should work via Drizzle's `sql` tagged template.
+If a clean helper type becomes too invasive, use a smaller helper specific to batched upserts in
+`whoop/sync.ts`, but still use `db.batch()` to reduce D1 round trips.
 
 ### Verification
 
-- Existing whoop sync tests (if any) should pass
-- Manual test: initial sync of 365 days of whoop data should complete in <20 round trips instead of hundreds
-- The `chunkedInsert` test in `packages/db/src/utils/d1-batch.test.ts` should be extended with an `onConflict` test case
+- Extend `packages/db/src/utils/d1-batch.test.ts` with an `onConflictDoUpdate`/upsert statement
+  construction case.
+- Run `bun run check`.
+- Run `bun run test`.
+- Manually verify a Whoop sync against local/dev D1 if credentials and test data are available.
 
 ---
 
-## 3. Unify Chunking in program-helpers.ts with chunkedInsert
+## 3. Optional: Unify Program Helper Chunking
 
-**Priority:** Medium (complexity reduction)  
-**File:** `apps/worker/src/lib/program-helpers.ts`  
-**Effort:** Small (if item 2 Option A is done first)
+**Priority:** Medium/optional  
+**Files:** `packages/db/src/utils/d1-batch.ts`, `apps/worker/src/lib/program-helpers.ts`  
+**Effort:** Small if item 2 adds reusable statement builders
 
-### Problem
+### Context
 
-`createWorkoutFromProgramCycleWorkout` (lines 402-437) manually does what `chunkedInsert` does:
+`createWorkoutFromProgramCycleWorkout` manually chunks workout exercise and set inserts, then combines
+those statements with the workout insert and `programCycleWorkouts` update in one `db.batch()`.
 
-```typescript
-const exerciseChunkSize = getSafeInsertChunkSize(workoutExerciseRows, 100, 100);
-const exerciseChunks = chunkArray(workoutExerciseRows, exerciseChunkSize);
-for (const chunk of exerciseChunks) {
-  statements.push(db.insert(schema.workoutExercises).values(chunk));
-}
-// ... repeated for sets ...
-await db.batch(statements);
-```
+That existing behavior is good because it preserves a single batched statement sequence. Do not
+replace it with multiple `chunkedInsert` calls that create separate batches.
 
-The difference from `chunkedInsert` is that this combines inserts for 3 tables (workouts, exercises, sets) + 1 update into a **single** `db.batch()` call — which is actually better than calling `chunkedInsert` 3 times (which would be 3 separate batches/round trips).
+### Optional Fix
 
-### Fix
+Only if item 2 naturally creates a reusable statement builder, add something like
+`chunkedInsertStatements` that returns insert/upsert statements without executing them.
 
-**Option A (if item 2 Option A is done):** Add a `chunkedInsertStatements` helper that returns statements instead of executing them:
-
-```typescript
-// In packages/db/src/utils/d1-batch.ts
-export function chunkedInsertStatements<T extends AnySQLiteTable>(
-  db: DbClient,
-  config: {
-    table: T;
-    rows: T['$inferInsert'][];
-    chunkSize?: number;
-    maxQueryParams?: number;
-    onConflict?: { ... };  // from item 2
-  },
-): ReturnType<typeof db.insert<T>>[] {
-  // Same chunking logic as chunkedInsert, but returns statements array
-  // instead of calling db.batch()
-}
-```
-
-Then `program-helpers.ts` becomes:
-
-```typescript
-const statements: any[] = [db.insert(schema.workouts).values(workoutValues)];
-statements.push(...chunkedInsertStatements(db, {
-  table: schema.workoutExercises,
-  rows: workoutExerciseRows,
-}));
-statements.push(...chunkedInsertStatements(db, {
-  table: schema.workoutSets,
-  rows: allSetRows,
-}));
-statements.push(
-  db.update(schema.programCycleWorkouts).set({ ... }).where(...)
-);
-await db.batch(statements);
-```
-
-This eliminates ~35 lines of manual chunking code.
-
-**Option B (no refactor needed):** Leave as-is. The duplication is small (35 lines) and the pattern is valid. Only do Option A if you're already touching `chunkedInsert` for item 2.
+Then `program-helpers.ts` can use that helper while preserving a single final `db.batch(statements)`.
 
 ### Verification
 
-- `createOneRMTestWorkout` and `createWorkoutFromProgramCycleWorkout` should continue to work identically
-- The single `db.batch()` should still be used (not split into multiple round trips)
+- Existing `createOneRMTestWorkout`, `createWorkoutFromProgramCycleWorkout`, and program helper tests
+  should continue to pass.
+- Confirm the final implementation still uses one `db.batch()` for the combined operation.
 
 ---
 
 ## 4. Batch Exercise Ownership Checks in Sync-Complete
 
-**Priority:** Medium (performance)  
+**Priority:** Medium  
 **File:** `apps/worker/src/routes/workouts.ts`  
-**Lines:** 566-608  
-**Effort:** Medium (refactor exercise resolution loop)
+**Effort:** Medium
 
 ### Problem
 
-The sync-complete handler resolves exercise references in a loop, making 1 DB query per exercise:
+The sync-complete handler resolves exercise references in a loop. For each exercise it checks whether
+the user owns the exercise, then potentially calls `getOrCreateExerciseForUser` or
+`resolveToUserExerciseId`.
 
-```typescript
-for (const exercise of exerciseInputs) {
-  // 1. Check if user owns this exercise (1 query)
-  const ownedExercise = await db.select({ id: ... })
-    .from(schema.exercises)
-    .where(and(eq(schema.exercises.id, exercise.exerciseId), ...))
-    .get();
-
-  if (!ownedExercise) {
-    // 2. Potentially create or resolve exercise (1-2 more queries)
-    resolvedExerciseId = await getOrCreateExerciseForUser(...);
-  }
-}
-```
-
-For a workout with 10 exercises, this is 10-30 sequential DB queries.
+For workouts with many exercises this creates many sequential DB reads.
 
 ### Fix
 
-Batch the ownership check upfront:
+Validate the exercise input shape first, then batch the ownership check:
 
 ```typescript
-// Single query to check all exercise ownership
-const allExerciseIds = exerciseInputs.map(e => e.exerciseId);
+const allExerciseIds = exerciseInputs.map((exercise) => exercise.exerciseId);
 const ownedExercises = await db
   .select({ id: schema.exercises.id })
   .from(schema.exercises)
@@ -298,68 +208,45 @@ const ownedExercises = await db
   )
   .all();
 
-const ownedSet = new Set(ownedExercises.map(e => e.id));
-
-// Now the loop only does work for non-owned exercises
-for (const exercise of exerciseInputs) {
-  let resolvedExerciseId = exercise.exerciseId;
-  if (!ownedSet.has(exercise.exerciseId)) {
-    resolvedExerciseId = await getOrCreateExerciseForUser(...);
-  }
-  resolvedExerciseRows.push({ ... });
-}
+const ownedSet = new Set(ownedExercises.map((exercise) => exercise.id));
 ```
 
-This reduces N queries to 1 for the common case (all exercises already owned).
+Then the loop only resolves exercises not present in `ownedSet`.
 
-### Additional: Batch `getOrCreateExerciseForUser` calls
-
-If there are multiple non-owned exercises, they still run sequentially. Could use `Promise.all` since they're independent:
-
-```typescript
-const unresolved = exerciseInputs
-  .filter(e => !ownedSet.has(e.exerciseId));
-const resolved = await Promise.all(
-  unresolved.map(e =>
-    getOrCreateExerciseForUser(db, userId, e.name, undefined, e.libraryId)
-  )
-);
-```
+Be careful with `Promise.all` for unresolved exercises. It is safe only if the operations are truly
+independent for the same user. `getOrCreateExerciseForUser` already uses an upsert for library-backed
+exercises, but custom-name exercise creation does a read then insert without a unique name constraint.
+Avoid introducing duplicate custom exercises through parallel calls.
 
 ### Verification
 
-- Sync-complete endpoint should produce identical results
-- Test with a workout containing 15+ exercises (mix of owned and new)
+- Existing workout route tests should pass.
+- Add or update coverage for sync-complete with:
+  - all exercises already owned,
+  - a mix of owned exercises and library exercise IDs,
+  - invalid exercise input still returning the same 400 behavior.
 
 ---
 
-## 5. DRY Whoop Upsert/Sync Transformation Logic
+## 5. Optional: DRY Whoop Mapping Logic
 
-**Priority:** Low (maintenance)  
+**Priority:** Low  
 **File:** `apps/worker/src/whoop/sync.ts`  
-**Effort:** Medium (if item 2 Option A is done, this is partially addressed)
+**Effort:** Medium
 
 ### Problem
 
-Each data type has two functions with identical field-mapping logic:
-
-| Data Type | Single Upsert | Batch Sync | Lines Duplicated |
-|-----------|---------------|------------|------------------|
-| Workout | `upsertWhoopWorkout` (lines 108-150) | `syncWorkouts` (lines 403-449) | ~30 lines |
-| Recovery | `upsertWhoopRecovery` (lines 171-225) | `syncRecoveries` (lines 452-512) | ~40 lines |
-| Cycle | `upsertWhoopCycle` (lines 248-300) | `syncCycles` (lines 515-571) | ~35 lines |
-| Sleep | `upsertWhoopSleep` (lines 302-380) | `syncSleepRecords` (lines 574-653) | ~55 lines |
-| Body | — | `syncBodyMeasurements` (lines 656-704) | ~30 lines |
-
-Total: ~190 lines of duplicated mapping code.
+Single webhook upsert functions and batch sync functions duplicate field mapping for workouts,
+recoveries, cycles, and sleep records.
 
 ### Fix
 
-Extract shared mapping functions per data type:
+After item 2, extract shared row-mapping helpers only where it improves clarity and preserves types.
+
+Example shape:
 
 ```typescript
-// Shared mapping — single source of truth
-function mapWorkoutRow(userId: string, workout: WhoopWorkout) {
+function mapWorkoutRow(userId: string, workout: WhoopWorkout, now = new Date()) {
   const zoneDurations = workout.score?.zone_durations;
   return {
     userId,
@@ -372,113 +259,69 @@ function mapWorkoutRow(userId: string, workout: WhoopWorkout) {
     score: workout.score ? JSON.stringify(workout.score) : null,
     during: workout.during ? JSON.stringify(workout.during) : null,
     zoneDuration: zoneDurations ? JSON.stringify(zoneDurations) : null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   };
-}
-
-// Single upsert — uses shared mapper
-export async function upsertWhoopWorkout(db, userId, workout): Promise<number> {
-  await db.insert(whoopWorkout).values(mapWorkoutRow(userId, workout))
-    .onConflictDoUpdate({ target: whoopWorkout.whoopWorkoutId, set: { /* excluded.* */ } });
-  return 1;
-}
-
-// Batch sync — uses shared mapper + chunkedInsert (item 2)
-async function syncWorkouts(db, userId, workouts): Promise<number> {
-  return chunkedInsert(db, {
-    table: whoopWorkout,
-    rows: workouts.map(w => mapWorkoutRow(userId, w)),
-    onConflict: { target: whoopWorkout.whoopWorkoutId, set: { /* excluded.* */ } },
-  });
 }
 ```
 
-If item 2 Option A is done, the `sync*` functions become 1-liners and the single upserts become thin wrappers around the shared mapper.
+Use a single `now` per operation where the current code expects consistent timestamps.
 
 ### Verification
 
-- All existing whoop sync tests should pass
-- Single webhook upsert should produce identical DB rows as batch sync
+- Existing Whoop tests should pass.
+- Single webhook upsert and batch sync should continue to produce equivalent rows for the same input.
 
 ---
 
-## 6. Transactions for Multi-Statement Operations
+## 6. Do Not Replace D1 `batch()` for Transaction Reasons
 
-**Priority:** Low (data integrity)  
-**Files:** `apps/worker/src/lib/program-helpers.ts`, `apps/worker/src/routes/workouts.ts`  
-**Effort:** Small (D1 has limitations, local SQLite benefits more)
+**Priority:** Documentation/guardrail  
+**Files:** None unless updating comments/tests  
+**Effort:** None
 
-### Problem
+### Corrected Finding
 
-Multi-statement operations use `db.batch()` which groups statements but does **not** provide rollback on failure. If statement 2 of 3 fails, statements before it have already committed:
+The previous note that D1 `batch()` does not roll back prior statements on failure was incorrect.
+Cloudflare documents D1 `batch()` as transactional for the provided SQL statements: batched statements
+are executed sequentially and are rolled back if one statement fails.
 
-| Location | Statements | Risk |
-|----------|-----------|------|
-| `createOneRMTestWorkout` (program-helpers.ts:259) | Insert workout + exercises + sets | Orphaned exercises/sets |
-| `createWorkoutFromProgramCycleWorkout` (program-helpers.ts:437) | Insert workout + exercises + sets + update cycleWorkout | Orphaned workout + stale cycleWorkout |
-| `sync-complete` (workouts.ts:557-660) | Delete + inserts + update | Partially deleted data |
+Source: <https://developers.cloudflare.com/d1/worker-api/d1-database/>
 
-### Fix
+### Guidance
 
-**For D1 (Cloudflare):** D1's `batch()` is the best available — D1 doesn't support full ACID transactions across the edge. No change needed for production.
-
-**For local SQLite (Expo app):** If the Expo app uses these same patterns via `expo-sqlite` + Drizzle, wrap in transactions:
-
-```typescript
-await db.transaction(async (tx) => {
-  await tx.insert(schema.workouts).values(workoutValues);
-  await tx.insert(schema.workoutExercises).values(workoutExerciseRows);
-  await tx.insert(schema.workoutSets).values(setRows);
-});
-```
-
-Check `apps/expo/db/workouts.ts` and `apps/expo/db/sync-queue.ts` for equivalent patterns that could benefit.
-
-### Decision
-
-This is low priority because:
-1. D1 doesn't support it anyway
-2. The failure rate for mid-batch errors is very low
-3. The affected operations are user-initiated and can be retried
-
-Only implement if local SQLite corruption is a reported issue.
+- Do not replace existing D1 `db.batch()` calls with another mechanism solely for rollback.
+- `db.batch()` does not cover arbitrary application logic around reads and writes, so still be careful
+  with multi-step workflows that perform reads, branching logic, then later batches.
+- Expo/local SQLite transaction work is out of scope for this work order unless there is a reported
+  local data-integrity bug.
 
 ---
 
-## Summary of Changes
+## Recommended Order
 
-| # | What | Files Changed | Lines Changed | Risk |
-|---|------|--------------|---------------|------|
-| 1 | Atomic rate limit | `rate-limit.ts` | ~10 | Low |
-| 2 | Batch whoop sync | `d1-batch.ts` + `whoop/sync.ts` | +20 / -300 | Medium |
-| 3 | Unify chunking | `d1-batch.ts` + `program-helpers.ts` | +15 / -35 | Low |
-| 4 | Batch exercise checks | `workouts.ts` | ~20 | Low |
-| 5 | DRY whoop mappers | `whoop/sync.ts` | ~-190 lines | Low |
-| 6 | Transactions (local) | `apps/expo/db/*.ts` | ~20 | Low |
-
-## Dependencies
-
-```
-Item 2 (chunkedInsert onConflict) ──→ Item 3 (chunkedInsertStatements) easier
-                                  ──→ Item 5 (DRY whoop) becomes trivial
-
-Item 1 is fully independent
-Item 4 is fully independent
-Item 6 is fully independent
-```
-
-**Recommended order:** 1 → 2 → 3 → 5 → 4 → 6
+1. Rate limit uniqueness + atomic increment.
+2. Whoop batched upserts.
+3. Optional program helper statement builder, only if it falls out cleanly from item 2.
+4. Sync-complete batched ownership checks.
+5. Optional Whoop mapper cleanup.
 
 ## Testing Strategy
 
-All items:
-1. Run `bun run check` (lint + fmt + typecheck) after each item
-2. Run `bun run test` (Vitest) — especially `packages/db/src/utils/d1-batch.test.ts` for items 2-3
-3. Any API-level changes should be manually tested against local/dev D1:
-   - `bun run dev` then hit the affected endpoints
-   - For whoop sync: trigger a sync and verify data integrity
+Run after meaningful changes:
 
-Items 1, 4: Add Vitest unit tests for the refactored functions.
-Item 2: Extend `d1-batch.test.ts` with `onConflict` test case.
-Item 5: Existing whoop tests should pass with no changes to public API.
+```bash
+bun run check
+bun run test
+```
+
+Add focused tests near the changed code:
+
+- Item 1: rate-limit behavior and migration/schema expectations.
+- Item 2: `packages/db/src/utils/d1-batch.test.ts` for upsert batching.
+- Item 4: sync-complete behavior if route test infrastructure already exists.
+
+Manual checks where available:
+
+- `bun run dev` and hit affected worker endpoints.
+- Trigger or simulate a Whoop sync against local/dev D1 and verify row counts/data integrity.

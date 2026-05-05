@@ -24,6 +24,10 @@ vi.mock('@strength/db/client', () => ({
   generateId: vi.fn(() => 'test-id-123'),
 }));
 
+vi.mock('../lib/storage', () => ({
+  removePendingWorkout: vi.fn(),
+}));
+
 let mockDb: any;
 
 function createMockDb() {
@@ -91,7 +95,7 @@ describe('discardLocalWorkout', () => {
 
     const workoutUpdateSet = mockDb.update.mock.results[2].value.set;
     expect(workoutUpdateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ isDeleted: true, syncStatus: 'pending' }),
+      expect.objectContaining({ isDeleted: true, syncStatus: 'local' }),
     );
   });
 
