@@ -8,6 +8,7 @@ import { buildAuthCallbackURL, nativeGoogleAuthReturnToKey } from '@/lib/auth-ca
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
 import { platformStorage } from '@/lib/platform-storage';
+import { sendVerificationEmailRequest } from '@/lib/verification-email';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Input';
 import { colors, spacing, textRoles, surface, border, text } from '@/theme';
@@ -22,6 +23,7 @@ export default function SignUpScreen() {
   const [isEmailSubmitting, setIsEmailSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [showVerificationPending, setShowVerificationPending] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
   const searchParams = useLocalSearchParams();
   const authShellRef = useRef<AuthShellHandle>(null);
   const emailRef = useRef<any>(null);
@@ -125,6 +127,23 @@ export default function SignUpScreen() {
     }
   }
 
+  async function handleResendVerification() {
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    setIsResendingVerification(true);
+    try {
+      await sendVerificationEmailRequest(email.trim());
+      setError('Verification email sent. Check your inbox.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to resend verification email.');
+    } finally {
+      setIsResendingVerification(false);
+    }
+  }
+
   function scrollToInput(ref: React.RefObject<any>) {
     ref.current?.measure((_x: any, _y: any, _width: any, _height: any, _pageX: any, pageY: any) => {
       authShellRef.current?.scrollToInput(pageY);
@@ -161,6 +180,16 @@ export default function SignUpScreen() {
             size="md"
             fullWidth
             onPress={() => router.replace('/auth/sign-in')}
+          />
+
+          <Button
+            label={isResendingVerification ? 'Sending...' : 'Resend verification email'}
+            variant="outline"
+            size="md"
+            fullWidth
+            loading={isResendingVerification}
+            disabled={isResendingVerification}
+            onPress={handleResendVerification}
           />
         </View>
       </AuthShell>

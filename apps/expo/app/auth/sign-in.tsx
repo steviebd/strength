@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Link, router } from 'expo-router';
-import { ActivityIndicator, Modal, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
 import { buildAuthCallbackURL, nativeGoogleAuthReturnToKey } from '@/lib/auth-callback-url';
@@ -9,6 +9,7 @@ import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
 import { platformStorage } from '@/lib/platform-storage';
 import { requestPasswordResetEmail } from '@/lib/password-reset';
+import { sendVerificationEmailRequest } from '@/lib/verification-email';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Input';
 import { colors, spacing, textRoles, surface, border, text } from '@/theme';
@@ -24,6 +25,8 @@ export default function SignInScreen() {
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [isCheckingProvider, setIsCheckingProvider] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [isEmailNotVerified, setIsEmailNotVerified] = useState(false);
   const searchParams = useLocalSearchParams();
   const passwordRef = useRef<any>(null);
   const authShellRef = useRef<AuthShellHandle>(null);
@@ -38,6 +41,7 @@ export default function SignInScreen() {
 
   async function handleSubmit() {
     setError(null);
+    setIsEmailNotVerified(false);
     setIsEmailSubmitting(true);
 
     try {
@@ -56,6 +60,7 @@ export default function SignInScreen() {
           errorMessage.toLowerCase().includes('email not verified') ||
           errorMessage.toLowerCase().includes('not verified')
         ) {
+          setIsEmailNotVerified(true);
           setError(
             'Please verify your email before signing in. Check your inbox for a verification link.',
           );
@@ -165,6 +170,23 @@ export default function SignInScreen() {
     }
   }
 
+  async function handleResendVerification() {
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    setIsResendingVerification(true);
+    try {
+      await sendVerificationEmailRequest(email.trim());
+      setError('Verification email sent. Check your inbox.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to resend verification email.');
+    } finally {
+      setIsResendingVerification(false);
+    }
+  }
+
   function scrollToInput(ref: React.RefObject<any>) {
     ref.current?.measure((_x: any, _y: any, _width: any, _height: any, _pageX: any, pageY: any) => {
       authShellRef.current?.scrollToInput(pageY);
@@ -230,6 +252,7 @@ export default function SignInScreen() {
               backgroundColor: isSuccessError ? surface.success : surface.danger,
               paddingHorizontal: spacing.md,
               paddingVertical: spacing.sm,
+              gap: spacing.sm,
             }}
           >
             <Text
@@ -240,6 +263,24 @@ export default function SignInScreen() {
             >
               {error}
             </Text>
+            {isEmailNotVerified ? (
+              <Pressable
+                onPress={handleResendVerification}
+                disabled={isResendingVerification}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                <Text
+                  style={{
+                    ...textRoles.bodySmall,
+                    color: colors.accent,
+                    fontWeight: '600',
+                    opacity: isResendingVerification ? 0.6 : 1,
+                  }}
+                >
+                  {isResendingVerification ? 'Sending...' : 'Resend verification email'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 

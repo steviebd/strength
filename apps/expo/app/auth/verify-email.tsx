@@ -15,10 +15,12 @@ export default function VerifyEmailScreen() {
     let cancelled = false;
 
     async function verify() {
+      // No token means we were redirected here by Better Auth after it already
+      // verified the email server-side (GET /api/auth/verify-email). Better Auth
+      // only redirects to callbackURL on success, so we can treat this as verified.
       if (!token) {
         if (!cancelled) {
-          setStatus('error');
-          setErrorMessage('Invalid or missing verification token.');
+          setStatus('success');
         }
         return;
       }
