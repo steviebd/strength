@@ -7,6 +7,8 @@ Enable users to sign up with either OAuth (Google) or email/password, then seaml
 
 Better Auth's built-in `resetPassword` endpoint **automatically creates a credential account if one does not exist**. This means the forgot-password flow doubles as a "set password" flow for OAuth-only users, eliminating the need for a custom "add password" API.
 
+Important caveat: `resetPassword` does **not** create a logged-in session. In this app, `revokeSessionsOnPasswordReset: true` is already enabled, so after a successful reset the frontend must send the user back to sign in or explicitly call email sign-in with the new password. Do not wait for an existing session after reset.
+
 ---
 
 ## Phase 1: Dependencies & Environment
@@ -15,7 +17,7 @@ Better Auth's built-in `resetPassword` endpoint **automatically creates a creden
 
 **File:** `apps/worker/package.json`
 
-Add `resend` to `dependencies`.
+Already done. `resend` is present in `@strength/worker` dependencies.
 
 ### 1.2 Add Environment Variables
 
@@ -26,9 +28,16 @@ Add to `WorkerEnv` interface:
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL` (e.g., `auth@stevenduong.com`)
 
+Also update `resolveWorkerEnv()` so local/test process env fallback works:
+
+```typescript
+RESEND_API_KEY: env.RESEND_API_KEY ?? processEnv.RESEND_API_KEY,
+RESEND_FROM_EMAIL: env.RESEND_FROM_EMAIL ?? processEnv.RESEND_FROM_EMAIL,
+```
+
 **File:** `apps/worker/wrangler.template.toml`
 
-Add the same keys so they are injected by Infisical at build/deploy time.
+No direct edit should be needed if these values are emitted through the existing `{{VARS_BLOCK}}`/Infisical generation path. Confirm the generated `wrangler.toml` includes them after adding the Infisical values.
 
 **Infisical:**
 
@@ -59,6 +68,7 @@ Modify the `betterAuth()` call to include:
 ```typescript
 emailAndPassword: {
   enabled: true,
+  revokeSessionsOnPasswordReset: true,
   password: {
     hash: hashPassword,
     verify: verifyPassword,
@@ -78,7 +88,7 @@ emailVerification: {
 account: {
   accountLinking: {
     enabled: true,
-    trustedProviders: ['google', 'credential'],
+    trustedProviders: ['google', 'email-password'],
   },
 },
 ```
@@ -89,6 +99,8 @@ account: {
 - Users who sign up with Google can later set a password via forgot password and log in with email/password.
 - Email verification is required before email/password sign-in is permitted.
 
+Note: the database account row uses `providerId === 'credential'`, but Better Auth's `accountLinking.trustedProviders` option names the email/password provider as `'email-password'`.
+
 ---
 
 ## Phase 4: Backend — Custom API for Proactive Modal
@@ -96,6 +108,14 @@ account: {
 ### 4.1 Create `POST /api/auth/check-email-provider`
 
 **File:** `apps/worker/src/index.ts` (or a dedicated auth routes file)
+
+Register this route **before** the Better Auth catch-all:
+
+```typescript
+app.on(['GET', 'POST'], '/api/auth/*', ...)
+```
+
+Otherwise Better Auth will intercept `/api/auth/check-email-provider`.
 
 **Request body:** `{ email: string }`
 
@@ -107,7 +127,7 @@ account: {
 2. Look up the user by email.
 3. If no user exists, return `{ hasCredential: false, hasOAuth: false }` (prevents email enumeration via timing attacks by doing a dummy hash lookup).
 4. Look up the user's linked accounts in the `account` table.
-5. Return whether a `credential` provider account exists and whether any OAuth provider account exists.
+5. Return whether a `credential` `providerId` account exists and whether any OAuth provider account exists (for this app, currently `google`; generally any account with `providerId !== 'credential'`).
 
 **Rate limiting:**
 
@@ -124,7 +144,11 @@ Use the existing `checkRateLimit` utility on:
 - `POST /api/auth/request-password-reset`
 - `POST /api/auth/check-email-provider`
 
-This is currently unimplemented for auth routes and should be added as middleware or inline checks.
+Global `/api/*` rate limiting already runs before Better Auth, so auth routes are not unprotected. What is missing is the tighter auth-specific threshold:
+
+- Update `getRateLimitByEndpoint()` so `/api/auth/request-password-reset` returns a small limit, e.g. `5`.
+- Add `/api/auth/check-email-provider` with the same `5/hour` limit.
+- Keep the key IP-based for unauthenticated auth flows; the existing global middleware already uses user id when authenticated and IP headers otherwise.
 
 ---
 
@@ -140,7 +164,7 @@ This is currently unimplemented for auth routes and should be added as middlewar
 
 **Logic:**
 
-- On submit, call `authClient.forgetPassword({ email, redirectTo })`.
+- On submit, call `authClient.requestPasswordReset({ email, redirectTo })`.
 - `redirectTo` must be:
   - Native: `Linking.createURL('/auth/reset-password')`
   - Web: `${window.location.origin}/auth/reset-password`
@@ -160,7 +184,7 @@ This is currently unimplemented for auth routes and should be added as middlewar
 - Parse `token` from the URL query parameters on mount.
 - On submit, validate that passwords match and meet minimum length (8 characters).
 - Call `authClient.resetPassword({ newPassword, token })`.
-- On success, poll `waitForSessionReady()` (reusing the existing helper) until the session is established, then redirect to `/(app)/home` or a `returnTo` parameter.
+- On success, show a success message and route to `/auth/sign-in` with the email prefilled if available, or explicitly call `authClient.signIn.email({ email, password: newPassword })` if the screen has a trusted email value. Do **not** call `waitForSessionReady()` directly after reset; reset does not create a session.
 
 ### 6.3 `apps/expo/app/auth/verify-email.tsx`
 
@@ -195,7 +219,7 @@ This is currently unimplemented for auth routes and should be added as middlewar
        - Show a **React Native `<Modal>`** (matching existing app patterns in `workouts.tsx` and `programs.tsx`) with the following content:
          > "You originally signed up with Google. To sign in with your email and password, you first need to set a password."
          > 
-         > [Set Password] — triggers `authClient.forgetPassword({ email, redirectTo })` and shows the success message.
+         > [Set Password] — triggers `authClient.requestPasswordReset({ email, redirectTo })` and shows the success message.
          > 
          > [Continue with Google] — triggers `authClient.signIn.social({ provider: 'google' ... })`.
      - Otherwise, display the standard error message.
@@ -237,14 +261,14 @@ Expo Router handles deep links automatically based on the `scheme` defined in `a
 | User C signs up with email+password but does not verify | Sign-in fails with "Email not verified"; resend verification email flow works |
 | Rate limit on `/check-email-provider` | Blocked after 5 requests/hour |
 | Rate limit on `/request-password-reset` | Blocked after threshold |
-| Reset password on native Android/iOS | Deep link opens `auth/reset-password`, token is consumed, password is set, session is established automatically |
+| Reset password on native Android/iOS | Deep link opens `auth/reset-password`, token is consumed, password is set, user is sent to sign in or explicitly signed in after reset |
 | Email verification on native | Deep link opens `auth/verify-email`, token is consumed, user sees success screen |
 
 ---
 
 ## Security Considerations
 
-- **Account pre-hijacking:** Because `trustedProviders` includes both `google` and `credential`, a malicious actor could register with `victim@example.com` via password before the victim signs in with Google. Requiring `emailVerification: true` mitigates this for the password path. The Google path is safe because Google verifies email ownership.
+- **Account pre-hijacking:** Because `trustedProviders` includes both `google` and `email-password`, a malicious actor could register with `victim@example.com` via password before the victim signs in with Google. Requiring `emailVerification: true` mitigates this for the password path. The Google path is safe because Google verifies email ownership.
 - **Email enumeration:** The `check-email-provider` endpoint and `request-password-reset` endpoint must always return the same success message regardless of whether the email exists, to prevent timing attacks. The `check-email-provider` endpoint should perform a dummy password hash lookup when no user is found.
 - **Rate limiting:** Both new endpoints must be strictly rate-limited.
 - **Token expiry:** Password reset tokens expire in 1 hour. Verification tokens use Better Auth's default expiry.
@@ -255,11 +279,12 @@ Expo Router handles deep links automatically based on the `scheme` defined in `a
 
 | File | Action |
 |---|---|
-| `apps/worker/package.json` | Add `resend` dependency |
+| `apps/worker/package.json` | Already has `resend`; no action needed |
 | `apps/worker/src/auth.ts` | Add env vars to `WorkerEnv`, update `betterAuth()` config |
 | `apps/worker/src/auth/email.ts` | **Create** — Resend email helpers |
-| `apps/worker/src/index.ts` | Add `/api/auth/check-email-provider` route + rate limiting |
-| `apps/worker/wrangler.template.toml` | Add `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
+| `apps/worker/src/index.ts` | Add `/api/auth/check-email-provider` before the Better Auth catch-all |
+| `apps/worker/src/lib/rate-limit.ts` | Add tighter limits for `/api/auth/request-password-reset` and `/api/auth/check-email-provider` |
+| `apps/worker/wrangler.template.toml` | Usually no action; confirm generated config includes `RESEND_API_KEY`, `RESEND_FROM_EMAIL` |
 | `apps/expo/app/auth/forgot-password.tsx` | **Create** |
 | `apps/expo/app/auth/reset-password.tsx` | **Create** |
 | `apps/expo/app/auth/verify-email.tsx` | **Create** |
