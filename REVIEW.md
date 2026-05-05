@@ -73,7 +73,7 @@ await db.insert(schema.workoutSyncOperations).values({...}).run();
 
 The SELECT check and the INSERT are not in a transaction. Two concurrent sync requests both pass the check, both perform all the destructive mutations (deleting and re-inserting exercises and sets), and then the UNIQUE constraint catches the duplicate INSERT — but the data has already been mutated twice.
 
-**Fix**: Use `INSERT ... ON CONFLICT DO NOTHING` (or `onConflictDoNothing()` in Drizzle) at the start of the handler, and check `rowsAffected` to determine if the operation was already applied. If 0 rows affected, return the existing result without running mutations.
+**Fix**: Use `INSERT ... ON CONFLICT DO NOTHING` (or `onConflictDoNothing()` in Drizzle) at the start of the handler, and check the D1/Drizzle change count to determine if the operation was already applied. If 0 rows changed, return the existing result without running mutations.
 
 ---
 
@@ -141,7 +141,7 @@ These patterns SELECT to check existence, then INSERT if not found. Under concur
 - **`apps/worker/src/api/nutrition/training-context.ts:31-69`** (`upsertTrainingContextHandler`)
 - **`apps/worker/src/routes/profile.ts:25-45`** (profile preferences creation)
 
-**Fix**: Replace SELECT-then-INSERT with `INSERT ... ON CONFLICT DO NOTHING` + `rowsAffected` check, or `ON CONFLICT DO UPDATE` (upsert). For `resolveToUserExerciseId`, add a try/catch around the INSERT with a fallback to SELECT.
+**Fix**: Replace SELECT-then-INSERT with `INSERT ... ON CONFLICT DO NOTHING` + change-count check, or `ON CONFLICT DO UPDATE` (upsert). For `resolveToUserExerciseId`, add a try/catch around the INSERT with a fallback to SELECT.
 
 ---
 
@@ -149,11 +149,11 @@ These patterns SELECT to check existence, then INSERT if not found. Under concur
 
 Multiple handlers perform several sequential DB mutations without a transaction — partial failure leaves inconsistent state.
 
-- **`apps/worker/src/routes/templates.ts:140-415`** — Template update and template copy do multiple INSERT/UPDATE operations without a transaction wrapper. If a template copy fails mid-way, partially created template_exercises rows are orphaned.
+- **`apps/worker/src/routes/templates.ts:365-415`** — Template copy inserts the template, then inserts copied `template_exercises` separately. If the child insert fails, the copied parent template remains without exercises.
 - **`apps/worker/src/routes/program-cycles.ts:158-389`** — Program cycle update and 1RM test update perform multiple reads and writes. Partial failure leaves the cycle in an inconsistent state.
-- **`apps/worker/src/lib/program-helpers.ts:259,453`** — `db.batch()` is not transactional on D1. If a batch fails partway through, previous statements are committed.
+- **`apps/worker/src/lib/program-helpers.ts:199-266,458-529`** — The surrounding read-then-create flows are not atomic. The actual `db.batch()` calls are transactional on D1, but they do not protect the earlier JavaScript reads or business-rule checks.
 
-**Fix**: Wrap multi-step mutations in `db.transaction()` for atomicity. Replace `db.batch()` with `db.transaction()` where atomicity is required.
+**Fix**: Wrap multi-step read/write flows in `db.transaction()` where Drizzle D1 supports it, or collapse them into single conditional statements/upserts. Do not replace `db.batch()` solely for atomicity; D1 batch is already transactional.
 
 ---
 
@@ -212,7 +212,7 @@ for (const allowed of strictAllowed) {
 // getAllowedOrigins() returns ['strength://', 'exp://', baseURLOrigin]
 ```
 
-`origin.startsWith(allowed)` means `https://strength.example.com.evil.com` matches the allowed origin `https://strength.example.com`. The `strength://` custom scheme prefix also matches `strength://evil.com`. With `credentials: true`, cookies are sent to matching origins.
+`origin.startsWith(allowed)` means `https://strength.example.com.evil.com` matches the allowed origin `https://strength.example.com`. The `strength://` custom scheme prefix also matches `strength://evil.com`. Browser cookies are only relevant for web origins, but the prefix rule is still too permissive and makes origin trust ambiguous.
 
 **Fix**: Use exact string comparison or proper URL origin parsing (`new URL(origin).origin === allowed`) instead of `startsWith`.
 
@@ -220,7 +220,7 @@ for (const allowed of strictAllowed) {
 
 ### 54. No PKCE in WHOOP OAuth Flow — Mobile Authorization Code Interception (`apps/worker/src/whoop/auth.ts:17-31`)
 
-The WHOOP OAuth flow uses `authorization_code` grant with an HMAC-signed state parameter but no PKCE (Proof Key for Code Exchange). On mobile, the custom URL scheme `strength://` can be intercepted by malicious apps. Without PKCE, a stolen authorization code can be exchanged for tokens by anyone — the state HMAC only prevents CSRF, not code theft.
+The WHOOP OAuth flow uses `authorization_code` grant with an HMAC-signed state parameter but no PKCE (Proof Key for Code Exchange). On mobile, the custom URL scheme `strength://` can be intercepted by malicious apps. Without PKCE, a stolen authorization code can be exchanged for tokens by anyone — the state HMAC only prevents CSRF, not code theft. Verify WHOOP's OAuth endpoints support PKCE before implementing; if not, prefer universal/app links or a backend-only callback that never exposes the authorization code to the custom scheme.
 
 **Fix**: Generate a `code_verifier` (cryptographically random), compute SHA-256 hash as `code_challenge`, include `code_challenge` + `code_challenge_method=S256` in the authorization URL, and send `code_verifier` in the token exchange request.
 
@@ -294,7 +294,7 @@ await db.update(schema.nutritionChatJobs)
 
 Cloudflare Queues guarantee at-least-once delivery. If a message is redelivered, two workers can both pass the `status !== 'completed'` check.
 
-**Fix**: Use a conditional UPDATE: `UPDATE ... SET status = 'processing' WHERE id = ? AND status = 'pending'` and check `rowsAffected`.
+**Fix**: Use a conditional UPDATE: `UPDATE ... SET status = 'processing' WHERE id = ? AND status = 'pending'` and check the update change count.
 
 ---
 
@@ -302,15 +302,15 @@ Cloudflare Queues guarantee at-least-once delivery. If a message is redelivered,
 
 Same check-then-insert pattern as workout sync. The unique constraint catches the duplicate INSERT, but the user message was already inserted at line 395, creating an orphaned message with no job.
 
-**Fix**: Use `onConflictDoNothing()` INSERT and check rowsAffected, or wrap in a transaction.
+**Fix**: Use `onConflictDoNothing()` INSERT and check the insert change count, or wrap in a transaction.
 
 ---
 
-### 20. Rate Limiter Has Insert-Or-Update Race (`apps/worker/src/lib/rate-limit.ts`)
+### 20. Rate Limiter Uses Expensive Insert-Catch-Select-Update Flow (`apps/worker/src/lib/rate-limit.ts`)
 
-Uses INSERT → catch unique violation → SELECT → UPDATE. Between the SELECT and UPDATE, another request can modify the row, causing the optimistic concurrency check to fail and retry. Under high concurrency, requests can slip past the limit.
+Uses INSERT → catch unique violation → SELECT → UPDATE. The current increment includes `requests < limit` in the UPDATE, so it should not allow requests beyond the limit, but concurrent requests can churn through retries and extra reads. Under load this becomes a resource and availability problem rather than a clear bypass.
 
-**Fix**: Replace the catch-then-select pattern with a single upsert using `onConflictDoUpdate`:
+**Fix**: Replace the catch-then-select pattern with a single upsert/conditional update using `onConflictDoUpdate`:
 ```ts
 db.insert(schema.rateLimit).values({...})
   .onConflictDoUpdate({
@@ -363,7 +363,7 @@ Loads ALL historical workout exercises for the given exercise IDs with no date o
 
 ### 26. D1 Batch Insert Has No Timeout (`packages/db/src/utils/d1-batch.ts:165-187`)
 
-`chunkedInsert` batches up to 45 statements at a time. If called with a huge number of rows (e.g., a malicious sync-complete payload near the 400-set limit), it generates many batch rounds without any timeout or cancellation.
+`chunkedInsert` batches up to 45 statements at a time. D1 batch is transactional, but `chunkedInsert` can still run many batch rounds for large inputs because there is no timeout, max-round guard, or cancellation. The workout sync payload is capped, so this is mainly a defensive limit for broader callers such as WHOOP sync/import flows.
 
 **Fix**: Add a configurable timeout or maximum round guard.
 
@@ -461,9 +461,9 @@ await db.update(userIntegration)
   .where(eq(userIntegration.id, integration.id));  // ❌ no version/updatedAt check
 ```
 
-Even if the per-isolate lock issue (#16) is fixed, the UPDATE itself has no `WHERE updatedAt = oldUpdatedAt` guard. Two concurrent refreshes that both read the same `integration` object will both write, and the second write overwrites the first with potentially stale or already-consumed tokens.
+Even if the per-isolate lock issue (#17) is fixed, the UPDATE itself has no `WHERE updatedAt = oldUpdatedAt` guard. Two concurrent refreshes that both read the same `integration` object will both write, and the second write overwrites the first with potentially stale or already-consumed tokens.
 
-**Fix**: Add `eq(userIntegration.updatedAt, integration.updatedAt)` to the WHERE clause, and check rowsAffected. If 0, the token was already refreshed by another request — re-read and return.
+**Fix**: Add `eq(userIntegration.updatedAt, integration.updatedAt)` to the WHERE clause, and check the update change count. If 0, the token was already refreshed by another request — re-read and return.
 
 ---
 
@@ -526,9 +526,9 @@ export function getAuth(c: any) {
 
 ### 60. No CSRF Protection on State-Changing API Endpoints
 
-All POST, PUT, and DELETE endpoints rely solely on the session cookie via `credentials: 'include'`. There is no CSRF token, double-submit cookie, or `Origin`/`Referer` validation on any custom API route. With `credentials: true`, the browser sends the session cookie on cross-origin requests to matching origins. CORS alone does not prevent CSRF.
+All POST, PUT, and DELETE endpoints rely on Better Auth session handling and route auth. Production cookies are configured `SameSite=Lax`, which reduces normal cross-site POST CSRF risk, but custom API routes do not enforce a CSRF token or `Origin`/`Referer` validation. If cookie-based web auth is supported, state-changing web requests should have an explicit CSRF/origin policy. Native requests should keep using the explicit cookie header path.
 
-**Fix**: Implement double-submit cookie CSRF pattern: set a `csrf_token` cookie, require the client to send it as `X-CSRF-Token` header, validate server-side. Alternatively, validate `Origin`/`Referer` against the worker's base URL for all mutating requests.
+**Fix**: For web requests, validate `Origin`/`Referer` against the worker base URL and/or implement a double-submit cookie CSRF pattern. Verify native Expo behavior before requiring a CSRF header globally.
 
 ---
 
@@ -576,7 +576,7 @@ On `recovery.updated` webhook, sleep is upserted first, then recovery is fetched
 
 The UPDATE has no `AND isComplete = false` or `AND status = 'active'` guard. Two concurrent completions of the final workout both call it and both proceed to the `totalSessionsCompleted + 1` increment — the second should be blocked from even attempting it.
 
-**Fix**: Add `eq(userProgramCycles.isComplete, false)` and `eq(userProgramCycles.status, 'active')` to the WHERE clause. Check `rowsAffected` in the caller and skip the increment if 0.
+**Fix**: Add `eq(userProgramCycles.isComplete, false)` and `eq(userProgramCycles.status, 'active')` to the WHERE clause. Check the update change count in the caller and skip the increment if 0.
 
 ---
 
@@ -584,7 +584,7 @@ The UPDATE has no `AND isComplete = false` or `AND status = 'active'` guard. Two
 
 The read check `linkedCycleWorkout.isComplete` at line 573 provides no concurrency protection — the UPDATE at lines 603-610 sets `isComplete: true` with only `WHERE id = ?`. Two concurrent calls both pass the read check, both run the UPDATE, both proceed to increment `totalSessionsCompleted`.
 
-**Fix**: Add `eq(programCycleWorkouts.isComplete, false)` to the UPDATE WHERE and check `rowsAffected`. If 0, another request already completed it.
+**Fix**: Add `eq(programCycleWorkouts.isComplete, false)` to the UPDATE WHERE and check the update change count. If 0, another request already completed it.
 
 ---
 
@@ -817,6 +817,6 @@ Each template exercise is inserted with an individual `db.insert(...)` — 60 se
 - **Auth enforcement**: `createHandler`/`requireAuth` used consistently on all user-data routes; nested resources use inner-join guards (`api/auth.ts`, `api/guards.ts`)
 - **Soft deletes**: Domain tables use `is_deleted` flags instead of physical deletion (`exercises`, `templates`, `workouts`, etc.)
 - **SQL injection**: All Worker queries use Drizzle's parameterized query builder — no raw SQL string concatenation
-- **CORS**: Strict origin allowlist in production (only app scheme, worker base URL); LAN-only in dev
+- **CORS**: Production uses an origin allowlist, but the `startsWith` matching bug in issue #16 must be fixed before calling it strict
 - **No .env files in repo**: Secrets managed by Infisical injection at runtime
 - **Chunked DB operations**: Custom batching respects D1's 100-param and 45-statement limits (`packages/db/src/utils/d1-batch.ts`)

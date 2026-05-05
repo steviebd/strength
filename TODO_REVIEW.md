@@ -1,6 +1,12 @@
 # Review Work Order
 
-## Token Lock Approach (REVIEW.md Issue #16)
+## Implementation Notes Before Starting
+
+- `REVIEW.md` issue numbers are not sequential by severity. The token lock issue is `REVIEW.md` issue **#17**, not #16.
+- D1 `batch()` is transactional per Cloudflare's current D1 Worker API docs. Use `db.transaction()` for flows that interleave reads, writes, and JavaScript business logic; do not replace `db.batch()` just because of atomicity concerns.
+- For D1/Drizzle write results, check the actual return shape in the touched code path. Existing code commonly uses `result.meta?.changes`; some helper/batch paths expose `rowsAffected`.
+
+## Token Lock Approach (REVIEW.md Issue #17)
 
 Pros/cons for the three options:
 
@@ -42,8 +48,8 @@ Pros/cons for the three options:
 - [ ] **1.1** Add `userId` to mutation WHERE clauses (TOCTOU ownership)
   - **Files**:
     - `apps/worker/src/api/nutrition/entries.$id.ts:93-100` — add `eq(nutritionEntries.userId, userId)` to the UPDATE SET isDeleted query
-    - `apps/worker/src/routes/program-cycles.ts:614-618` — add `eq(userProgramCycles.userId, userId)` via JOIN to the schedule UPDATE
-    - `apps/worker/src/routes/workouts.ts:355-362` — add cycle ownership verification (JOIN through cycles) to the workout delete null-out query
+    - `apps/worker/src/routes/program-cycles.ts:614-618` — constrain the schedule UPDATE to cycle workouts whose parent cycle belongs to `userId` (use `WHERE id IN (subquery...)`, `WHERE EXISTS`, or raw SQL if Drizzle update joins are awkward)
+    - `apps/worker/src/routes/workouts.ts:355-362` — constrain the workout delete null-out query to program cycle workouts whose parent cycle belongs to `userId`
   - **Effort**: Small (~10 lines)
 
 - [ ] **1.2** Add `completedAt` guard to `PUT /workouts/:id/complete` (`workouts.ts:694`)
@@ -70,13 +76,13 @@ Pros/cons for the three options:
 - [ ] **1.5** Fix TOCTOU idempotency in workout sync (`workouts.ts:398`)
   - Move the `workoutSyncOperations` INSERT to the very start of the handler
   - Use `onConflictDoNothing()` on INSERT
-  - If `rowsAffected === 0` → operation already exists → fetch state and return existing result
+  - If the insert reports no changes (`meta.changes === 0` / equivalent) → operation already exists → fetch state and return existing result
   - Only proceed to mutations if INSERT succeeded
   - **Test**: Add concurrent sync test (or verify existing idempotency tests still pass)
   - **Effort**: Medium (restructure ~30 lines)
 
 - [ ] **1.6** Fix read-then-insert races in all handlers
-  - Replace SELECT-then-INSERT patterns with `onConflictDoNothing()` + `rowsAffected` check, or `onConflictDoUpdate` (upsert):
+  - Replace SELECT-then-INSERT patterns with `onConflictDoNothing()` + change-count check, or `onConflictDoUpdate` (upsert):
     - `apps/worker/src/lib/program-helpers.ts:199-266` — `createOneRMTestWorkout`
     - `apps/worker/src/lib/program-helpers.ts:458-529` — `startCycleWorkout`
     - `apps/worker/src/lib/program-helpers.ts:645-691` — `resolveToUserExerciseId` (adds try/catch around INSERT with fallback SELECT)
@@ -87,7 +93,7 @@ Pros/cons for the three options:
 
 - [ ] **1.7** Fix TOCTOU in chat `syncOperationId` idempotency (`chat.ts:378`)
   - Replace SELECT check + INSERT with single `onConflictDoNothing()` INSERT
-  - If `rowsAffected === 0` → job already exists → fetch and return existing job
+  - If the insert reports no changes (`meta.changes === 0` / equivalent) → job already exists → fetch and return existing job
   - Only insert user message after confirming the job INSERT succeeded
   - **Effort**: Medium (restructure ~20 lines)
 
@@ -114,9 +120,9 @@ Pros/cons for the three options:
   - **Effort**: Medium (new migration + ~10 lines)
 
 - [ ] **1.10** Wrap multi-step mutations in transactions
-  - **File**: `apps/worker/src/routes/templates.ts:140-415` — wrap template copy/update in `db.transaction()`
+  - **File**: `apps/worker/src/routes/templates.ts:365-415` — wrap template copy parent+child inserts in `db.transaction()`
   - **File**: `apps/worker/src/routes/program-cycles.ts:158-389` — wrap cycle update/1RM test update in `db.transaction()`
-  - **File**: `apps/worker/src/lib/program-helpers.ts:259,453` — audit `db.batch()` usages, replace with `db.transaction()` where atomicity needed
+  - **File**: `apps/worker/src/lib/program-helpers.ts:199-266,458-529` — audit the read-then-create flows around the existing `db.batch()` calls; keep `db.batch()` where the statements are already assembled and can be committed atomically
   - **Test**: Verify template copy/cycle update works within transaction
   - **Effort**: Medium (audit + ~30 lines across 3 files)
 
@@ -149,7 +155,7 @@ Pros/cons for the three options:
 - [ ] **1.14** Add optimistic concurrency to token refresh UPDATE
   - **File**: `apps/worker/src/whoop/token-rotation.ts:107-115`
   - Add `eq(userIntegration.updatedAt, integration.updatedAt)` to the WHERE clause
-  - If `rowsAffected === 0` → another request already refreshed → re-read and return
+  - If the update reports no changes (`meta.changes === 0` / equivalent) → another request already refreshed → re-read and return
   - **Effort**: Small (3 lines)
 
 - [ ] **1.15** Soft-delete children when soft-deleting a workout
@@ -203,13 +209,13 @@ Pros/cons for the three options:
 - [ ] **1.23** Add `WHERE isComplete = false` to `completeProgramCycle` UPDATE
   - **File**: `apps/worker/src/lib/program-helpers.ts:307-321`
   - Add `eq(userProgramCycles.isComplete, false)` + `eq(userProgramCycles.status, 'active')` to WHERE clause
-  - Check `rowsAffected`; if 0, skip the `totalSessionsCompleted` increment
+  - Check the update change count; if 0, skip the `totalSessionsCompleted` increment
   - **Effort**: Small (5 lines)
 
 - [ ] **1.24** Add `WHERE isComplete = false` to `advanceProgramCycleForWorkout` UPDATE
   - **File**: `apps/worker/src/lib/program-helpers.ts:603-610`
   - Add `eq(programCycleWorkouts.isComplete, false)` to the UPDATE WHERE clause
-  - Check `rowsAffected`; if 0, another request already completed it — return
+  - Check the update change count; if 0, another request already completed it — return
   - **Effort**: Small (5 lines)
 
 - [ ] **1.25** Add PKCE to WHOOP OAuth flow
@@ -389,7 +395,8 @@ Pros/cons for the three options:
 
 - [ ] **3.1** Fix rate limiter insert-or-update race
   - **File**: `apps/worker/src/lib/rate-limit.ts`
-  - Replace catch-then-select-then-update with a single upsert:
+  - Current code should not exceed the limit because the increment UPDATE includes `requests < limit`, but it uses an expensive insert-catch-select-update path under contention
+  - Replace catch-then-select-then-update with a single upsert/conditional update:
     ```ts
     db.insert(schema.rateLimit).values({...})
       .onConflictDoUpdate({
@@ -574,11 +581,13 @@ Pros/cons for the three options:
 
 - [ ] **4.19** Add CSRF protection on state-changing endpoints
   - **Files**: `apps/worker/src/index.ts` (middleware), all route handlers
-  - Implement double-submit cookie pattern:
+  - First implement or verify strict `Origin`/`Referer` validation for web mutating requests
+  - If cookie-based web auth remains in use, consider double-submit cookie pattern:
     - Set `csrf_token` cookie on authenticated responses
     - Client reads cookie and sends `X-CSRF-Token` header
     - Middleware validates cookie === header for all POST/PUT/DELETE
-  - **Test**: Verify 403 on requests missing CSRF header
+  - Do not require this header for native Expo requests until the native cookie/header behavior is verified
+  - **Test**: Verify 403 on cross-site web mutating requests
   - **Effort**: Medium (~50 lines + verify on all mutating routes)
 
 - [ ] **4.20** Invalidate sessions on password change
