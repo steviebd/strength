@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '@/theme';
+import { colors, spacing, textRoles, radius, layout } from '@/theme';
 
 export interface AuthShellHandle {
   scrollToInput: (y: number) => void;
@@ -56,21 +56,21 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
           <View
             style={{
               flex: 1,
-              paddingHorizontal: 20,
-              paddingTop: Math.max(insets.top, 48),
-              paddingBottom: 48,
+              paddingHorizontal: layout.screenPadding,
+              paddingTop: Math.max(insets.top, spacing.xl),
+              paddingBottom: spacing.xl,
             }}
           >
-            <View style={{ alignItems: 'center', marginBottom: 40 }}>
+            <View style={{ alignItems: 'center', marginBottom: spacing.xl }}>
               <View
                 style={{
                   width: 64,
                   height: 64,
-                  borderRadius: 16,
+                  borderRadius: radius.lg,
                   backgroundColor: colors.accent,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginBottom: 24,
+                  marginBottom: spacing.lg,
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.3,
@@ -80,26 +80,16 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
               >
                 <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>S</Text>
               </View>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  letterSpacing: 3,
-                  color: colors.textMuted,
-                  textTransform: 'uppercase',
-                }}
-              >
-                {eyebrow}
-              </Text>
+              <Text style={{ ...textRoles.eyebrow, color: colors.textMuted }}>{eyebrow}</Text>
             </View>
 
             <View
               style={{
-                borderRadius: 24,
+                borderRadius: radius.xl,
                 borderWidth: 1,
                 borderColor: colors.border,
                 backgroundColor: colors.surface,
-                padding: 24,
+                padding: spacing.lg,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: 0.25,
@@ -107,10 +97,14 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
                 elevation: 12,
               }}
             >
-              <View style={{ marginBottom: 32 }}>
-                <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>{title}</Text>
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text style={{ ...textRoles.screenTitle, color: colors.text }}>{title}</Text>
                 <Text
-                  style={{ fontSize: 14, lineHeight: 20, color: colors.textMuted, marginTop: 8 }}
+                  style={{
+                    ...textRoles.screenSubtitle,
+                    color: colors.textMuted,
+                    marginTop: spacing.sm,
+                  }}
                 >
                   {subtitle}
                 </Text>

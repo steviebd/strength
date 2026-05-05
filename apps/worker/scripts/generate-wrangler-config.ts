@@ -39,6 +39,8 @@ const INFISICAL_KEYS = [
   'WHOOP_SYNC_RATE_LIMIT_PER_HOUR',
   'WHOOP_WEBHOOK_SECRET',
   'RATE_LIMIT_REQUEST_PER_HOUR',
+  'RESEND_API_KEY',
+  'RESEND_FROM_EMAIL',
 ] as const;
 
 function parseArgs(): Args {

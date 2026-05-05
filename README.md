@@ -130,6 +130,16 @@ Staging and production apps can be installed side-by-side because they use diffe
 | `AI_GATEWAY_NAME` | Cloudflare AI Gateway ID |
 | `AI_MODEL_NAME` | Model name (defaults in worker) |
 
+### Local Dev Overrides
+
+Create `apps/worker/.dev.vars` (already gitignored) to override Worker vars locally without touching Infisical:
+
+```env
+SKIP_RATE_LIMIT=true
+```
+
+When `APP_ENV=development` and `SKIP_RATE_LIMIT=true`, all API rate limits are bypassed. Remove the file or set `SKIP_RATE_LIMIT=false` to re-enable them.
+
 ## Development
 
 ```bash

@@ -14,9 +14,16 @@ export function getRateLimitPerHour(env: { RATE_LIMIT_REQUEST_PER_HOUR?: string 
   return 1000;
 }
 
+export function shouldSkipRateLimit(env: { APP_ENV?: string; SKIP_RATE_LIMIT?: string }): boolean {
+  return env.APP_ENV === 'development' && env.SKIP_RATE_LIMIT === 'true';
+}
+
 export function getRateLimitByEndpoint(path: string): number {
   if (path.startsWith('/api/auth/sign-in/') || path.startsWith('/api/auth/sign-up/')) {
     return 20;
+  }
+  if (path === '/api/auth/request-password-reset' || path === '/api/auth/check-email-provider') {
+    return 5;
   }
   if (path === '/api/nutrition/chat') {
     return 60;

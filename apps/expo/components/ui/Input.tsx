@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { forwardRef, useState } from 'react';
 import {
   TextInput,
   View,
   Text,
   StyleSheet,
+  Pressable,
   type TextInputProps,
   type StyleProp,
   type ViewStyle,
@@ -20,17 +21,23 @@ interface TextFieldProps extends TextInputProps {
   containerStyle?: StyleProp<ViewStyle>;
 }
 
-export function TextField({
-  label,
-  helperText,
-  errorText,
-  leftIcon,
-  rightSlot,
-  containerStyle,
-  multiline = false,
-  style,
-  ...props
-}: TextFieldProps) {
+export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
+  {
+    label,
+    helperText,
+    errorText,
+    leftIcon,
+    rightSlot,
+    containerStyle,
+    multiline = false,
+    secureTextEntry,
+    style,
+    ...props
+  },
+  ref,
+) {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const isPassword = secureTextEntry === true;
   const hasError = Boolean(errorText);
 
   return (
@@ -46,6 +53,7 @@ export function TextField({
           />
         )}
         <TextInput
+          ref={ref}
           style={[
             styles.input,
             multiline && styles.multilineInput,
@@ -54,15 +62,30 @@ export function TextField({
           ]}
           placeholderTextColor={colors.placeholderText}
           multiline={multiline}
+          secureTextEntry={isPassword ? !isPasswordVisible : secureTextEntry}
           {...props}
         />
-        {rightSlot && <View style={styles.rightSlot}>{rightSlot}</View>}
+        {isPassword && !rightSlot ? (
+          <Pressable
+            onPress={() => setIsPasswordVisible((v) => !v)}
+            style={styles.passwordToggle}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color={colors.textMuted}
+            />
+          </Pressable>
+        ) : (
+          rightSlot && <View style={styles.rightSlot}>{rightSlot}</View>
+        )}
       </View>
       {errorText && <Text style={styles.errorText}>{errorText}</Text>}
       {helperText && !errorText && <Text style={styles.helperText}>{helperText}</Text>}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -104,6 +127,13 @@ const styles = StyleSheet.create({
     minHeight: 80,
     paddingVertical: 12,
     textAlignVertical: 'top',
+  },
+  passwordToggle: {
+    marginLeft: 8,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rightSlot: {
     marginLeft: 8,

@@ -169,6 +169,52 @@ describe('/connect-whoop HTML', () => {
   });
 });
 
+describe('/api/auth/reset-password native callback bridge', () => {
+  test('renders a fallback page for Expo reset callbacks', async () => {
+    const callbackURL = encodeURIComponent('exp://10.0.0.44:8081/--/auth/reset-password');
+    const req = new Request(
+      `http://localhost:8787/api/auth/reset-password/token-123?callbackURL=${callbackURL}`,
+    );
+
+    const res = await app.fetch(req, baseEnv);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('Open Strength');
+    expect(html).toContain('exp://10.0.0.44:8081/--/auth/reset-password?token=token-123');
+  });
+
+  test('does not bridge web reset callbacks', async () => {
+    const callbackURL = encodeURIComponent(
+      'https://strength-dev.stevenduong.com/auth/reset-password',
+    );
+    const req = new Request(
+      `http://localhost:8787/api/auth/reset-password/token-123?callbackURL=${callbackURL}`,
+    );
+
+    const res = await app.fetch(req, baseEnv);
+
+    expect(res.status).not.toBe(200);
+  });
+
+  test('escapes native callback URL in the bridge page', async () => {
+    const callbackURL = encodeURIComponent(
+      'exp://10.0.0.44:8081/--/auth/reset-password?next=</script><script>alert(1)</script>',
+    );
+    const req = new Request(
+      `http://localhost:8787/api/auth/reset-password/token-123?callbackURL=${callbackURL}`,
+    );
+
+    const res = await app.fetch(req, baseEnv);
+    const html = await res.text();
+
+    expect(html).not.toContain('</script><script>alert(1)</script>');
+    expect(html).toContain('%3C%2Fscript%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E');
+    expect(html).toContain('\\u0026token=token-123');
+  });
+});
+
 describe('/api/auth/whoop/callback error mapping', () => {
   test('redirects with no_code when code is missing', async () => {
     vi.mocked(decodeWhoopOAuthState).mockResolvedValue({

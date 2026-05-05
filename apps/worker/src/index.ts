@@ -23,7 +23,15 @@ import {
   buildWhoopCallbackRedirect,
   resolveWhoopRedirectBaseURL,
 } from './lib/whoop-oauth';
-import { checkRateLimit, getRateLimitPerHour, getRateLimitByEndpoint } from './lib/rate-limit';
+import {
+  checkRateLimit,
+  getRateLimitPerHour,
+  getRateLimitByEndpoint,
+  shouldSkipRateLimit,
+} from './lib/rate-limit';
+import { eq } from 'drizzle-orm';
+import * as schema from '@strength/db';
+import { hashPassword } from './auth/password';
 import { escapeHtml } from './utils/html';
 
 import healthRouter from './routes/health';
@@ -110,6 +118,84 @@ function generateCsrfToken(): string {
 
 function isMutatingMethod(method: string): boolean {
   return ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
+}
+
+function isNativeResetCallbackURL(callbackURL: string | undefined) {
+  if (!callbackURL) {
+    return false;
+  }
+
+  try {
+    const url = new URL(callbackURL);
+    return url.protocol === 'exp:' || url.protocol === 'strength:';
+  } catch {
+    return false;
+  }
+}
+
+function buildNativeResetURL(callbackURL: string, token: string) {
+  const url = new URL(callbackURL);
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+function escapeScriptString(value: string) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
+function buildResetPasswordBridgeHTML(nativeURL: string) {
+  const escapedURL = escapeHtml(nativeURL);
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open Strength</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0a0a0a;
+        color: #f8fafc;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(100% - 48px, 420px);
+        text-align: center;
+      }
+      a {
+        display: block;
+        margin-top: 24px;
+        padding: 14px 18px;
+        border-radius: 12px;
+        background: #22c55e;
+        color: #ffffff;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      p {
+        color: #94a3b8;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Open Strength to reset your password</h1>
+      <p>If the app does not open automatically, tap the button below.</p>
+      <a href="${escapedURL}">Open Strength</a>
+    </main>
+    <script>
+      window.location.href = ${escapeScriptString(nativeURL)};
+    </script>
+  </body>
+</html>`;
 }
 
 app.use(
@@ -215,6 +301,11 @@ app.use('/api/*', async (c, next) => {
     return;
   }
 
+  if (shouldSkipRateLimit(c.env)) {
+    await next();
+    return;
+  }
+
   const user = c.get('user');
   const key =
     user?.id ?? c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown';
@@ -225,6 +316,60 @@ app.use('/api/*', async (c, next) => {
     return c.json({ message: 'Rate limit exceeded' }, 429);
   }
   await next();
+});
+
+// Check email provider (must be before Better Auth catch-all)
+app.post('/api/auth/check-email-provider', async (c) => {
+  const body = await c.req.json<{ email?: string }>().catch(() => ({}) as { email?: string });
+  const email = typeof body.email === 'string' ? body.email.toLowerCase().trim() : '';
+
+  const db = createDb(c.env);
+  const key = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown';
+  const limit = getRateLimitByEndpoint('/api/auth/check-email-provider');
+  if (!shouldSkipRateLimit(c.env)) {
+    const rateLimitResult = await checkRateLimit(db, key, '/api/auth/check-email-provider', limit);
+    if (!rateLimitResult.allowed) {
+      return c.json({ message: 'Rate limit exceeded' }, 429);
+    }
+  }
+
+  const user = email
+    ? await db.select().from(schema.user).where(eq(schema.user.email, email)).get()
+    : null;
+
+  if (!user) {
+    // Dummy hash lookup to prevent timing-based email enumeration
+    try {
+      await hashPassword('dummy-timing-mitigation');
+    } catch {
+      // ignore
+    }
+    return c.json({ hasCredential: false, hasOAuth: false }, 200);
+  }
+
+  const accounts = await db
+    .select()
+    .from(schema.account)
+    .where(eq(schema.account.userId, user.id))
+    .all();
+
+  const hasCredential = accounts.some((a) => a.providerId === 'credential');
+  const hasOAuth = accounts.some((a) => a.providerId !== 'credential');
+
+  return c.json({ hasCredential, hasOAuth }, 200);
+});
+
+app.get('/api/auth/reset-password/:token', async (c, next) => {
+  const callbackURL = c.req.query('callbackURL');
+  if (!isNativeResetCallbackURL(callbackURL)) {
+    await next();
+    return;
+  }
+
+  const token = c.req.param('token');
+  const nativeURL = buildNativeResetURL(callbackURL!, token);
+
+  return c.html(buildResetPasswordBridgeHTML(nativeURL));
 });
 
 // Better Auth catch-all
@@ -399,14 +544,16 @@ app.get('/api/auth/whoop/callback', async (c) => {
   }
   const redirectUri = `${baseURL}/api/auth/whoop/callback`;
 
-  const rateLimit = await checkRateLimit(
-    db,
-    userId,
-    'whoop-callback',
-    getRateLimitPerHour(resolvedEnv),
-  );
-  if (!rateLimit.allowed) {
-    return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'rate_limited' }));
+  if (!shouldSkipRateLimit(resolvedEnv)) {
+    const rateLimit = await checkRateLimit(
+      db,
+      userId,
+      'whoop-callback',
+      getRateLimitPerHour(resolvedEnv),
+    );
+    if (!rateLimit.allowed) {
+      return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'rate_limited' }));
+    }
   }
 
   try {
@@ -492,9 +639,16 @@ app.post('/api/webhooks/whoop', async (c) => {
       return c.json({ success: true, ignored: true }, 202);
     }
 
-    const rateLimit = await checkRateLimit(db, userId, 'whoop-webhook', getRateLimitPerHour(c.env));
-    if (!rateLimit.allowed) {
-      return c.json({ error: 'Rate limit exceeded' }, 429);
+    if (!shouldSkipRateLimit(c.env)) {
+      const rateLimit = await checkRateLimit(
+        db,
+        userId,
+        'whoop-webhook',
+        getRateLimitPerHour(c.env),
+      );
+      if (!rateLimit.allowed) {
+        return c.json({ error: 'Rate limit exceeded' }, 429);
+      }
     }
 
     const result = await handleWebhookEvent(db, c.env, event);

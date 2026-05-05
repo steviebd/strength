@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { getModel } from '../../lib/ai';
-import { checkRateLimit, getRateLimitPerHour } from '../../lib/rate-limit';
+import { checkRateLimit, getRateLimitPerHour, shouldSkipRateLimit } from '../../lib/rate-limit';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
@@ -366,9 +366,16 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: 'Messages are required' }, 400);
   }
 
-  const rateLimit = await checkRateLimit(db, userId, 'nutrition-chat', getRateLimitPerHour(c.env));
-  if (!rateLimit.allowed) {
-    return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
+  if (!shouldSkipRateLimit(c.env)) {
+    const rateLimit = await checkRateLimit(
+      db,
+      userId,
+      'nutrition-chat',
+      getRateLimitPerHour(c.env),
+    );
+    if (!rateLimit.allowed) {
+      return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
+    }
   }
 
   const hasImageFlag = hasImage && !!imageBase64;
