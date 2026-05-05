@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { persistAuthCallbackCookie } from '@/lib/auth-callback-cookie';
 import { waitForSessionReady } from '@/lib/auth-session';
 import { colors, typography } from '@/theme';
 
 export default function AuthCallback() {
   const router = useRouter();
-  const { returnTo, error: urlError } = useLocalSearchParams<{
+  const {
+    returnTo,
+    error: urlError,
+    cookie,
+  } = useLocalSearchParams<{
     returnTo?: string;
     error?: string;
+    cookie?: string;
   }>();
   const [error, setError] = useState<string | null>(urlError ? decodeURIComponent(urlError) : null);
 
@@ -18,6 +25,12 @@ export default function AuthCallback() {
     let cancelled = false;
 
     (async () => {
+      try {
+        WebBrowser.dismissBrowser();
+      } catch {}
+
+      persistAuthCallbackCookie(cookie);
+
       const ready = await waitForSessionReady(5000);
 
       if (cancelled) return;

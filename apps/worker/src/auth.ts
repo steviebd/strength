@@ -185,7 +185,10 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
   const trustedOrigins = [
     `${appScheme}://`,
     `${appScheme}://*`,
+    `${appScheme}:///`,
+    `${appScheme}:///*`,
     'exp://',
+    'exp://*',
     ...(resolvedEnv.APP_ENV === 'development' ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
     ...parseTrustedOrigins(resolvedEnv.BETTER_AUTH_TRUSTED_ORIGINS),
     ...(baseURL ? [baseURL] : []),

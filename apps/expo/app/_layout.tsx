@@ -7,6 +7,9 @@ import * as TaskManager from 'expo-task-manager';
 import { runTrainingSync } from '@/lib/workout-sync';
 import { authClient } from '@/lib/auth-client';
 import { useEffect, useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const SYNC_TASK = 'strength-sync';
 
