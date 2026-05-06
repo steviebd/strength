@@ -16,7 +16,7 @@ export function getDefaultProgressionIncrement(weightUnit: WeightUnit) {
 }
 
 export function canProgressExerciseType(exerciseType: string | null | undefined) {
-  return exerciseType === 'weighted' || exerciseType === 'bodyweight';
+  return exerciseType === 'weights' || exerciseType === 'bodyweight';
 }
 
 export type ProgressionDefaults = {
@@ -38,8 +38,8 @@ export function getDefaultProgressionForExercise(
   weightUnit: WeightUnit,
   overrides?: ProgressionDefaults,
 ): { increment: number; deltaLabel: string } {
-  const type = exerciseType ?? 'weighted';
-  if (type === 'weighted' || (type === 'bodyweight' && hasWeight)) {
+  const type = exerciseType ?? 'weights';
+  if (type === 'weights' || (type === 'bodyweight' && hasWeight)) {
     const increment = resolveIncrement(
       overrides?.defaultWeightIncrement,
       getDefaultProgressionIncrement(weightUnit),
@@ -114,10 +114,10 @@ export function getLastWorkoutSummary(
   exerciseType: string | null | undefined,
   weightUnit: WeightUnit,
 ): string {
-  const type = exerciseType ?? 'weighted';
+  const type = exerciseType ?? 'weights';
   const hasWeight = hasWeightInSets(sets);
 
-  if ((type === 'weighted' || type === 'bodyweight') && hasWeight) {
+  if ((type === 'weights' || type === 'bodyweight') && hasWeight) {
     // Pick highest weight set (break ties by reps)
     const best = sets.reduce((bestSet, current) => {
       const cw = current.weight ?? 0;
@@ -172,10 +172,10 @@ export function getSuggestedSummary(
   increment: number,
   weightUnit: WeightUnit,
 ): { summary: string; delta: string } {
-  const type = exerciseType ?? 'weighted';
+  const type = exerciseType ?? 'weights';
   const hasWeight = hasWeightInSets(sets);
 
-  if ((type === 'weighted' || type === 'bodyweight') && hasWeight) {
+  if ((type === 'weights' || type === 'bodyweight') && hasWeight) {
     const best = sets.reduce((bestSet, current) => {
       const cw = current.weight ?? 0;
       const bw = bestSet.weight ?? 0;
@@ -236,10 +236,10 @@ export function applyProgressionToHistorySet<T extends ProgressionHistorySet>(
   increment: number,
   exerciseType: string | null | undefined,
 ): T {
-  const type = exerciseType ?? 'weighted';
+  const type = exerciseType ?? 'weights';
   const hasWeight = set.weight !== null && set.weight > 0;
 
-  if ((type === 'weighted' || type === 'bodyweight') && hasWeight) {
+  if ((type === 'weights' || type === 'bodyweight') && hasWeight) {
     return { ...set, weight: (set.weight ?? 0) + increment };
   }
 

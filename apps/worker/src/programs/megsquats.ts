@@ -80,7 +80,7 @@ export const megsquats = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Squat',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'squat' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: setsConfig[0].sets,
@@ -96,7 +96,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Hip Thrust',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'squat' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: 3,
@@ -105,7 +105,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Romanian Deadlift',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'deadlift' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           sets: 3,
@@ -114,7 +114,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Leg Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'squat' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: 3,
@@ -126,7 +126,7 @@ export const megsquats = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Bench Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'bench' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           sets: setsConfig[0].sets,
@@ -142,7 +142,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Barbell Row',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'row' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['row'],
           sets: setsConfig[1].sets,
@@ -158,7 +158,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Pull-ups',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'row' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['row'],
           sets: 3,
@@ -167,7 +167,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Tricep Pushdowns',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'bench' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           sets: 3,
@@ -176,7 +176,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Face Pulls',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'ohp' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           sets: 3,
@@ -188,7 +188,7 @@ export const megsquats = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Deadlift',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'deadlift' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           sets: setsConfig[0].sets,
@@ -204,7 +204,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Overhead Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'ohp' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           sets: setsConfig[1].sets,
@@ -220,7 +220,7 @@ export const megsquats = createLinearProgramGenerator({
         },
         {
           name: 'Walking Lunges',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'squat' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: 3,

@@ -30,10 +30,10 @@ export {
 };
 
 function buildProgramSetValues(segment: NormalizedProgramTargetLift) {
-  const type = segment.exerciseType ?? 'weighted';
+  const type = segment.exerciseType ?? 'weights';
   const reps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
   const weight =
-    type === 'weighted'
+    type === 'weights'
       ? (segment.targetWeight ?? 0) + segment.addedWeight
       : type === 'bodyweight' && ((segment.targetWeight ?? 0) > 0 || segment.addedWeight > 0)
         ? (segment.targetWeight ?? 0) + segment.addedWeight

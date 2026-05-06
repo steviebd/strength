@@ -853,7 +853,7 @@ export default function WorkoutsIndex() {
       return {
         exerciseId: snapshot.exerciseId,
         name: exercise?.name ?? snapshot.exerciseId,
-        exerciseType: exercise?.exerciseType ?? 'weighted',
+        exerciseType: exercise?.exerciseType ?? 'weights',
         isAmrap: Boolean(exercise?.isAmrap ?? snapshot.isAmrap),
         lastWorkoutDate: snapshot.workoutDate,
         sets: snapshot.sets.map((set, index) => ({

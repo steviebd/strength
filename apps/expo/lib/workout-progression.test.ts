@@ -18,7 +18,7 @@ describe('workout progression helpers', () => {
   });
 
   test('getDefaultProgressionForExercise returns type-aware defaults', () => {
-    expect(getDefaultProgressionForExercise('weighted', true, 'kg')).toEqual({
+    expect(getDefaultProgressionForExercise('weights', true, 'kg')).toEqual({
       increment: 2.5,
       deltaLabel: '+2.5 kg',
     });
@@ -85,7 +85,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getLastWorkoutSummary(sets, 'weighted', 'kg')).toBe('45 kg × 6 reps');
+    expect(getLastWorkoutSummary(sets, 'weights', 'kg')).toBe('45 kg × 6 reps');
   });
 
   test('getLastWorkoutSummary returns max reps for bodyweight without weight', () => {
@@ -154,7 +154,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getSuggestedSummary(sets, 'weighted', 2.5, 'kg')).toEqual({
+    expect(getSuggestedSummary(sets, 'weights', 2.5, 'kg')).toEqual({
       summary: '42.5 kg × 8 reps',
       delta: '+2.5 kg',
     });
@@ -227,7 +227,7 @@ describe('workout progression helpers', () => {
           height: null,
         },
         2.5,
-        'weighted',
+        'weights',
       ),
     ).toEqual({
       setNumber: 1,
@@ -253,7 +253,7 @@ describe('workout progression helpers', () => {
           height: null,
         },
         2.5,
-        'weighted',
+        'weights',
       ).weight,
     ).toBeNull();
   });
@@ -271,7 +271,7 @@ describe('workout progression helpers', () => {
           height: null,
         },
         -5,
-        'weighted',
+        'weights',
       ).weight,
     ).toBe(95);
   });
@@ -358,7 +358,7 @@ describe('workout progression helpers', () => {
       ],
     };
 
-    expect(buildProgressedHistorySnapshot(snapshot, 2.5, 'weighted').sets).toEqual([
+    expect(buildProgressedHistorySnapshot(snapshot, 2.5, 'weights').sets).toEqual([
       expect.objectContaining({ weight: 82.5, reps: 8 }),
     ]);
   });

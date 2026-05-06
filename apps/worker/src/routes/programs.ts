@@ -180,7 +180,7 @@ router.post(
         const key = `${workoutIndex}_${exerciseIndex}`;
         const exerciseType = e.libraryId
           ? getExerciseTypeByLibraryId(e.libraryId)
-          : (e.exerciseType ?? 'weighted');
+          : (e.exerciseType ?? 'weights');
         return {
           name: e.name,
           lift: e.lift,
@@ -200,7 +200,7 @@ router.post(
       const accessories = (workout.accessories || []).map((a) => {
         const exerciseType = a.libraryId
           ? getExerciseTypeByLibraryId(a.libraryId)
-          : (a.exerciseType ?? 'weighted');
+          : (a.exerciseType ?? 'weights');
         return {
           name: a.name,
           accessoryId: a.accessoryId,

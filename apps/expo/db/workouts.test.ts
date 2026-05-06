@@ -205,7 +205,7 @@ describe('createLocalWorkoutFromTemplate', () => {
       exerciseId: 'bench',
       name: 'Bench Press',
       muscleGroup: 'Chest',
-      exerciseType: 'weighted',
+      exerciseType: 'weights',
       sets: 3,
       reps: 5,
       isAmrap: false,

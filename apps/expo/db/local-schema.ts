@@ -113,7 +113,7 @@ export const localTemplateExercises = sqliteTable('local_template_exercises', {
   exerciseId: text('exercise_id').notNull(),
   name: text('name').notNull(),
   muscleGroup: text('muscle_group'),
-  exerciseType: text('exercise_type').notNull().default('weighted'),
+  exerciseType: text('exercise_type').notNull().default('weights'),
   orderIndex: integer('order_index').notNull(),
   targetWeight: real('target_weight'),
   addedWeight: real('added_weight'),

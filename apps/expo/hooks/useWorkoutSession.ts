@@ -186,14 +186,14 @@ function buildCachedSet(cached: {
 }
 
 function buildEmptySet(exerciseType?: string) {
-  const type = exerciseType ?? 'weighted';
+  const type = exerciseType ?? 'weights';
   return [
     {
       id: generateLocalId(),
       workoutExerciseId: '',
       setNumber: 1,
-      weight: type === 'weighted' ? 0 : type === 'bodyweight' ? null : null,
-      reps: type === 'weighted' || type === 'bodyweight' || type === 'plyo' ? 0 : null,
+      weight: type === 'weights' ? 0 : type === 'bodyweight' ? null : null,
+      reps: type === 'weights' || type === 'bodyweight' || type === 'plyo' ? 0 : null,
       rpe: null,
       duration: type === 'timed' || type === 'cardio' ? 0 : null,
       distance: type === 'cardio' ? null : null,
@@ -582,7 +582,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           ? buildHistorySets(historySnapshot)
           : !options?.ignoreHistory && cached
             ? buildCachedSet(cached)
-            : buildEmptySet(exercise.exerciseType ?? 'weighted');
+            : buildEmptySet(exercise.exerciseType ?? 'weights');
       const sets = exercise.isAmrap ? newSets.slice(0, 1) : newSets;
 
       const newWorkoutExercise: WorkoutExercise = {
@@ -591,7 +591,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: exercisesRef.current.length,
         sets,
         notes: null,
@@ -628,16 +628,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           if (ex.id !== workoutExerciseId) return ex;
           const sets = ex.sets ?? [];
           const lastSet = sets[sets.length - 1];
-          const type = ex.exerciseType ?? 'weighted';
+          const type = ex.exerciseType ?? 'weights';
           const newSet: WorkoutSet = {
             id: generateLocalId(),
             workoutExerciseId,
             setNumber: sets.length + 1,
             weight:
-              lastSet?.weight ?? (type === 'weighted' ? 0 : type === 'bodyweight' ? null : null),
+              lastSet?.weight ?? (type === 'weights' ? 0 : type === 'bodyweight' ? null : null),
             reps:
               lastSet?.reps ??
-              (type === 'weighted' || type === 'bodyweight' || type === 'plyo' ? 0 : null),
+              (type === 'weights' || type === 'bodyweight' || type === 'plyo' ? 0 : null),
             rpe: null,
             duration: lastSet?.duration ?? (type === 'timed' || type === 'cardio' ? 0 : null),
             distance: lastSet?.distance ?? (type === 'cardio' ? null : null),

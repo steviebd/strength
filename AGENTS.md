@@ -94,4 +94,4 @@ Secrets are injected by Infisical at runtime. There is no `.env` file in the rep
 
 ## Package Manager
 
-Bun (bun@1.2.9). Use `bun install`, `bun run`, etc. Do not use npm/yarn/pnpm.
+Bun (bun@1.3.13). Use `bun install`, `bun run`, etc. Do not use npm/yarn/pnpm.

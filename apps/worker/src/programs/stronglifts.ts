@@ -25,7 +25,7 @@ export const stronglifts = createLinearProgramGenerator({
     const exercises: ProgramExercise[] = [
       {
         name: 'Squat',
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: 'squat',
         sets: 5,
         reps: 5,
@@ -38,7 +38,7 @@ export const stronglifts = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Bench Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'bench',
           sets: 5,
           reps: 5,
@@ -47,7 +47,7 @@ export const stronglifts = createLinearProgramGenerator({
         },
         {
           name: 'Barbell Row',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'row',
           sets: 5,
           reps: 5,
@@ -59,7 +59,7 @@ export const stronglifts = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Overhead Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'ohp',
           sets: 5,
           reps: 5,
@@ -68,7 +68,7 @@ export const stronglifts = createLinearProgramGenerator({
         },
         {
           name: 'Deadlift',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'deadlift',
           sets: 5,
           reps: 5,

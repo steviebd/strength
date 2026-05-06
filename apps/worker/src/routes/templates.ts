@@ -348,9 +348,9 @@ router.post(
 
     let resolvedExerciseType =
       typeof exerciseType === 'string' &&
-      ['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'].includes(exerciseType)
+      ['weights', 'bodyweight', 'timed', 'cardio', 'plyo'].includes(exerciseType)
         ? exerciseType
-        : 'weighted';
+        : 'weights';
 
     let resolvedExerciseId = exerciseId;
 
@@ -585,7 +585,7 @@ router.put(
       sets: typeof body.sets === 'number' ? body.sets : null,
       reps: typeof body.reps === 'number' ? body.reps : null,
       repsRaw: typeof body.repsRaw === 'string' ? body.repsRaw : null,
-      exerciseType: typeof body.exerciseType === 'string' ? body.exerciseType : 'weighted',
+      exerciseType: typeof body.exerciseType === 'string' ? body.exerciseType : 'weights',
       targetDuration: typeof body.targetDuration === 'number' ? body.targetDuration : null,
       targetDistance: typeof body.targetDistance === 'number' ? body.targetDistance : null,
       targetHeight: typeof body.targetHeight === 'number' ? body.targetHeight : null,

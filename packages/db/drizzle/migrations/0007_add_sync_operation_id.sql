@@ -1,2 +1,0 @@
-ALTER TABLE `nutrition_chat_jobs` ADD COLUMN `sync_operation_id` text;--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS `nutrition_chat_jobs_user_id_sync_operation_id_unique` ON `nutrition_chat_jobs` (`user_id`,`sync_operation_id`);

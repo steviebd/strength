@@ -107,7 +107,7 @@ describe('normalizeProgramTargetLift', () => {
       isAccessory: false,
       isRequired: true,
       isAmrap: false,
-      exerciseType: 'weighted',
+      exerciseType: 'weights',
       targetDuration: null,
       targetDistance: null,
       targetHeight: null,

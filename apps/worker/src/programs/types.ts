@@ -1,6 +1,6 @@
 export type LiftType = 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row';
 
-export type ExerciseType = 'weighted' | 'bodyweight' | 'timed' | 'cardio' | 'plyo';
+export type ExerciseType = 'weights' | 'bodyweight' | 'timed' | 'cardio' | 'plyo';
 
 export type ProgramDifficulty = 'beginner' | 'intermediate' | 'advanced';
 

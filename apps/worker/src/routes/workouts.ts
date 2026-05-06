@@ -57,10 +57,10 @@ function buildTemplateSetValues(templateExercise: {
   targetDistance?: number | null;
   targetHeight?: number | null;
 }) {
-  const type = templateExercise.exerciseType ?? 'weighted';
+  const type = templateExercise.exerciseType ?? 'weights';
   return {
     weight:
-      type === 'weighted'
+      type === 'weights'
         ? (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0)
         : type === 'bodyweight' &&
             ((templateExercise.targetWeight ?? 0) > 0 || (templateExercise.addedWeight ?? 0) > 0)
@@ -295,8 +295,8 @@ router.post(
           : Math.max(
               1,
               templateExercise.sets ??
-                ((templateExercise.exerciseType ?? 'weighted') === 'cardio' ||
-                (templateExercise.exerciseType ?? 'weighted') === 'timed'
+                ((templateExercise.exerciseType ?? 'weights') === 'cardio' ||
+                (templateExercise.exerciseType ?? 'weights') === 'timed'
                   ? 1
                   : 3),
             );

@@ -173,7 +173,7 @@ export async function getOrCreateExerciseForUser(
       muscleGroup: inferMuscleGroup(liftType),
       description: null,
       libraryId: null,
-      exerciseType: 'weighted',
+      exerciseType: 'weights',
       createdAt: now,
       updatedAt: now,
     })

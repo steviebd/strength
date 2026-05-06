@@ -367,7 +367,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       exercise_id TEXT NOT NULL,
       name TEXT NOT NULL,
       muscle_group TEXT,
-      exercise_type TEXT NOT NULL DEFAULT 'weighted',
+      exercise_type TEXT NOT NULL DEFAULT 'weights',
       order_index INTEGER NOT NULL,
       target_weight REAL,
       added_weight REAL,
@@ -734,7 +734,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       sqlite,
       'local_template_exercises',
       'exercise_type',
-      "exercise_type TEXT NOT NULL DEFAULT 'weighted'",
+      "exercise_type TEXT NOT NULL DEFAULT 'weights'",
     );
     addColumnIfMissing(
       sqlite,

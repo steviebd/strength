@@ -79,9 +79,9 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
               <SectionTitle title="Exercises" />
               <View style={styles.exerciseList}>
                 {template.exercises.slice(0, 3).map((ex) => {
-                  const type = ex.exerciseType ?? 'weighted';
+                  const type = ex.exerciseType ?? 'weights';
                   let detailText = '';
-                  if (type === 'weighted') {
+                  if (type === 'weights') {
                     detailText = `${ex.sets} × ${ex.reps} @ ${ex.targetWeight}`;
                   } else if (type === 'bodyweight') {
                     detailText = `${ex.sets} × ${ex.reps}`;

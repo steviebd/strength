@@ -554,7 +554,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
             <View style={[styles.inputSection, { flex: 3 }]}>{renderHeightSection()}</View>
           </View>
         );
-      case 'weighted':
+      case 'weights':
       default:
         return (
           <View style={styles.inputsRow}>

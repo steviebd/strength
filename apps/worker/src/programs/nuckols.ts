@@ -37,7 +37,7 @@ export const nuckols = createLinearProgramGenerator({
     const t1Sets: import('./types').ProgramWorkout['exercises'] = [
       {
         name: liftName,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 3,
@@ -47,7 +47,7 @@ export const nuckols = createLinearProgramGenerator({
       },
       {
         name: `${liftName} 2`,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 3,
@@ -57,7 +57,7 @@ export const nuckols = createLinearProgramGenerator({
       },
       {
         name: `${liftName} 3`,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 3,
@@ -70,7 +70,7 @@ export const nuckols = createLinearProgramGenerator({
     const t2Sets: import('./types').ProgramWorkout['exercises'] = [
       {
         name: t2LiftName,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 3,
@@ -80,7 +80,7 @@ export const nuckols = createLinearProgramGenerator({
       },
       {
         name: `${t2LiftName} 2`,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 3,

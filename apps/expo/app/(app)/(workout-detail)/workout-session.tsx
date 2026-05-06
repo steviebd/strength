@@ -312,8 +312,8 @@ export default function WorkoutSessionScreen() {
   const hasLoadedRequestedWorkout = !!workoutId && workout?.id === workoutId;
 
   const computedVolume = exercises.reduce((total, ex) => {
-    const type = ex.exerciseType ?? 'weighted';
-    if (type !== 'weighted' && type !== 'bodyweight' && type !== 'plyo') {
+    const type = ex.exerciseType ?? 'weights';
+    if (type !== 'weights' && type !== 'bodyweight' && type !== 'plyo') {
       return total;
     }
     return (
@@ -344,11 +344,11 @@ export default function WorkoutSessionScreen() {
       let sets = 0;
       let weighted = false;
       for (const ex of exercises) {
-        const type = ex.exerciseType ?? 'weighted';
+        const type = ex.exerciseType ?? 'weights';
         for (const set of ex.sets ?? []) {
           if (!set.isComplete) continue;
           sets++;
-          if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+          if (type === 'weights' || type === 'bodyweight' || type === 'plyo') {
             weighted = true;
           }
           if (type === 'timed' || type === 'cardio') {
@@ -373,7 +373,7 @@ export default function WorkoutSessionScreen() {
       exerciseId: historySnapshot.exerciseId,
       libraryId: exercise.libraryId ?? null,
       name: exercise.name,
-      exerciseType: exercise.exerciseType ?? 'weighted',
+      exerciseType: exercise.exerciseType ?? 'weights',
       isAmrap: Boolean(exercise.isAmrap),
       lastWorkoutDate: historySnapshot.workoutDate,
       sets: historySnapshot.sets.map((set, index) => ({
@@ -617,11 +617,11 @@ export default function WorkoutSessionScreen() {
 
   const findFirstIncompleteSet = useCallback(() => {
     for (let i = 0; i < exercises.length; i++) {
-      const type = exercises[i].exerciseType ?? 'weighted';
+      const type = exercises[i].exerciseType ?? 'weights';
       for (let j = 0; j < exercises[i].sets.length; j++) {
         const set = exercises[i].sets[j];
         if (set.isComplete) continue;
-        if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+        if (type === 'weights' || type === 'bodyweight' || type === 'plyo') {
           if (set.weight !== null || set.reps !== null) {
             return { exerciseIndex: i, setIndex: j };
           }

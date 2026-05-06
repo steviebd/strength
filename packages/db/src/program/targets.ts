@@ -106,8 +106,7 @@ export function normalizeProgramTargetLift(
     isAmrap,
     libraryId: typeof targetLift.libraryId === 'string' ? targetLift.libraryId : undefined,
     exerciseId: typeof targetLift.exerciseId === 'string' ? targetLift.exerciseId : undefined,
-    exerciseType:
-      typeof targetLift.exerciseType === 'string' ? targetLift.exerciseType : 'weighted',
+    exerciseType: typeof targetLift.exerciseType === 'string' ? targetLift.exerciseType : 'weights',
     targetDuration:
       typeof targetLift.targetDuration === 'number' && Number.isFinite(targetLift.targetDuration)
         ? targetLift.targetDuration

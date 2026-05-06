@@ -76,7 +76,7 @@ function getListItemKey(item: ListItem) {
 }
 
 function formatExerciseType(type: string | null | undefined) {
-  const value = type ?? 'weighted';
+  const value = type ?? 'weights';
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
@@ -95,7 +95,7 @@ export function ExerciseSearch({
     name: '',
     muscleGroup: '',
     description: '',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
     isAmrap: false,
   });
   const [creating, setCreating] = useState(false);
@@ -181,7 +181,7 @@ export function ExerciseSearch({
         name: '',
         muscleGroup: '',
         description: '',
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         isAmrap: false,
       });
     } catch (e) {
@@ -279,7 +279,7 @@ export function ExerciseSearch({
               name: userEx.name,
               muscleGroup: userEx.muscleGroup ?? '',
               description: userEx.description ?? '',
-              exerciseType: userEx.exerciseType ?? 'weighted',
+              exerciseType: userEx.exerciseType ?? 'weights',
               isAmrap: userEx.isAmrap ?? false,
             });
             continue;
@@ -305,7 +305,7 @@ export function ExerciseSearch({
               muscleGroup: persistedExercise.muscleGroup ?? '',
               description: persistedExercise.description ?? '',
               exerciseType:
-                libraryExercise.exerciseType ?? persistedExercise.exerciseType ?? 'weighted',
+                libraryExercise.exerciseType ?? persistedExercise.exerciseType ?? 'weights',
               isAmrap: persistedExercise.isAmrap ?? false,
             });
           } catch {
@@ -315,7 +315,7 @@ export function ExerciseSearch({
               name: libraryExercise.name,
               muscleGroup: libraryExercise.muscleGroup,
               description: libraryExercise.description,
-              exerciseType: (libraryExercise as any).exerciseType ?? 'weighted',
+              exerciseType: (libraryExercise as any).exerciseType ?? 'weights',
               isAmrap: (libraryExercise as any).isAmrap ?? false,
             });
           }
@@ -565,7 +565,7 @@ export function ExerciseSearch({
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Exercise Type</Text>
               <View style={styles.typeGrid}>
-                {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map((type) => {
+                {(['weights', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map((type) => {
                   const isSelected = createForm.exerciseType === type;
                   return (
                     <Pressable
@@ -614,7 +614,7 @@ export function ExerciseSearch({
                   name: '',
                   muscleGroup: '',
                   description: '',
-                  exerciseType: 'weighted',
+                  exerciseType: 'weights',
                   isAmrap: false,
                 });
                 setCreateError(null);

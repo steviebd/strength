@@ -141,8 +141,8 @@ function getDefaultKeyForExercise(
   exercise: ProgressionExercisePreview,
   hasWeight: boolean,
 ): ProgressionDefaultKey {
-  const type = exercise.exerciseType ?? 'weighted';
-  if (type === 'weighted' || (type === 'bodyweight' && hasWeight)) {
+  const type = exercise.exerciseType ?? 'weights';
+  if (type === 'weights' || (type === 'bodyweight' && hasWeight)) {
     return 'defaultWeightIncrement';
   }
   if (type === 'bodyweight') return 'defaultBodyweightIncrement';
@@ -159,8 +159,8 @@ const PROGRESSION_DEFAULT_CONFIGS: ProgressionDefaultConfig[] = [
     step: 0.5,
     isVisible: (exercises) =>
       exercises.some((exercise) => {
-        const type = exercise.exerciseType ?? 'weighted';
-        return type === 'weighted' || (type === 'bodyweight' && hasWeightInSets(exercise.sets));
+        const type = exercise.exerciseType ?? 'weights';
+        return type === 'weights' || (type === 'bodyweight' && hasWeightInSets(exercise.sets));
       }),
     format: (value, weightUnit) => `+${value} ${weightUnit}`,
   },
@@ -199,8 +199,8 @@ function formatCustomUnitLabel(
   hasWeight: boolean,
   weightUnit: WeightUnit,
 ): string {
-  const type = exerciseType ?? 'weighted';
-  if (type === 'weighted') return weightUnit;
+  const type = exerciseType ?? 'weights';
+  if (type === 'weights') return weightUnit;
   if (type === 'bodyweight') return hasWeight ? weightUnit : 'reps';
   if (type === 'cardio') return 'sec';
   if (type === 'timed') return 'sec';

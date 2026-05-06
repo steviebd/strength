@@ -41,7 +41,7 @@ function resolveSelectedExerciseType(exercise: {
   libraryId?: string | null;
   exerciseType?: string | null;
 }) {
-  return getLibraryExerciseType(exercise.libraryId) ?? exercise.exerciseType ?? 'weighted';
+  return getLibraryExerciseType(exercise.libraryId) ?? exercise.exerciseType ?? 'weights';
 }
 
 function buildTemplateExercisePayload(exercise: SelectedExercise, orderIndex: number) {
@@ -439,7 +439,7 @@ const PROGRESSION_CONFIGS: ProgressionConfig[] = [
     key: 'defaultWeightIncrement',
     label: 'Weight',
     step: 0.5,
-    showIf: (types) => types.has('weighted') || types.has('bodyweight'),
+    showIf: (types) => types.has('weights') || types.has('bodyweight'),
     format: (value, wu) => `+${value} ${wu}`,
   },
   {
@@ -499,7 +499,7 @@ function TemplateProgressionControls({
   onChange: (data: Partial<ProgressionValues>) => void;
 }) {
   const presentTypes = useMemo(
-    () => new Set(exercises.map((e) => e.exerciseType ?? 'weighted')),
+    () => new Set(exercises.map((e) => e.exerciseType ?? 'weights')),
     [exercises],
   );
 
@@ -873,34 +873,28 @@ export function TemplateEditor({
                   </View>
 
                   <View style={styles.typeRow}>
-                    {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map(
-                      (type) => {
-                        const isSelected = (exercise.exerciseType ?? 'weighted') === type;
-                        return (
-                          <Pressable
-                            key={`ex-type:${exercise.id}:${type}`}
-                            onPress={() =>
-                              handleUpdateExercise(exercise.id, { exerciseType: type })
-                            }
+                    {(['weights', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map((type) => {
+                      const isSelected = (exercise.exerciseType ?? 'weights') === type;
+                      return (
+                        <Pressable
+                          key={`ex-type:${exercise.id}:${type}`}
+                          onPress={() => handleUpdateExercise(exercise.id, { exerciseType: type })}
+                          style={[
+                            styles.typeChip,
+                            isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                          ]}
+                        >
+                          <Text
                             style={[
-                              styles.typeChip,
-                              isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                              styles.typeChipText,
+                              isSelected ? styles.typeChipTextSelected : styles.typeChipTextDefault,
                             ]}
                           >
-                            <Text
-                              style={[
-                                styles.typeChipText,
-                                isSelected
-                                  ? styles.typeChipTextSelected
-                                  : styles.typeChipTextDefault,
-                              ]}
-                            >
-                              {type.charAt(0).toUpperCase() + type.slice(1)}
-                            </Text>
-                          </Pressable>
-                        );
-                      },
-                    )}
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
 
                   <View style={styles.exerciseRow}>
@@ -944,7 +938,7 @@ export function TemplateEditor({
                       </View>
                     </View>
 
-                    {(exercise.exerciseType === 'weighted' ||
+                    {(exercise.exerciseType === 'weights' ||
                       exercise.exerciseType === 'bodyweight' ||
                       exercise.exerciseType === 'plyo' ||
                       !exercise.exerciseType) && (
@@ -1002,7 +996,7 @@ export function TemplateEditor({
                       </View>
                     )}
 
-                    {(exercise.exerciseType === 'weighted' ||
+                    {(exercise.exerciseType === 'weights' ||
                       exercise.exerciseType === 'bodyweight' ||
                       !exercise.exerciseType) && (
                       <View style={styles.exerciseField}>

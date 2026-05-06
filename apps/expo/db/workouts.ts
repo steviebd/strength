@@ -202,10 +202,10 @@ function buildPlannedSetValues(input: {
   targetDistance?: number | null;
   targetHeight?: number | null;
 }) {
-  const type = input.exerciseType ?? 'weighted';
+  const type = input.exerciseType ?? 'weights';
   return {
     weight:
-      type === 'weighted'
+      type === 'weights'
         ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
         : type === 'bodyweight' && ((input.targetWeight ?? 0) > 0 || (input.addedWeight ?? 0) > 0)
           ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
@@ -232,7 +232,7 @@ export function normalizeTemplateExerciseForLocalCache(
     exerciseId: exercise.exerciseId,
     name: exercise.name,
     muscleGroup: exercise.muscleGroup ?? null,
-    exerciseType: exercise.exerciseType ?? 'weighted',
+    exerciseType: exercise.exerciseType ?? 'weights',
     orderIndex: exercise.orderIndex ?? 0,
     targetWeight: exercise.targetWeight ?? null,
     addedWeight: exercise.addedWeight ?? 0,
@@ -326,7 +326,7 @@ export function normalizeTemplateExerciseForWorkoutStart(
     exerciseId: exercise.exerciseId,
     name: exercise.name,
     muscleGroup: exercise.muscleGroup ?? null,
-    exerciseType: exercise.exerciseType ?? 'weighted',
+    exerciseType: exercise.exerciseType ?? 'weights',
     sets: exercise.isAmrap
       ? 1
       : (exercise.sets ??
@@ -405,8 +405,8 @@ function computeWorkoutTotals(exercises: WorkoutExercise[], startedAt: string) {
     for (const set of exercise.sets ?? []) {
       if (!set.isComplete) continue;
       totalSets++;
-      const type = exercise.exerciseType ?? 'weighted';
-      if (type === 'weighted') {
+      const type = exercise.exerciseType ?? 'weights';
+      if (type === 'weights') {
         if (set.weight && set.reps) {
           totalVolume += set.weight * set.reps;
         }
@@ -467,7 +467,7 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
           libraryId: exercise.libraryId ?? null,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup ?? null,
-          exerciseType: exercise.exerciseType ?? 'weighted',
+          exerciseType: exercise.exerciseType ?? 'weights',
           orderIndex: exercise.orderIndex,
           notes: exercise.notes ?? null,
           isAmrap: exercise.isAmrap ?? false,
@@ -660,7 +660,7 @@ export async function createLocalWorkoutFromTemplate(
         getLibraryExerciseType(libraryId) ??
         exercise.exerciseType ??
         localExerciseMeta?.exerciseType ??
-        'weighted';
+        'weights';
       const historySnapshot =
         historyByTemplateIndex.get(exerciseIndex) ?? historyByExerciseId.get(exercise.exerciseId);
       const historySets = isAmrap
@@ -903,7 +903,7 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
         libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: null,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: index,
         isAmrap: exercise.isAmrap,
         sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
@@ -982,7 +982,7 @@ export async function createLocalWorkoutFromProgramCycleWorkoutDefinition(
         libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: null,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: index,
         isAmrap: exercise.isAmrap,
         sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
@@ -1083,7 +1083,7 @@ export async function getLocalWorkout(workoutId: string): Promise<Workout | null
       libraryId: exercise.libraryId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup ?? null,
-      exerciseType: exercise.exerciseType ?? 'weighted',
+      exerciseType: exercise.exerciseType ?? 'weights',
       orderIndex: exercise.orderIndex,
       notes: exercise.notes ?? null,
       isAmrap: Boolean(exercise.isAmrap),
@@ -1269,7 +1269,7 @@ export async function createLocalOneRMTestDraft(
     libraryId: exercise.libraryId ?? null,
     name: exercise.name,
     muscleGroup: null,
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
     orderIndex: index,
     isAmrap: false,
     sets: [
@@ -1354,7 +1354,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
           libraryId: (exercise as any).libraryId ?? null,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
-          exerciseType: exercise.exerciseType ?? 'weighted',
+          exerciseType: exercise.exerciseType ?? 'weights',
           orderIndex: exercise.orderIndex,
           notes: exercise.notes,
           isAmrap: exercise.isAmrap,
@@ -1426,7 +1426,7 @@ export async function completeLocalWorkout(
         libraryId: (exercise as any).libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: exerciseIndex,
         notes: exercise.notes,
         isAmrap: exercise.isAmrap,
@@ -1495,7 +1495,7 @@ export async function saveLocalWorkoutDraft(
         libraryId: (exercise as any).libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: exerciseIndex,
         notes: exercise.notes,
         isAmrap: exercise.isAmrap,
@@ -1592,7 +1592,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
       orderIndex: exercise.orderIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
-      exerciseType: exercise.exerciseType ?? 'weighted',
+      exerciseType: exercise.exerciseType ?? 'weights',
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
     })),
