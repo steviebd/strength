@@ -192,13 +192,20 @@ export function getProgramTargetLiftKey(targetLift: NormalizedProgramTargetLift)
 }
 
 export function consolidateProgramTargetLifts(targetLifts: NormalizedProgramTargetLift[]) {
+  return consolidateProgramTargetLiftsByKey(targetLifts, getProgramTargetLiftKey);
+}
+
+function consolidateProgramTargetLiftsByKey(
+  targetLifts: NormalizedProgramTargetLift[],
+  getKey: (targetLift: NormalizedProgramTargetLift) => string,
+) {
   const grouped = new Map<
     string,
     NormalizedProgramTargetLift & { segments: NormalizedProgramTargetLift[] }
   >();
 
   for (const targetLift of targetLifts) {
-    const key = getProgramTargetLiftKey(targetLift);
+    const key = getKey(targetLift);
     const existing = grouped.get(key);
 
     if (!existing) {
@@ -216,6 +223,16 @@ export function consolidateProgramTargetLifts(targetLifts: NormalizedProgramTarg
   }
 
   return Array.from(grouped.values());
+}
+
+export function consolidateProgramTargetLiftsForWorkoutSections(
+  targetLifts: NormalizedProgramTargetLift[],
+) {
+  return consolidateProgramTargetLiftsByKey(
+    targetLifts,
+    (targetLift) =>
+      `${getProgramTargetLiftKey(targetLift)}:${targetLift.isAmrap ? 'amrap' : 'normal'}`,
+  );
 }
 
 export function getCurrentCycleWorkout<

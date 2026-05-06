@@ -25,6 +25,11 @@ vi.mock('@strength/db/client', () => ({
   WORKOUT_TYPE_ONE_RM_TEST: 'one_rm_test',
   exerciseLibrary: [],
   generateId: vi.fn(() => 'test-id-123'),
+  consolidateProgramTargetLifts: vi.fn((targetLifts) => targetLifts),
+  consolidateProgramTargetLiftsForWorkoutSections: vi.fn((targetLifts) => targetLifts),
+  getCurrentCycleWorkout: vi.fn(),
+  normalizeProgramReps: vi.fn((value) => (typeof value === 'number' ? value : null)),
+  parseProgramTargetLifts: vi.fn(() => ({ exercises: [], accessories: [], all: [] })),
 }));
 
 vi.mock('../lib/storage', () => ({

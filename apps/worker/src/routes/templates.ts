@@ -410,6 +410,101 @@ router.delete(
   }),
 );
 
+router.put(
+  '/:id/exercise-rows/:templateExerciseId',
+  createHandler(async (c, { userId, db }) => {
+    const { id, templateExerciseId } = c.req.param();
+    const template = await requireOwnedRecord({ userId, db }, schema.templates, id, {
+      extraConditions: [eq(schema.templates.isDeleted, false)],
+      notFoundBody: { message: 'Template not found' },
+    });
+    if (template instanceof Response) return template;
+
+    const existing = await db
+      .select({ id: schema.templateExercises.id, orderIndex: schema.templateExercises.orderIndex })
+      .from(schema.templateExercises)
+      .where(
+        and(
+          eq(schema.templateExercises.id, templateExerciseId),
+          eq(schema.templateExercises.templateId, id),
+        ),
+      )
+      .get();
+
+    if (!existing) {
+      return c.json({ message: 'Template exercise not found' }, 404);
+    }
+
+    const body = await c.req.json();
+    const updateValues: Partial<typeof schema.templateExercises.$inferInsert> = {
+      orderIndex: typeof body.orderIndex === 'number' ? body.orderIndex : existing.orderIndex,
+      targetWeight: typeof body.targetWeight === 'number' ? body.targetWeight : null,
+      addedWeight: typeof body.addedWeight === 'number' ? body.addedWeight : 0,
+      sets: typeof body.sets === 'number' ? body.sets : null,
+      reps: typeof body.reps === 'number' ? body.reps : null,
+      repsRaw: typeof body.repsRaw === 'string' ? body.repsRaw : null,
+      exerciseType: typeof body.exerciseType === 'string' ? body.exerciseType : 'weighted',
+      targetDuration: typeof body.targetDuration === 'number' ? body.targetDuration : null,
+      targetDistance: typeof body.targetDistance === 'number' ? body.targetDistance : null,
+      targetHeight: typeof body.targetHeight === 'number' ? body.targetHeight : null,
+      isAmrap: body.isAmrap === true,
+      isAccessory: body.isAccessory === true,
+      isRequired: body.isRequired !== false,
+    };
+
+    const result = await db
+      .update(schema.templateExercises)
+      .set({
+        orderIndex: updateValues.orderIndex,
+        targetWeight: updateValues.targetWeight,
+        addedWeight: updateValues.addedWeight,
+        sets: updateValues.sets,
+        reps: updateValues.reps,
+        repsRaw: updateValues.repsRaw,
+        exerciseType: updateValues.exerciseType,
+        targetDuration: updateValues.targetDuration,
+        targetDistance: updateValues.targetDistance,
+        targetHeight: updateValues.targetHeight,
+        isAmrap: updateValues.isAmrap,
+        isAccessory: updateValues.isAccessory,
+        isRequired: updateValues.isRequired,
+      })
+      .where(
+        and(
+          eq(schema.templateExercises.id, templateExerciseId),
+          eq(schema.templateExercises.templateId, id),
+        ),
+      )
+      .returning()
+      .get();
+
+    return c.json(result);
+  }),
+);
+
+router.delete(
+  '/:id/exercise-rows/:templateExerciseId',
+  createHandler(async (c, { userId, db }) => {
+    const { id, templateExerciseId } = c.req.param();
+    const template = await requireOwnedRecord({ userId, db }, schema.templates, id, {
+      extraConditions: [eq(schema.templates.isDeleted, false)],
+      notFoundBody: { message: 'Template not found' },
+    });
+    if (template instanceof Response) return template;
+
+    const result = await db
+      .delete(schema.templateExercises)
+      .where(
+        and(
+          eq(schema.templateExercises.id, templateExerciseId),
+          eq(schema.templateExercises.templateId, id),
+        ),
+      )
+      .run();
+    return c.json({ success: result.success });
+  }),
+);
+
 router.post(
   '/:id/copy',
   createHandler(async (c, { userId, db }) => {

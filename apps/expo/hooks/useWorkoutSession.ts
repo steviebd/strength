@@ -555,6 +555,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           : cached
             ? buildCachedSet(cached)
             : buildEmptySet(exercise.exerciseType ?? 'weighted');
+      const sets = exercise.isAmrap ? newSets.slice(0, 1) : newSets;
 
       const newWorkoutExercise: WorkoutExercise = {
         id: generateLocalId(),
@@ -564,7 +565,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         muscleGroup: exercise.muscleGroup,
         exerciseType: exercise.exerciseType ?? 'weighted',
         orderIndex: exercisesRef.current.length,
-        sets: newSets,
+        sets,
         notes: null,
         isAmrap: exercise.isAmrap ?? false,
       };

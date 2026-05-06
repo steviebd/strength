@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import {
   WORKOUT_TYPE_ONE_RM_TEST,
   WORKOUT_TYPE_TRAINING,
-  consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   exerciseLibrary,
   getCurrentCycleWorkout,
   generateId,
@@ -758,29 +758,31 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
   const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
   if (targetLifts.all.length === 0) return null;
 
-  const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
-    const sets = exercise.segments.flatMap((segment) =>
-      Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
-        ...buildPlannedSetValues({
-          ...segment,
-          reps: normalizeProgramReps(segment.reps),
-        }),
-        rpe: null,
-        isComplete: false,
-      })),
-    );
-    return {
-      exerciseId:
-        exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
-      libraryId: exercise.libraryId ?? null,
-      name: exercise.name,
-      muscleGroup: null,
-      exerciseType: exercise.exerciseType ?? 'weighted',
-      orderIndex: index,
-      isAmrap: exercise.isAmrap,
-      sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
-    };
-  });
+  const exercises = consolidateProgramTargetLiftsForWorkoutSections(targetLifts.all).map(
+    (exercise, index) => {
+      const sets = exercise.segments.flatMap((segment) =>
+        Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
+          ...buildPlannedSetValues({
+            ...segment,
+            reps: normalizeProgramReps(segment.reps),
+          }),
+          rpe: null,
+          isComplete: false,
+        })),
+      );
+      return {
+        exerciseId:
+          exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
+        libraryId: exercise.libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: null,
+        exerciseType: exercise.exerciseType ?? 'weighted',
+        orderIndex: index,
+        isAmrap: exercise.isAmrap,
+        sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
+      };
+    },
+  );
 
   const workout = await createLocalWorkout(userId, {
     name: cycleWorkout.sessionName,
@@ -835,29 +837,31 @@ export async function createLocalWorkoutFromProgramCycleWorkoutDefinition(
       .run();
   }
 
-  const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
-    const sets = exercise.segments.flatMap((segment) =>
-      Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
-        ...buildPlannedSetValues({
-          ...segment,
-          reps: normalizeProgramReps(segment.reps),
-        }),
-        rpe: null,
-        isComplete: false,
-      })),
-    );
-    return {
-      exerciseId:
-        exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
-      libraryId: exercise.libraryId ?? null,
-      name: exercise.name,
-      muscleGroup: null,
-      exerciseType: exercise.exerciseType ?? 'weighted',
-      orderIndex: index,
-      isAmrap: exercise.isAmrap,
-      sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
-    };
-  });
+  const exercises = consolidateProgramTargetLiftsForWorkoutSections(targetLifts.all).map(
+    (exercise, index) => {
+      const sets = exercise.segments.flatMap((segment) =>
+        Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
+          ...buildPlannedSetValues({
+            ...segment,
+            reps: normalizeProgramReps(segment.reps),
+          }),
+          rpe: null,
+          isComplete: false,
+        })),
+      );
+      return {
+        exerciseId:
+          exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
+        libraryId: exercise.libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: null,
+        exerciseType: exercise.exerciseType ?? 'weighted',
+        orderIndex: index,
+        isAmrap: exercise.isAmrap,
+        sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
+      };
+    },
+  );
 
   const workout = await createLocalWorkout(userId, {
     name: cycleWorkout.sessionName,

@@ -14,6 +14,7 @@ export {
   parseProgramTargetLifts,
   getProgramTargetLiftKey,
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
   type NormalizedProgramTargetLift,
   type SerializedProgramTargetLift,

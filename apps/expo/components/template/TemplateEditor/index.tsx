@@ -57,6 +57,7 @@ interface UseTemplateEditorStateReturn {
   validateForm: () => boolean;
   setFormData: (data: Partial<FormData>) => void;
   addExercise: (exercise: SelectedExercise) => void;
+  insertExerciseAfter: (afterId: string, exercise: SelectedExercise) => void;
   removeExercise: (id: string) => void;
   updateExercise: (id: string, updates: Partial<SelectedExercise>) => void;
   reorderExercises: (fromIndex: number, toIndex: number) => void;
@@ -107,6 +108,18 @@ function useTemplateEditorState(
 
   const addExercise = useCallback((exercise: SelectedExercise) => {
     setSelectedExercises((prev) => [...prev, exercise]);
+  }, []);
+
+  const insertExerciseAfter = useCallback((afterId: string, exercise: SelectedExercise) => {
+    setSelectedExercises((prev) => {
+      const index = prev.findIndex((e) => e.id === afterId);
+      if (index === -1) {
+        return [...prev, exercise];
+      }
+      const next = [...prev];
+      next.splice(index + 1, 0, exercise);
+      return next;
+    });
   }, []);
 
   const removeExercise = useCallback((id: string) => {
@@ -169,6 +182,7 @@ function useTemplateEditorState(
     validateForm,
     setFormData,
     addExercise,
+    insertExerciseAfter,
     removeExercise,
     updateExercise,
     reorderExercises,
@@ -279,7 +293,9 @@ function useTemplateEditorApi({
               isRequired: ex.isRequired ?? true,
               sets: ex.sets ?? 3,
               reps: ex.reps ?? 10,
+              repsRaw: ex.repsRaw ?? (ex.reps ?? 10).toString(),
               targetWeight: ex.targetWeight ?? 0,
+              addedWeight: ex.addedWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
               exerciseType: resolveSelectedExerciseType(ex),
               targetDuration: ex.targetDuration ?? null,
@@ -311,50 +327,60 @@ function useTemplateEditorApi({
   }, [mode, templateId, formData, selectedExercises, onSaved, userId]);
 
   const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
-    const newExerciseIds = new Set(selectedExercises.map((e) => e.exerciseId));
-
-    const existingExercises = await apiFetch<Array<{ exerciseId: string; orderIndex: number }>>(
+    const existingExercises = await apiFetch<Array<{ id: string; exerciseId: string }>>(
       `/api/templates/${currentTemplateId}/exercises`,
+    );
+    const existingIds = new Set(existingExercises.map((exercise) => exercise.id));
+    const selectedPersistedIds = new Set(
+      selectedExercises
+        .filter((exercise) => existingIds.has(exercise.id))
+        .map((exercise) => exercise.id),
     );
 
     const deletePromises = existingExercises
-      .filter((existing) => !newExerciseIds.has(existing.exerciseId))
+      .filter((existing) => !selectedPersistedIds.has(existing.id))
       .map((existing) =>
-        apiFetch(`/api/templates/${currentTemplateId}/exercises/${existing.exerciseId}`, {
+        apiFetch(`/api/templates/${currentTemplateId}/exercise-rows/${existing.id}`, {
           method: 'DELETE',
         }),
       );
 
     await Promise.all(deletePromises);
 
-    const addPromises: Array<Promise<unknown>> = [];
+    const savePromises: Array<Promise<unknown>> = [];
     for (let i = 0; i < selectedExercises.length; i++) {
       const ex = selectedExercises[i];
-      const existing = existingExercises.find((ee) => ee.exerciseId === ex.exerciseId);
-      if (!existing) {
-        addPromises.push(
-          apiFetch(`/api/templates/${newTemplateId}/exercises`, {
-            method: 'POST',
-            body: {
-              exerciseId: ex.exerciseId,
-              orderIndex: i,
-              isAccessory: ex.isAccessory ?? false,
-              isRequired: ex.isRequired ?? true,
-              sets: ex.sets ?? 3,
-              reps: ex.reps ?? 10,
-              targetWeight: ex.targetWeight ?? 0,
-              isAmrap: ex.isAmrap ?? false,
-              exerciseType: resolveSelectedExerciseType(ex),
-              targetDuration: ex.targetDuration ?? null,
-              targetDistance: ex.targetDistance ?? null,
-              targetHeight: ex.targetHeight ?? null,
-            },
-          }),
-        );
-      }
+      const body = {
+        exerciseId: ex.exerciseId,
+        orderIndex: i,
+        isAccessory: ex.isAccessory ?? false,
+        isRequired: ex.isRequired ?? true,
+        sets: ex.sets ?? 3,
+        reps: ex.reps ?? 10,
+        repsRaw: ex.repsRaw ?? (ex.reps ?? 10).toString(),
+        targetWeight: ex.targetWeight ?? 0,
+        addedWeight: ex.addedWeight ?? 0,
+        isAmrap: ex.isAmrap ?? false,
+        exerciseType: resolveSelectedExerciseType(ex),
+        targetDuration: ex.targetDuration ?? null,
+        targetDistance: ex.targetDistance ?? null,
+        targetHeight: ex.targetHeight ?? null,
+      };
+      const existing = existingIds.has(ex.id);
+      savePromises.push(
+        existing
+          ? apiFetch(`/api/templates/${newTemplateId}/exercise-rows/${ex.id}`, {
+              method: 'PUT',
+              body,
+            })
+          : apiFetch(`/api/templates/${newTemplateId}/exercises`, {
+              method: 'POST',
+              body,
+            }),
+      );
     }
 
-    await Promise.all(addPromises);
+    await Promise.all(savePromises);
   };
 
   return {
@@ -397,6 +423,7 @@ export function TemplateEditor({
     validateForm,
     setFormData,
     addExercise,
+    insertExerciseAfter,
     removeExercise,
     updateExercise,
     reorderExercises,
@@ -423,26 +450,103 @@ export function TemplateEditor({
       }>,
     ) => {
       pushUndo();
+      const buildSelectedExercise = (
+        exercise: {
+          id: string;
+          libraryId?: string | null;
+          name: string;
+          muscleGroup: string | null;
+          exerciseType?: string;
+          isAmrap?: boolean;
+        },
+        isAmrap: boolean,
+      ): SelectedExercise => ({
+        id: generateId(),
+        exerciseId: exercise.id,
+        libraryId: exercise.libraryId ?? undefined,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup,
+        exerciseType: resolveSelectedExerciseType(exercise),
+        isAmrap,
+        isAccessory: false,
+        isRequired: true,
+        sets: isAmrap ? 1 : 3,
+        reps: 10,
+        repsRaw: '10',
+        targetWeight: 0,
+      });
+
       for (const exercise of exercises) {
-        const newExercise: SelectedExercise = {
-          id: generateId(),
-          exerciseId: exercise.id,
-          libraryId: exercise.libraryId ?? undefined,
-          name: exercise.name,
-          muscleGroup: exercise.muscleGroup,
-          exerciseType: resolveSelectedExerciseType(exercise),
-          isAmrap: exercise.isAmrap ?? false,
-          isAccessory: false,
-          isRequired: true,
-          sets: 3,
-          reps: 10,
-          repsRaw: '10',
-          targetWeight: 0,
-        };
-        addExercise(newExercise);
+        if (exercise.isAmrap) {
+          Alert.alert(exercise.name, 'How do you want to add AMRAP?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: `Make this ${exercise.name} AMRAP only`,
+              onPress: () => addExercise(buildSelectedExercise(exercise, true)),
+            },
+            {
+              text: `Add ${exercise.name} + ${exercise.name} AMRAP`,
+              onPress: () => {
+                addExercise(buildSelectedExercise(exercise, false));
+                addExercise(buildSelectedExercise(exercise, true));
+              },
+            },
+          ]);
+          continue;
+        }
+
+        addExercise(buildSelectedExercise(exercise, false));
       }
     },
     [pushUndo, addExercise],
+  );
+
+  const handleUpdateExercise = useCallback(
+    (id: string, updates: Partial<SelectedExercise>) => {
+      pushUndo();
+      updateExercise(id, updates);
+    },
+    [pushUndo, updateExercise],
+  );
+
+  const promptForAmrapSplit = useCallback(
+    (exercise: SelectedExercise) => {
+      const hasNormalRow = selectedExercises.some(
+        (candidate) =>
+          candidate.id !== exercise.id &&
+          candidate.exerciseId === exercise.exerciseId &&
+          !candidate.isAmrap,
+      );
+
+      if (hasNormalRow) {
+        handleUpdateExercise(exercise.id, { isAmrap: true, sets: exercise.sets ?? 1 });
+        return;
+      }
+
+      Alert.alert(exercise.name, 'How do you want to add AMRAP?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Make this ${exercise.name} AMRAP only`,
+          onPress: () => handleUpdateExercise(exercise.id, { isAmrap: true }),
+        },
+        {
+          text: `Add ${exercise.name} + ${exercise.name} AMRAP`,
+          onPress: () => {
+            pushUndo();
+            updateExercise(exercise.id, { isAmrap: false });
+            insertExerciseAfter(exercise.id, {
+              ...exercise,
+              id: generateId(),
+              isAmrap: true,
+              sets: 1,
+              reps: exercise.reps ?? 10,
+              repsRaw: exercise.repsRaw ?? (exercise.reps ?? 10).toString(),
+            });
+          },
+        },
+      ]);
+    },
+    [handleUpdateExercise, insertExerciseAfter, pushUndo, selectedExercises, updateExercise],
   );
 
   const handleRemoveExercise = useCallback(
@@ -471,14 +575,6 @@ export function TemplateEditor({
       }
     },
     [pushUndo, reorderExercises, selectedExercises.length],
-  );
-
-  const handleUpdateExercise = useCallback(
-    (id: string, updates: Partial<SelectedExercise>) => {
-      pushUndo();
-      updateExercise(id, updates);
-    },
-    [pushUndo, updateExercise],
   );
 
   const handleSave = useCallback(async () => {
@@ -927,9 +1023,13 @@ export function TemplateEditor({
 
                   <View style={styles.toggleRow}>
                     <Pressable
-                      onPress={() =>
-                        handleUpdateExercise(exercise.id, { isAmrap: !exercise.isAmrap })
-                      }
+                      onPress={() => {
+                        if (exercise.isAmrap) {
+                          handleUpdateExercise(exercise.id, { isAmrap: false });
+                        } else {
+                          promptForAmrapSplit(exercise);
+                        }
+                      }}
                       style={[
                         styles.toggleButton,
                         exercise.isAmrap ? styles.toggleButtonActive : styles.toggleButtonDefault,
@@ -1066,7 +1166,6 @@ export function TemplateEditor({
           visible={showExerciseSearch}
           onSelect={handleAddExercise}
           onClose={() => setShowExerciseSearch(false)}
-          excludeIds={currentExercises.map((e) => e.exerciseId)}
         />
       </Modal>
     </View>

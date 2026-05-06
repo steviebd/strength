@@ -294,10 +294,39 @@ export default function WorkoutSessionScreen() {
   const handleAddExercise = useCallback(
     async (exercisesList: ExerciseLibraryItem[]) => {
       for (const exercise of exercisesList) {
+        if (exercise.isAmrap) {
+          const hasNormalRow = exercises.some(
+            (candidate) => candidate.exerciseId === exercise.id && !candidate.isAmrap,
+          );
+          if (hasNormalRow) {
+            await addExercise(exercise);
+            continue;
+          }
+
+          Alert.alert(exercise.name, 'How do you want to add AMRAP?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: `Make this ${exercise.name} AMRAP only`,
+              onPress: () => {
+                void addExercise(exercise);
+              },
+            },
+            {
+              text: `Add ${exercise.name} + ${exercise.name} AMRAP`,
+              onPress: () => {
+                void (async () => {
+                  await addExercise({ ...exercise, isAmrap: false });
+                  await addExercise(exercise);
+                })();
+              },
+            },
+          ]);
+          continue;
+        }
         await addExercise(exercise);
       }
     },
-    [addExercise],
+    [addExercise, exercises],
   );
 
   const handleExerciseSetsUpdate = useCallback(
@@ -772,6 +801,7 @@ export default function WorkoutSessionScreen() {
               <View style={styles.exerciseProgressInfo}>
                 <Text style={styles.exerciseProgressText}>
                   {exercises[currentExerciseIndex]?.name}
+                  {exercises[currentExerciseIndex]?.isAmrap ? ' (AMRAP)' : ''}
                 </Text>
                 <Text style={styles.exerciseProgressSubtext}>
                   {currentExerciseIndex + 1} of {exercises.length} exercises
@@ -791,7 +821,6 @@ export default function WorkoutSessionScreen() {
             visible={showAddExercise}
             onSelect={handleAddExercise}
             onClose={() => setShowAddExercise(false)}
-            excludeIds={exercises.map((e) => e.exerciseId)}
           />
         </Modal>
       </FormScrollView>

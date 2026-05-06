@@ -7,6 +7,7 @@ import {
   normalizeProgramTargetLift,
   parseProgramTargetLifts,
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getOneRMsFromCompletedTestSetRows,
   getCurrentCycleWorkout,
   createOneRMTestWorkout,
@@ -290,6 +291,77 @@ describe('consolidateProgramTargetLifts', () => {
   });
 });
 
+describe('consolidateProgramTargetLiftsForWorkoutSections', () => {
+  test('keeps normal and AMRAP sections separate for the same library lift', () => {
+    const parsed = parseProgramTargetLifts(
+      JSON.stringify({
+        exercises: [
+          {
+            name: 'Squat',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            sets: 3,
+            reps: 5,
+            targetWeight: 100,
+          },
+          {
+            name: 'Squat 5+',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            sets: 1,
+            reps: 5,
+            targetWeight: 120,
+            isAmrap: true,
+          },
+        ],
+      }),
+    );
+
+    const consolidated = consolidateProgramTargetLiftsForWorkoutSections(parsed.all);
+
+    expect(consolidated).toHaveLength(2);
+    expect(consolidated[0].name).toBe('Squat');
+    expect(consolidated[0].isAmrap).toBe(false);
+    expect(consolidated[0].sets).toBe(3);
+    expect(consolidated[1].name).toBe('Squat 5+');
+    expect(consolidated[1].isAmrap).toBe(true);
+    expect(consolidated[1].sets).toBe(1);
+  });
+
+  test('still groups repeated sections with the same AMRAP state', () => {
+    const parsed = parseProgramTargetLifts(
+      JSON.stringify({
+        exercises: [
+          { name: 'Bench Press', libraryId: 'barbell-bench-press', sets: 2, reps: 5 },
+          { name: 'Bench Press', libraryId: 'barbell-bench-press', sets: 3, reps: 5 },
+          {
+            name: 'Bench Press 5+',
+            libraryId: 'barbell-bench-press',
+            sets: 1,
+            reps: 5,
+            isAmrap: true,
+          },
+          {
+            name: 'Bench Press 3+',
+            libraryId: 'barbell-bench-press',
+            sets: 1,
+            reps: 3,
+            isAmrap: true,
+          },
+        ],
+      }),
+    );
+
+    const consolidated = consolidateProgramTargetLiftsForWorkoutSections(parsed.all);
+
+    expect(consolidated).toHaveLength(2);
+    expect(consolidated[0].sets).toBe(5);
+    expect(consolidated[0].segments).toHaveLength(2);
+    expect(consolidated[1].sets).toBe(2);
+    expect(consolidated[1].segments).toHaveLength(2);
+  });
+});
+
 describe('getOneRMsFromCompletedTestSetRows', () => {
   test('derives max 1RM values from completed 1RM workout set history', () => {
     const result = getOneRMsFromCompletedTestSetRows([
@@ -460,7 +532,7 @@ describe('createWorkoutFromProgramCycleWorkout', () => {
     expect(result.programCycleId).toBe('cycle-1');
   });
 
-  test('creates one workout exercise with all sets for repeated program lift blocks', async () => {
+  test('creates separate workout exercises for normal and AMRAP program lift blocks', async () => {
     const db = createMockDb();
 
     await createWorkoutFromProgramCycleWorkout(db, 'user-1', 'cycle-1', {
@@ -475,9 +547,10 @@ describe('createWorkoutFromProgramCycleWorkout', () => {
       sessionName: 'Session A',
     });
 
-    expect(db._insertedExercises).toHaveLength(1);
+    expect(db._insertedExercises).toHaveLength(2);
+    expect(db._insertedExercises.map((exercise: any) => exercise.isAmrap)).toEqual([false, true]);
     expect(db._insertedSets).toHaveLength(5);
-    expect(db._insertedSets.map((set: any) => set.setNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(db._insertedSets.map((set: any) => set.setNumber)).toEqual([1, 2, 3, 4, 1]);
     expect(db._insertedSets.map((set: any) => set.weight)).toEqual([100, 100, 100, 110, 120]);
     expect(db._insertedSets.map((set: any) => set.reps)).toEqual([5, 5, 5, 3, null]);
   });

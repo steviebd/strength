@@ -5,6 +5,7 @@ import { getProgramCycleById, getOrCreateExerciseForUser } from '@strength/db';
 import { chunkArray, getSafeInsertChunkSize, chunkedQueryMany } from '@strength/db';
 import {
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
   isProgramAmrap,
   normalizeProgramReps,
@@ -17,6 +18,7 @@ import {
 
 export {
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
   isProgramAmrap,
   normalizeProgramReps,
@@ -377,7 +379,7 @@ export async function createWorkoutFromProgramCycleWorkout(
     throw new Error(`Program cycle workout ${cycleWorkout.id} has no target lifts`);
   }
 
-  const consolidatedTargetLifts = consolidateProgramTargetLifts(targetLifts.all);
+  const consolidatedTargetLifts = consolidateProgramTargetLiftsForWorkoutSections(targetLifts.all);
 
   const exerciseIdList: {
     workoutExerciseId: string;
