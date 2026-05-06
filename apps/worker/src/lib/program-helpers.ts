@@ -792,8 +792,9 @@ export async function getLastCompletedExerciseSnapshot(
   db: any,
   userId: string,
   exerciseId: string,
+  options: { isAmrap?: boolean } = {},
 ) {
-  const snapshots = await getLastCompletedExerciseSnapshots(db, userId, [exerciseId]);
+  const snapshots = await getLastCompletedExerciseSnapshots(db, userId, [exerciseId], options);
   return snapshots[0] ?? null;
 }
 
@@ -801,6 +802,7 @@ export async function getLastCompletedExerciseSnapshots(
   db: any,
   userId: string,
   exerciseIds: string[],
+  options: { isAmrap?: boolean } = {},
 ) {
   if (exerciseIds.length === 0) return [];
 
@@ -868,6 +870,9 @@ export async function getLastCompletedExerciseSnapshots(
             eq(schema.workouts.isDeleted, false),
             eq(schema.workouts.workoutType, schema.WORKOUT_TYPE_TRAINING),
             eq(schema.workoutExercises.isDeleted, false),
+            ...(options.isAmrap === undefined
+              ? []
+              : [eq(schema.workoutExercises.isAmrap, options.isAmrap)]),
             sql`${schema.workouts.completedAt} IS NOT NULL`,
             gte(schema.workouts.startedAt, ninetyDaysAgo),
           ),
@@ -941,6 +946,7 @@ export async function getLastCompletedExerciseSnapshots(
 
   const results: {
     exerciseId: string;
+    isAmrap?: boolean | null;
     workoutDate: string | null;
     sets: {
       weight: number | null;
@@ -966,6 +972,7 @@ export async function getLastCompletedExerciseSnapshots(
       }));
       results.push({
         exerciseId: originalId,
+        isAmrap: options.isAmrap ?? null,
         workoutDate: latest.workoutCompletedAt
           ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
           : null,

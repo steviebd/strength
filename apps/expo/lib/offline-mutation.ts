@@ -1,4 +1,3 @@
-import { ApiError } from './api';
 import { enqueueSyncItem } from '@/db/sync-queue';
 
 export class OfflineError extends Error {
@@ -10,9 +9,6 @@ export class OfflineError extends Error {
 
 export function isNetworkError(error: unknown): boolean {
   if (error instanceof Error && error.message === 'Network request failed') {
-    return true;
-  }
-  if (error instanceof ApiError && error.status >= 500) {
     return true;
   }
   return false;

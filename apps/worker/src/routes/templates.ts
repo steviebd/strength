@@ -84,14 +84,44 @@ router.post(
   '/',
   createHandler(async (c, { userId, db }) => {
     const body = await c.req.json();
-    const { name, description, notes } = body;
+    const { id, name, description, notes } = body;
     if (!name) {
       return c.json({ message: 'Name is required' }, 400);
     }
     const now = new Date();
+
+    if (typeof id === 'string' && id.trim()) {
+      const existing = await db
+        .select()
+        .from(schema.templates)
+        .where(eq(schema.templates.id, id))
+        .get();
+
+      if (existing && existing.userId !== userId) {
+        return c.json({ message: 'Template id already exists' }, 409);
+      }
+
+      if (existing) {
+        const updated = await db
+          .update(schema.templates)
+          .set({
+            name,
+            description: description || null,
+            notes: notes || null,
+            isDeleted: false,
+            updatedAt: now,
+          })
+          .where(and(eq(schema.templates.id, id), eq(schema.templates.userId, userId)))
+          .returning()
+          .get();
+        return c.json(updated, 200);
+      }
+    }
+
     const result = await db
       .insert(schema.templates)
       .values({
+        ...(typeof id === 'string' && id.trim() ? { id } : {}),
         userId,
         name,
         description: description || null,

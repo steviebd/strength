@@ -128,6 +128,7 @@ type ProgramCycleWorkoutDefinition = {
 export type ExerciseHistorySnapshot = {
   exerciseId: string;
   workoutDate: string | null;
+  isAmrap?: boolean | null;
   sets: Array<{
     weight: number | null;
     reps: number | null;
@@ -236,7 +237,7 @@ export function normalizeTemplateExerciseForWorkoutStart(
     name: exercise.name,
     muscleGroup: exercise.muscleGroup ?? null,
     exerciseType: exercise.exerciseType ?? 'weighted',
-    sets: exercise.sets ?? 3,
+    sets: exercise.isAmrap ? 1 : (exercise.sets ?? 3),
     reps: exercise.reps ?? 10,
     isAmrap: exercise.isAmrap ?? false,
     targetWeight: exercise.targetWeight ?? 0,
@@ -530,16 +531,36 @@ export async function createLocalWorkoutFromTemplate(
   for (const snapshot of historySnapshots) {
     historyByExerciseId.set(snapshot.exerciseId, snapshot);
   }
+  const historyByTemplateIndex = new Map<number, ExerciseHistorySnapshot>();
+  await Promise.all(
+    exercises.map(async (exercise, index) => {
+      if (exercise.isAmrap === undefined || exercise.isAmrap === null) return;
+      const matchingHistory = await getLocalLastCompletedExerciseSnapshots(
+        userId,
+        [exercise.exerciseId],
+        [exercise.name],
+        { isAmrap: Boolean(exercise.isAmrap) },
+      );
+      const snapshot = matchingHistory[0];
+      if (snapshot?.sets?.length) {
+        historyByTemplateIndex.set(index, snapshot);
+      }
+    }),
+  );
 
   return createLocalWorkout(userId, {
     name: template?.name ?? 'Workout',
     templateId,
-    exercises: exercises.map((exercise) => {
-      const historySnapshot = historyByExerciseId.get(exercise.exerciseId);
-      const plannedSetCount = Math.max(1, exercise.sets ?? 3);
-      // Use planned set count from template, but if history has more sets, use the larger value
-      const historySetCount = historySnapshot?.sets.length ?? 0;
-      const setCount = Math.max(plannedSetCount, historySetCount);
+    exercises: exercises.map((exercise, exerciseIndex) => {
+      const isAmrap = Boolean(exercise.isAmrap);
+      const historySnapshot =
+        historyByTemplateIndex.get(exerciseIndex) ?? historyByExerciseId.get(exercise.exerciseId);
+      const historySets = isAmrap
+        ? (historySnapshot?.sets ?? []).slice(0, 1)
+        : historySnapshot?.sets;
+      const plannedSetCount = isAmrap ? 1 : Math.max(1, exercise.sets ?? 3);
+      const historySetCount = historySets?.length ?? 0;
+      const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
       const localExerciseMeta = exerciseMetaById.get(exercise.exerciseId);
       const exerciseLibraryId = 'libraryId' in exercise ? exercise.libraryId : null;
       const libraryId = exerciseLibraryId ?? localExerciseMeta?.libraryId ?? null;
@@ -557,33 +578,29 @@ export async function createLocalWorkoutFromTemplate(
         muscleGroup: exercise.muscleGroup,
         exerciseType,
         orderIndex: exercise.orderIndex,
-        isAmrap: Boolean(exercise.isAmrap),
+        isAmrap,
         sets: Array.from({ length: setCount }, (_, index) => ({
           setNumber: index + 1,
           weight:
             index < historySetCount
-              ? (historySnapshot!.sets[index].weight ??
-                buildPlannedSetValues(plannedExercise).weight)
+              ? (historySets![index].weight ?? buildPlannedSetValues(plannedExercise).weight)
               : buildPlannedSetValues(plannedExercise).weight,
           reps:
             index < historySetCount
-              ? (historySnapshot!.sets[index].reps ?? buildPlannedSetValues(plannedExercise).reps)
+              ? (historySets![index].reps ?? buildPlannedSetValues(plannedExercise).reps)
               : buildPlannedSetValues(plannedExercise).reps,
-          rpe: index < historySetCount ? (historySnapshot!.sets[index].rpe ?? null) : null,
+          rpe: index < historySetCount ? (historySets![index].rpe ?? null) : null,
           duration:
             index < historySetCount
-              ? (historySnapshot!.sets[index].duration ??
-                buildPlannedSetValues(plannedExercise).duration)
+              ? (historySets![index].duration ?? buildPlannedSetValues(plannedExercise).duration)
               : buildPlannedSetValues(plannedExercise).duration,
           distance:
             index < historySetCount
-              ? (historySnapshot!.sets[index].distance ??
-                buildPlannedSetValues(plannedExercise).distance)
+              ? (historySets![index].distance ?? buildPlannedSetValues(plannedExercise).distance)
               : buildPlannedSetValues(plannedExercise).distance,
           height:
             index < historySetCount
-              ? (historySnapshot!.sets[index].height ??
-                buildPlannedSetValues(plannedExercise).height)
+              ? (historySets![index].height ?? buildPlannedSetValues(plannedExercise).height)
               : buildPlannedSetValues(plannedExercise).height,
           isComplete: false,
         })),
@@ -596,6 +613,7 @@ export async function getLocalLastCompletedExerciseSnapshots(
   userId: string,
   exerciseIds: string[],
   exerciseNames: string[] = [],
+  options: { isAmrap?: boolean } = {},
 ) {
   const db = getLocalDb();
   if (!db || (exerciseIds.length === 0 && exerciseNames.length === 0)) return [];
@@ -664,6 +682,9 @@ export async function getLocalLastCompletedExerciseSnapshots(
         eq(localWorkouts.isDeleted, false),
         eq(localWorkouts.workoutType, WORKOUT_TYPE_TRAINING),
         eq(localWorkoutExercises.isDeleted, false),
+        ...(options.isAmrap === undefined
+          ? []
+          : [eq(localWorkoutExercises.isAmrap, options.isAmrap)]),
         isNotNull(localWorkouts.completedAt),
         or(...historyIdentityConditions),
       ),
@@ -726,6 +747,7 @@ export async function getLocalLastCompletedExerciseSnapshots(
 
   return Array.from(latestByOriginalId.entries()).map(([exerciseId, latest]) => ({
     exerciseId,
+    isAmrap: options.isAmrap ?? null,
     workoutDate: latest.workoutCompletedAt
       ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
       : null,
@@ -1546,6 +1568,8 @@ export async function cacheTemplates(userId: string, templates: any[]) {
         name: template.name,
         description: template.description ?? null,
         notes: template.notes ?? null,
+        isDeleted: false,
+        createdLocally: false,
         createdAt: toDate(template.createdAt),
         updatedAt: toDate(template.updatedAt),
         hydratedAt,
@@ -1556,6 +1580,8 @@ export async function cacheTemplates(userId: string, templates: any[]) {
           name: template.name,
           description: template.description ?? null,
           notes: template.notes ?? null,
+          isDeleted: false,
+          createdLocally: false,
           updatedAt: toDate(template.updatedAt),
           hydratedAt,
         },

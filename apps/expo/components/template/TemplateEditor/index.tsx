@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -211,6 +211,7 @@ function useTemplateEditorApi({
   const [isSaving, setIsSaving] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const createTemplateIdRef = useRef<string | null>(null);
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
@@ -225,13 +226,17 @@ function useTemplateEditorApi({
       const isNew = mode === 'create';
       const url = isNew ? '/api/templates' : `/api/templates/${templateId}`;
       const method = isNew ? 'POST' : 'PUT';
-      const entityId = isNew ? generateId() : templateId!;
+      if (isNew && !createTemplateIdRef.current) {
+        createTemplateIdRef.current = generateId();
+      }
+      const entityId = isNew ? createTemplateIdRef.current! : templateId!;
 
       const savedTemplate = await tryOnlineOrEnqueue({
         apiCall: () =>
           apiFetch<Template>(url, {
             method,
             body: {
+              ...(isNew ? { id: entityId } : {}),
               name: formData.name,
               description: formData.description || undefined,
               notes: formData.notes || undefined,
@@ -242,6 +247,7 @@ function useTemplateEditorApi({
         operation: isNew ? 'create_template' : 'save_template',
         entityId,
         payload: {
+          ...(isNew ? { id: entityId } : {}),
           name: formData.name,
           description: formData.description || undefined,
           notes: formData.notes || undefined,
@@ -263,6 +269,17 @@ function useTemplateEditorApi({
                 createdAt: now,
                 updatedAt: now,
                 hydratedAt: now,
+              })
+              .onConflictDoUpdate({
+                target: localTemplates.id,
+                set: {
+                  name: formData.name,
+                  description: formData.description ?? null,
+                  notes: formData.notes ?? null,
+                  isDeleted: false,
+                  updatedAt: now,
+                  hydratedAt: now,
+                },
               })
               .run();
           } else {
@@ -308,7 +325,6 @@ function useTemplateEditorApi({
 
       setAutoSaveStatus('saved');
       setTimeout(() => setAutoSaveStatus('idle'), 2000);
-      onSaved?.(savedTemplate);
       return savedTemplate;
     } catch (error) {
       if (error instanceof OfflineError || (error as any)?.name === 'OfflineError') {
@@ -519,7 +535,7 @@ export function TemplateEditor({
       );
 
       if (hasNormalRow) {
-        handleUpdateExercise(exercise.id, { isAmrap: true, sets: exercise.sets ?? 1 });
+        handleUpdateExercise(exercise.id, { isAmrap: true, sets: 1 });
         return;
       }
 
@@ -527,7 +543,7 @@ export function TemplateEditor({
         { text: 'Cancel', style: 'cancel' },
         {
           text: `Make this ${exercise.name} AMRAP only`,
-          onPress: () => handleUpdateExercise(exercise.id, { isAmrap: true }),
+          onPress: () => handleUpdateExercise(exercise.id, { isAmrap: true, sets: 1 }),
         },
         {
           text: `Add ${exercise.name} + ${exercise.name} AMRAP`,

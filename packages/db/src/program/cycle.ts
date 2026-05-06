@@ -64,6 +64,7 @@ export async function createProgramCycle(
   const cycle = await db
     .insert(userProgramCycles)
     .values({
+      ...(data.id ? { id: data.id as any } : {}),
       userId: userId as any,
       programSlug: data.programSlug as any,
       name: data.name as any,

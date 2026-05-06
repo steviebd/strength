@@ -50,6 +50,7 @@ router.post(
   createHandler(async (c, { userId, db }) => {
     const body = await c.req.json();
     const {
+      id,
       programSlug,
       name,
       squat1rm,
@@ -63,6 +64,22 @@ router.post(
     } = body;
     if (!programSlug || !name) {
       return c.json({ message: 'programSlug and name are required' }, 400);
+    }
+
+    if (typeof id === 'string' && id.trim()) {
+      const existing = await db
+        .select()
+        .from(schema.userProgramCycles)
+        .where(eq(schema.userProgramCycles.id, id))
+        .get();
+
+      if (existing && existing.userId !== userId) {
+        return c.json({ message: 'Program id already exists' }, 409);
+      }
+
+      if (existing) {
+        return c.json(existing, 200);
+      }
     }
 
     const programConfig = getProgram(programSlug);
@@ -232,6 +249,7 @@ router.post(
       programStartAt,
       firstSessionAt: firstDate?.getTime(),
       workouts,
+      id,
     });
 
     return c.json(cycle, 201);

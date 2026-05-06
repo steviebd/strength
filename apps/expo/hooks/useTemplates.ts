@@ -58,13 +58,13 @@ export function useTemplates() {
         apiCall: () =>
           apiFetch<Template>('/api/templates', {
             method: 'POST',
-            body: data,
+            body: { id: entityId, ...data },
           }),
         userId: userId!,
         entityType: 'template',
         operation: 'create_template',
         entityId,
-        payload: data,
+        payload: { id: entityId, ...data },
         onEnqueue: async () => {
           const db = getLocalDb();
           if (!db) return;
@@ -81,6 +81,17 @@ export function useTemplates() {
               createdAt: now,
               updatedAt: now,
               hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localTemplates.id,
+              set: {
+                name: data.name,
+                description: data.description ?? null,
+                notes: data.notes ?? null,
+                isDeleted: false,
+                updatedAt: now,
+                hydratedAt: now,
+              },
             })
             .run();
         },
@@ -135,6 +146,34 @@ export function useTemplates() {
 
   const deleteTemplate = useMutation({
     mutationFn: async (id: string) => {
+      const db = getLocalDb();
+      const localTemplate =
+        db && typeof (db as any).select === 'function'
+          ? db
+              .select({ createdLocally: localTemplates.createdLocally })
+              .from(localTemplates)
+              .where(eq(localTemplates.id, id))
+              .get()
+          : null;
+
+      if (db && localTemplate?.createdLocally) {
+        const now = new Date();
+        db.update(localTemplates)
+          .set({ isDeleted: true, updatedAt: now })
+          .where(eq(localTemplates.id, id))
+          .run();
+        db.delete(localSyncQueue)
+          .where(
+            and(
+              eq(localSyncQueue.entityType, 'template'),
+              eq(localSyncQueue.entityId, id),
+              eq(localSyncQueue.operation, 'create_template'),
+            ),
+          )
+          .run();
+        return { success: true };
+      }
+
       return tryOnlineOrEnqueue({
         apiCall: () =>
           apiFetch(`/api/templates/${id}`, {

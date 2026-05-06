@@ -79,11 +79,19 @@ async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
 async function fetchExerciseHistorySnapshot(
   exerciseId: string,
   exerciseName?: string | null,
+  isAmrap?: boolean | null,
 ): Promise<ExerciseHistorySnapshot | null> {
   try {
-    const params = exerciseName?.trim() ? `?name=${encodeURIComponent(exerciseName.trim())}` : '';
+    const params = new URLSearchParams();
+    if (exerciseName?.trim()) {
+      params.set('name', exerciseName.trim());
+    }
+    if (isAmrap !== undefined && isAmrap !== null) {
+      params.set('isAmrap', String(isAmrap));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
     return await apiFetch<ExerciseHistorySnapshot | null>(
-      `/api/workouts/last/${encodeURIComponent(exerciseId)}${params}`,
+      `/api/workouts/last/${encodeURIComponent(exerciseId)}${query}`,
     );
   } catch {
     return null;
@@ -330,7 +338,9 @@ export default function WorkoutsIndex() {
       const d1History = await Promise.all(
         templateExercises
           .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
-          .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
+          .map((exercise) =>
+            fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name, exercise.isAmrap),
+          ),
       );
       const historySnapshots = [
         ...usableLocalHistory,

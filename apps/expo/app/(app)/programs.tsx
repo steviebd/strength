@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
 import {
+  cacheActivePrograms,
   createLocalWorkoutFromCurrentProgramCycle,
   createLocalWorkoutFromProgramCycleWorkoutDefinition,
 } from '@/db/workouts';
@@ -829,18 +830,32 @@ export default function ProgramsScreen() {
         programStartDate: programStartDate.toISOString().split('T')[0],
         firstSessionDate: firstSessionDate.toISOString().split('T')[0],
       };
+      const cycleId = generateId();
 
       const cycle = await tryOnlineOrEnqueue({
         apiCall: () =>
           apiFetch<{ id: string }>('/api/programs', {
             method: 'POST',
-            body: payload,
+            body: { id: cycleId, ...payload },
           }),
         userId,
         entityType: 'program',
         operation: 'start_program',
-        entityId: generateId(),
-        payload,
+        entityId: cycleId,
+        payload: { id: cycleId, ...payload },
+        onEnqueue: async () => {
+          await cacheActivePrograms(userId, [
+            {
+              id: cycleId,
+              programSlug: selectedProgram.slug,
+              name: selectedProgram.name,
+              currentWeek: 1,
+              currentSession: 1,
+              totalSessionsCompleted: 0,
+              totalSessionsPlanned: _getTotalSessions(selectedProgram.slug),
+            },
+          ]);
+        },
       });
 
       setShowStartModal(false);
@@ -862,6 +877,7 @@ export default function ProgramsScreen() {
         setOfflineMessage(
           "Unable to start program. Saved locally — will sync when you're back online.",
         );
+        await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
       } else {
         Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
       }

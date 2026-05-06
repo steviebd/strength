@@ -230,9 +230,9 @@ router.post(
         .all();
 
       const exerciseIds = templateExercisesResult.map((te) => te.exerciseId);
-      const historySnapshots = await getLastCompletedExerciseSnapshots(db, userId, exerciseIds);
       type Snapshot = {
         exerciseId: string;
+        isAmrap?: boolean | null;
         workoutDate: string | null;
         sets: {
           weight: number | null;
@@ -244,9 +244,27 @@ router.post(
           setNumber: number | null;
         }[];
       };
-      const snapshotByExerciseId = new Map<string, Snapshot>(
-        historySnapshots.map((s) => [s.exerciseId, s]),
+      const unfilteredHistorySnapshots = await getLastCompletedExerciseSnapshots(
+        db,
+        userId,
+        exerciseIds,
       );
+      const filteredHistorySnapshots = await Promise.all(
+        [false, true].map((isAmrap) =>
+          getLastCompletedExerciseSnapshots(db, userId, exerciseIds, { isAmrap }),
+        ),
+      );
+      const snapshotByExerciseId = new Map<string, Snapshot>();
+      for (const snapshot of unfilteredHistorySnapshots) {
+        snapshotByExerciseId.set(snapshot.exerciseId, snapshot);
+      }
+      const snapshotByExerciseAndAmrap = new Map<string, Snapshot>();
+      for (const snapshot of filteredHistorySnapshots.flat()) {
+        snapshotByExerciseAndAmrap.set(
+          `${snapshot.exerciseId}:${Boolean(snapshot.isAmrap)}`,
+          snapshot,
+        );
+      }
 
       const workoutExerciseRows = templateExercisesResult.map((templateExercise, i) => ({
         id: schema.generateId(),
@@ -263,13 +281,19 @@ router.post(
       for (let i = 0; i < templateExercisesResult.length; i++) {
         const templateExercise = templateExercisesResult[i];
         const workoutExerciseId = workoutExerciseRows[i].id;
-        const historySnapshot = snapshotByExerciseId.get(templateExercise.exerciseId);
+        const isAmrap = Boolean(templateExercise.isAmrap);
+        const historySnapshot =
+          snapshotByExerciseAndAmrap.get(`${templateExercise.exerciseId}:${isAmrap}`) ??
+          snapshotByExerciseId.get(templateExercise.exerciseId);
 
-        const historySetCount = historySnapshot?.sets.length ?? 0;
-        const plannedSetCount = Math.max(1, templateExercise.sets ?? 3);
-        const setCount = Math.max(plannedSetCount, historySetCount);
+        const historySets = isAmrap
+          ? (historySnapshot?.sets ?? []).slice(0, 1)
+          : historySnapshot?.sets;
+        const historySetCount = historySets?.length ?? 0;
+        const plannedSetCount = isAmrap ? 1 : Math.max(1, templateExercise.sets ?? 3);
+        const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
         const setRows = Array.from({ length: setCount }, (_, s) => {
-          const historySet = historySnapshot?.sets[s];
+          const historySet = historySets?.[s];
           const planned = buildTemplateSetValues(templateExercise);
           return {
             workoutExerciseId,
@@ -1001,7 +1025,14 @@ router.get(
   createHandler(async (c, { userId, db }) => {
     const exerciseId = c.req.param('exerciseId') as string;
     const exerciseName = c.req.query('name')?.trim();
-    let snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId);
+    const isAmrapParam = c.req.query('isAmrap');
+    const historyOptions =
+      isAmrapParam === 'true'
+        ? { isAmrap: true }
+        : isAmrapParam === 'false'
+          ? { isAmrap: false }
+          : {};
+    let snapshot = await getLastCompletedExerciseSnapshot(db, userId, exerciseId, historyOptions);
 
     if (!snapshot && exerciseName) {
       const matchingExercises = await db
@@ -1016,7 +1047,12 @@ router.get(
         )
         .all();
       const matchingIds = matchingExercises.map((exercise: { id: string }) => exercise.id);
-      const snapshots = await getLastCompletedExerciseSnapshots(db, userId, matchingIds);
+      const snapshots = await getLastCompletedExerciseSnapshots(
+        db,
+        userId,
+        matchingIds,
+        historyOptions,
+      );
       snapshot = snapshots[0] ?? null;
     }
 
@@ -1026,6 +1062,7 @@ router.get(
 
     return c.json({
       exerciseId,
+      isAmrap: snapshot.isAmrap ?? null,
       workoutDate: snapshot.workoutDate,
       sets: snapshot.sets.map(
         (set: { weight: number | null; reps: number | null; rpe: number | null }) => ({

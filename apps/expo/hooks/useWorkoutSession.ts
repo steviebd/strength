@@ -42,11 +42,19 @@ function generateLocalId(): string {
 async function fetchExerciseHistorySnapshot(
   exerciseId: string,
   exerciseName?: string | null,
+  isAmrap?: boolean | null,
 ): Promise<ExerciseHistorySnapshot | null> {
   try {
-    const params = exerciseName?.trim() ? `?name=${encodeURIComponent(exerciseName.trim())}` : '';
+    const params = new URLSearchParams();
+    if (exerciseName?.trim()) {
+      params.set('name', exerciseName.trim());
+    }
+    if (isAmrap !== undefined && isAmrap !== null) {
+      params.set('isAmrap', String(isAmrap));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
     return await apiFetch<ExerciseHistorySnapshot | null>(
-      `/api/workouts/last/${encodeURIComponent(exerciseId)}${params}`,
+      `/api/workouts/last/${encodeURIComponent(exerciseId)}${query}`,
     );
   } catch {
     return null;
@@ -61,9 +69,13 @@ function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) 
   return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
 }
 
-async function fetchFirstExerciseHistorySnapshot(exerciseIds: string[], exerciseName: string) {
+async function fetchFirstExerciseHistorySnapshot(
+  exerciseIds: string[],
+  exerciseName: string,
+  isAmrap?: boolean | null,
+) {
   for (const exerciseId of exerciseIds) {
-    const snapshot = await fetchExerciseHistorySnapshot(exerciseId, exerciseName);
+    const snapshot = await fetchExerciseHistorySnapshot(exerciseId, exerciseName, isAmrap);
     if (hasUsableHistory(snapshot)) {
       return snapshot;
     }
@@ -534,6 +546,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
             session.data.user.id,
             historyIds,
             [exercise.name],
+            { isAmrap: Boolean(exercise.isAmrap) },
           );
           historySnapshot = localHistory.find(hasUsableHistory) ?? null;
         } catch {
@@ -542,7 +555,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       }
 
       if (historySnapshot === null && cached === null) {
-        historySnapshot = await fetchFirstExerciseHistorySnapshot(historyIds, exercise.name);
+        historySnapshot = await fetchFirstExerciseHistorySnapshot(
+          historyIds,
+          exercise.name,
+          exercise.isAmrap,
+        );
       }
 
       if (historySnapshot === null && session.data?.user?.id) {

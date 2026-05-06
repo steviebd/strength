@@ -49,6 +49,7 @@ vi.mock('@/db/client', () => ({
 
 vi.mock('@/db/local-schema', () => ({
   localTemplates: {},
+  localSyncQueue: {},
 }));
 
 vi.mock('@strength/db/client', () => ({
@@ -94,7 +95,7 @@ describe('useTemplates', () => {
         entityType: 'template',
         operation: 'create_template',
         entityId: 'generated-id',
-        payload: { name: 'Test' },
+        payload: { id: 'generated-id', name: 'Test' },
       }),
     );
   });

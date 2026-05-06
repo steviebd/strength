@@ -1,4 +1,5 @@
 export interface CreateProgramCycleData {
+  id?: string;
   programSlug: string;
   name: string;
   squat1rm: number;
