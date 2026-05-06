@@ -23,6 +23,18 @@ function createMockDb() {
     delete: vi.fn(() => ({
       where: vi.fn(() => ({ run: vi.fn() })),
     })),
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          all: vi.fn(() => []),
+        })),
+      })),
+    })),
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn(() => ({ run: vi.fn() })),
+      })),
+    })),
   };
 }
 

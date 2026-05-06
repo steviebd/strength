@@ -552,6 +552,40 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     addLocalWorkoutSessionCacheColumns(sqlite);
   });
 
+  applyVersionedMigration(sqlite, '20260506_clear_empty_active_workout_drafts', () => {
+    sqlite.execSync(`
+      UPDATE local_program_cycle_workouts
+      SET workout_id = NULL
+      WHERE workout_id IN (
+        SELECT w.id
+        FROM local_workouts w
+        WHERE w.completed_at IS NULL
+          AND w.is_deleted = 0
+          AND (w.workout_type = '${WORKOUT_TYPE_ONE_RM_TEST}' OR w.cycle_workout_id IS NOT NULL)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM local_workout_exercises e
+            WHERE e.workout_id = w.id
+              AND e.is_deleted = 0
+          )
+      );
+
+      UPDATE local_workouts
+      SET is_deleted = 1,
+          sync_status = 'local',
+          updated_at = strftime('%s', 'now') * 1000
+      WHERE completed_at IS NULL
+        AND is_deleted = 0
+        AND (workout_type = '${WORKOUT_TYPE_ONE_RM_TEST}' OR cycle_workout_id IS NOT NULL)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM local_workout_exercises e
+          WHERE e.workout_id = local_workouts.id
+            AND e.is_deleted = 0
+        );
+    `);
+  });
+
   applyVersionedMigration(sqlite, '20260502_performance_indexes', () => {
     createLocalIndexes(sqlite);
   });

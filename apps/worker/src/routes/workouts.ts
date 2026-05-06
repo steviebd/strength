@@ -1,4 +1,4 @@
-import { eq, and, inArray, desc, sql } from 'drizzle-orm';
+import { eq, and, inArray, desc, sql, isNotNull } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import {
   chunkedQuery,
@@ -130,6 +130,7 @@ router.get(
   createHandler(async (c, { userId, db }) => {
     const rawLimit = parseInt(c.req.query('limit') || '10', 10);
     const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 10;
+    const includeActive = c.req.query('includeActive') === 'true';
     const results = await db
       .select({
         id: schema.workouts.id,
@@ -144,7 +145,13 @@ router.get(
         durationMinutes: schema.workouts.durationMinutes,
       })
       .from(schema.workouts)
-      .where(and(eq(schema.workouts.userId, userId), eq(schema.workouts.isDeleted, false)))
+      .where(
+        and(
+          eq(schema.workouts.userId, userId),
+          eq(schema.workouts.isDeleted, false),
+          ...(includeActive ? [] : [isNotNull(schema.workouts.completedAt)]),
+        ),
+      )
       .orderBy(desc(schema.workouts.startedAt))
       .limit(limit)
       .all();

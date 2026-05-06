@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, like, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, like, or } from 'drizzle-orm';
 import {
   formatLocalDate,
   getCurrentCycleWorkout,
@@ -88,6 +88,27 @@ export async function hydrateOfflineTrainingSnapshot(
     .where(eq(localTemplates.userId, userId))
     .all();
   const localTemplateMap = new Map(existingLocalTemplates.map((t) => [t.id, t]));
+  const activeDraftRows = db
+    .select({
+      id: localWorkouts.id,
+      cycleWorkoutId: localWorkouts.cycleWorkoutId,
+    })
+    .from(localWorkouts)
+    .where(
+      and(
+        eq(localWorkouts.userId, userId),
+        eq(localWorkouts.isDeleted, false),
+        isNull(localWorkouts.completedAt),
+        eq(localWorkouts.syncStatus, 'local'),
+        isNotNull(localWorkouts.cycleWorkoutId),
+      ),
+    )
+    .all();
+  const activeDraftByCycleWorkoutId = new Map(
+    activeDraftRows
+      .filter((row) => row.cycleWorkoutId)
+      .map((row) => [row.cycleWorkoutId as string, row.id]),
+  );
 
   withLocalTransaction(() => {
     for (const template of snapshot.templates) {
@@ -236,6 +257,7 @@ export async function hydrateOfflineTrainingSnapshot(
         .run();
 
       for (const workout of entry.workouts ?? []) {
+        const preservedDraftWorkoutId = activeDraftByCycleWorkoutId.get(workout.id);
         db.insert(localProgramCycleWorkouts)
           .values({
             id: workout.id,
@@ -246,7 +268,7 @@ export async function hydrateOfflineTrainingSnapshot(
             sessionName: workout.sessionName,
             targetLifts: workout.targetLifts ?? null,
             isComplete: workout.isComplete ?? false,
-            workoutId: workout.workoutId ?? null,
+            workoutId: preservedDraftWorkoutId ?? workout.workoutId ?? null,
             createdAt: toDate(workout.createdAt),
             updatedAt: toDate(workout.updatedAt),
             scheduledAt: toDate(workout.scheduledAt),
@@ -260,7 +282,7 @@ export async function hydrateOfflineTrainingSnapshot(
               sessionName: workout.sessionName,
               targetLifts: workout.targetLifts ?? null,
               isComplete: workout.isComplete ?? false,
-              workoutId: workout.workoutId ?? null,
+              workoutId: preservedDraftWorkoutId ?? workout.workoutId ?? null,
               updatedAt: toDate(workout.updatedAt),
               scheduledAt: toDate(workout.scheduledAt),
               serverUpdatedAt: toDate(workout.updatedAt),

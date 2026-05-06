@@ -45,6 +45,7 @@ export interface Workout {
   totalSets?: number;
   durationMinutes?: number;
   exerciseCount?: number;
+  createdLocally?: boolean;
 }
 
 export interface Exercise {

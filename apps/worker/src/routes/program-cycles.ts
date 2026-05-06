@@ -318,6 +318,42 @@ router.post(
 );
 
 router.get(
+  '/cycles/:id/1rm-test-draft',
+  createHandler(async (c, { userId, db }) => {
+    const cycleId = c.req.param('id') as string;
+
+    const cycle = await requireOwnedRecord({ userId, db }, schema.userProgramCycles, cycleId, {
+      notFoundBody: { message: 'Program cycle not found' },
+    });
+    if (cycle instanceof Response) return cycle;
+
+    return c.json({
+      workoutName: '1RM Test',
+      workoutType: schema.WORKOUT_TYPE_ONE_RM_TEST,
+      programCycleId: cycleId,
+      exercises: [
+        { name: 'Squat', lift: 'squat', libraryId: 'barbell-squat', weight: 0, reps: 1 },
+        {
+          name: 'Bench Press',
+          lift: 'bench',
+          libraryId: 'barbell-bench-press',
+          weight: 0,
+          reps: 1,
+        },
+        { name: 'Deadlift', lift: 'deadlift', libraryId: 'deadlift', weight: 0, reps: 1 },
+        {
+          name: 'Overhead Press',
+          lift: 'ohp',
+          libraryId: 'overhead-press',
+          weight: 0,
+          reps: 1,
+        },
+      ],
+    });
+  }),
+);
+
+router.get(
   '/cycles/:id/1rm-test-workout',
   createHandler(async (c, { userId, db }) => {
     const cycleId = c.req.param('id') as string;

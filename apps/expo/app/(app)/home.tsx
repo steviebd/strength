@@ -23,13 +23,18 @@ import { useUserPreferences } from '@/context/UserPreferencesContext';
 import {
   createLocalWorkoutFromProgramCycleWorkout,
   createLocalWorkoutFromProgramCycleWorkoutDefinition,
+  discardLocalWorkout,
+  listLocalActiveWorkoutDrafts,
+  type LocalActiveWorkoutDraftItem,
 } from '@/db/workouts';
+import { cleanupStaleLocalData } from '@/db/local-cleanup';
 
 export default function HomeScreen() {
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [activeDrafts, setActiveDrafts] = useState<LocalActiveWorkoutDraftItem[]>([]);
   const session = authClient.useSession();
   const user = session.data?.user;
   const displayName = user?.name || user?.email || 'Athlete';
@@ -42,7 +47,14 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] });
-    }, [activeTimezone, queryClient]),
+      if (user?.id) {
+        void cleanupStaleLocalData(user.id).then(() =>
+          listLocalActiveWorkoutDrafts(user.id, 20).then(setActiveDrafts),
+        );
+      } else {
+        setActiveDrafts([]);
+      }
+    }, [activeTimezone, queryClient, user?.id]),
   );
 
   useEffect(() => {
@@ -75,7 +87,7 @@ export default function HomeScreen() {
   const workoutTitle = workout?.programName ?? nextWorkout?.programName ?? 'No Active Program';
   const workoutSubtitle = workout?.name ?? (nextWorkout ? `Next: ${nextWorkout.name}` : null);
 
-  const handleStartWorkout = async () => {
+  const handleStartWorkout = async (skipDraftId?: string) => {
     if (!startableCycleWorkoutId) {
       router.push('/(app)/workouts');
       return;
@@ -83,12 +95,61 @@ export default function HomeScreen() {
 
     try {
       if (user?.id) {
+        const existingDraft = activeDrafts.find(
+          (draft) =>
+            draft.workoutType === 'training' &&
+            draft.cycleWorkoutId === startableCycleWorkoutId &&
+            draft.id !== skipDraftId,
+        );
+        if (existingDraft) {
+          Alert.alert(
+            'Resume workout?',
+            'You already have an in-progress workout from this program.',
+            [
+              {
+                text: 'Resume',
+                onPress: () => {
+                  const params = new URLSearchParams({
+                    workoutId: existingDraft.id,
+                    source: 'program',
+                    cycleWorkoutId: startableCycleWorkoutId,
+                  });
+                  if (existingDraft.programCycleId) {
+                    params.set('cycleId', existingDraft.programCycleId);
+                  }
+                  router.push(`/workout-session?${params.toString()}`);
+                },
+              },
+              {
+                text: 'Start Fresh',
+                style: 'destructive',
+                onPress: () => {
+                  void (async () => {
+                    await discardLocalWorkout(existingDraft.id, existingDraft.cycleWorkoutId);
+                    const drafts = await listLocalActiveWorkoutDrafts(user.id, 20);
+                    setActiveDrafts(drafts);
+                    await handleStartWorkout(existingDraft.id);
+                  })();
+                },
+              },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+          return;
+        }
+
         const local = await createLocalWorkoutFromProgramCycleWorkout(
           user.id,
           startableCycleWorkoutId,
         );
         if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+          const params = new URLSearchParams({
+            workoutId: local.id,
+            source: 'program',
+            cycleWorkoutId: startableCycleWorkoutId,
+          });
+          if (local.programCycleId) params.set('cycleId', local.programCycleId);
+          router.push(`/workout-session?${params.toString()}`);
           return;
         }
       }

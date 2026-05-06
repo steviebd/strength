@@ -109,4 +109,46 @@ describe('useWorkoutSession', () => {
     expect(discardLocalWorkout).toHaveBeenCalledWith('workout-1', undefined);
     expect(removePendingWorkout).toHaveBeenCalledWith('workout-1');
   });
+
+  test('discardWorkout does not delete local-only 1RM drafts from the server', async () => {
+    stateValues[0] = {
+      id: 'workout-1',
+      name: '1RM Test',
+      workoutType: 'one_rm_test',
+      startedAt: '2024-01-01T00:00:00Z',
+      completedAt: null,
+      notes: null,
+      exercises: [],
+      createdLocally: true,
+    };
+
+    const { useWorkoutSession } = await import('./useWorkoutSession');
+    const result = useWorkoutSession();
+
+    await result.discardWorkout();
+
+    const { apiFetch } = await import('@/lib/api');
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  test('discardWorkout still best-effort deletes legacy server-created 1RM tests', async () => {
+    stateValues[0] = {
+      id: 'workout-1',
+      name: '1RM Test',
+      workoutType: 'one_rm_test',
+      startedAt: '2024-01-01T00:00:00Z',
+      completedAt: null,
+      notes: null,
+      exercises: [],
+      createdLocally: false,
+    };
+
+    const { useWorkoutSession } = await import('./useWorkoutSession');
+    const result = useWorkoutSession();
+
+    await result.discardWorkout();
+
+    const { apiFetch } = await import('@/lib/api');
+    expect(apiFetch).toHaveBeenCalledWith('/api/workouts/workout-1', { method: 'DELETE' });
+  });
 });

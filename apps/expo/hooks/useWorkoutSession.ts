@@ -499,9 +499,9 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         await discardLocalWorkout(workout.id, workout.cycleWorkoutId);
         await removePendingWorkout(workout.id);
 
-        // 1RM tests are created server-side; clean them up on discard so
-        // the user can start a fresh test without a stale D1 record.
-        if (workout.workoutType === WORKOUT_TYPE_ONE_RM_TEST) {
+        // Legacy 1RM tests may have been created server-side before local
+        // drafts existed; local-only drafts should never delete D1 rows.
+        if (workout.workoutType === WORKOUT_TYPE_ONE_RM_TEST && workout.createdLocally === false) {
           try {
             await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
           } catch {

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   WORKOUT_TYPE_ONE_RM_TEST,
   WORKOUT_TYPE_TRAINING,
@@ -42,6 +42,31 @@ export interface LocalWorkoutHistoryItem {
   syncStatus: WorkoutSyncStatus;
   lastSyncError: string | null;
 }
+
+export interface LocalActiveWorkoutDraftItem {
+  id: string;
+  name: string;
+  workoutType: WorkoutType;
+  startedAt: string;
+  updatedAt: string;
+  exerciseCount: number;
+  templateId: string | null;
+  programCycleId: string | null;
+  cycleWorkoutId: string | null;
+}
+
+export type OneRMTestDraftDefinition = {
+  workoutName: string;
+  workoutType?: WorkoutType;
+  programCycleId: string;
+  exercises: Array<{
+    name: string;
+    lift: 'squat' | 'bench' | 'deadlift' | 'ohp';
+    libraryId?: string | null;
+    weight?: number | null;
+    reps?: number | null;
+  }>;
+};
 
 type LocalExerciseInput = {
   id?: string;
@@ -270,6 +295,7 @@ function asWorkout(row: LocalWorkout, exercises: WorkoutExercise[]): Workout {
     programCycleId: row.programCycleId ?? null,
     cycleWorkoutId: row.cycleWorkoutId ?? null,
     syncStatus: row.syncStatus as WorkoutSyncStatus,
+    createdLocally: Boolean(row.createdLocally),
     exercises,
   };
 }
@@ -869,7 +895,7 @@ export async function createLocalWorkoutFromCurrentProgramCycle(userId: string, 
   if (!current) return null;
   if (current.workoutId) {
     const existing = await getLocalWorkout(current.workoutId);
-    if (existing) return existing;
+    if (existing && (existing.completedAt || existing.exercises.length > 0)) return existing;
   }
   return createLocalWorkoutFromProgramCycleWorkout(userId, current.id);
 }
@@ -986,6 +1012,152 @@ export async function listLocalWorkoutHistory(userId: string, limit = 50) {
       lastSyncError: row.lastSyncError ?? null,
     }),
   );
+}
+
+export async function listLocalActiveWorkoutDrafts(userId: string, limit = 20) {
+  const db = getLocalDb();
+  if (!db) return [];
+
+  const rows = db
+    .select()
+    .from(localWorkouts)
+    .where(
+      and(
+        eq(localWorkouts.userId, userId),
+        eq(localWorkouts.isDeleted, false),
+        isNull(localWorkouts.completedAt),
+        eq(localWorkouts.syncStatus, 'local'),
+      ),
+    )
+    .orderBy(desc(localWorkouts.updatedAt))
+    .limit(limit)
+    .all();
+
+  const workoutIds = rows.map((row) => row.id);
+  const exerciseRows =
+    workoutIds.length > 0
+      ? db
+          .select({
+            id: localWorkoutExercises.id,
+            workoutId: localWorkoutExercises.workoutId,
+          })
+          .from(localWorkoutExercises)
+          .where(
+            and(
+              inArray(localWorkoutExercises.workoutId, workoutIds),
+              eq(localWorkoutExercises.isDeleted, false),
+            ),
+          )
+          .all()
+      : [];
+  const counts = new Map<string, number>();
+  for (const row of exerciseRows) {
+    counts.set(row.workoutId, (counts.get(row.workoutId) ?? 0) + 1);
+  }
+
+  return rows.map(
+    (row): LocalActiveWorkoutDraftItem => ({
+      id: row.id,
+      name: row.name,
+      workoutType: resolveWorkoutType(row) as WorkoutType,
+      startedAt: toIso(row.startedAt) ?? new Date().toISOString(),
+      updatedAt: toIso(row.updatedAt) ?? new Date().toISOString(),
+      exerciseCount: counts.get(row.id) ?? 0,
+      templateId: row.templateId ?? null,
+      programCycleId: row.programCycleId ?? null,
+      cycleWorkoutId: row.cycleWorkoutId ?? null,
+    }),
+  );
+}
+
+async function getNonEmptyLocalWorkout(workoutId: string | null | undefined) {
+  if (!workoutId) return null;
+  const workout = await getLocalWorkout(workoutId);
+  if (!workout || workout.completedAt || workout.syncStatus !== 'local') return null;
+  return workout.exercises.length > 0 ? workout : null;
+}
+
+export async function getLocalActiveWorkoutDraftForProgramCycleWorkout(
+  userId: string,
+  cycleWorkoutId: string,
+) {
+  const db = getLocalDb();
+  if (!db) return null;
+
+  const row = db
+    .select()
+    .from(localWorkouts)
+    .where(
+      and(
+        eq(localWorkouts.userId, userId),
+        eq(localWorkouts.cycleWorkoutId, cycleWorkoutId),
+        eq(localWorkouts.workoutType, WORKOUT_TYPE_TRAINING),
+        eq(localWorkouts.isDeleted, false),
+        isNull(localWorkouts.completedAt),
+        eq(localWorkouts.syncStatus, 'local'),
+      ),
+    )
+    .orderBy(desc(localWorkouts.updatedAt))
+    .limit(1)
+    .get();
+
+  return getNonEmptyLocalWorkout(row?.id);
+}
+
+export async function getLocalActiveOneRMTestDraft(userId: string, cycleId: string) {
+  const db = getLocalDb();
+  if (!db) return null;
+
+  const row = db
+    .select()
+    .from(localWorkouts)
+    .where(
+      and(
+        eq(localWorkouts.userId, userId),
+        eq(localWorkouts.programCycleId, cycleId),
+        eq(localWorkouts.workoutType, WORKOUT_TYPE_ONE_RM_TEST),
+        eq(localWorkouts.isDeleted, false),
+        isNull(localWorkouts.completedAt),
+        eq(localWorkouts.syncStatus, 'local'),
+      ),
+    )
+    .orderBy(desc(localWorkouts.updatedAt))
+    .limit(1)
+    .get();
+
+  return getNonEmptyLocalWorkout(row?.id);
+}
+
+export async function createLocalOneRMTestDraft(
+  userId: string,
+  cycleId: string,
+  definition: OneRMTestDraftDefinition,
+) {
+  const exercises = definition.exercises.map((exercise, index) => ({
+    exerciseId: exercise.libraryId ?? exercise.lift,
+    libraryId: exercise.libraryId ?? null,
+    name: exercise.name,
+    muscleGroup: null,
+    exerciseType: 'weighted',
+    orderIndex: index,
+    isAmrap: false,
+    sets: [
+      {
+        setNumber: 1,
+        weight: exercise.weight ?? 0,
+        reps: exercise.reps ?? 1,
+        rpe: null,
+        isComplete: false,
+      },
+    ],
+  }));
+
+  return createLocalWorkout(userId, {
+    name: definition.workoutName || '1RM Test',
+    programCycleId: definition.programCycleId || cycleId,
+    workoutType: WORKOUT_TYPE_ONE_RM_TEST,
+    exercises,
+  });
 }
 
 export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout: Workout) {
@@ -1153,10 +1325,6 @@ export async function saveLocalWorkoutDraft(
 ) {
   const db = getLocalDb();
   if (!db || workout.completedAt) return null;
-
-  // 1RM tests are short-lived and server-managed; skip local draft so
-  // discarding does not leave ghost records that break re-open.
-  if (workout.workoutType === WORKOUT_TYPE_ONE_RM_TEST) return null;
 
   const existing = db.select().from(localWorkouts).where(eq(localWorkouts.id, workout.id)).get();
   if (!existing) {

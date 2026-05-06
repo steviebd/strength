@@ -33,19 +33,26 @@ import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import {
   cacheTemplates,
+  createLocalOneRMTestDraft,
   createLocalWorkoutFromCurrentProgramCycle,
   createLocalWorkoutFromProgramCycleWorkoutDefinition,
   createLocalWorkoutFromTemplate,
+  discardLocalWorkout,
+  getLocalActiveOneRMTestDraft,
   getLocalLastCompletedExerciseSnapshots,
+  listLocalActiveWorkoutDrafts,
   listLocalWorkoutHistory,
   normalizeTemplateExerciseForWorkoutStart,
   upsertServerWorkoutSnapshot,
+  type LocalActiveWorkoutDraftItem,
+  type OneRMTestDraftDefinition,
   type ExerciseHistorySnapshot,
   type WorkoutSyncStatus,
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
 import { getLocalDb } from '@/db/client';
+import { cleanupStaleLocalData } from '@/db/local-cleanup';
 import { eq } from 'drizzle-orm';
 import { localTemplateExercises } from '@/db/local-schema';
 import type { Template } from '@/components/template/TemplateEditor/types';
@@ -108,6 +115,7 @@ export default function WorkoutsIndex() {
   const [opening1RMTestId, setOpening1RMTestId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [localHistory, setLocalHistory] = useState<WorkoutHistoryItem[]>([]);
+  const [activeDrafts, setActiveDrafts] = useState<LocalActiveWorkoutDraftItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -124,6 +132,16 @@ export default function WorkoutsIndex() {
     setLocalHistory(workouts);
   }, [userId]);
 
+  const loadActiveDrafts = useCallback(async () => {
+    if (!userId) {
+      setActiveDrafts([]);
+      return;
+    }
+    await cleanupStaleLocalData(userId);
+    const drafts = await listLocalActiveWorkoutDrafts(userId, 20);
+    setActiveDrafts(drafts);
+  }, [userId]);
+
   const refreshWorkoutsScreen = useCallback(
     async (showRefreshIndicator = false) => {
       if (showRefreshIndicator) {
@@ -136,6 +154,7 @@ export default function WorkoutsIndex() {
           queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
           queryClient.refetchQueries({ queryKey: ['workoutHistory'] }),
           loadLocalHistory(),
+          loadActiveDrafts(),
         ]);
       } finally {
         if (showRefreshIndicator) {
@@ -143,12 +162,13 @@ export default function WorkoutsIndex() {
         }
       }
     },
-    [loadLocalHistory, queryClient],
+    [loadActiveDrafts, loadLocalHistory, queryClient],
   );
 
   useEffect(() => {
     void loadLocalHistory();
-  }, [loadLocalHistory]);
+    void loadActiveDrafts();
+  }, [loadActiveDrafts, loadLocalHistory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -243,11 +263,28 @@ export default function WorkoutsIndex() {
     Alert.alert('Unable to start workout', workoutSessionError ?? 'Please try again.');
   };
 
-  const handleStartFromTemplate = async (template: Template) => {
+  const handleStartFromTemplate = async (template: Template, skipDraftId?: string) => {
     setOfflineMessage(null);
     try {
       if (!userId || !template.id) {
         Alert.alert('Error', 'Unable to start workout. Please try again.');
+        return;
+      }
+
+      const existingDraft = activeDrafts.find(
+        (draft) =>
+          draft.workoutType === 'training' &&
+          draft.templateId === template.id &&
+          !draft.programCycleId &&
+          !draft.cycleWorkoutId &&
+          draft.id !== skipDraftId,
+      );
+      if (existingDraft) {
+        promptForExistingDraft(existingDraft, {
+          title: 'Resume template workout?',
+          message: 'You already have an in-progress workout from this template.',
+          onStartFresh: () => handleStartFromTemplate(template, existingDraft.id),
+        });
         return;
       }
 
@@ -328,6 +365,82 @@ export default function WorkoutsIndex() {
     await queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
   };
 
+  const getProgramName = useCallback(
+    (cycleId: string | null | undefined) =>
+      activePrograms.find((program) => program.id === cycleId)?.name ?? null,
+    [activePrograms],
+  );
+
+  const getDraftSourceLabel = useCallback((draft: LocalActiveWorkoutDraftItem) => {
+    if (draft.workoutType === 'one_rm_test') return '1RM Test';
+    if (draft.cycleWorkoutId) return 'Program';
+    if (draft.templateId) return 'Template';
+    return 'Custom';
+  }, []);
+
+  const resumeDraft = useCallback(
+    (draft: LocalActiveWorkoutDraftItem) => {
+      const params = new URLSearchParams({ workoutId: draft.id });
+      if (draft.workoutType === 'one_rm_test') {
+        params.set('source', 'program-1rm-test');
+        if (draft.programCycleId) {
+          params.set('cycleId', draft.programCycleId);
+          const programName = getProgramName(draft.programCycleId);
+          if (programName) params.set('programName', programName);
+        }
+      } else if (draft.cycleWorkoutId) {
+        params.set('source', 'program');
+        if (draft.programCycleId) params.set('cycleId', draft.programCycleId);
+        params.set('cycleWorkoutId', draft.cycleWorkoutId);
+      }
+      router.push(`/workout-session?${params.toString()}`);
+    },
+    [getProgramName, router],
+  );
+
+  const promptForExistingDraft = useCallback(
+    (
+      draft: LocalActiveWorkoutDraftItem,
+      options: {
+        title: string;
+        message: string;
+        onStartFresh: () => void | Promise<void>;
+      },
+    ) => {
+      Alert.alert(options.title, options.message, [
+        { text: 'Resume', onPress: () => resumeDraft(draft) },
+        {
+          text: 'Start Fresh',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await discardLocalWorkout(draft.id, draft.cycleWorkoutId);
+              await loadActiveDrafts();
+              await options.onStartFresh();
+            })();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    },
+    [loadActiveDrafts, resumeDraft],
+  );
+
+  const discardDraft = useCallback(
+    async (draft: LocalActiveWorkoutDraftItem) => {
+      await discardLocalWorkout(draft.id, draft.cycleWorkoutId);
+      await loadActiveDrafts();
+      await queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
+      await queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+      if (draft.programCycleId) {
+        await queryClient.invalidateQueries({
+          queryKey: ['programSchedule', draft.programCycleId],
+        });
+      }
+    },
+    [loadActiveDrafts, queryClient],
+  );
+
   useEffect(() => {
     if (!userId) return;
     const templates = queryClient.getQueryData<Template[]>(['templates', userId]);
@@ -354,7 +467,7 @@ export default function WorkoutsIndex() {
     await queryClient.refetchQueries({ queryKey: ['templates'] });
   };
 
-  const handleOpenCurrentProgramWorkout = async (program: ActiveProgram) => {
+  const handleOpenCurrentProgramWorkout = async (program: ActiveProgram, skipDraftId?: string) => {
     setOpeningProgramWorkoutId(program.id);
     try {
       if (!userId) {
@@ -362,9 +475,28 @@ export default function WorkoutsIndex() {
         return;
       }
 
+      const existingDraft = activeDrafts.find(
+        (draft) =>
+          draft.workoutType === 'training' &&
+          draft.programCycleId === program.id &&
+          draft.cycleWorkoutId &&
+          draft.id !== skipDraftId,
+      );
+      if (existingDraft) {
+        promptForExistingDraft(existingDraft, {
+          title: 'Resume program session?',
+          message: 'You already have this program session in progress.',
+          onStartFresh: () => handleOpenCurrentProgramWorkout(program, existingDraft.id),
+        });
+        return;
+      }
+
       const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
       if (local?.id) {
-        router.push(`/workout-session?workoutId=${local.id}&source=program`);
+        const params = new URLSearchParams({ workoutId: local.id, source: 'program' });
+        if (local.programCycleId) params.set('cycleId', local.programCycleId);
+        if (local.cycleWorkoutId) params.set('cycleWorkoutId', local.cycleWorkoutId);
+        router.push(`/workout-session?${params.toString()}`);
         return;
       }
 
@@ -400,21 +532,86 @@ export default function WorkoutsIndex() {
   const handleOpen1RMTest = async (program: ActiveProgram) => {
     setOpening1RMTestId(program.id);
     try {
-      const result = await apiFetch<{ workoutId: string; workoutName: string }>(
-        `/api/programs/cycles/${program.id}/create-1rm-test-workout`,
-        {
-          method: 'POST',
-          body: {},
-        },
+      if (!userId) {
+        Alert.alert('Error', 'User not found. Please sign in again.');
+        return;
+      }
+
+      const existingDraft = await getLocalActiveOneRMTestDraft(userId, program.id);
+      if (existingDraft?.id) {
+        router.push(
+          `/workout-session?workoutId=${existingDraft.id}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
+        );
+        return;
+      }
+
+      const definition = await apiFetch<OneRMTestDraftDefinition>(
+        `/api/programs/cycles/${program.id}/1rm-test-draft`,
       );
+      const local = await createLocalOneRMTestDraft(userId, program.id, definition);
+      if (!local?.id) {
+        Alert.alert('Error', 'Failed to create 1RM test. Please try again.');
+        return;
+      }
       router.push(
-        `/workout-session?workoutId=${result.workoutId}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
+        `/workout-session?workoutId=${local.id}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
       );
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open 1RM test');
     } finally {
       setOpening1RMTestId(null);
     }
+  };
+
+  const renderActiveDraftsSection = () => {
+    if (activeDrafts.length === 0) return null;
+
+    return (
+      <View style={styles.draftsContainer}>
+        <SectionTitle title="In progress" />
+        {activeDrafts.map((draft) => (
+          <Surface key={`active-draft:${draft.id}`} style={styles.draftSurface}>
+            <View style={styles.draftHeader}>
+              <View style={styles.draftTitleGroup}>
+                <Text style={styles.draftTitle} numberOfLines={1}>
+                  {draft.name}
+                </Text>
+                <View style={styles.programBadges}>
+                  <Badge label="In progress" tone="orange" />
+                  <Badge label={getDraftSourceLabel(draft)} tone="sky" />
+                </View>
+              </View>
+              <Text style={styles.draftMeta}>
+                Started {new Date(draft.startedAt).toLocaleDateString()} · {draft.exerciseCount}{' '}
+                exercise{draft.exerciseCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+            <View style={styles.draftActions}>
+              <View style={styles.flex1}>
+                <Button label="Resume" icon="play" onPress={() => resumeDraft(draft)} size="sm" />
+              </View>
+              <Button
+                label="Discard"
+                variant="secondary"
+                onPress={() => {
+                  Alert.alert('Discard workout?', 'This in-progress workout will be removed.', [
+                    { text: 'Keep', style: 'cancel' },
+                    {
+                      text: 'Discard',
+                      style: 'destructive',
+                      onPress: () => {
+                        void discardDraft(draft);
+                      },
+                    },
+                  ]);
+                }}
+                size="sm"
+              />
+            </View>
+          </Surface>
+        ))}
+      </View>
+    );
   };
 
   const _handleDeleteProgram = (program: ActiveProgram) => {
@@ -458,6 +655,15 @@ export default function WorkoutsIndex() {
           const isOpening = openingProgramWorkoutId === program.id;
           const isDeleting = deletingProgramId === program.id;
           const isFocused = params.focusProgramId === program.id;
+          const hasTrainingDraft = activeDrafts.some(
+            (draft) =>
+              draft.workoutType === 'training' &&
+              draft.programCycleId === program.id &&
+              draft.cycleWorkoutId,
+          );
+          const hasOneRMDraft = activeDrafts.some(
+            (draft) => draft.workoutType === 'one_rm_test' && draft.programCycleId === program.id,
+          );
           const currentSession = program.currentSession ?? 1;
           const displaySessionNumber = getDisplaySessionNumber(program);
           const progress = Math.min(
@@ -497,7 +703,13 @@ export default function WorkoutsIndex() {
 
                 <View style={styles.programActions}>
                   <Button
-                    label={isOpening ? 'Opening session...' : 'Start next session'}
+                    label={
+                      isOpening
+                        ? 'Opening session...'
+                        : hasTrainingDraft
+                          ? 'Resume session'
+                          : 'Start next session'
+                    }
                     icon="play"
                     onPress={() => void handleOpenCurrentProgramWorkout(program)}
                     disabled={isOpening || isDeleting}
@@ -507,7 +719,13 @@ export default function WorkoutsIndex() {
                   <View style={styles.programActionsRow}>
                     <View style={styles.flex1}>
                       <Button
-                        label={opening1RMTestId === program.id ? 'Opening...' : '1RM Test'}
+                        label={
+                          opening1RMTestId === program.id
+                            ? 'Opening...'
+                            : hasOneRMDraft
+                              ? 'Resume 1RM'
+                              : '1RM Test'
+                        }
                         icon="speedometer-outline"
                         variant="secondary"
                         onPress={() => void handleOpen1RMTest(program)}
@@ -574,6 +792,8 @@ export default function WorkoutsIndex() {
             },
           ]}
         />
+
+        {renderActiveDraftsSection()}
 
         {view === 'templates' ? (
           <View style={styles.templatesView}>
@@ -893,6 +1113,34 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
     color: colors.error,
+  },
+  draftsContainer: {
+    gap: spacing.sm,
+  },
+  draftSurface: {
+    gap: spacing.md,
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    borderColor: 'rgba(251,146,60,0.32)',
+  },
+  draftHeader: {
+    gap: spacing.xs,
+  },
+  draftTitleGroup: {
+    gap: spacing.sm,
+  },
+  draftTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  draftMeta: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  draftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
 
   templatesView: {
