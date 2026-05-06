@@ -1,14 +1,9 @@
 import type { ReactNode } from 'react';
 import { forwardRef, useImperativeHandle, useRef } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { colors, spacing, textRoles, radius, layout } from '@/theme';
 
 export interface AuthShellHandle {
@@ -39,19 +34,15 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
     }));
 
     return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-        style={{ flex: 1, backgroundColor: colors.background }}
-      >
-        <ScrollView
+      <KeyboardFormLayout keyboardVerticalOffset={88}>
+        <FormScrollView
           ref={scrollViewRef}
+          horizontalPadding={0}
+          bottomInset={spacing.xl}
           contentContainerStyle={{
             flexGrow: 1,
             minHeight: windowHeight,
           }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
         >
           <View
             style={{
@@ -112,8 +103,8 @@ export const AuthShell = forwardRef<AuthShellHandle, AuthShellProps>(
               {children}
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </FormScrollView>
+      </KeyboardFormLayout>
     );
   },
 );

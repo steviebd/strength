@@ -3,8 +3,6 @@ import {
   View,
   TextInput,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Image,
   Pressable,
@@ -12,6 +10,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, radius, spacing } from '@/theme';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { MealImageCapture } from './MealImageCapture';
 
 interface ChatInputProps {
@@ -124,11 +123,7 @@ export function ChatInput({
     return content;
   }
 
-  return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      {content}
-    </KeyboardAvoidingView>
-  );
+  return <KeyboardFormLayout>{content}</KeyboardFormLayout>;
 }
 
 const styles = StyleSheet.create({

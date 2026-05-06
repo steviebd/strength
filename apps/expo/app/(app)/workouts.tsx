@@ -38,6 +38,7 @@ import {
   createLocalWorkoutFromTemplate,
   getLocalLastCompletedExerciseSnapshots,
   listLocalWorkoutHistory,
+  normalizeTemplateExerciseForWorkoutStart,
   upsertServerWorkoutSnapshot,
   type ExerciseHistorySnapshot,
   type WorkoutSyncStatus,
@@ -260,23 +261,21 @@ export default function WorkoutsIndex() {
           .orderBy(localTemplateExercises.orderIndex)
           .all() ?? [];
 
-      let templateExercises =
+      let rawTemplateExercises =
         cachedTemplateExercises.length > 0 ? cachedTemplateExercises : (template.exercises ?? []);
 
-      if (templateExercises.length === 0) {
+      if (rawTemplateExercises.length === 0) {
         const remoteTemplate = await apiFetch<any>(`/api/templates/${template.id}`);
-        templateExercises = (remoteTemplate.exercises ?? []).map((ex: any, index: number) => ({
-          exerciseId: ex.exerciseId,
+        rawTemplateExercises = (remoteTemplate.exercises ?? []).map((ex: any) => ({
+          ...ex,
           name: ex.name ?? ex.exercise?.name ?? 'Exercise',
           muscleGroup: ex.muscleGroup ?? ex.exercise?.muscleGroup ?? null,
-          sets: ex.sets ?? 3,
-          reps: ex.reps ?? 10,
-          isAmrap: ex.isAmrap ?? false,
-          targetWeight: ex.targetWeight ?? 0,
-          addedWeight: ex.addedWeight ?? 0,
-          orderIndex: ex.orderIndex ?? index,
         }));
       }
+
+      const templateExercises = rawTemplateExercises.map((ex, index) =>
+        normalizeTemplateExerciseForWorkoutStart(ex, index),
+      );
 
       if (templateExercises.length === 0) {
         Alert.alert('Error', 'No exercises found for this template.');
@@ -308,17 +307,7 @@ export default function WorkoutsIndex() {
         userId,
         template.id,
         historySnapshots,
-        templateExercises.map((ex, index) => ({
-          exerciseId: ex.exerciseId,
-          name: ex.name,
-          muscleGroup: ex.muscleGroup ?? null,
-          sets: ex.sets ?? 3,
-          reps: ex.reps ?? 10,
-          isAmrap: ex.isAmrap ?? false,
-          targetWeight: ex.targetWeight ?? 0,
-          addedWeight: ex.addedWeight ?? 0,
-          orderIndex: ex.orderIndex ?? index,
-        })),
+        templateExercises,
       );
 
       if (local?.id) {

@@ -2,12 +2,12 @@ import { createContext, useContext, type ReactNode, type RefObject } from 'react
 import type { ScrollView } from 'react-native';
 
 interface ScrollContextValue {
-  scrollToInput: (inputRef: RefObject<any>) => void;
+  scrollToInput: (inputRef: RefObject<any>, offset?: number) => void;
 }
 
 const ScrollContext = createContext<ScrollContextValue | null>(null);
 
-export function useScrollToInput(): (inputRef: RefObject<any>) => void {
+export function useScrollToInput(): (inputRef: RefObject<any>, offset?: number) => void {
   const ctx = useContext(ScrollContext);
   if (!ctx) {
     return () => {};
@@ -17,25 +17,50 @@ export function useScrollToInput(): (inputRef: RefObject<any>) => void {
 
 interface ScrollProviderProps {
   children: ReactNode;
-  scrollViewRef: RefObject<ScrollView>;
+  scrollViewRef: RefObject<ScrollView | null>;
 }
 
-const KEYBOARD_HEIGHT = 300;
-const TOP_OFFSET = 100;
-
 export function ScrollProvider({ children, scrollViewRef }: ScrollProviderProps) {
-  function scrollToInput(inputRef: RefObject<any>) {
-    if (inputRef?.current && scrollViewRef?.current) {
-      inputRef.current.measure(
-        (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
-          const targetY = pageY - KEYBOARD_HEIGHT - TOP_OFFSET;
-          scrollViewRef.current?.scrollTo({
-            y: Math.max(0, targetY),
-            animated: true,
-          });
-        },
-      );
+  function measureAndScroll(inputRef: RefObject<any>, offset: number, retry = true) {
+    const inputNode = inputRef?.current;
+    const scrollView = scrollViewRef?.current;
+    const innerNode =
+      typeof (scrollView as any)?.getInnerViewNode === 'function'
+        ? (scrollView as any).getInnerViewNode()
+        : null;
+
+    if (!inputNode || !scrollView || !innerNode) {
+      if (retry) {
+        setTimeout(() => measureAndScroll(inputRef, offset, false), 80);
+      }
+      return;
     }
+
+    if (typeof inputNode.measureLayout !== 'function') {
+      if (retry) {
+        setTimeout(() => measureAndScroll(inputRef, offset, false), 80);
+      }
+      return;
+    }
+
+    inputNode.measureLayout(
+      innerNode,
+      (_x: number, y: number) => {
+        scrollView.scrollTo({
+          y: Math.max(0, y - offset),
+          animated: true,
+        });
+      },
+      () => {
+        if (retry) {
+          setTimeout(() => measureAndScroll(inputRef, offset, false), 80);
+        }
+      },
+    );
+  }
+
+  function scrollToInput(inputRef: RefObject<any>, offset = 80) {
+    measureAndScroll(inputRef, offset);
   }
 
   return <ScrollContext.Provider value={{ scrollToInput }}>{children}</ScrollContext.Provider>;

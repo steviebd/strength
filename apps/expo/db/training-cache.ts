@@ -17,7 +17,7 @@ import {
   localWorkouts,
   type LocalWorkout,
 } from './local-schema';
-import { upsertServerWorkoutSnapshot } from './workouts';
+import { normalizeTemplateExerciseForLocalCache, upsertServerWorkoutSnapshot } from './workouts';
 import type { Workout } from '@/context/WorkoutSessionContext';
 import type { Template } from '@/components/template/TemplateEditor/types';
 import { platformStorage } from '@/lib/platform-storage';
@@ -128,26 +128,7 @@ export async function hydrateOfflineTrainingSnapshot(
         .run();
       for (const exercise of template.exercises ?? []) {
         db.insert(localTemplateExercises)
-          .values({
-            id: exercise.id,
-            templateId: template.id,
-            exerciseId: exercise.exerciseId,
-            name: exercise.name,
-            muscleGroup: exercise.muscleGroup ?? null,
-            exerciseType: exercise.exerciseType ?? 'weighted',
-            orderIndex: exercise.orderIndex ?? 0,
-            targetWeight: exercise.targetWeight ?? null,
-            addedWeight: exercise.addedWeight ?? 0,
-            sets: exercise.sets ?? null,
-            reps: exercise.reps ?? null,
-            repsRaw: exercise.repsRaw ?? null,
-            targetDuration: exercise.targetDuration ?? null,
-            targetDistance: exercise.targetDistance ?? null,
-            targetHeight: exercise.targetHeight ?? null,
-            isAmrap: exercise.isAmrap ?? false,
-            isAccessory: exercise.isAccessory ?? false,
-            isRequired: exercise.isRequired !== false,
-          })
+          .values(normalizeTemplateExerciseForLocalCache(template.id, exercise))
           .run();
       }
     }

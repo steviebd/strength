@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Link, router } from 'expo-router';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
+import { AuthShell } from '@/components/auth-shell';
 import { buildAuthCallbackURL, nativeGoogleAuthReturnToKey } from '@/lib/auth-callback-url';
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
@@ -25,14 +25,9 @@ export default function SignUpScreen() {
   const [showVerificationPending, setShowVerificationPending] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const searchParams = useLocalSearchParams();
-  const authShellRef = useRef<AuthShellHandle>(null);
   const emailRef = useRef<any>(null);
   const passwordRef = useRef<any>(null);
   const confirmPasswordRef = useRef<any>(null);
-  const nameInputRef = useRef<any>(null);
-  const emailInputRef = useRef<any>(null);
-  const passwordInputRef = useRef<any>(null);
-  const confirmPasswordInputRef = useRef<any>(null);
   const redirectUrl = (searchParams.returnTo as string) || '/';
 
   useFocusEffect(
@@ -144,20 +139,9 @@ export default function SignUpScreen() {
     }
   }
 
-  function scrollToInput(ref: React.RefObject<any>) {
-    ref.current?.measure((_x: any, _y: any, _width: any, _height: any, _pageX: any, pageY: any) => {
-      authShellRef.current?.scrollToInput(pageY);
-    });
-  }
-
   if (showVerificationPending) {
     return (
-      <AuthShell
-        ref={authShellRef}
-        eyebrow="Strength"
-        title="Verify your email"
-        subtitle="You're almost there."
-      >
+      <AuthShell eyebrow="Strength" title="Verify your email" subtitle="You're almost there.">
         <View style={{ gap: spacing.lg }}>
           <View
             style={{
@@ -198,7 +182,6 @@ export default function SignUpScreen() {
 
   return (
     <AuthShell
-      ref={authShellRef}
       eyebrow="Strength"
       title="Create account"
       subtitle="Start your journey with us today."
@@ -206,7 +189,6 @@ export default function SignUpScreen() {
       <View style={{ gap: spacing.lg }}>
         <TextField
           testID="auth-sign-up-name"
-          ref={nameInputRef}
           label="Name"
           leftIcon="person-outline"
           placeholder="Your name"
@@ -215,12 +197,11 @@ export default function SignUpScreen() {
           returnKeyType="next"
           blurOnSubmit={false}
           onSubmitEditing={() => emailRef.current?.focus()}
-          onFocus={() => scrollToInput(nameInputRef)}
         />
 
         <TextField
           testID="auth-sign-up-email"
-          ref={emailInputRef}
+          ref={emailRef}
           label="Email"
           leftIcon="mail-outline"
           autoCapitalize="none"
@@ -231,12 +212,11 @@ export default function SignUpScreen() {
           returnKeyType="next"
           blurOnSubmit={false}
           onSubmitEditing={() => passwordRef.current?.focus()}
-          onFocus={() => scrollToInput(emailInputRef)}
         />
 
         <TextField
           testID="auth-sign-up-password"
-          ref={passwordInputRef}
+          ref={passwordRef}
           label="Password"
           leftIcon="lock-closed-outline"
           secureTextEntry
@@ -246,12 +226,11 @@ export default function SignUpScreen() {
           returnKeyType="next"
           blurOnSubmit={false}
           onSubmitEditing={() => confirmPasswordRef.current?.focus()}
-          onFocus={() => scrollToInput(passwordInputRef)}
         />
 
         <TextField
           testID="auth-sign-up-confirm-password"
-          ref={confirmPasswordInputRef}
+          ref={confirmPasswordRef}
           label="Confirm Password"
           leftIcon="lock-closed-outline"
           secureTextEntry
@@ -261,7 +240,6 @@ export default function SignUpScreen() {
           returnKeyType="done"
           blurOnSubmit={false}
           onSubmitEditing={handleSubmit}
-          onFocus={() => scrollToInput(confirmPasswordInputRef)}
         />
 
         {error ? (

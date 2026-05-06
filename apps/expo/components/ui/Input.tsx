@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import {
   TextInput,
   View,
@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useScrollToInput } from '@/context/ScrollContext';
 import { border, colors, radius, textRoles, layout, text } from '@/theme';
 
 interface TextFieldProps extends TextInputProps {
@@ -32,18 +33,28 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
     multiline = false,
     secureTextEntry,
     style,
+    onFocus,
     ...props
   },
   ref,
 ) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const containerRef = useRef<View>(null);
+  const scrollToInput = useScrollToInput();
   const isPassword = secureTextEntry === true;
   const hasError = Boolean(errorText);
+
+  useImperativeHandle(ref, () => inputRef.current as TextInput);
 
   return (
     <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View style={[styles.inputContainer, hasError && styles.inputError]}>
+      <View
+        ref={containerRef}
+        collapsable={false}
+        style={[styles.inputContainer, hasError && styles.inputError]}
+      >
         {leftIcon && (
           <Ionicons
             name={leftIcon}
@@ -53,7 +64,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           />
         )}
         <TextInput
-          ref={ref}
+          ref={inputRef}
           style={[
             styles.input,
             multiline && styles.multilineInput,
@@ -63,6 +74,10 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
           placeholderTextColor={colors.placeholderText}
           multiline={multiline}
           secureTextEntry={isPassword ? !isPasswordVisible : secureTextEntry}
+          onFocus={(event) => {
+            scrollToInput(containerRef);
+            onFocus?.(event);
+          }}
           {...props}
         />
         {isPassword && !rightSlot ? (

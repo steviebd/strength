@@ -23,6 +23,7 @@ vi.mock('./sync-queue', () => ({
 vi.mock('@strength/db/client', () => ({
   WORKOUT_TYPE_TRAINING: 'training',
   WORKOUT_TYPE_ONE_RM_TEST: 'one_rm_test',
+  exerciseLibrary: [],
   generateId: vi.fn(() => 'test-id-123'),
 }));
 
@@ -71,6 +72,44 @@ beforeEach(() => {
   vi.resetModules();
   mockDb = createMockDb();
   vi.clearAllMocks();
+});
+
+describe('template exercise normalization', () => {
+  test('preserves type-specific template fields for local cache and workout start', async () => {
+    const { normalizeTemplateExerciseForLocalCache, normalizeTemplateExerciseForWorkoutStart } =
+      await import('./workouts');
+
+    const treadmill = {
+      id: 'template-exercise-1',
+      exerciseId: 'exercise-1',
+      name: 'Treadmill',
+      muscleGroup: 'Cardio',
+      exerciseType: 'cardio',
+      orderIndex: 2,
+      targetDuration: 1800,
+      targetDistance: 5000,
+      sets: 1,
+      reps: null,
+      isAmrap: true,
+    };
+
+    expect(normalizeTemplateExerciseForLocalCache('template-1', treadmill)).toEqual(
+      expect.objectContaining({
+        templateId: 'template-1',
+        exerciseType: 'cardio',
+        targetDuration: 1800,
+        targetDistance: 5000,
+      }),
+    );
+    expect(normalizeTemplateExerciseForWorkoutStart(treadmill, 0)).toEqual(
+      expect.objectContaining({
+        exerciseType: 'cardio',
+        targetDuration: 1800,
+        targetDistance: 5000,
+        orderIndex: 2,
+      }),
+    );
+  });
 });
 
 describe('discardLocalWorkout', () => {

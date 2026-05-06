@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
+  type TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,12 +14,26 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
-import { PageLayout } from '@/components/ui/PageLayout';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
+import { MetricInput } from '@/components/ui/MetricInput';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { updateLocalProgramCycleOneRMs } from '@/db/training-cache';
 import { runSyncQueue } from '@/lib/workout-sync';
-import { colors, radius, spacing, typography } from '@/theme';
+import {
+  accent,
+  border,
+  colors,
+  layout,
+  radius,
+  spacing,
+  statusBg,
+  textRoles,
+  typography,
+} from '@/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ProgramCycleResponse = {
   cycle: {
@@ -78,6 +93,15 @@ export default function ProgramOneRMTestScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const session = authClient.useSession();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 380;
+  const inputRefs = useRef<Record<LiftField['key'], TextInput | null>>({
+    squat: null,
+    bench: null,
+    deadlift: null,
+    ohp: null,
+  });
   const { cycleId, workoutId, squatMax, benchMax, deadliftMax, ohpMax } = useLocalSearchParams<{
     cycleId?: string;
     workoutId?: string;
@@ -307,9 +331,9 @@ export default function ProgramOneRMTestScreen() {
   }
 
   return (
-    <PageLayout
-      headerType="custom"
-      header={
+    <KeyboardFormLayout>
+      <FormScrollView topPadding={insets.top + spacing.md}>
+        <OfflineBanner />
         <CustomPageHeader
           title="1RM Results"
           onBack={handleDiscard}
@@ -319,83 +343,99 @@ export default function ProgramOneRMTestScreen() {
             </Pressable>
           }
         />
-      }
-    >
-      <View>
-        <Text style={styles.sectionLabel}>Program Cycle</Text>
-        <Text style={styles.programTitle}>{cycle?.name ?? 'Program'}</Text>
+        <View>
+          <Text style={styles.sectionLabel}>Program Cycle</Text>
+          <Text style={styles.programTitle}>{cycle?.name ?? 'Program'}</Text>
 
-        {LIFT_FIELDS.map((field) => {
-          const startKg = (cycle?.[field.startingKey] as number | null | undefined) ?? null;
-          const testValStr = values[field.key];
-          const testValNum = Number.parseFloat(testValStr);
-          const hasTestValue = Number.isFinite(testValNum) && testValStr !== '';
-          const hasStartValue = startKg !== null && startKg !== undefined;
+          {LIFT_FIELDS.map((field) => {
+            const startKg = (cycle?.[field.startingKey] as number | null | undefined) ?? null;
+            const testValStr = values[field.key];
+            const testValNum = Number.parseFloat(testValStr);
+            const hasTestValue = Number.isFinite(testValNum) && testValStr !== '';
+            const hasStartValue = startKg !== null && startKg !== undefined;
 
-          return (
-            <View key={`1rm-summary:${field.key}`} style={styles.card}>
-              <Text style={styles.cardTitle}>{field.label}</Text>
+            return (
+              <View key={`1rm-summary:${field.key}`} style={styles.card}>
+                <Text style={styles.cardTitle}>{field.label}</Text>
 
-              <View style={styles.row}>
-                <View style={styles.cell}>
-                  <Text style={styles.cellLabel}>Starting</Text>
-                  <Text style={styles.cellValue}>
-                    {hasStartValue ? `${toDisplayWeight(startKg, weightUnit)} ${weightUnit}` : '—'}
-                  </Text>
+                <View style={[styles.row, isNarrow && styles.rowStacked]}>
+                  <View style={styles.cell}>
+                    <Text style={styles.cellLabel}>Starting</Text>
+                    <Text style={styles.cellValue}>
+                      {hasStartValue
+                        ? `${toDisplayWeight(startKg, weightUnit)} ${weightUnit}`
+                        : '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.cell}>
+                    <Text style={styles.cellLabel}>Tested</Text>
+                    <MetricInput
+                      ref={(ref) => {
+                        inputRefs.current[field.key] = ref;
+                      }}
+                      value={testValStr}
+                      onChangeText={(text) =>
+                        setValues((prev) => ({
+                          ...prev,
+                          [field.key]: text.replace(/[^0-9.]/g, ''),
+                        }))
+                      }
+                      returnKeyType={field.key === 'ohp' ? 'done' : 'next'}
+                      onSubmitEditing={() => {
+                        const nextKey =
+                          field.key === 'squat'
+                            ? 'bench'
+                            : field.key === 'bench'
+                              ? 'deadlift'
+                              : field.key === 'deadlift'
+                                ? 'ohp'
+                                : null;
+                        if (nextKey) {
+                          inputRefs.current[nextKey]?.focus();
+                        } else {
+                          inputRefs.current.ohp?.blur();
+                        }
+                      }}
+                    />
+                  </View>
                 </View>
-                <View style={styles.cell}>
-                  <Text style={styles.cellLabel}>Tested</Text>
-                  <TextInput
-                    style={styles.cellInput}
-                    value={testValStr}
-                    onChangeText={(text) =>
-                      setValues((prev) => ({
-                        ...prev,
-                        [field.key]: text.replace(/[^0-9.]/g, ''),
-                      }))
-                    }
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.placeholderText}
-                  />
-                </View>
+
+                {hasTestValue && hasStartValue && (
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metricBadge}>
+                      <Text style={styles.metricLabel}>Difference</Text>
+                      <Text style={styles.metricValue}>
+                        {formatDiff(testValNum, startKg, weightUnit)}
+                      </Text>
+                    </View>
+                    <View style={styles.metricBadge}>
+                      <Text style={styles.metricLabel}>% Increase</Text>
+                      <Text style={styles.metricValue}>
+                        {formatPercentIncrease(testValNum, startKg)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
+            );
+          })}
 
-              {hasTestValue && hasStartValue && (
-                <View style={styles.metricsRow}>
-                  <View style={styles.metricBadge}>
-                    <Text style={styles.metricLabel}>Difference</Text>
-                    <Text style={styles.metricValue}>
-                      {formatDiff(testValNum, startKg, weightUnit)}
-                    </Text>
-                  </View>
-                  <View style={styles.metricBadge}>
-                    <Text style={styles.metricLabel}>% Increase</Text>
-                    <Text style={styles.metricValue}>
-                      {formatPercentIncrease(testValNum, startKg)}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          );
-        })}
-
-        <Pressable
-          style={[styles.saveButton, saving && styles.buttonDisabled]}
-          onPress={() => {
-            void handleSave();
-          }}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save 1RMs</Text>
-          )}
-        </Pressable>
-      </View>
-    </PageLayout>
+          <Pressable
+            style={[styles.saveButton, saving && styles.buttonDisabled]}
+            onPress={() => {
+              void handleSave();
+            }}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={colors.text} />
+            ) : (
+              <Text style={styles.saveButtonText}>Save 1RMs</Text>
+            )}
+          </Pressable>
+        </View>
+      </FormScrollView>
+    </KeyboardFormLayout>
   );
 }
 
@@ -418,17 +458,18 @@ const styles = StyleSheet.create({
   },
   programTitle: {
     color: colors.text,
-    fontSize: typography.fontSizes.xxl,
-    fontWeight: typography.fontWeights.semibold,
+    fontSize: textRoles.screenTitle.fontSize,
+    lineHeight: textRoles.screenTitle.lineHeight,
+    fontWeight: textRoles.screenTitle.fontWeight,
     marginBottom: spacing.lg,
   },
   card: {
     marginBottom: spacing.md,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: border.default,
     backgroundColor: colors.surface,
-    padding: spacing.md,
+    padding: layout.cardPaddingCompact,
   },
   cardTitle: {
     color: colors.text,
@@ -439,6 +480,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  rowStacked: {
+    flexDirection: 'column',
   },
   cell: {
     flex: 1,
@@ -456,15 +500,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.bold,
   },
-  cellInput: {
-    borderRadius: radius.md,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text,
-  },
   metricsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -473,7 +508,9 @@ const styles = StyleSheet.create({
   metricBadge: {
     flex: 1,
     borderRadius: radius.md,
-    backgroundColor: `${colors.accent}15`,
+    backgroundColor: accent.subtle,
+    borderWidth: 1,
+    borderColor: statusBg.warningBorder,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     alignItems: 'center',

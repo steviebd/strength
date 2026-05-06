@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Link, router } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
+import { AuthShell } from '@/components/auth-shell';
 import { buildAuthCallbackURL, nativeGoogleAuthReturnToKey } from '@/lib/auth-callback-url';
 import { authClient } from '@/lib/auth-client';
 import { waitForSessionReady } from '@/lib/auth-session';
@@ -29,8 +29,6 @@ export default function SignInScreen() {
   const [isEmailNotVerified, setIsEmailNotVerified] = useState(false);
   const searchParams = useLocalSearchParams();
   const passwordRef = useRef<any>(null);
-  const authShellRef = useRef<AuthShellHandle>(null);
-  const emailInputRef = useRef<any>(null);
   const redirectUrl = (searchParams.returnTo as string) || '/(app)/home';
 
   useFocusEffect(
@@ -187,26 +185,14 @@ export default function SignInScreen() {
     }
   }
 
-  function scrollToInput(ref: React.RefObject<any>) {
-    ref.current?.measure((_x: any, _y: any, _width: any, _height: any, _pageX: any, pageY: any) => {
-      authShellRef.current?.scrollToInput(pageY);
-    });
-  }
-
   const isSubmitting = isEmailSubmitting || isCheckingProvider;
   const isSuccessError = error?.includes('Check your inbox');
 
   return (
-    <AuthShell
-      ref={authShellRef}
-      eyebrow="Strength"
-      title="Welcome back"
-      subtitle="Sign in to continue your journey."
-    >
+    <AuthShell eyebrow="Strength" title="Welcome back" subtitle="Sign in to continue your journey.">
       <View style={{ gap: spacing.lg }}>
         <TextField
           testID="auth-sign-in-email"
-          ref={emailInputRef}
           label="Email"
           leftIcon="mail-outline"
           autoCapitalize="none"
@@ -217,7 +203,6 @@ export default function SignInScreen() {
           returnKeyType="next"
           blurOnSubmit={false}
           onSubmitEditing={() => passwordRef.current?.focus()}
-          onFocus={() => scrollToInput(emailInputRef)}
         />
 
         <TextField
@@ -232,7 +217,6 @@ export default function SignInScreen() {
           returnKeyType="done"
           blurOnSubmit={false}
           onSubmitEditing={handleSubmit}
-          onFocus={() => scrollToInput(passwordRef)}
         />
 
         <View style={{ alignItems: 'flex-end' }}>

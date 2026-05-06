@@ -9,6 +9,9 @@ import {
   surface as surfaceToken,
   border,
   textRoles,
+  overlay,
+  statusBg,
+  text,
 } from '../../theme';
 
 type SurfaceTone = 'default' | 'muted' | 'inset' | 'selected' | 'success' | 'warning' | 'danger';
@@ -16,9 +19,9 @@ type SurfacePadding = 'none' | 'sm' | 'md' | 'lg';
 
 const paddingMap: Record<SurfacePadding, number> = {
   none: 0,
-  sm: 12,
-  md: 16,
-  lg: 20,
+  sm: spacing.sm + spacing.xs,
+  md: spacing.md,
+  lg: spacing.lg - spacing.xs,
 };
 
 const toneStyles: Record<SurfaceTone, { bg: string; borderColor: string }> = {
@@ -26,9 +29,9 @@ const toneStyles: Record<SurfaceTone, { bg: string; borderColor: string }> = {
   muted: { bg: surfaceToken.muted, borderColor: border.subtle },
   inset: { bg: surfaceToken.inset, borderColor: border.subtle },
   selected: { bg: surfaceToken.selected, borderColor: border.default },
-  success: { bg: surfaceToken.success, borderColor: 'rgba(34,197,94,0.3)' },
-  warning: { bg: surfaceToken.warning, borderColor: 'rgba(245,158,11,0.3)' },
-  danger: { bg: surfaceToken.danger, borderColor: 'rgba(239,68,68,0.3)' },
+  success: { bg: surfaceToken.success, borderColor: statusBg.successBorder },
+  warning: { bg: surfaceToken.warning, borderColor: statusBg.warningBorder },
+  danger: { bg: surfaceToken.danger, borderColor: statusBg.errorBorder },
 };
 
 export interface SurfaceProps {
@@ -104,15 +107,15 @@ export function SectionTitle({
 type BadgeTone = 'neutral' | 'orange' | 'emerald' | 'sky' | 'rose';
 
 const badgeTones: Record<BadgeTone, { border: string; bg: string; text: string }> = {
-  neutral: { border: 'rgba(255,255,255,0.1)', bg: 'rgba(255,255,255,0.05)', text: '#94a3b8' },
+  neutral: { border: overlay.medium, bg: overlay.subtle, text: colors.textMuted },
   orange: {
-    border: 'rgba(251,146,60,0.2)',
-    bg: 'rgba(251,146,60,0.1)',
+    border: statusBg.warningBorder,
+    bg: statusBg.warning,
     text: colors.accentSecondary,
   },
-  emerald: { border: 'rgba(34,197,94,0.2)', bg: 'rgba(34,197,94,0.1)', text: colors.success },
-  sky: { border: 'rgba(56,189,248,0.2)', bg: 'rgba(56,189,248,0.1)', text: colors.sky },
-  rose: { border: 'rgba(251,113,133,0.2)', bg: 'rgba(251,113,133,0.1)', text: colors.error },
+  emerald: { border: statusBg.successBorder, bg: statusBg.success, text: colors.success },
+  sky: { border: overlay.medium, bg: overlay.subtle, text: colors.sky },
+  rose: { border: statusBg.errorBorder, bg: statusBg.error, text: colors.error },
 };
 
 export function Badge({
@@ -196,7 +199,7 @@ export function ActionButton({
 }) {
   const variantStyles = {
     primary: { bg: colors.accent, text: colors.text, iconColor: colors.text },
-    secondary: { bg: 'rgba(255,255,255,0.05)', text: colors.text, iconColor: colors.textMuted },
+    secondary: { bg: overlay.subtle, text: colors.text, iconColor: colors.textMuted },
     ghost: { bg: 'transparent', text: colors.textMuted, iconColor: colors.textMuted },
   };
 
@@ -255,7 +258,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
   pageHeaderContent: {
     flex: 1,
@@ -288,7 +291,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: spacing.sm + spacing.xs,
   },
   sectionTitleText: {
     fontSize: typography.fontSizes.lg,
@@ -303,24 +306,24 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    borderRadius: 9999,
+    gap: spacing.xs,
+    borderRadius: radius.full,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.sm + spacing.xs,
+    paddingVertical: spacing.xs + 2,
   },
   badgeLabel: {
-    fontSize: 12,
+    fontSize: textRoles.bodySmall.fontSize,
     fontWeight: typography.fontWeights.medium,
   },
   metricTile: {
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    borderColor: overlay.muted,
+    backgroundColor: overlay.inverseSubtle,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm + spacing.xs,
   },
   metricLabel: {
     fontSize: textRoles.metricLabel.fontSize,
@@ -332,21 +335,21 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: textRoles.metricValue.fontSize,
     fontWeight: typography.fontWeights.semibold,
-    marginTop: 12,
+    marginTop: spacing.sm + spacing.xs,
   },
   metricHint: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.sm,
     borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.sm + spacing.xs,
+    paddingHorizontal: spacing.md,
   },
   actionButtonPressed: {
     opacity: 0.8,
@@ -359,22 +362,22 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
   },
   segmentedTabs: {
-    marginBottom: 20,
+    marginBottom: spacing.lg - spacing.xs,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 6,
+    borderColor: overlay.medium,
+    backgroundColor: overlay.subtle,
+    padding: spacing.xs + 2,
   },
   segmentedTabsInner: {
     flexDirection: 'row',
-    gap: 6,
+    gap: spacing.xs + 2,
   },
   segmentTab: {
     flex: 1,
     borderRadius: radius.sm,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.sm + spacing.xs,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
   },
   segmentTabActive: {
@@ -386,6 +389,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   segmentTabLabelActive: {
-    color: '#0a0a0a',
+    color: text.inverse,
   },
 });

@@ -4,8 +4,6 @@ import {
   Alert,
   AppState,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { ActionButton, PageHeader, SectionTitle, Surface } from '@/components/ui/app-primitives';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, overlay, radius, spacing, typography } from '@/theme';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import {
@@ -34,6 +32,7 @@ import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { useWhoopData } from '@/hooks/useWhoopData';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { getTodayLocalDate } from '@/lib/timezone';
@@ -954,10 +953,7 @@ export default function NutritionScreen() {
 
   return (
     <>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <KeyboardFormLayout style={styles.keyboardAvoidingView}>
         <PageLayout
           header={
             <PageHeader
@@ -1116,7 +1112,7 @@ export default function NutritionScreen() {
             </Surface>
           </View>
         </PageLayout>
-      </KeyboardAvoidingView>
+      </KeyboardFormLayout>
     </>
   );
 }
@@ -1150,8 +1146,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderColor: overlay.muted,
+    backgroundColor: overlay.inverseSubtle,
     padding: spacing.xl,
     gap: spacing.xs,
   },
@@ -1168,7 +1164,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   offlineBanner: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: overlay.muted,
     borderRadius: radius.md,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,

@@ -84,7 +84,6 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const [localDuration, setLocalDuration] = useState(set.duration);
   const [localDistance, setLocalDistance] = useState(set.distance);
   const [localHeight, setLocalHeight] = useState(set.height);
-  const [showWeight, setShowWeight] = useState(set.weight !== null);
   const [isEditingWeight, setIsEditingWeight] = useState(false);
   const [editWeightValue, setEditWeightValue] = useState('');
   const [isRepsEditing, setIsRepsEditing] = useState(false);
@@ -92,8 +91,8 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const [showDurationModal, setShowDurationModal] = useState(false);
   const [showDistanceModal, setShowDistanceModal] = useState(false);
   const [showHeightModal, setShowHeightModal] = useState(false);
-  const weightInputRef = useRef<any>(null);
-  const repsInputRef = useRef<any>(null);
+  const weightWrapperRef = useRef<View>(null);
+  const repsWrapperRef = useRef<View>(null);
   const latestSetRef = useRef(set);
   const scrollToInput = useScrollToInput();
 
@@ -104,10 +103,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     setLocalDuration(set.duration);
     setLocalDistance(set.distance);
     setLocalHeight(set.height);
-    if (exerciseType === 'bodyweight') {
-      setShowWeight(set.weight !== null);
-    }
-  }, [displayWeight, set, exerciseType]);
+  }, [displayWeight, set]);
 
   const emitUpdate = useCallback(
     (updates: Partial<WorkoutSetData>) => {
@@ -136,7 +132,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
 
   const handleWeightEditStart = useCallback(() => {
     setEditWeightValue(localWeight.toString());
-    scrollToInput(weightInputRef);
+    scrollToInput(weightWrapperRef);
     setIsEditingWeight(true);
   }, [localWeight, scrollToInput]);
 
@@ -165,7 +161,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
 
   const handleRepsEditStart = useCallback(() => {
     setEditRepsValue(localReps.toString());
-    scrollToInput(repsInputRef);
+    scrollToInput(repsWrapperRef);
     setIsRepsEditing(true);
   }, [localReps, scrollToInput]);
 
@@ -204,18 +200,6 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
 
   const handleToggleComplete = useCallback(() => {
     emitUpdate({ completed: !latestSetRef.current.completed });
-  }, [emitUpdate]);
-
-  const handleAddWeight = useCallback(() => {
-    setShowWeight(true);
-    setLocalWeight(0);
-    emitUpdate({ weight: 0 });
-  }, [emitUpdate]);
-
-  const handleRemoveWeight = useCallback(() => {
-    setShowWeight(false);
-    setLocalWeight(0);
-    emitUpdate({ weight: null });
   }, [emitUpdate]);
 
   const durationIncrement = useMemo(() => {
@@ -268,11 +252,6 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     },
     [emitUpdate],
   );
-
-  const handleAddDistance = useCallback(() => {
-    setLocalDistance(0);
-    emitUpdate({ distance: 0 });
-  }, [emitUpdate]);
 
   const heightIncrement = useMemo(() => (distanceUnit === 'km' ? 5 : 2 * 2.54), [distanceUnit]);
 
@@ -384,23 +363,24 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
       </Text>
       <View style={styles.weightStepperGroup}>
         {renderStepperButton(handleWeightDecrease, 'remove')}
-        {renderNumberInput(
-          localWeight.toFixed(1),
-          handleWeightEditStart,
-          isEditingWeight,
-          <TextInput
-            testID={`workout-set-${setNumber}-weight-input`}
-            ref={weightInputRef}
-            style={[styles.weightInput, { fontSize }]}
-            value={editWeightValue}
-            onChangeText={handleWeightEditChange}
-            onBlur={handleWeightEditEnd}
-            onSubmitEditing={handleWeightEditEnd}
-            keyboardType="decimal-pad"
-            autoFocus
-          />,
-          'weight',
-        )}
+        <View ref={weightWrapperRef} collapsable={false} style={{ flex: 1 }}>
+          {renderNumberInput(
+            localWeight.toFixed(1),
+            handleWeightEditStart,
+            isEditingWeight,
+            <TextInput
+              testID={`workout-set-${setNumber}-weight-input`}
+              style={[styles.weightInput, { fontSize }]}
+              value={editWeightValue}
+              onChangeText={handleWeightEditChange}
+              onBlur={handleWeightEditEnd}
+              onSubmitEditing={handleWeightEditEnd}
+              keyboardType="decimal-pad"
+              autoFocus
+            />,
+            'weight',
+          )}
+        </View>
         <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }]}>{weightUnit}</Text>
         {renderStepperButton(handleWeightIncrease, 'add')}
       </View>
@@ -414,23 +394,24 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
       </Text>
       <View style={styles.repsStepperGroup}>
         {renderStepperButton(handleRepsDecrease, 'remove', undefined, repsStepperStyle)}
-        {renderNumberInput(
-          localReps,
-          handleRepsEditStart,
-          isRepsEditing,
-          <TextInput
-            testID={`workout-set-${setNumber}-reps-input`}
-            ref={repsInputRef}
-            style={[styles.repsInput, { fontSize }]}
-            value={editRepsValue}
-            onChangeText={handleRepsEditChange}
-            onBlur={handleRepsEditEnd}
-            onSubmitEditing={handleRepsEditEnd}
-            keyboardType="number-pad"
-            autoFocus
-          />,
-          'reps',
-        )}
+        <View ref={repsWrapperRef} collapsable={false} style={{ flex: 1 }}>
+          {renderNumberInput(
+            localReps,
+            handleRepsEditStart,
+            isRepsEditing,
+            <TextInput
+              testID={`workout-set-${setNumber}-reps-input`}
+              style={[styles.repsInput, { fontSize }]}
+              value={editRepsValue}
+              onChangeText={handleRepsEditChange}
+              onBlur={handleRepsEditEnd}
+              onSubmitEditing={handleRepsEditEnd}
+              keyboardType="number-pad"
+              autoFocus
+            />,
+            'reps',
+          )}
+        </View>
         {renderStepperButton(handleRepsIncrease, 'add', undefined, repsStepperStyle)}
       </View>
     </View>
@@ -474,46 +455,28 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
         Distance
       </Text>
       <View style={styles.weightStepperGroup}>
-        {localDistance !== null ? (
-          <>
-            {renderStepperButton(handleDistanceDecrease, 'remove')}
-            <Pressable
-              testID={`workout-set-${setNumber}-distance`}
-              accessibilityLabel={`workout-set-${setNumber}-distance`}
-              onPress={() => isEditMode && setShowDistanceModal(true)}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.inputButton,
-                inputStyle,
-                !isEditMode && styles.inputButtonDisabled,
-                pressed && styles.stepperPressed,
-                { flex: 1 },
-              ]}
-            >
-              <Text
-                style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
-                numberOfLines={1}
-              >
-                {formatDistance(localDistance, distanceUnit)}
-              </Text>
-            </Pressable>
-            {renderStepperButton(handleDistanceIncrease, 'add')}
-          </>
-        ) : (
-          <Pressable
-            testID={`workout-set-${setNumber}-add-distance`}
-            onPress={handleAddDistance}
-            disabled={!isEditMode}
-            style={({ pressed }) => [
-              styles.addMetricButton,
-              !isEditMode && styles.inputButtonDisabled,
-              pressed && styles.stepperPressed,
-            ]}
+        {renderStepperButton(handleDistanceDecrease, 'remove')}
+        <Pressable
+          testID={`workout-set-${setNumber}-distance`}
+          accessibilityLabel={`workout-set-${setNumber}-distance`}
+          onPress={() => isEditMode && setShowDistanceModal(true)}
+          disabled={!isEditMode}
+          style={({ pressed }) => [
+            styles.inputButton,
+            inputStyle,
+            !isEditMode && styles.inputButtonDisabled,
+            pressed && styles.stepperPressed,
+            { flex: 1 },
+          ]}
+        >
+          <Text
+            style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
+            numberOfLines={1}
           >
-            <Ionicons name="add" size={fontSize + 4} color={colors.accent} />
-            <Text style={[styles.addMetricText, { fontSize: fontSize - 2 }]}>Add Distance</Text>
-          </Pressable>
-        )}
+            {localDistance !== null ? formatDistance(localDistance, distanceUnit) : '-'}
+          </Text>
+        </Pressable>
+        {renderStepperButton(handleDistanceIncrease, 'add')}
       </View>
     </View>
   );
@@ -554,34 +517,9 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     switch (exerciseType) {
       case 'bodyweight':
         return (
-          <View style={styles.inputsCol}>
-            <View style={styles.inputsRow}>
-              <View style={[styles.inputSection, { flex: 1 }]}>{renderRepsSection()}</View>
-            </View>
-            {showWeight && (
-              <View style={styles.inputsRow}>
-                <View style={[styles.inputSection, { flex: 1 }]}>{renderWeightSection()}</View>
-                {isEditMode && (
-                  <Pressable
-                    onPress={handleRemoveWeight}
-                    style={({ pressed }) => [
-                      styles.removeMetricButton,
-                      pressed && styles.stepperPressed,
-                    ]}
-                  >
-                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-                  </Pressable>
-                )}
-              </View>
-            )}
-            {!showWeight && isEditMode && (
-              <Pressable
-                onPress={handleAddWeight}
-                style={({ pressed }) => [styles.addWeightButton, pressed && styles.stepperPressed]}
-              >
-                <Text style={[styles.addWeightText, { fontSize: fontSize - 2 }]}>Add Weight</Text>
-              </Pressable>
-            )}
+          <View style={styles.inputsRow}>
+            {renderWeightSection()}
+            {renderRepsSection()}
           </View>
         );
       case 'timed':
@@ -592,16 +530,16 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
         );
       case 'cardio':
         return (
-          <View style={styles.inputsRow}>
-            {renderDurationSection()}
-            {renderDistanceSection()}
+          <View style={styles.inputsCol}>
+            <View style={styles.inputsRow}>{renderDurationSection()}</View>
+            <View style={styles.inputsRow}>{renderDistanceSection()}</View>
           </View>
         );
       case 'plyo':
         return (
           <View style={styles.inputsRow}>
-            <View style={[styles.inputSection, { flex: 1 }]}>{renderRepsSection()}</View>
-            {renderHeightSection()}
+            <View style={[styles.inputSection, { flex: 2 }]}>{renderRepsSection()}</View>
+            <View style={[styles.inputSection, { flex: 3 }]}>{renderHeightSection()}</View>
           </View>
         );
       case 'weighted':
@@ -726,6 +664,7 @@ const styles = StyleSheet.create({
   },
   inputsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     minWidth: 0,
   },
@@ -826,46 +765,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
-  addWeightButton: {
-    alignSelf: 'flex-start',
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  addWeightText: {
-    color: colors.textMuted,
-    fontWeight: typography.fontWeights.medium,
-  },
-  addMetricButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.accent,
-    backgroundColor: 'rgba(239,111,79,0.1)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    flex: 1,
-    minWidth: 0,
-  },
-  addMetricText: {
-    color: colors.accent,
-    fontWeight: typography.fontWeights.medium,
-  },
-  removeMetricButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 9999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+
   footer: {
     marginTop: spacing.md,
     flexDirection: 'row',

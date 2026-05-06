@@ -23,7 +23,7 @@ import { localBodyStats } from '@/db/local-schema';
 import { getCachedBodyStats, cacheBodyStats } from '@/db/body-stats';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, overlay, radius, spacing, statusBg, textRoles, typography } from '@/theme';
 import { Input } from '@/components/ui/Input';
 import { convertToDisplayWeight, convertToStorageWeight } from '@strength/db/client';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
@@ -1120,8 +1120,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: typography.fontWeights.semibold,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
     color: colors.text,
     marginBottom: spacing.xs,
   },
@@ -1135,7 +1136,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 20,
+    padding: spacing.lg - spacing.xs,
     marginBottom: spacing.md,
   },
   cardHighlighted: {
@@ -1150,13 +1151,13 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -1202,16 +1203,16 @@ const styles = StyleSheet.create({
   },
   loadingRow: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
   },
   buttonGroup: {
-    marginTop: 16,
-    gap: 12,
+    marginTop: spacing.md,
+    gap: spacing.sm + spacing.xs,
   },
   button: {
     borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.sm + spacing.xs,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1251,10 +1252,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   syncResultBox: {
-    marginTop: 12,
+    marginTop: spacing.sm + spacing.xs,
     borderRadius: radius.sm,
     backgroundColor: colors.border,
-    padding: 12,
+    padding: spacing.sm + spacing.xs,
   },
   syncResultText: {
     fontSize: typography.fontSizes.xs,
@@ -1263,14 +1264,16 @@ const styles = StyleSheet.create({
   connectDescription: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
-    marginBottom: 16,
+    marginBottom: spacing.md,
     lineHeight: 22,
   },
   errorBox: {
-    marginTop: 12,
+    marginTop: spacing.sm + spacing.xs,
     borderRadius: radius.sm,
-    backgroundColor: `${colors.error}20`,
-    padding: 12,
+    backgroundColor: statusBg.error,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
+    padding: spacing.sm + spacing.xs,
   },
   errorText: {
     fontSize: typography.fontSizes.sm,
@@ -1345,7 +1348,7 @@ const styles = StyleSheet.create({
   saveButton: {
     backgroundColor: colors.accent,
     borderRadius: radius.md,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
   saveButtonDisabled: {
@@ -1360,8 +1363,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: `${colors.error}50`,
-    backgroundColor: `${colors.error}10`,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
     padding: spacing.md,
   },
   offlineBannerText: {
@@ -1382,9 +1385,9 @@ const styles = StyleSheet.create({
   },
   autoTargetsBox: {
     borderRadius: radius.md,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: overlay.inverseSubtle,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: overlay.muted,
     padding: spacing.md,
   },
   autoTargetsText: {
@@ -1436,7 +1439,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.border,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1450,7 +1453,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

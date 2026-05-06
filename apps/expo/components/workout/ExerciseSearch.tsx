@@ -4,8 +4,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -23,7 +21,9 @@ import {
   type UserExercise,
 } from '@/lib/exercises';
 import type { ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
-import { colors, radius, spacing, typography } from '@/theme';
+import { accent, border, colors, layout, radius, spacing, statusBg, typography } from '@/theme';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 
 interface ExerciseSearchProps {
   onSelect: (exercises: ExerciseLibraryItem[]) => void | Promise<void>;
@@ -490,18 +490,12 @@ export function ExerciseSearch({
       </View>
 
       {showCreateForm ? (
-        <KeyboardAvoidingView
-          style={styles.createForm}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={insets.top}
-        >
-          <ScrollView
+        <KeyboardFormLayout style={styles.createForm}>
+          <FormScrollView
             ref={createScrollRef}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[
-              styles.createFormContent,
-              { paddingBottom: insets.bottom + spacing.xxl * 4 },
-            ]}
+            horizontalPadding={spacing.md}
+            bottomInset={layout.bottomInsetList}
+            contentContainerStyle={styles.createFormContent}
           >
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Name *</Text>
@@ -611,7 +605,7 @@ export function ExerciseSearch({
                 <Text style={styles.errorText}>{createError}</Text>
               </View>
             )}
-          </ScrollView>
+          </FormScrollView>
           <View style={[styles.formFooter, { paddingBottom: insets.bottom + spacing.sm }]}>
             <Pressable
               onPress={() => {
@@ -641,7 +635,7 @@ export function ExerciseSearch({
               <Text style={styles.createButtonText}>{creating ? 'Creating...' : 'Create'}</Text>
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardFormLayout>
       ) : (
         <>
           <Pressable
@@ -734,7 +728,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     fontSize: typography.fontSizes.base,
     color: colors.text,
   },
@@ -765,12 +759,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   exerciseRowSelected: {
-    backgroundColor: 'rgba(239,111,79,0.1)',
-    borderBottomColor: 'rgba(239,111,79,0.5)',
+    backgroundColor: accent.subtle,
+    borderBottomColor: border.focus,
   },
   exerciseRowDefault: {
     backgroundColor: colors.surface,
-    borderBottomColor: 'rgba(63,63,70,0.5)',
+    borderBottomColor: border.subtle,
   },
   exerciseRowPressed: {
     opacity: 0.8,
@@ -790,7 +784,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   libraryBadge: {
-    borderRadius: 9999,
+    borderRadius: radius.full,
     backgroundColor: colors.border,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -812,20 +806,20 @@ const styles = StyleSheet.create({
   },
   typeBadge: {
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(239,111,79,0.12)',
+    backgroundColor: accent.subtle,
     borderWidth: 1,
-    borderColor: 'rgba(239,111,79,0.28)',
+    borderColor: border.focus,
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
   },
   typeBadgeText: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.semibold,
   },
   selectedBadge: {
     marginLeft: spacing.md,
-    borderRadius: 9999,
+    borderRadius: radius.full,
     backgroundColor: colors.accent,
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -837,8 +831,8 @@ const styles = StyleSheet.create({
   },
   addBadge: {
     marginLeft: spacing.md,
-    borderRadius: 9999,
-    backgroundColor: 'rgba(239,111,79,0.2)',
+    borderRadius: radius.full,
+    backgroundColor: accent.subtle,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
@@ -851,7 +845,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   createFormContent: {
-    padding: spacing.md,
+    paddingTop: spacing.md,
   },
   formFooter: {
     flexDirection: 'row',
@@ -882,7 +876,7 @@ const styles = StyleSheet.create({
   },
   formInputMultiline: {
     height: 80,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     textAlignVertical: 'top',
   },
   muscleGroupGrid: {
@@ -891,8 +885,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   muscleGroupChip: {
-    borderRadius: 9999,
-    paddingHorizontal: 12,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md - spacing.xs,
     paddingVertical: 8,
     borderWidth: 1,
   },
@@ -915,7 +909,9 @@ const styles = StyleSheet.create({
   },
   errorBox: {
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(239,68,68,0.2)',
+    backgroundColor: statusBg.error,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
@@ -929,7 +925,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   cancelButtonText: {
     fontSize: typography.fontSizes.base,
@@ -941,7 +937,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   createButtonPressed: {
     opacity: 0.9,
@@ -970,8 +966,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.accent,
-    backgroundColor: 'rgba(239,111,79,0.1)',
-    paddingVertical: 12,
+    backgroundColor: accent.subtle,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   createExerciseButtonPressed: {
     opacity: 0.8,
@@ -1008,10 +1004,10 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   confirmButton: {
-    borderRadius: 9999,
+    borderRadius: radius.full,
     backgroundColor: colors.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   confirmButtonText: {
     fontSize: typography.fontSizes.sm,
@@ -1024,8 +1020,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   typeChip: {
-    borderRadius: 9999,
-    paddingHorizontal: 12,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md - spacing.xs,
     paddingVertical: 8,
     borderWidth: 1,
   },

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, type ViewStyle, type StyleProp } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { radius, text, layout } from '@/theme';
+import { colors, overlay, radius, statusBg, text, layout } from '@/theme';
 
 type IconButtonVariant = 'ghost' | 'secondary' | 'outline' | 'danger';
 type IconButtonSize = 'sm' | 'md' | 'lg';
@@ -22,22 +22,22 @@ const variantStyles: Record<
 > = {
   ghost: {
     bg: 'transparent',
-    bgPressed: 'rgba(255,255,255,0.08)',
+    bgPressed: overlay.muted,
     iconColor: text.secondary,
   },
   secondary: {
-    bg: '#27272a',
-    bgPressed: '#3f3f46',
+    bg: colors.surfaceAlt,
+    bgPressed: colors.border,
     iconColor: text.primary,
   },
   outline: {
     bg: 'transparent',
-    bgPressed: 'rgba(255,255,255,0.05)',
+    bgPressed: overlay.subtle,
     iconColor: text.primary,
   },
   danger: {
-    bg: 'rgba(239,68,68,0.15)',
-    bgPressed: 'rgba(239,68,68,0.25)',
+    bg: statusBg.error,
+    bgPressed: statusBg.dangerStrong,
     iconColor: text.danger,
   },
 };

@@ -18,7 +18,18 @@ import Animated, {
   cancelAnimation,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { accent, border, radius, text, textRoles, layout } from '@/theme';
+import {
+  accent,
+  border,
+  colors,
+  overlay,
+  radius,
+  spacing,
+  statusBg,
+  text,
+  textRoles,
+  layout,
+} from '@/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'default';
 type ButtonSize = 'sm' | 'md' | 'lg' | 'default';
@@ -53,29 +64,29 @@ const variantStyles: Record<
     borderWidth: 0,
   },
   secondary: {
-    bg: '#27272a',
-    bgPressed: '#3f3f46',
+    bg: colors.surfaceAlt,
+    bgPressed: border.default,
     textColor: text.primary,
     borderColor: 'transparent',
     borderWidth: 0,
   },
   outline: {
     bg: 'transparent',
-    bgPressed: 'rgba(255,255,255,0.05)',
+    bgPressed: overlay.subtle,
     textColor: text.primary,
     borderColor: border.default,
     borderWidth: 1,
   },
   ghost: {
     bg: 'transparent',
-    bgPressed: 'rgba(255,255,255,0.05)',
+    bgPressed: overlay.subtle,
     textColor: text.secondary,
     borderColor: 'transparent',
     borderWidth: 0,
   },
   danger: {
-    bg: '#ef4444',
-    bgPressed: '#dc2626',
+    bg: text.danger,
+    bgPressed: statusBg.dangerStrong,
     textColor: text.primary,
     borderColor: 'transparent',
     borderWidth: 0,
@@ -95,25 +106,25 @@ const sizeStyles: Record<
 > = {
   sm: {
     height: layout.controlHeightSmall,
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.sm + spacing.xs,
     iconSize: 14,
     textRole: textRoles.buttonSmall,
   },
   md: {
     height: layout.controlHeight,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     iconSize: 16,
     textRole: textRoles.button,
   },
   default: {
     height: layout.controlHeight,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     iconSize: 16,
     textRole: textRoles.button,
   },
   lg: {
     height: 56,
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.lg,
     iconSize: 18,
     textRole: textRoles.button,
   },

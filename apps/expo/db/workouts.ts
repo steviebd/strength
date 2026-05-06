@@ -3,6 +3,7 @@ import {
   WORKOUT_TYPE_ONE_RM_TEST,
   WORKOUT_TYPE_TRAINING,
   consolidateProgramTargetLifts,
+  exerciseLibrary,
   getCurrentCycleWorkout,
   generateId,
   normalizeProgramReps,
@@ -64,6 +65,26 @@ type LocalExerciseInput = {
     isComplete?: boolean;
     completedAt?: Date | string | null;
   }>;
+};
+
+type TemplateExerciseCacheInput = {
+  id: string;
+  exerciseId: string;
+  name: string;
+  muscleGroup?: string | null;
+  exerciseType?: string | null;
+  orderIndex?: number | null;
+  targetWeight?: number | null;
+  addedWeight?: number | null;
+  sets?: number | null;
+  reps?: number | null;
+  repsRaw?: string | null;
+  targetDuration?: number | null;
+  targetDistance?: number | null;
+  targetHeight?: number | null;
+  isAmrap?: boolean | null;
+  isAccessory?: boolean | null;
+  isRequired?: boolean | null;
 };
 
 type ProgramCycleWorkoutDefinition = {
@@ -147,6 +168,58 @@ function buildPlannedSetValues(input: {
     duration: type === 'timed' || type === 'cardio' ? (input.targetDuration ?? 0) : null,
     distance: type === 'cardio' ? (input.targetDistance ?? null) : null,
     height: type === 'plyo' ? (input.targetHeight ?? 0) : null,
+  };
+}
+
+function getLibraryExerciseType(libraryId: string | null | undefined) {
+  if (!libraryId) return null;
+  return exerciseLibrary.find((exercise) => exercise.id === libraryId)?.exerciseType ?? null;
+}
+
+export function normalizeTemplateExerciseForLocalCache(
+  templateId: string,
+  exercise: TemplateExerciseCacheInput,
+) {
+  return {
+    id: exercise.id,
+    templateId,
+    exerciseId: exercise.exerciseId,
+    name: exercise.name,
+    muscleGroup: exercise.muscleGroup ?? null,
+    exerciseType: exercise.exerciseType ?? 'weighted',
+    orderIndex: exercise.orderIndex ?? 0,
+    targetWeight: exercise.targetWeight ?? null,
+    addedWeight: exercise.addedWeight ?? 0,
+    sets: exercise.sets ?? null,
+    reps: exercise.reps ?? null,
+    repsRaw: exercise.repsRaw ?? null,
+    targetDuration: exercise.targetDuration ?? null,
+    targetDistance: exercise.targetDistance ?? null,
+    targetHeight: exercise.targetHeight ?? null,
+    isAmrap: exercise.isAmrap ?? false,
+    isAccessory: exercise.isAccessory ?? false,
+    isRequired: exercise.isRequired !== false,
+  };
+}
+
+export function normalizeTemplateExerciseForWorkoutStart(
+  exercise: TemplateExerciseCacheInput,
+  orderIndex: number,
+) {
+  return {
+    exerciseId: exercise.exerciseId,
+    name: exercise.name,
+    muscleGroup: exercise.muscleGroup ?? null,
+    exerciseType: exercise.exerciseType ?? 'weighted',
+    sets: exercise.sets ?? 3,
+    reps: exercise.reps ?? 10,
+    isAmrap: exercise.isAmrap ?? false,
+    targetWeight: exercise.targetWeight ?? 0,
+    addedWeight: exercise.addedWeight ?? 0,
+    targetDuration: exercise.targetDuration ?? null,
+    targetDistance: exercise.targetDistance ?? null,
+    targetHeight: exercise.targetHeight ?? null,
+    orderIndex: exercise.orderIndex ?? orderIndex,
   };
 }
 
@@ -381,6 +454,7 @@ export async function createLocalWorkoutFromTemplate(
   fallbackHistorySnapshots: ExerciseHistorySnapshot[] = [],
   providedExercises?: {
     exerciseId: string;
+    libraryId?: string | null;
     name: string;
     muscleGroup: string | null;
     exerciseType?: string | null;
@@ -409,6 +483,16 @@ export async function createLocalWorkoutFromTemplate(
       .where(eq(localTemplateExercises.templateId, templateId))
       .orderBy(localTemplateExercises.orderIndex)
       .all();
+  const localExerciseRows = db
+    .select({
+      id: localUserExercises.id,
+      libraryId: localUserExercises.libraryId,
+      exerciseType: localUserExercises.exerciseType,
+    })
+    .from(localUserExercises)
+    .where(eq(localUserExercises.userId, userId))
+    .all();
+  const exerciseMetaById = new Map(localExerciseRows.map((row) => [row.id, row]));
   const historySnapshots = await getLocalLastCompletedExerciseSnapshots(
     userId,
     exercises.map((exercise) => exercise.exerciseId),
@@ -430,37 +514,51 @@ export async function createLocalWorkoutFromTemplate(
       // Use planned set count from template, but if history has more sets, use the larger value
       const historySetCount = historySnapshot?.sets.length ?? 0;
       const setCount = Math.max(plannedSetCount, historySetCount);
+      const localExerciseMeta = exerciseMetaById.get(exercise.exerciseId);
+      const exerciseLibraryId = 'libraryId' in exercise ? exercise.libraryId : null;
+      const libraryId = exerciseLibraryId ?? localExerciseMeta?.libraryId ?? null;
+      const exerciseType =
+        getLibraryExerciseType(libraryId) ??
+        exercise.exerciseType ??
+        localExerciseMeta?.exerciseType ??
+        'weighted';
+      const plannedExercise = { ...exercise, exerciseType };
 
       return {
         exerciseId: exercise.exerciseId,
+        libraryId,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType,
         orderIndex: exercise.orderIndex,
         isAmrap: Boolean(exercise.isAmrap),
         sets: Array.from({ length: setCount }, (_, index) => ({
           setNumber: index + 1,
           weight:
             index < historySetCount
-              ? (historySnapshot!.sets[index].weight ?? buildPlannedSetValues(exercise).weight)
-              : buildPlannedSetValues(exercise).weight,
+              ? (historySnapshot!.sets[index].weight ??
+                buildPlannedSetValues(plannedExercise).weight)
+              : buildPlannedSetValues(plannedExercise).weight,
           reps:
             index < historySetCount
-              ? (historySnapshot!.sets[index].reps ?? buildPlannedSetValues(exercise).reps)
-              : buildPlannedSetValues(exercise).reps,
+              ? (historySnapshot!.sets[index].reps ?? buildPlannedSetValues(plannedExercise).reps)
+              : buildPlannedSetValues(plannedExercise).reps,
           rpe: index < historySetCount ? (historySnapshot!.sets[index].rpe ?? null) : null,
           duration:
             index < historySetCount
-              ? (historySnapshot!.sets[index].duration ?? buildPlannedSetValues(exercise).duration)
-              : buildPlannedSetValues(exercise).duration,
+              ? (historySnapshot!.sets[index].duration ??
+                buildPlannedSetValues(plannedExercise).duration)
+              : buildPlannedSetValues(plannedExercise).duration,
           distance:
             index < historySetCount
-              ? (historySnapshot!.sets[index].distance ?? buildPlannedSetValues(exercise).distance)
-              : buildPlannedSetValues(exercise).distance,
+              ? (historySnapshot!.sets[index].distance ??
+                buildPlannedSetValues(plannedExercise).distance)
+              : buildPlannedSetValues(plannedExercise).distance,
           height:
             index < historySetCount
-              ? (historySnapshot!.sets[index].height ?? buildPlannedSetValues(exercise).height)
-              : buildPlannedSetValues(exercise).height,
+              ? (historySnapshot!.sets[index].height ??
+                buildPlannedSetValues(plannedExercise).height)
+              : buildPlannedSetValues(plannedExercise).height,
           isComplete: false,
         })),
       };
@@ -1056,6 +1154,10 @@ export async function saveLocalWorkoutDraft(
   const db = getLocalDb();
   if (!db || workout.completedAt) return null;
 
+  // 1RM tests are short-lived and server-managed; skip local draft so
+  // discarding does not leave ghost records that break re-open.
+  if (workout.workoutType === WORKOUT_TYPE_ONE_RM_TEST) return null;
+
   const existing = db.select().from(localWorkouts).where(eq(localWorkouts.id, workout.id)).get();
   if (!existing) {
     await createLocalWorkout(userId, {
@@ -1292,22 +1394,7 @@ export async function cacheTemplates(userId: string, templates: any[]) {
       .where(eq(localTemplateExercises.templateId, template.id))
       .run();
     for (const exercise of template.exercises ?? []) {
-      allExercises.push({
-        id: exercise.id,
-        templateId: template.id,
-        exerciseId: exercise.exerciseId,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup ?? null,
-        orderIndex: exercise.orderIndex ?? 0,
-        targetWeight: exercise.targetWeight ?? null,
-        addedWeight: exercise.addedWeight ?? 0,
-        sets: exercise.sets ?? null,
-        reps: exercise.reps ?? null,
-        repsRaw: exercise.repsRaw ?? null,
-        isAmrap: exercise.isAmrap ?? false,
-        isAccessory: exercise.isAccessory ?? false,
-        isRequired: exercise.isRequired !== false,
-      });
+      allExercises.push(normalizeTemplateExerciseForLocalCache(template.id, exercise));
     }
   }
   if (allExercises.length > 0) {

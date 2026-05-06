@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -11,7 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  type TextInput,
   View,
   ActionSheetIOS,
 } from 'react-native';
@@ -31,6 +29,9 @@ import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { generateId } from '@strength/db/client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
+import { MetricInput } from '@/components/ui/MetricInput';
 import { PageHeader } from '@/components/ui/app-primitives';
 import {
   useActivePrograms,
@@ -40,7 +41,7 @@ import {
   type ProgramListItem,
 } from '@/hooks/usePrograms';
 import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
-import { colors, spacing, radius, typography, layout } from '@/theme';
+import { colors, spacing, radius, typography, layout, statusBg } from '@/theme';
 
 const LBS_TO_KG = 0.453592;
 
@@ -371,15 +372,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
   },
-  textInput: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: typography.fontWeights.bold,
-    backgroundColor: colors.background,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
   startButton: {
     borderRadius: radius.lg,
     backgroundColor: colors.accent,
@@ -616,9 +608,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(244,63,94,0.2)',
-    backgroundColor: 'rgba(244,63,94,0.1)',
-    paddingVertical: 14,
+    borderColor: statusBg.dangerStrong,
+    backgroundColor: statusBg.dangerSubtle,
+    paddingVertical: spacing.sm + spacing.xs,
     paddingHorizontal: spacing.md,
   },
   deleteButtonDisabled: {
@@ -629,16 +621,28 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.medium,
     color: colors.error,
   },
+  offlineBanner: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
+  },
 });
 
 function getDifficultyColor(difficulty: string) {
   switch (difficulty) {
     case 'beginner':
-      return { bg: '#22c55e20', text: '#4ade80' };
+      return { bg: statusBg.success, text: colors.success };
     case 'intermediate':
-      return { bg: '#f59e0b20', text: '#fbbf24' };
+      return { bg: statusBg.warning, text: colors.warning };
     case 'advanced':
-      return { bg: '#ef444420', text: '#f87171' };
+      return { bg: statusBg.error, text: colors.error };
     default:
       return { bg: colors.surfaceAlt, text: colors.textMuted };
   }
@@ -676,11 +680,9 @@ export default function ProgramsScreen() {
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<ScrollView>(null);
   const detailScrollRef = useRef<ScrollView>(null);
-  const inputRefs = useRef<Record<string, any>>({});
+  const inputRefs = useRef<Record<string, TextInput | null>>({});
   const modalContentY = useRef(0);
-  const inputGroupY = useRef(0);
   const scheduleSectionY = useRef<number | null>(null);
-  const inputCardLayouts = useRef<Record<string, number>>({});
   const valuesRef = useRef<OneRmValues>(values);
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
@@ -692,42 +694,6 @@ export default function ProgramsScreen() {
   } = useActivePrograms();
   const { latestOneRMs, refetch: refetchLatestOneRms } = useLatestOneRms();
   const loading = isLoadingPrograms || isLoadingActivePrograms;
-
-  const handleInputCardLayout = (key: string, event: LayoutChangeEvent) => {
-    inputCardLayouts.current[key] = event.nativeEvent.layout.y;
-  };
-
-  const scrollToInputByKey = (key: string) => {
-    const cardY = inputCardLayouts.current[key];
-    if (typeof cardY === 'number' && scrollViewRef.current) {
-      const inputY = modalContentY.current + inputGroupY.current + cardY;
-      const targetY = Math.max(0, inputY - 120);
-      scrollViewRef.current.scrollTo({ y: targetY, animated: true });
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-      }, 250);
-      return;
-    }
-
-    const inputRef = inputRefs.current[key];
-    if (inputRef && scrollViewRef.current) {
-      inputRef.measure(
-        (
-          _x: number,
-          _y: number,
-          _width: number,
-          _height: number,
-          _pageX: number,
-          pageY: number,
-        ) => {
-          const KEYBOARD_HEIGHT = 300;
-          const TOP_OFFSET = 100;
-          const targetY = Math.max(0, pageY - KEYBOARD_HEIGHT - TOP_OFFSET);
-          scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-        },
-      );
-    }
-  };
 
   const scrollToScheduleSection = useCallback(() => {
     if (scheduleSectionY.current === null || !scrollViewRef.current) {
@@ -1066,17 +1032,8 @@ export default function ProgramsScreen() {
                   </View>
                   <View style={styles.activeCardButtons}>
                     {offlineMessage && (
-                      <View
-                        style={{
-                          borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor: 'rgba(239, 68, 68, 0.2)',
-                          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                          paddingHorizontal: 16,
-                          paddingVertical: 12,
-                        }}
-                      >
-                        <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                      <View style={styles.offlineBanner}>
+                        <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
                       </View>
                     )}
                     <ActionButton
@@ -1250,18 +1207,12 @@ export default function ProgramsScreen() {
         onRequestClose={() => setShowStartModal(false)}
       >
         {showStartModal ? (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1 }}
-          >
-            <ScrollView
+          <KeyboardFormLayout>
+            <FormScrollView
               ref={scrollViewRef}
               style={styles.modalScroll}
-              contentContainerStyle={{
-                paddingBottom: insets.bottom + 400,
-              }}
-              keyboardShouldPersistTaps="always"
-              keyboardDismissMode="interactive"
+              bottomInset={layout.bottomInsetForm}
+              keyboardShouldPersistTaps="handled"
             >
               <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
                 <Pressable
@@ -1298,23 +1249,14 @@ export default function ProgramsScreen() {
                   to calculate your working weights.
                 </Text>
 
-                <View
-                  style={styles.inputGroup}
-                  onLayout={(event) => {
-                    inputGroupY.current = event.nativeEvent.layout.y;
-                  }}
-                >
+                <View style={styles.inputGroup}>
                   {[
                     { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
                     { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
                     { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
                     { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
                   ].map(({ key, label, icon }) => (
-                    <View
-                      key={`program-1rm:${key}`}
-                      style={styles.inputCard}
-                      onLayout={(event) => handleInputCardLayout(key, event)}
-                    >
+                    <View key={`program-1rm:${key}`} style={styles.inputCard}>
                       <View style={styles.inputHeaderRow}>
                         <View style={styles.inputLabelRow}>
                           <Text style={styles.inputIcon}>{icon}</Text>
@@ -1322,18 +1264,13 @@ export default function ProgramsScreen() {
                         </View>
                         <Text style={styles.inputUnit}>{weightUnit}</Text>
                       </View>
-                      <TextInput
+                      <MetricInput
                         testID={`program-1rm-${key}`}
                         ref={(ref) => {
                           inputRefs.current[key] = ref;
                         }}
-                        style={styles.textInput}
                         value={values[key as keyof typeof values]}
                         onChangeText={(v) => updateOneRmValue(key as keyof OneRmValues, v)}
-                        onFocus={() => scrollToInputByKey(key)}
-                        placeholder="0"
-                        placeholderTextColor={colors.placeholderText}
-                        keyboardType="decimal-pad"
                         returnKeyType={key === 'ohp' ? 'done' : 'next'}
                         blurOnSubmit={key === 'ohp'}
                         onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
@@ -1712,20 +1649,8 @@ export default function ProgramsScreen() {
 
                     <View style={styles.scheduleButtons}>
                       {offlineMessage && (
-                        <View
-                          style={{
-                            borderRadius: 12,
-                            borderWidth: 1,
-                            borderColor: 'rgba(239, 68, 68, 0.2)',
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            paddingHorizontal: 16,
-                            paddingVertical: 12,
-                            marginBottom: spacing.md,
-                          }}
-                        >
-                          <Text style={{ fontSize: 14, color: colors.error }}>
-                            {offlineMessage}
-                          </Text>
+                        <View style={[styles.offlineBanner, { marginBottom: spacing.md }]}>
+                          <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
                         </View>
                       )}
                       <Pressable
@@ -1764,8 +1689,8 @@ export default function ProgramsScreen() {
                   </>
                 )}
               </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
+            </FormScrollView>
+          </KeyboardFormLayout>
         ) : null}
       </Modal>
     </PageLayout>

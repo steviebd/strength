@@ -1,0 +1,36 @@
+import type { ReactNode } from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet, View, type ViewStyle } from 'react-native';
+import { colors } from '@/theme';
+
+interface KeyboardFormLayoutProps {
+  children: ReactNode;
+  keyboardVerticalOffset?: number;
+  style?: ViewStyle;
+}
+
+export function KeyboardFormLayout({
+  children,
+  keyboardVerticalOffset = 0,
+  style,
+}: KeyboardFormLayoutProps) {
+  if (Platform.OS !== 'ios') {
+    return <View style={[styles.container, style]}>{children}</View>;
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior="padding"
+      keyboardVerticalOffset={keyboardVerticalOffset}
+      style={[styles.container, style]}
+    >
+      {children}
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+});

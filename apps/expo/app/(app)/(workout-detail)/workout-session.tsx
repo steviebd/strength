@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect, useRef, createRef, useMemo } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   ActivityIndicator,
   LayoutChangeEvent,
   View,
@@ -18,8 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { PageLayout } from '@/components/ui/PageLayout';
 import { Button } from '@/components/ui/Button';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
@@ -27,8 +26,17 @@ import { removePendingWorkout } from '@/lib/storage';
 import { getLocalWorkout } from '@/db/workouts';
 import { resolveSetCompletionNavigation } from '@/lib/workoutSetNavigation';
 import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
-import { ScrollProvider } from '@/context/ScrollContext';
-import { colors, spacing, radius, typography } from '@/theme';
+import {
+  accent,
+  border,
+  colors,
+  layout,
+  overlay,
+  radius,
+  spacing,
+  statusBg,
+  typography,
+} from '@/theme';
 import { formatDuration, formatDistance } from '@/lib/units';
 
 interface ExerciseLayout {
@@ -641,164 +649,153 @@ export default function WorkoutSessionScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-      style={{ flex: 1 }}
-    >
-      <ScrollProvider scrollViewRef={scrollViewRef}>
-        <View
-          style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}
-          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
-        >
-          <View style={styles.headerTop}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.subtitle}>
-                {isProgramOneRMTest
-                  ? '1RM Test'
-                  : isViewingCompleted
-                    ? 'Completed Workout'
-                    : 'Active Workout'}
+    <KeyboardFormLayout keyboardVerticalOffset={88}>
+      <View
+        style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.subtitle}>
+              {isProgramOneRMTest
+                ? '1RM Test'
+                : isViewingCompleted
+                  ? 'Completed Workout'
+                  : 'Active Workout'}
+            </Text>
+            <Text
+              style={[styles.title, isProgramOneRMTest && isNarrowHeader && styles.titleNarrow]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {isProgramOneRMTest && programName ? programName : workout?.name || 'Workout'}
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <Text style={styles.durationPrimary}>{formattedDuration}</Text>
+            {isViewingCompleted && computedVolume > 0 && (
+              <Text style={styles.durationSecondary}>
+                {formatVolume(computedVolume)} {userWeightUnit}
               </Text>
-              <Text
-                style={[styles.title, isProgramOneRMTest && isNarrowHeader && styles.titleNarrow]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {isProgramOneRMTest && programName ? programName : workout?.name || 'Workout'}
-              </Text>
-            </View>
-            <View style={styles.headerRight}>
-              <Text style={styles.durationPrimary}>{formattedDuration}</Text>
-              {isViewingCompleted && computedVolume > 0 && (
-                <Text style={styles.durationSecondary}>
+            )}
+          </View>
+        </View>
+        {isViewingCompleted && (
+          <View style={styles.summaryPills}>
+            {hasWeightedSets && computedVolume > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>
                   {formatVolume(computedVolume)} {userWeightUnit}
                 </Text>
-              )}
-            </View>
+              </View>
+            )}
+            {totalTimeSeconds > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{formatDuration(totalTimeSeconds)}</Text>
+              </View>
+            )}
+            {totalDistanceMeters > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>
+                  {formatDistance(totalDistanceMeters, distanceUnit)}
+                </Text>
+              </View>
+            )}
+            {totalCompletedSets > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{totalCompletedSets} sets</Text>
+              </View>
+            )}
           </View>
-          {isViewingCompleted && (
-            <View style={styles.summaryPills}>
-              {hasWeightedSets && computedVolume > 0 && (
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>
-                    {formatVolume(computedVolume)} {userWeightUnit}
-                  </Text>
-                </View>
-              )}
-              {totalTimeSeconds > 0 && (
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>{formatDuration(totalTimeSeconds)}</Text>
-                </View>
-              )}
-              {totalDistanceMeters > 0 && (
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>
-                    {formatDistance(totalDistanceMeters, distanceUnit)}
-                  </Text>
-                </View>
-              )}
-              {totalCompletedSets > 0 && (
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>{totalCompletedSets} sets</Text>
-                </View>
-              )}
-            </View>
-          )}
-          <View style={styles.headerBottom}>{renderActionButtons()}</View>
-        </View>
-        <PageLayout
-          headerType="none"
-          scrollViewRef={scrollViewRef}
-          screenScrollViewProps={{
-            bottomInset: 400,
-            topPadding: headerHeight + spacing.md,
-            horizontalPadding: spacing.md,
-            showsVerticalScrollIndicator: false,
-            keyboardShouldPersistTaps: 'handled',
-            onScroll: handleScroll,
-            scrollEventThrottle: 16,
-          }}
-        >
-          <View style={styles.exerciseList}>
-            {exercises.map((exercise, idx) => {
-              const localSets = (exercise.sets ?? []).map((s) => ({
-                id: s.id,
-                reps: s.reps ?? 0,
-                weight: s.weight ?? null,
-                duration: s.duration ?? 0,
-                distance: s.distance ?? null,
-                height: s.height ?? 0,
-                completed: s.isComplete,
-              }));
-              return (
-                <View
-                  key={`workout-exercise:${exercise.id ?? idx}`}
-                  onLayout={(e) => handleExerciseLayout(exercise.id, e)}
-                >
-                  <ExerciseLogger
-                    exercise={{
-                      id: exercise.id,
-                      exerciseId: exercise.exerciseId,
-                      name: exercise.name,
-                      muscleGroup: exercise.muscleGroup,
-                      exerciseType: exercise.exerciseType,
-                      isAmrap: exercise.isAmrap,
-                    }}
-                    sets={localSets}
-                    onSetsUpdate={(sets) => handleExerciseSetsUpdate(exercise.id, sets)}
-                    onAddSet={() => addSet(exercise.id)}
-                    onDeleteSet={handleDeleteSet}
-                    weightUnit={weightUnit}
-                    isEditMode={isViewingCompleted ? isEditing : true}
-                    getSetRef={getSetRef}
-                    onSetLayout={(setId, layout) => handleSetLayout(exercise.id, setId, layout)}
-                  />
-                </View>
-              );
-            })}
-
-            {(!isViewingCompleted || isEditing) && (
-              <Pressable
-                testID="workout-add-exercise"
-                accessibilityLabel="workout-add-exercise"
-                style={styles.addExerciseButton}
-                onPress={() => setShowAddExercise(true)}
+        )}
+        <View style={styles.headerBottom}>{renderActionButtons()}</View>
+      </View>
+      <FormScrollView
+        ref={scrollViewRef}
+        bottomInset={layout.bottomInsetList}
+        topPadding={headerHeight + spacing.md}
+        horizontalPadding={spacing.md}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        <View style={styles.exerciseList}>
+          {exercises.map((exercise, idx) => {
+            const localSets = (exercise.sets ?? []).map((s) => ({
+              id: s.id,
+              reps: s.reps ?? 0,
+              weight: s.weight ?? null,
+              duration: s.duration ?? 0,
+              distance: s.distance ?? null,
+              height: s.height ?? 0,
+              completed: s.isComplete,
+            }));
+            return (
+              <View
+                key={`workout-exercise:${exercise.id ?? idx}`}
+                onLayout={(e) => handleExerciseLayout(exercise.id, e)}
               >
-                <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
-              </Pressable>
-            )}
+                <ExerciseLogger
+                  exercise={{
+                    id: exercise.id,
+                    exerciseId: exercise.exerciseId,
+                    name: exercise.name,
+                    muscleGroup: exercise.muscleGroup,
+                    exerciseType: exercise.exerciseType,
+                    isAmrap: exercise.isAmrap,
+                  }}
+                  sets={localSets}
+                  onSetsUpdate={(sets) => handleExerciseSetsUpdate(exercise.id, sets)}
+                  onAddSet={() => addSet(exercise.id)}
+                  onDeleteSet={handleDeleteSet}
+                  weightUnit={weightUnit}
+                  isEditMode={isViewingCompleted ? isEditing : true}
+                  getSetRef={getSetRef}
+                  onSetLayout={(setId, layout) => handleSetLayout(exercise.id, setId, layout)}
+                />
+              </View>
+            );
+          })}
 
-            {exercises.length > 0 && (
-              <Pressable style={styles.exerciseProgressBar} onPress={scrollToCurrentExercise}>
-                <View style={styles.exerciseProgressInfo}>
-                  <Text style={styles.exerciseProgressText}>
-                    {exercises[currentExerciseIndex]?.name}
-                  </Text>
-                  <Text style={styles.exerciseProgressSubtext}>
-                    {currentExerciseIndex + 1} of {exercises.length} exercises
-                  </Text>
-                </View>
-                <View style={styles.setCounterInline}>
-                  <Text style={styles.setCounterInlineText}>
-                    Set {currentSetIndex + 1} of {exercises[currentExerciseIndex]?.sets.length}
-                  </Text>
-                </View>
-              </Pressable>
-            )}
-          </View>
+          {(!isViewingCompleted || isEditing) && (
+            <Pressable
+              testID="workout-add-exercise"
+              accessibilityLabel="workout-add-exercise"
+              style={styles.addExerciseButton}
+              onPress={() => setShowAddExercise(true)}
+            >
+              <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
+            </Pressable>
+          )}
 
-          <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
-            <ExerciseSearch
-              visible={showAddExercise}
-              onSelect={handleAddExercise}
-              onClose={() => setShowAddExercise(false)}
-              excludeIds={exercises.map((e) => e.exerciseId)}
-            />
-          </Modal>
-        </PageLayout>
-      </ScrollProvider>
-    </KeyboardAvoidingView>
+          {exercises.length > 0 && (
+            <Pressable style={styles.exerciseProgressBar} onPress={scrollToCurrentExercise}>
+              <View style={styles.exerciseProgressInfo}>
+                <Text style={styles.exerciseProgressText}>
+                  {exercises[currentExerciseIndex]?.name}
+                </Text>
+                <Text style={styles.exerciseProgressSubtext}>
+                  {currentExerciseIndex + 1} of {exercises.length} exercises
+                </Text>
+              </View>
+              <View style={styles.setCounterInline}>
+                <Text style={styles.setCounterInlineText}>
+                  Set {currentSetIndex + 1} of {exercises[currentExerciseIndex]?.sets.length}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
+
+        <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
+          <ExerciseSearch
+            visible={showAddExercise}
+            onSelect={handleAddExercise}
+            onClose={() => setShowAddExercise(false)}
+            excludeIds={exercises.map((e) => e.exerciseId)}
+          />
+        </Modal>
+      </FormScrollView>
+    </KeyboardFormLayout>
   );
 }
 
@@ -869,8 +866,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: `${colors.error}50`,
-    backgroundColor: `${colors.error}10`,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
     padding: spacing.md,
   },
   errorBannerText: {
@@ -992,10 +989,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: spacing.md,
     right: spacing.md,
-    backgroundColor: `${colors.surface}95`,
+    backgroundColor: overlay.muted,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: `${colors.accent}50`,
+    borderColor: border.focus,
     padding: spacing.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1025,7 +1022,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   setCounterBadge: {
-    backgroundColor: `${colors.accent}20`,
+    backgroundColor: accent.subtle,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -1080,7 +1077,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
   },
   setCounterInline: {
-    backgroundColor: `${colors.accent}20`,
+    backgroundColor: accent.subtle,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
