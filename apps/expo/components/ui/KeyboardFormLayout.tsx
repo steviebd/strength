@@ -13,13 +13,13 @@ export function KeyboardFormLayout({
   keyboardVerticalOffset = 0,
   style,
 }: KeyboardFormLayoutProps) {
-  if (Platform.OS !== 'ios') {
+  if (Platform.OS === 'web') {
     return <View style={[styles.container, style]}>{children}</View>;
   }
 
   return (
     <KeyboardAvoidingView
-      behavior="padding"
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={keyboardVerticalOffset}
       style={[styles.container, style]}
     >
