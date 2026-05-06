@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
+import { findNodeHandle, UIManager } from 'react-native';
 import type { ScrollView } from 'react-native';
 
 interface ScrollContextValue {
@@ -36,25 +37,29 @@ export function ScrollProvider({ children, scrollViewRef }: ScrollProviderProps)
       return;
     }
 
-    if (typeof inputNode.measureLayout !== 'function') {
+    const inputNodeHandle = findNodeHandle(inputNode);
+    const innerNodeHandle = findNodeHandle(innerNode);
+
+    if (!inputNodeHandle || !innerNodeHandle) {
       if (retry) {
         setTimeout(() => measureAndScroll(inputRef, offset, false), 80);
       }
       return;
     }
 
-    inputNode.measureLayout(
-      innerNode,
+    UIManager.measureLayout(
+      inputNodeHandle,
+      innerNodeHandle,
+      () => {
+        if (retry) {
+          setTimeout(() => measureAndScroll(inputRef, offset, false), 80);
+        }
+      },
       (_x: number, y: number) => {
         scrollView.scrollTo({
           y: Math.max(0, y - offset),
           animated: true,
         });
-      },
-      () => {
-        if (retry) {
-          setTimeout(() => measureAndScroll(inputRef, offset, false), 80);
-        }
       },
     );
   }
