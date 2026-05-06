@@ -73,7 +73,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const inputHeight = sizes.inputHeight;
   const fontSize = sizes.fontSize;
 
-  const { distanceUnit } = useUserPreferences();
+  const { distanceUnit, heightUnit } = useUserPreferences();
 
   const displayWeight = useMemo(
     () => convertToDisplayWeight(set.weight, weightUnit),
@@ -253,7 +253,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     [emitUpdate],
   );
 
-  const heightIncrement = useMemo(() => (distanceUnit === 'km' ? 5 : 2 * 2.54), [distanceUnit]);
+  const heightIncrement = useMemo(() => (heightUnit === 'cm' ? 5 : 2 * 2.54), [heightUnit]);
 
   const handleHeightDecrease = useCallback(() => {
     const newHeight = Math.max(0, localHeight - heightIncrement);
@@ -307,6 +307,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     icon: 'remove' | 'add',
     disabled?: boolean,
     sizeStyle?: { width: number; height: number },
+    styleOverride?: object,
   ) => (
     <Pressable
       onPress={onPress}
@@ -316,6 +317,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
         sizeStyle ?? stepperStyle,
         !isEditMode && styles.stepperDisabled,
         pressed && styles.stepperPressed,
+        styleOverride,
       ]}
     >
       <Ionicons name={icon} size={fontSize + 4} color={colors.textMuted} />
@@ -329,6 +331,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     editInput: React.ReactNode,
     testIdSuffix: string,
     extraStyle?: object,
+    textStyle?: object,
   ) => (
     <Pressable
       testID={`workout-set-${setNumber}-${testIdSuffix}`}
@@ -347,7 +350,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
         editInput
       ) : (
         <Text
-          style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
+          style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled, textStyle]}
           numberOfLines={1}
         >
           {value}
@@ -356,36 +359,45 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     </Pressable>
   );
 
-  const renderWeightSection = () => (
-    <View style={[styles.inputSection, styles.weightSection]}>
-      <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
-        Weight
-      </Text>
-      <View style={styles.weightStepperGroup}>
-        {renderStepperButton(handleWeightDecrease, 'remove')}
-        <View ref={weightWrapperRef} collapsable={false} style={{ flex: 1 }}>
-          {renderNumberInput(
-            localWeight.toFixed(1),
-            handleWeightEditStart,
-            isEditingWeight,
-            <TextInput
-              testID={`workout-set-${setNumber}-weight-input`}
-              style={[styles.weightInput, { fontSize }]}
-              value={editWeightValue}
-              onChangeText={handleWeightEditChange}
-              onBlur={handleWeightEditEnd}
-              onSubmitEditing={handleWeightEditEnd}
-              keyboardType="decimal-pad"
-              autoFocus
-            />,
-            'weight',
-          )}
+  const renderWeightSection = () => {
+    const isWeightGreyed = exerciseType === 'bodyweight' && localWeight === 0;
+    const greyedStyle = isWeightGreyed ? { opacity: 0.4 } : undefined;
+    const greyedTextStyle = isWeightGreyed ? { color: colors.textMuted } : undefined;
+    return (
+      <View style={[styles.inputSection, styles.weightSection]}>
+        <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+          Weight
+        </Text>
+        <View style={styles.weightStepperGroup}>
+          {renderStepperButton(handleWeightDecrease, 'remove', undefined, undefined, greyedStyle)}
+          <View ref={weightWrapperRef} collapsable={false} style={{ flex: 1 }}>
+            {renderNumberInput(
+              localWeight.toFixed(1),
+              handleWeightEditStart,
+              isEditingWeight,
+              <TextInput
+                testID={`workout-set-${setNumber}-weight-input`}
+                style={[styles.weightInput, { fontSize }]}
+                value={editWeightValue}
+                onChangeText={handleWeightEditChange}
+                onBlur={handleWeightEditEnd}
+                onSubmitEditing={handleWeightEditEnd}
+                keyboardType="decimal-pad"
+                autoFocus
+              />,
+              'weight',
+              undefined,
+              greyedTextStyle,
+            )}
+          </View>
+          <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }, greyedTextStyle]}>
+            {weightUnit}
+          </Text>
+          {renderStepperButton(handleWeightIncrease, 'add', undefined, undefined, greyedStyle)}
         </View>
-        <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }]}>{weightUnit}</Text>
-        {renderStepperButton(handleWeightIncrease, 'add')}
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderRepsSection = () => (
     <View style={[styles.inputSection, styles.repsSection]}>
@@ -505,7 +517,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
             style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
             numberOfLines={1}
           >
-            {formatHeight(localHeight, distanceUnit)}
+            {formatHeight(localHeight, heightUnit)}
           </Text>
         </Pressable>
         {renderStepperButton(handleHeightIncrease, 'add')}
@@ -518,8 +530,8 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
       case 'bodyweight':
         return (
           <View style={styles.inputsRow}>
-            {renderWeightSection()}
             {renderRepsSection()}
+            {renderWeightSection()}
           </View>
         );
       case 'timed':
@@ -613,7 +625,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
       <HeightPickerModal
         visible={showHeightModal}
         initialCm={localHeight}
-        unit={distanceUnit}
+        unit={heightUnit}
         onSave={handleHeightSave}
         onCancel={() => setShowHeightModal(false)}
       />

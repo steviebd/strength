@@ -21,18 +21,17 @@ export function useTemplates() {
   const templatesQuery = useOfflineQuery({
     queryKey: ['templates', userId],
     enabled: !!userId,
-    apiFn: () => apiFetch<Template[]>('/api/templates'),
-    cacheFn: () => getCachedTemplates(userId!),
+    apiFn: () => apiFetch<Template[]>('/api/templates', { cache: 'no-store' }),
+    cacheFn: async () => {
+      const cached = await getCachedTemplates(userId!);
+      return cached.length > 0 ? cached : null;
+    },
     writeCacheFn: (data) => cacheTemplates(userId!, data),
+    networkFirst: true,
+    fallbackToCacheOnError: true,
     isDirtyFn: async () => {
       const db = getLocalDb();
       if (!db) return false;
-      const locallyCreated = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localTemplates)
-        .where(and(eq(localTemplates.userId, userId!), eq(localTemplates.createdLocally, true)))
-        .get();
-      if ((locallyCreated?.count ?? 0) > 0) return true;
       const pending = db
         .select({ count: sql<number>`count(*)` })
         .from(localSyncQueue)
@@ -40,7 +39,12 @@ export function useTemplates() {
           and(
             eq(localSyncQueue.userId, userId!),
             eq(localSyncQueue.entityType, 'template'),
-            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+            or(
+              eq(localSyncQueue.status, 'pending'),
+              eq(localSyncQueue.status, 'syncing'),
+              eq(localSyncQueue.status, 'failed'),
+              eq(localSyncQueue.status, 'conflict'),
+            ),
           ),
         )
         .get();

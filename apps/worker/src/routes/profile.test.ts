@@ -11,6 +11,7 @@ describe('serializePreferences', () => {
         userId: 'user-1',
         weightUnit: 'lbs',
         distanceUnit: 'km',
+        heightUnit: 'in',
         timezone: 'Australia/Sydney',
         weightPromptedAt,
         createdAt: new Date('2026-04-27T00:00:00.000Z'),
@@ -34,6 +35,7 @@ describe('serializePreferences', () => {
     expect(result).toEqual({
       weightUnit: 'lbs',
       distanceUnit: 'km',
+      heightUnit: 'in',
       timezone: 'Australia/Sydney',
       weightPromptedAt,
       bodyweightKg: 90.5,
@@ -49,6 +51,7 @@ describe('serializePreferences', () => {
         userId: 'user-1',
         weightUnit: null,
         distanceUnit: null,
+        heightUnit: null,
         timezone: null,
         weightPromptedAt: null,
         createdAt: new Date('2026-04-27T00:00:00.000Z'),
@@ -60,6 +63,7 @@ describe('serializePreferences', () => {
     expect(result).toEqual({
       weightUnit: 'kg',
       distanceUnit: 'km',
+      heightUnit: 'cm',
       timezone: null,
       weightPromptedAt: null,
       bodyweightKg: null,

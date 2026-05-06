@@ -112,6 +112,21 @@ type TemplateExerciseCacheInput = {
   isRequired?: boolean | null;
 };
 
+type TemplateCacheInput = {
+  id?: string | null;
+  name: string;
+  description?: string | null;
+  notes?: string | null;
+  defaultWeightIncrement?: number | null;
+  defaultBodyweightIncrement?: number | null;
+  defaultCardioIncrement?: number | null;
+  defaultTimedIncrement?: number | null;
+  defaultPlyoIncrement?: number | null;
+  createdAt?: Date | string | number | null;
+  updatedAt?: Date | string | number | null;
+  exercises?: TemplateExerciseCacheInput[] | null;
+};
+
 type ProgramCycleWorkoutDefinition = {
   id: string;
   cycleId: string;
@@ -138,6 +153,11 @@ export type ExerciseHistorySnapshot = {
     height: number | null;
     setNumber?: number | null;
   }>;
+};
+
+type CreateLocalWorkoutFromTemplateOptions = {
+  historySnapshots?: ExerciseHistorySnapshot[];
+  ignoreHistory?: boolean;
 };
 
 function uniqueIds(ids: string[]) {
@@ -228,6 +248,76 @@ export function normalizeTemplateExerciseForLocalCache(
   };
 }
 
+export async function upsertLocalTemplateSnapshot(
+  userId: string,
+  template: TemplateCacheInput,
+  options: { createdLocally?: boolean; replaceExercises?: boolean } = {},
+) {
+  const db = getLocalDb();
+  if (!db || !template.id) return;
+
+  const hydratedAt = new Date();
+  const createdAt = toDate(template.createdAt) ?? hydratedAt;
+  const updatedAt = toDate(template.updatedAt) ?? hydratedAt;
+  const createdLocally = options.createdLocally ?? false;
+
+  withLocalTransaction(() => {
+    db.insert(localTemplates)
+      .values({
+        id: template.id!,
+        userId,
+        name: template.name,
+        description: template.description ?? null,
+        notes: template.notes ?? null,
+        defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+        defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+        defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+        defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+        defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
+        isDeleted: false,
+        createdLocally,
+        createdAt,
+        updatedAt,
+        serverUpdatedAt: createdLocally ? null : updatedAt,
+        hydratedAt,
+      })
+      .onConflictDoUpdate({
+        target: localTemplates.id,
+        set: {
+          name: template.name,
+          description: template.description ?? null,
+          notes: template.notes ?? null,
+          defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+          defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+          defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+          defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+          defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
+          isDeleted: false,
+          createdLocally,
+          updatedAt,
+          serverUpdatedAt: createdLocally ? null : updatedAt,
+          hydratedAt,
+        },
+      })
+      .run();
+
+    if (options.replaceExercises !== false && template.exercises) {
+      db.delete(localTemplateExercises)
+        .where(eq(localTemplateExercises.templateId, template.id!))
+        .run();
+      const exercises = template.exercises.map((exercise, index) =>
+        normalizeTemplateExerciseForLocalCache(template.id!, {
+          ...exercise,
+          orderIndex: exercise.orderIndex ?? index,
+        }),
+      );
+      if (exercises.length > 0) {
+        db.insert(localTemplateExercises).values(exercises).run();
+      }
+    }
+  });
+}
+
 export function normalizeTemplateExerciseForWorkoutStart(
   exercise: TemplateExerciseCacheInput,
   orderIndex: number,
@@ -237,7 +327,10 @@ export function normalizeTemplateExerciseForWorkoutStart(
     name: exercise.name,
     muscleGroup: exercise.muscleGroup ?? null,
     exerciseType: exercise.exerciseType ?? 'weighted',
-    sets: exercise.isAmrap ? 1 : (exercise.sets ?? 3),
+    sets: exercise.isAmrap
+      ? 1
+      : (exercise.sets ??
+        (exercise.exerciseType === 'cardio' || exercise.exerciseType === 'timed' ? 1 : 3)),
     reps: exercise.reps ?? 10,
     isAmrap: exercise.isAmrap ?? false,
     targetWeight: exercise.targetWeight ?? 0,
@@ -478,7 +571,7 @@ export async function createLocalWorkout(
 export async function createLocalWorkoutFromTemplate(
   userId: string,
   templateId: string,
-  fallbackHistorySnapshots: ExerciseHistorySnapshot[] = [],
+  options: CreateLocalWorkoutFromTemplateOptions | ExerciseHistorySnapshot[] = {},
   providedExercises?: {
     exerciseId: string;
     libraryId?: string | null;
@@ -501,6 +594,9 @@ export async function createLocalWorkoutFromTemplate(
 
   const template = db.select().from(localTemplates).where(eq(localTemplates.id, templateId)).get();
   if (!template && !providedExercises) return null;
+  const normalizedOptions = Array.isArray(options) ? { historySnapshots: options } : options;
+  const fallbackHistorySnapshots = normalizedOptions.historySnapshots ?? [];
+  const ignoreHistory = normalizedOptions.ignoreHistory ?? false;
 
   const exercises =
     providedExercises ??
@@ -520,11 +616,13 @@ export async function createLocalWorkoutFromTemplate(
     .where(eq(localUserExercises.userId, userId))
     .all();
   const exerciseMetaById = new Map(localExerciseRows.map((row) => [row.id, row]));
-  const historySnapshots = await getLocalLastCompletedExerciseSnapshots(
-    userId,
-    exercises.map((exercise) => exercise.exerciseId),
-    exercises.map((exercise) => exercise.name),
-  );
+  const historySnapshots = ignoreHistory
+    ? []
+    : await getLocalLastCompletedExerciseSnapshots(
+        userId,
+        exercises.map((exercise) => exercise.exerciseId),
+        exercises.map((exercise) => exercise.name),
+      );
   const historyByExerciseId = new Map<string, ExerciseHistorySnapshot>(
     fallbackHistorySnapshots.map((snapshot) => [snapshot.exerciseId, snapshot]),
   );
@@ -532,35 +630,29 @@ export async function createLocalWorkoutFromTemplate(
     historyByExerciseId.set(snapshot.exerciseId, snapshot);
   }
   const historyByTemplateIndex = new Map<number, ExerciseHistorySnapshot>();
-  await Promise.all(
-    exercises.map(async (exercise, index) => {
-      if (exercise.isAmrap === undefined || exercise.isAmrap === null) return;
-      const matchingHistory = await getLocalLastCompletedExerciseSnapshots(
-        userId,
-        [exercise.exerciseId],
-        [exercise.name],
-        { isAmrap: Boolean(exercise.isAmrap) },
-      );
-      const snapshot = matchingHistory[0];
-      if (snapshot?.sets?.length) {
-        historyByTemplateIndex.set(index, snapshot);
-      }
-    }),
-  );
+  if (!ignoreHistory) {
+    await Promise.all(
+      exercises.map(async (exercise, index) => {
+        if (exercise.isAmrap === undefined || exercise.isAmrap === null) return;
+        const matchingHistory = await getLocalLastCompletedExerciseSnapshots(
+          userId,
+          [exercise.exerciseId],
+          [exercise.name],
+          { isAmrap: Boolean(exercise.isAmrap) },
+        );
+        const snapshot = matchingHistory[0];
+        if (snapshot?.sets?.length) {
+          historyByTemplateIndex.set(index, snapshot);
+        }
+      }),
+    );
+  }
 
   return createLocalWorkout(userId, {
     name: template?.name ?? 'Workout',
     templateId,
     exercises: exercises.map((exercise, exerciseIndex) => {
       const isAmrap = Boolean(exercise.isAmrap);
-      const historySnapshot =
-        historyByTemplateIndex.get(exerciseIndex) ?? historyByExerciseId.get(exercise.exerciseId);
-      const historySets = isAmrap
-        ? (historySnapshot?.sets ?? []).slice(0, 1)
-        : historySnapshot?.sets;
-      const plannedSetCount = isAmrap ? 1 : Math.max(1, exercise.sets ?? 3);
-      const historySetCount = historySets?.length ?? 0;
-      const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
       const localExerciseMeta = exerciseMetaById.get(exercise.exerciseId);
       const exerciseLibraryId = 'libraryId' in exercise ? exercise.libraryId : null;
       const libraryId = exerciseLibraryId ?? localExerciseMeta?.libraryId ?? null;
@@ -569,6 +661,19 @@ export async function createLocalWorkoutFromTemplate(
         exercise.exerciseType ??
         localExerciseMeta?.exerciseType ??
         'weighted';
+      const historySnapshot =
+        historyByTemplateIndex.get(exerciseIndex) ?? historyByExerciseId.get(exercise.exerciseId);
+      const historySets = isAmrap
+        ? (historySnapshot?.sets ?? []).slice(0, 1)
+        : historySnapshot?.sets;
+      const plannedSetCount = isAmrap
+        ? 1
+        : Math.max(
+            1,
+            exercise.sets ?? (exerciseType === 'cardio' || exerciseType === 'timed' ? 1 : 3),
+          );
+      const historySetCount = historySets?.length ?? 0;
+      const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
       const plannedExercise = { ...exercise, exerciseType };
 
       return {
@@ -1558,45 +1663,8 @@ export async function markWorkoutConflict(workoutId: string, error: string) {
 export async function cacheTemplates(userId: string, templates: any[]) {
   const db = getLocalDb();
   if (!db) return;
-  const hydratedAt = new Date();
-  const allExercises: any[] = [];
   for (const template of templates) {
-    db.insert(localTemplates)
-      .values({
-        id: template.id,
-        userId,
-        name: template.name,
-        description: template.description ?? null,
-        notes: template.notes ?? null,
-        isDeleted: false,
-        createdLocally: false,
-        createdAt: toDate(template.createdAt),
-        updatedAt: toDate(template.updatedAt),
-        hydratedAt,
-      })
-      .onConflictDoUpdate({
-        target: localTemplates.id,
-        set: {
-          name: template.name,
-          description: template.description ?? null,
-          notes: template.notes ?? null,
-          isDeleted: false,
-          createdLocally: false,
-          updatedAt: toDate(template.updatedAt),
-          hydratedAt,
-        },
-      })
-      .run();
-
-    db.delete(localTemplateExercises)
-      .where(eq(localTemplateExercises.templateId, template.id))
-      .run();
-    for (const exercise of template.exercises ?? []) {
-      allExercises.push(normalizeTemplateExerciseForLocalCache(template.id, exercise));
-    }
-  }
-  if (allExercises.length > 0) {
-    db.insert(localTemplateExercises).values(allExercises).run();
+    await upsertLocalTemplateSnapshot(userId, template, { createdLocally: false });
   }
 }
 

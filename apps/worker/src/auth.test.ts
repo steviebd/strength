@@ -33,6 +33,8 @@ describe('createAuth', () => {
       BETTER_AUTH_SECRET: 'secret',
       WORKER_BASE_URL: 'http://localhost:8787',
       APP_ENV: 'development',
+      POSTHOG_API_KEY: 'phc_test',
+      POSTHOG_PROJECT_URL: 'https://test.posthog.com',
     });
 
     expect(betterAuth).toHaveBeenCalledWith(
@@ -56,6 +58,8 @@ describe('createAuth', () => {
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: '',
         APP_ENV: 'production',
+        POSTHOG_API_KEY: 'phc_test',
+        POSTHOG_PROJECT_URL: 'https://test.posthog.com',
       }),
     ).toThrow(
       'WORKER_BASE_URL must be set and start with https:// in non-development environments',
@@ -69,6 +73,8 @@ describe('createAuth', () => {
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: 'http://example.com',
         APP_ENV: 'production',
+        POSTHOG_API_KEY: 'phc_test',
+        POSTHOG_PROJECT_URL: 'https://test.posthog.com',
       }),
     ).toThrow(
       'WORKER_BASE_URL must be set and start with https:// in non-development environments',
@@ -82,6 +88,8 @@ describe('createAuth', () => {
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: 'http://localhost:8787',
         APP_ENV: 'development',
+        POSTHOG_API_KEY: 'phc_test',
+        POSTHOG_PROJECT_URL: 'https://test.posthog.com',
       }),
     ).not.toThrow();
   });
@@ -93,6 +101,8 @@ describe('createAuth', () => {
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: 'https://example.com',
         APP_ENV: 'production',
+        POSTHOG_API_KEY: 'phc_test',
+        POSTHOG_PROJECT_URL: 'https://test.posthog.com',
       }),
     ).not.toThrow();
   });

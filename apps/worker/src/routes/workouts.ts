@@ -290,7 +290,16 @@ router.post(
           ? (historySnapshot?.sets ?? []).slice(0, 1)
           : historySnapshot?.sets;
         const historySetCount = historySets?.length ?? 0;
-        const plannedSetCount = isAmrap ? 1 : Math.max(1, templateExercise.sets ?? 3);
+        const plannedSetCount = isAmrap
+          ? 1
+          : Math.max(
+              1,
+              templateExercise.sets ??
+                ((templateExercise.exerciseType ?? 'weighted') === 'cardio' ||
+                (templateExercise.exerciseType ?? 'weighted') === 'timed'
+                  ? 1
+                  : 3),
+            );
         const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
         const setRows = Array.from({ length: setCount }, (_, s) => {
           const historySet = historySets?.[s];

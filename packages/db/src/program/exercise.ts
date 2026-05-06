@@ -40,6 +40,48 @@ export async function getOrCreateExerciseForUser(
     const canonicalMuscleGroup = libraryItem?.muscleGroup ?? inferMuscleGroup(liftType);
     const canonicalDescription = libraryItem?.description ?? null;
 
+    const existingByLibraryId = await db
+      .select({ id: exercises.id })
+      .from(exercises)
+      .where(
+        and(
+          eq(exercises.userId, userId),
+          eq(exercises.libraryId, libraryId),
+          eq(exercises.isDeleted, false),
+        ),
+      )
+      .get();
+
+    if (existingByLibraryId) {
+      await db
+        .update(exercises)
+        .set({
+          muscleGroup: canonicalMuscleGroup,
+          description: canonicalDescription,
+          exerciseType: getExerciseTypeByLibraryId(libraryId),
+          updatedAt: now,
+        })
+        .where(eq(exercises.id, existingByLibraryId.id))
+        .run();
+      return existingByLibraryId.id;
+    }
+
+    const existingByName = await db
+      .select({ id: exercises.id })
+      .from(exercises)
+      .where(
+        and(
+          eq(exercises.userId, userId),
+          eq(exercises.isDeleted, false),
+          eq(sql`lower(${exercises.name})`, canonicalName.toLowerCase()),
+        ),
+      )
+      .get();
+
+    if (existingByName) {
+      return existingByName.id;
+    }
+
     const result = await db
       .insert(exercises)
       .values({
@@ -53,18 +95,30 @@ export async function getOrCreateExerciseForUser(
         createdAt: now,
         updatedAt: now,
       })
-      .onConflictDoUpdate({
-        target: [exercises.userId, exercises.libraryId],
-        set: {
-          muscleGroup: canonicalMuscleGroup,
-          description: canonicalDescription,
-          exerciseType: getExerciseTypeByLibraryId(libraryId),
-          updatedAt: now,
-        },
-      })
+      .onConflictDoNothing()
       .returning({ id: exercises.id })
       .get();
-    return result.id;
+
+    if (result) {
+      return result.id;
+    }
+
+    const fallback = await db
+      .select({ id: exercises.id })
+      .from(exercises)
+      .where(
+        and(
+          eq(exercises.userId, userId),
+          eq(exercises.isDeleted, false),
+          sql`(${exercises.libraryId} = ${libraryId} OR lower(${exercises.name}) = ${canonicalName.toLowerCase()})`,
+        ),
+      )
+      .get();
+
+    if (!fallback) {
+      throw new Error('Failed to create or find library exercise');
+    }
+    return fallback.id;
   }
 
   const existingByName = await db

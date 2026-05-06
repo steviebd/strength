@@ -41,6 +41,7 @@ import {
   type ActiveProgram,
   type ProgramListItem,
 } from '@/hooks/usePrograms';
+import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, spacing, radius, typography, layout, statusBg } from '@/theme';
 
@@ -659,8 +660,8 @@ export default function ProgramsScreen() {
   const [startingProgram, setStartingProgram] = useState(false);
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const [values, setValues] = useState<OneRmValues>({
     squat: '',
     bench: '',
@@ -750,32 +751,21 @@ export default function ProgramsScreen() {
     setScheduleStep('schedule');
   };
 
-  const refreshProgramsScreen = useCallback(
-    async (showRefreshIndicator = false) => {
-      if (showRefreshIndicator) {
-        setIsRefreshing(true);
-      }
-
-      try {
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ['programs'] }),
-          refetchActivePrograms(),
-          refetchLatestOneRms(),
-        ]);
-      } finally {
-        if (showRefreshIndicator) {
-          setIsRefreshing(false);
-        }
-      }
-    },
-    [queryClient, refetchActivePrograms, refetchLatestOneRms],
-  );
-
   useFocusEffect(
     useCallback(() => {
-      void refreshProgramsScreen();
-    }, [refreshProgramsScreen]),
+      void refetchActivePrograms();
+      void refetchLatestOneRms();
+    }, [refetchActivePrograms, refetchLatestOneRms]),
   );
+
+  const onRefresh = useCallback(async () => {
+    setOfflineMessage(null);
+    try {
+      await handleRefresh();
+    } catch (err) {
+      setOfflineMessage(getPullToRefreshErrorMessage(err));
+    }
+  }, [handleRefresh]);
 
   const _getTotalSessions = (slug: string): number => {
     switch (slug) {
@@ -1018,9 +1008,7 @@ export default function ProgramsScreen() {
         refreshControl: (
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => {
-              void refreshProgramsScreen(true);
-            }}
+            onRefresh={onRefresh}
             tintColor={colors.accent}
           />
         ),

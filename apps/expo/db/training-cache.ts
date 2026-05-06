@@ -124,7 +124,13 @@ export async function hydrateOfflineTrainingSnapshot(
           name: template.name,
           description: template.description ?? null,
           notes: template.notes ?? null,
+          defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+          defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+          defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+          defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+          defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
           isDeleted: false,
+          createdLocally: false,
           createdAt: toDate(template.createdAt),
           updatedAt: toDate(template.updatedAt),
           serverUpdatedAt: toDate(template.updatedAt),
@@ -136,7 +142,13 @@ export async function hydrateOfflineTrainingSnapshot(
             name: template.name,
             description: template.description ?? null,
             notes: template.notes ?? null,
+            defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+            defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+            defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+            defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+            defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
             isDeleted: false,
+            createdLocally: false,
             updatedAt: toDate(template.updatedAt),
             serverUpdatedAt: toDate(template.updatedAt),
             hydratedAt,
@@ -155,7 +167,7 @@ export async function hydrateOfflineTrainingSnapshot(
     }
 
     const orphanedTemplateIds = existingLocalTemplates
-      .filter((template) => !serverTemplateIds.has(template.id) && !template.createdLocally)
+      .filter((template) => !serverTemplateIds.has(template.id) && !pendingSyncIds.has(template.id))
       .map((template) => template.id);
     if (orphanedTemplateIds.length > 0) {
       db.update(localTemplates)
@@ -357,6 +369,11 @@ async function getCachedTemplate(templateId: string): Promise<Template | null> {
     name: template.name,
     description: template.description,
     notes: template.notes,
+    defaultWeightIncrement: template.defaultWeightIncrement,
+    defaultBodyweightIncrement: template.defaultBodyweightIncrement,
+    defaultCardioIncrement: template.defaultCardioIncrement,
+    defaultTimedIncrement: template.defaultTimedIncrement,
+    defaultPlyoIncrement: template.defaultPlyoIncrement,
     createdAt: toIso(template.createdAt) ?? new Date().toISOString(),
     updatedAt: toIso(template.updatedAt) ?? new Date().toISOString(),
     exercises: exercises.map((exercise) => ({
@@ -366,7 +383,9 @@ async function getCachedTemplate(templateId: string): Promise<Template | null> {
       muscleGroup: exercise.muscleGroup,
       sets: exercise.sets ?? 3,
       reps: exercise.reps ?? 10,
+      repsRaw: exercise.repsRaw ?? null,
       targetWeight: exercise.targetWeight ?? 0,
+      addedWeight: exercise.addedWeight ?? 0,
       exerciseType: exercise.exerciseType ?? 'weighted',
       targetDuration: exercise.targetDuration ?? null,
       targetDistance: exercise.targetDistance ?? null,

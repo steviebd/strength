@@ -18,6 +18,7 @@ import {
 } from '@/db/workouts';
 import { enqueueWorkoutCompletion } from '@/db/sync-queue';
 import { runWorkoutSync } from '@/lib/workout-sync';
+import { hasProgressionHistoryData } from '@/lib/workout-progression';
 import type {
   Workout,
   WorkoutExercise,
@@ -65,10 +66,6 @@ function getExerciseHistoryIds(exercise: Exercise) {
   return Array.from(new Set([exercise.id, exercise.libraryId].filter(Boolean) as string[]));
 }
 
-function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) {
-  return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
-}
-
 async function fetchFirstExerciseHistorySnapshot(
   exerciseIds: string[],
   exerciseName: string,
@@ -76,7 +73,7 @@ async function fetchFirstExerciseHistorySnapshot(
 ) {
   for (const exerciseId of exerciseIds) {
     const snapshot = await fetchExerciseHistorySnapshot(exerciseId, exerciseName, isAmrap);
-    if (hasUsableHistory(snapshot)) {
+    if (hasProgressionHistoryData(snapshot)) {
       return snapshot;
     }
   }
@@ -86,7 +83,14 @@ async function fetchFirstExerciseHistorySnapshot(
 async function getCachedLastWorkoutData(userId: string, exerciseIds: string[]) {
   for (const exerciseId of exerciseIds) {
     const cached = await getLastWorkout(userId, exerciseId);
-    if (cached && (cached.weight !== null || cached.reps !== null)) {
+    if (
+      cached &&
+      (cached.weight !== null ||
+        cached.reps !== null ||
+        cached.duration !== null ||
+        cached.distance !== null ||
+        cached.height !== null)
+    ) {
       return cached;
     }
   }
@@ -221,7 +225,10 @@ interface UseWorkoutSessionReturn {
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => Promise<void>;
-  addExercise: (exercise: Exercise) => Promise<void>;
+  addExercise: (
+    exercise: Exercise,
+    options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },
+  ) => Promise<void>;
   updateExercise: (workoutExerciseId: string, updates: Partial<WorkoutExercise>) => void;
   removeExercise: (workoutExerciseId: string) => void;
   addSet: (workoutExerciseId: string) => void;
@@ -535,12 +542,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   }, [setExercisesAndRef, workout]);
 
   const addExercise = useCallback(
-    async (exercise: Exercise) => {
+    async (
+      exercise: Exercise,
+      options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },
+    ) => {
       const historyIds = getExerciseHistoryIds(exercise);
-      let historySnapshot: ExerciseHistorySnapshot | null = null;
+      const hasExplicitHistory = options !== undefined;
+      let historySnapshot: ExerciseHistorySnapshot | null = options?.historySnapshot ?? null;
       let cached: Awaited<ReturnType<typeof getCachedLastWorkoutData>> = null;
 
-      if (session.data?.user?.id) {
+      if (!hasExplicitHistory && session.data?.user?.id) {
         try {
           const localHistory = await getLocalLastCompletedExerciseSnapshots(
             session.data.user.id,
@@ -548,13 +559,13 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
             [exercise.name],
             { isAmrap: Boolean(exercise.isAmrap) },
           );
-          historySnapshot = localHistory.find(hasUsableHistory) ?? null;
+          historySnapshot = localHistory.find(hasProgressionHistoryData) ?? null;
         } catch {
           // History lookup is best-effort. The exercise should still be added.
         }
       }
 
-      if (historySnapshot === null && cached === null) {
+      if (!hasExplicitHistory && historySnapshot === null && cached === null) {
         historySnapshot = await fetchFirstExerciseHistorySnapshot(
           historyIds,
           exercise.name,
@@ -562,14 +573,14 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         );
       }
 
-      if (historySnapshot === null && session.data?.user?.id) {
+      if (!hasExplicitHistory && historySnapshot === null && session.data?.user?.id) {
         cached = await getCachedLastWorkoutData(session.data.user.id, historyIds);
       }
 
       const newSets: WorkoutSet[] =
-        historySnapshot !== null
+        !options?.ignoreHistory && historySnapshot !== null
           ? buildHistorySets(historySnapshot)
-          : cached
+          : !options?.ignoreHistory && cached
             ? buildCachedSet(cached)
             : buildEmptySet(exercise.exerciseType ?? 'weighted');
       const sets = exercise.isAmrap ? newSets.slice(0, 1) : newSets;

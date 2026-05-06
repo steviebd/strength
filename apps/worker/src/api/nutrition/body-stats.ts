@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 
@@ -67,5 +67,30 @@ export const upsertBodyStatsHandler = createHandler(async (c, { userId, db }) =>
     .returning()
     .get();
 
+  if (body.bodyweightKg !== undefined) {
+    await db
+      .insert(schema.userBodyweightHistory)
+      .values({
+        userId,
+        bodyweightKg: body.bodyweightKg,
+        recordedAt: body.recordedAt ? new Date(body.recordedAt) : now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+  }
+
   return c.json(stats);
+});
+
+export const getBodyweightHistoryHandler = createHandler(async (c, { userId, db }) => {
+  const history = await db
+    .select()
+    .from(schema.userBodyweightHistory)
+    .where(eq(schema.userBodyweightHistory.userId, userId))
+    .orderBy(desc(schema.userBodyweightHistory.recordedAt))
+    .limit(10)
+    .all();
+
+  return c.json(history);
 });

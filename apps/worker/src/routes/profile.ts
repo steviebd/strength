@@ -13,6 +13,7 @@ export function serializePreferences(
   return {
     weightUnit: prefs.weightUnit ?? 'kg',
     distanceUnit: prefs.distanceUnit ?? 'km',
+    heightUnit: prefs.heightUnit ?? 'cm',
     timezone: prefs.timezone ?? null,
     weightPromptedAt: prefs.weightPromptedAt ?? null,
     bodyweightKg: bodyStats?.bodyweightKg ?? null,
@@ -29,6 +30,8 @@ router.get(
       .values({
         userId,
         weightUnit: 'kg',
+        distanceUnit: 'km',
+        heightUnit: 'cm',
         timezone: null,
         createdAt: now,
         updatedAt: now,
@@ -70,6 +73,7 @@ router.put(
 
     const weightUnit = typeof body.weightUnit === 'string' ? body.weightUnit : undefined;
     const distanceUnit = typeof body.distanceUnit === 'string' ? body.distanceUnit : undefined;
+    const heightUnit = typeof body.heightUnit === 'string' ? body.heightUnit : undefined;
     const timezone =
       body.timezone === null ? null : typeof body.timezone === 'string' ? body.timezone : undefined;
     const weightPromptedAt =
@@ -85,6 +89,10 @@ router.put(
 
     if (distanceUnit !== undefined && !['km', 'mi'].includes(distanceUnit)) {
       return c.json({ message: 'Invalid distance unit' }, 400);
+    }
+
+    if (heightUnit !== undefined && !['cm', 'in'].includes(heightUnit)) {
+      return c.json({ message: 'Invalid height unit' }, 400);
     }
 
     if (timezone !== undefined && timezone !== null && !isValidTimeZone(timezone)) {
@@ -103,6 +111,7 @@ router.put(
       const now = new Date();
       const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
       const nextDistanceUnit = distanceUnit ?? existing?.distanceUnit ?? 'km';
+      const nextHeightUnit = heightUnit ?? existing?.heightUnit ?? 'cm';
       const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
       const nextWeightPromptedAt =
         weightPromptedAt === undefined
@@ -117,6 +126,7 @@ router.put(
           .set({
             weightUnit: nextWeightUnit,
             distanceUnit: nextDistanceUnit,
+            heightUnit: nextHeightUnit,
             timezone: nextTimezone,
             weightPromptedAt: nextWeightPromptedAt,
             updatedAt: now,
@@ -141,6 +151,7 @@ router.put(
             userId,
             weightUnit: nextWeightUnit,
             distanceUnit: nextDistanceUnit,
+            heightUnit: nextHeightUnit,
             timezone: nextTimezone,
             weightPromptedAt: nextWeightPromptedAt,
             createdAt: now,

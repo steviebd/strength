@@ -53,6 +53,10 @@ vi.mock('@/db/local-cleanup', () => ({
   cleanupStaleLocalData: vi.fn(),
 }));
 
+vi.mock('@/db/body-stats', () => ({
+  hydrateBodyweightHistory: vi.fn(),
+}));
+
 function createMockDb(row: { hydratedAt: Date } | undefined) {
   return {
     select: vi.fn(() => ({
@@ -101,9 +105,7 @@ describe('hydrateTrainingCache', () => {
     const { hydrateTrainingCache } = await import('./workout-sync');
     await hydrateTrainingCache(userId);
 
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/api/training/offline-snapshot?recentWorkoutLimit=50',
-    );
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/training/offline-snapshot');
     expect(hydrateOfflineTrainingSnapshotMock).toHaveBeenCalledWith(userId, expect.any(Object));
   });
 
@@ -122,9 +124,7 @@ describe('hydrateTrainingCache', () => {
     const { hydrateTrainingCache } = await import('./workout-sync');
     await hydrateTrainingCache(userId, { force: true });
 
-    expect(apiFetchMock).toHaveBeenCalledWith(
-      '/api/training/offline-snapshot?recentWorkoutLimit=50',
-    );
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/training/offline-snapshot');
     expect(hydrateOfflineTrainingSnapshotMock).toHaveBeenCalledWith(userId, expect.any(Object));
   });
 });

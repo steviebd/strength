@@ -2,6 +2,7 @@ export const METERS_PER_MILE = 1609.344;
 export const CM_PER_INCH = 2.54;
 
 export type DistanceUnit = 'km' | 'mi';
+export type HeightUnit = 'cm' | 'in';
 
 export function formatDuration(seconds: number): string {
   if (seconds < 60) {
@@ -32,11 +33,10 @@ export function formatDistance(meters: number, unit: DistanceUnit): string {
   return `${(meters / METERS_PER_MILE).toFixed(1)} mi`;
 }
 
-export function formatHeight(cm: number, unit: DistanceUnit): string {
-  if (unit === 'km') {
+export function formatHeight(cm: number, unit: HeightUnit): string {
+  if (unit === 'cm') {
     return `${Math.round(cm)} cm`;
   }
-  // unit === 'mi'
   const inches = cm / CM_PER_INCH;
   return `${Math.round(inches)} in`;
 }
@@ -48,9 +48,17 @@ export function parseDistanceInput(value: number, unit: DistanceUnit): number {
   return value * METERS_PER_MILE;
 }
 
-export function parseHeightInput(value: number, unit: DistanceUnit): number {
-  if (unit === 'km') {
+export function parseHeightInput(value: number, unit: HeightUnit): number {
+  if (unit === 'cm') {
     return value;
   }
   return value * CM_PER_INCH;
+}
+
+export function toDisplayHeight(cm: number, unit: HeightUnit): number {
+  return unit === 'cm' ? cm : cm / CM_PER_INCH;
+}
+
+export function toStorageHeight(value: number, unit: HeightUnit): number {
+  return unit === 'cm' ? value : value * CM_PER_INCH;
 }

@@ -10,6 +10,7 @@ export function useOfflineQuery<TData>(options: {
   refetchOnMount?: boolean | 'always';
   refetchOnWindowFocus?: boolean;
   fallbackToCacheOnError?: boolean;
+  networkFirst?: boolean;
   refetchInterval?: number;
   isDirtyFn?: () => Promise<boolean>;
 }) {
@@ -22,6 +23,26 @@ export function useOfflineQuery<TData>(options: {
     refetchOnWindowFocus: options.refetchOnWindowFocus ?? true,
     refetchInterval: options.refetchInterval,
     queryFn: async () => {
+      if (options.networkFirst) {
+        try {
+          const data = await options.apiFn();
+          if (options.isDirtyFn) {
+            const isDirty = await options.isDirtyFn();
+            if (isDirty) {
+              const cached = await options.cacheFn();
+              if (cached != null) return cached;
+              return data;
+            }
+          }
+          await options.writeCacheFn(data);
+          return data;
+        } catch (error) {
+          const cached = await options.cacheFn();
+          if (cached != null) return cached;
+          throw error;
+        }
+      }
+
       const cached = await options.cacheFn();
       if (cached != null) {
         void options

@@ -3,8 +3,10 @@ export interface TemplateExercise {
   exerciseId: string;
   name: string;
   muscleGroup: string | null;
+  libraryId?: string | null;
   sets: number;
   reps: number;
+  repsRaw?: string | null;
   targetWeight: number;
   addedWeight?: number;
   isAmrap?: boolean;
@@ -25,6 +27,11 @@ export interface Template {
   exercises: TemplateExercise[];
   createdAt: string;
   updatedAt: string;
+  defaultWeightIncrement?: number | null;
+  defaultBodyweightIncrement?: number | null;
+  defaultCardioIncrement?: number | null;
+  defaultTimedIncrement?: number | null;
+  defaultPlyoIncrement?: number | null;
 }
 
 export interface SelectedExercise {
@@ -56,6 +63,11 @@ export interface TemplateEditorProps {
     description?: string;
     notes?: string;
     exercises?: SelectedExercise[];
+    defaultWeightIncrement?: number | null;
+    defaultBodyweightIncrement?: number | null;
+    defaultCardioIncrement?: number | null;
+    defaultTimedIncrement?: number | null;
+    defaultPlyoIncrement?: number | null;
   };
   onSaved?: (template: Template) => void;
   onClose?: () => void;

@@ -5,6 +5,7 @@ import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
 import type { AppDb } from '../api/auth';
 import { requireOwnedRecord } from '../api/guards';
+import { findExistingUserExerciseByName } from '../lib/program-helpers';
 import { pickAllowedKeys } from '../lib/validation';
 
 const router = createRouter();
@@ -18,6 +19,11 @@ router.get(
         name: schema.templates.name,
         description: schema.templates.description,
         notes: schema.templates.notes,
+        defaultWeightIncrement: schema.templates.defaultWeightIncrement,
+        defaultBodyweightIncrement: schema.templates.defaultBodyweightIncrement,
+        defaultCardioIncrement: schema.templates.defaultCardioIncrement,
+        defaultTimedIncrement: schema.templates.defaultTimedIncrement,
+        defaultPlyoIncrement: schema.templates.defaultPlyoIncrement,
         createdAt: schema.templates.createdAt,
         updatedAt: schema.templates.updatedAt,
       })
@@ -84,11 +90,34 @@ router.post(
   '/',
   createHandler(async (c, { userId, db }) => {
     const body = await c.req.json();
-    const { id, name, description, notes } = body;
+    const {
+      id,
+      name,
+      description,
+      notes,
+      defaultWeightIncrement,
+      defaultBodyweightIncrement,
+      defaultCardioIncrement,
+      defaultTimedIncrement,
+      defaultPlyoIncrement,
+    } = body;
     if (!name) {
       return c.json({ message: 'Name is required' }, 400);
     }
     const now = new Date();
+
+    const progressionFields = {
+      defaultWeightIncrement:
+        typeof defaultWeightIncrement === 'number' ? defaultWeightIncrement : undefined,
+      defaultBodyweightIncrement:
+        typeof defaultBodyweightIncrement === 'number' ? defaultBodyweightIncrement : undefined,
+      defaultCardioIncrement:
+        typeof defaultCardioIncrement === 'number' ? defaultCardioIncrement : undefined,
+      defaultTimedIncrement:
+        typeof defaultTimedIncrement === 'number' ? defaultTimedIncrement : undefined,
+      defaultPlyoIncrement:
+        typeof defaultPlyoIncrement === 'number' ? defaultPlyoIncrement : undefined,
+    };
 
     if (typeof id === 'string' && id.trim()) {
       const existing = await db
@@ -108,6 +137,7 @@ router.post(
             name,
             description: description || null,
             notes: notes || null,
+            ...progressionFields,
             isDeleted: false,
             updatedAt: now,
           })
@@ -126,6 +156,7 @@ router.post(
         name,
         description: description || null,
         notes: notes || null,
+        ...progressionFields,
         createdAt: now,
         updatedAt: now,
       })
@@ -197,7 +228,16 @@ router.put(
       return c.json({ message: 'Template not found' }, 404);
     }
 
-    const allowed = pickAllowedKeys(body, ['name', 'description', 'notes']);
+    const allowed = pickAllowedKeys(body, [
+      'name',
+      'description',
+      'notes',
+      'defaultWeightIncrement',
+      'defaultBodyweightIncrement',
+      'defaultCardioIncrement',
+      'defaultTimedIncrement',
+      'defaultPlyoIncrement',
+    ]);
 
     await db
       .update(schema.templates)
@@ -282,6 +322,7 @@ router.post(
     if (template instanceof Response) return template;
     const body = await c.req.json();
     const {
+      id: requestedTemplateExerciseId,
       exerciseId,
       orderIndex,
       targetWeight,
@@ -300,6 +341,10 @@ router.post(
     if (!exerciseId || orderIndex === undefined) {
       return c.json({ message: 'exerciseId and orderIndex are required' }, 400);
     }
+    const templateExerciseId =
+      typeof requestedTemplateExerciseId === 'string' && requestedTemplateExerciseId.trim()
+        ? requestedTemplateExerciseId.trim()
+        : undefined;
 
     let resolvedExerciseType =
       typeof exerciseType === 'string' &&
@@ -362,28 +407,62 @@ router.post(
           return c.json({ message: 'Exercise not found' }, 404);
         }
 
-        const now = new Date();
-        const createdExercise = await db
-          .insert(schema.exercises)
-          .values({
-            userId,
-            name: libraryExercise.name,
-            muscleGroup: libraryExercise.muscleGroup,
-            description: libraryExercise.description,
-            libraryId: libraryExercise.id,
-            exerciseType: libraryExercise.exerciseType,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning({ id: schema.exercises.id })
-          .get();
+        const existingByName = await findExistingUserExerciseByName(
+          db,
+          userId,
+          libraryExercise.name,
+        );
+        if (existingByName) {
+          resolvedExerciseId = existingByName.id;
+          resolvedExerciseType =
+            libraryExercise.exerciseType ?? existingByName.exerciseType ?? resolvedExerciseType;
+        } else {
+          const now = new Date();
+          const createdExercise = await db
+            .insert(schema.exercises)
+            .values({
+              userId,
+              name: libraryExercise.name,
+              muscleGroup: libraryExercise.muscleGroup,
+              description: libraryExercise.description,
+              libraryId: libraryExercise.id,
+              exerciseType: libraryExercise.exerciseType,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoNothing()
+            .returning({ id: schema.exercises.id })
+            .get();
 
-        if (!createdExercise) {
-          return c.json({ message: 'Failed to create exercise' }, 500);
+          if (!createdExercise) {
+            const fallbackExercise =
+              (await db
+                .select({
+                  id: schema.exercises.id,
+                  exerciseType: schema.exercises.exerciseType,
+                })
+                .from(schema.exercises)
+                .where(
+                  and(
+                    eq(schema.exercises.userId, userId),
+                    eq(schema.exercises.isDeleted, false),
+                    eq(schema.exercises.libraryId, libraryExercise.id),
+                  ),
+                )
+                .get()) ?? (await findExistingUserExerciseByName(db, userId, libraryExercise.name));
+
+            if (!fallbackExercise) {
+              return c.json({ message: 'Failed to create exercise' }, 500);
+            }
+
+            resolvedExerciseId = fallbackExercise.id;
+            resolvedExerciseType =
+              libraryExercise.exerciseType ?? fallbackExercise.exerciseType ?? resolvedExerciseType;
+          } else {
+            resolvedExerciseId = createdExercise.id;
+            resolvedExerciseType = libraryExercise.exerciseType;
+          }
         }
-
-        resolvedExerciseId = createdExercise.id;
-        resolvedExerciseType = libraryExercise.exerciseType;
       }
     } else if (existingExercise.libraryId) {
       const libraryExercise = schema.exerciseLibrary.find(
@@ -393,25 +472,58 @@ router.post(
         libraryExercise?.exerciseType ?? existingExercise.exerciseType ?? resolvedExerciseType;
     }
 
+    const templateExerciseValues = {
+      ...(templateExerciseId ? { id: templateExerciseId } : {}),
+      templateId: id,
+      exerciseId: resolvedExerciseId,
+      orderIndex,
+      targetWeight: targetWeight || null,
+      addedWeight: addedWeight || 0,
+      sets: sets || null,
+      reps: reps || null,
+      repsRaw: repsRaw || null,
+      exerciseType: resolvedExerciseType,
+      targetDuration: targetDuration ?? null,
+      targetDistance: targetDistance ?? null,
+      targetHeight: targetHeight ?? null,
+      isAmrap: isAmrap || false,
+      isAccessory: isAccessory || false,
+      isRequired: isRequired !== false,
+    };
+
+    if (templateExerciseId) {
+      const existingTemplateExercise = await db
+        .select({
+          id: schema.templateExercises.id,
+          templateId: schema.templateExercises.templateId,
+        })
+        .from(schema.templateExercises)
+        .where(eq(schema.templateExercises.id, templateExerciseId))
+        .get();
+
+      if (existingTemplateExercise && existingTemplateExercise.templateId !== id) {
+        return c.json({ message: 'Template exercise id already exists' }, 409);
+      }
+
+      if (existingTemplateExercise) {
+        const updated = await db
+          .update(schema.templateExercises)
+          .set(templateExerciseValues)
+          .where(
+            and(
+              eq(schema.templateExercises.id, templateExerciseId),
+              eq(schema.templateExercises.templateId, id),
+            ),
+          )
+          .returning()
+          .get();
+        return c.json(updated);
+      }
+    }
+
     const result = await db
       .insert(schema.templateExercises)
-      .values({
-        templateId: id,
-        exerciseId: resolvedExerciseId,
-        orderIndex,
-        targetWeight: targetWeight || null,
-        addedWeight: addedWeight || 0,
-        sets: sets || null,
-        reps: reps || null,
-        repsRaw: repsRaw || null,
-        exerciseType: resolvedExerciseType,
-        targetDuration: targetDuration ?? null,
-        targetDistance: targetDistance ?? null,
-        targetHeight: targetHeight ?? null,
-        isAmrap: isAmrap || false,
-        isAccessory: isAccessory || false,
-        isRequired: isRequired !== false,
-      })
+      .values(templateExerciseValues)
       .returning()
       .get();
     return c.json(result, 201);

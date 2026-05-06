@@ -4,6 +4,7 @@ import {
   Alert,
   AppState,
   Keyboard,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +30,7 @@ import {
 } from '@/lib/storage';
 import { getCachedDailySummary, cacheDailySummary } from '@/db/nutrition';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
@@ -306,6 +308,7 @@ export default function NutritionScreen() {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
   const { activeTimezone } = useUserPreferences();
+  const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
     () => getNutritionLocalStateKey(date, activeTimezone),
@@ -692,6 +695,15 @@ export default function NutritionScreen() {
     [userId],
   );
 
+  const onRefresh = useCallback(async () => {
+    setOfflineMessage(null);
+    try {
+      await handleRefresh();
+    } catch (err) {
+      setOfflineMessage(getPullToRefreshErrorMessage(err));
+    }
+  }, [handleRefresh]);
+
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
@@ -966,6 +978,13 @@ export default function NutritionScreen() {
             bottomInset: NUTRITION_BOTTOM_INSET,
             keyboardDismissMode: 'interactive',
             keyboardShouldPersistTaps: 'handled',
+            refreshControl: (
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.accentSecondary}
+              />
+            ),
           }}
           scrollViewRef={messagesScrollRef}
         >

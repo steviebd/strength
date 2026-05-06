@@ -19,9 +19,10 @@ export function useScrollToInput(): (inputRef: RefObject<any>, offset?: number) 
 interface ScrollProviderProps {
   children: ReactNode;
   scrollViewRef: RefObject<ScrollView | null>;
+  topInset?: number;
 }
 
-export function ScrollProvider({ children, scrollViewRef }: ScrollProviderProps) {
+export function ScrollProvider({ children, scrollViewRef, topInset = 0 }: ScrollProviderProps) {
   function measureAndScroll(inputRef: RefObject<any>, offset: number, retry = true) {
     const inputNode = inputRef?.current;
     const scrollView = scrollViewRef?.current;
@@ -57,7 +58,7 @@ export function ScrollProvider({ children, scrollViewRef }: ScrollProviderProps)
       },
       (_x: number, y: number) => {
         scrollView.scrollTo({
-          y: Math.max(0, y - offset),
+          y: Math.max(0, y - offset - topInset),
           animated: true,
         });
       },

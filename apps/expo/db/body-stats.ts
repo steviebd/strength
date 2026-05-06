@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { getLocalDb } from './client';
-import { localBodyStats } from './local-schema';
+import { localBodyStats, localBodyweightHistory } from './local-schema';
 
 export interface BodyStatsData {
   bodyweightKg: number | null;
@@ -11,6 +11,14 @@ export interface BodyStatsData {
   targetFatG: number | null;
   recordedAt?: string | null;
   updatedAt?: string | Date | null;
+}
+
+export interface BodyweightHistoryEntry {
+  id: string;
+  userId: string;
+  bodyweightKg: number;
+  recordedAt: string;
+  createdAt: string;
 }
 
 export async function getCachedBodyStats(userId: string): Promise<BodyStatsData | null> {
@@ -85,4 +93,58 @@ export async function cacheBodyStats(
       },
     })
     .run();
+}
+
+export async function getCachedBodyweightHistory(
+  userId: string,
+): Promise<BodyweightHistoryEntry[]> {
+  const db = getLocalDb();
+  if (!db) return [];
+
+  const rows = db
+    .select()
+    .from(localBodyweightHistory)
+    .where(eq(localBodyweightHistory.userId, userId))
+    .orderBy(desc(localBodyweightHistory.recordedAt))
+    .limit(10)
+    .all();
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    bodyweightKg: row.bodyweightKg,
+    recordedAt: row.recordedAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+export async function hydrateBodyweightHistory(
+  userId: string,
+  entries: BodyweightHistoryEntry[],
+): Promise<void> {
+  const db = getLocalDb();
+  if (!db) return;
+
+  const now = new Date();
+  for (const entry of entries) {
+    db.insert(localBodyweightHistory)
+      .values({
+        id: entry.id,
+        userId,
+        bodyweightKg: entry.bodyweightKg,
+        recordedAt: new Date(entry.recordedAt),
+        createdAt: new Date(entry.createdAt),
+        hydratedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: localBodyweightHistory.id,
+        set: {
+          bodyweightKg: entry.bodyweightKg,
+          recordedAt: new Date(entry.recordedAt),
+          createdAt: new Date(entry.createdAt),
+          hydratedAt: now,
+        },
+      })
+      .run();
+  }
 }

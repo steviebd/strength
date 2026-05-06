@@ -20,6 +20,7 @@ import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { getLocalDb } from '@/db/client';
 import { localBodyStats } from '@/db/local-schema';
 import { getCachedBodyStats, cacheBodyStats } from '@/db/body-stats';
+import { clearFirstSyncFlag } from '@/lib/first-sync';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { colors, overlay, radius, spacing, statusBg, textRoles, typography } from '@/theme';
@@ -80,10 +81,12 @@ export default function Profile() {
   const {
     weightUnit,
     distanceUnit,
+    heightUnit,
     timezone,
     deviceTimezone,
     setWeightUnit,
     setDistanceUnit,
+    setHeightUnit,
     setTimezone,
     recordBodyweight,
     bodyweightKg,
@@ -174,17 +177,18 @@ export default function Profile() {
     mutationFn: async (bodyweightKg: number) => {
       const uid = session?.user?.id;
       if (!uid) throw new Error('Not authenticated');
+      const recordedAt = new Date().toISOString();
       return tryOnlineOrEnqueue({
         apiCall: () =>
           apiFetch('/api/nutrition/body-stats', {
             method: 'POST',
-            body: { bodyweightKg },
+            body: { bodyweightKg, recordedAt },
           }),
         userId: uid,
         entityType: 'body_stats',
         operation: 'update_body_stats',
         entityId: uid,
-        payload: { bodyweightKg },
+        payload: { bodyweightKg, recordedAt },
         onEnqueue: async () => {
           const db = getLocalDb();
           if (!db) return;
@@ -477,6 +481,10 @@ export default function Profile() {
   };
 
   const handleSignOut = () => {
+    const uid = session?.user?.id;
+    if (uid) {
+      void clearFirstSyncFlag(uid);
+    }
     authClient.signOut();
     router.replace('/');
   };
@@ -1027,6 +1035,46 @@ export default function Profile() {
                 ]}
               >
                 mi
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Height Unit</Text>
+          <View style={styles.unitToggle}>
+            <Pressable
+              onPress={() => setHeightUnit('cm')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                heightUnit === 'cm' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  heightUnit === 'cm' ? styles.unitButtonTextActive : styles.unitButtonTextInactive,
+                ]}
+              >
+                cm
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setHeightUnit('in')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                heightUnit === 'in' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  heightUnit === 'in' ? styles.unitButtonTextActive : styles.unitButtonTextInactive,
+                ]}
+              >
+                in
               </Text>
             </Pressable>
           </View>

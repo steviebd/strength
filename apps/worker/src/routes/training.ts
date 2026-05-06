@@ -21,6 +21,11 @@ async function listTemplatesForSnapshot(db: any, userId: string) {
       name: schema.templates.name,
       description: schema.templates.description,
       notes: schema.templates.notes,
+      defaultWeightIncrement: schema.templates.defaultWeightIncrement,
+      defaultBodyweightIncrement: schema.templates.defaultBodyweightIncrement,
+      defaultCardioIncrement: schema.templates.defaultCardioIncrement,
+      defaultTimedIncrement: schema.templates.defaultTimedIncrement,
+      defaultPlyoIncrement: schema.templates.defaultPlyoIncrement,
       createdAt: schema.templates.createdAt,
       updatedAt: schema.templates.updatedAt,
     })
@@ -228,7 +233,7 @@ async function listRecentWorkoutsForSnapshot(db: any, userId: string, limit: num
 router.get(
   '/offline-snapshot',
   createHandler(async (c, { userId, db }) => {
-    const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 50);
+    const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 20);
     const [templates, userExercises, activeProgramCycles, recentWorkouts] = await Promise.all([
       listTemplatesForSnapshot(db, userId),
       listUserExercisesForSnapshot(db, userId),
