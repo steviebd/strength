@@ -105,11 +105,7 @@ export default function SignInScreen() {
     } catch (error) {
       const isNetworkError = error instanceof Error && error.message === 'Network request failed';
       if (isNetworkError) {
-        platformStorage.setItem(
-          'auth_pending_signin',
-          JSON.stringify({ email, password, timestamp: Date.now() }),
-        );
-        setError("You're offline. We'll sign you in automatically when you're back online.");
+        setError("You're offline. Please try signing in again when you're back online.");
         return;
       }
       setError(error instanceof Error ? error.message : 'Unable to sign in.');
@@ -146,7 +142,7 @@ export default function SignInScreen() {
     } catch (error) {
       const isNetworkError = error instanceof Error && error.message === 'Network request failed';
       if (isNetworkError) {
-        setError("You're offline. We'll sign you in automatically when you're back online.");
+        setError("You're offline. Please try signing in again when you're back online.");
         return;
       }
       setError(error instanceof Error ? error.message : 'Unable to sign in.');

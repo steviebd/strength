@@ -13,7 +13,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { PageHeader } from '@/components/ui/app-primitives';
 import { authClient } from '@/lib/auth-client';
-import { platformStorage } from '@/lib/platform-storage';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
@@ -478,8 +477,6 @@ export default function Profile() {
   };
 
   const handleSignOut = () => {
-    platformStorage.removeItem('auth_pending_signin');
-    platformStorage.removeItem('auth_pending_signup');
     authClient.signOut();
     router.replace('/');
   };

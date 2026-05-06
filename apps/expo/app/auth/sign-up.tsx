@@ -71,11 +71,7 @@ export default function SignUpScreen() {
     } catch (error) {
       const isNetworkError = error instanceof Error && error.message === 'Network request failed';
       if (isNetworkError) {
-        platformStorage.setItem(
-          'auth_pending_signup',
-          JSON.stringify({ name, email, password, timestamp: Date.now() }),
-        );
-        setError("You're offline. We'll sign you in automatically when you're back online.");
+        setError("You're offline. Please try creating your account again when you're back online.");
         return;
       }
       setError(error instanceof Error ? error.message : 'Unable to create account.');
@@ -113,7 +109,7 @@ export default function SignUpScreen() {
     } catch (error) {
       const isNetworkError = error instanceof Error && error.message === 'Network request failed';
       if (isNetworkError) {
-        setError("You're offline. We'll sign you in automatically when you're back online.");
+        setError("You're offline. Please try signing up again when you're back online.");
         return;
       }
       setError(error instanceof Error ? error.message : 'Unable to sign up.');

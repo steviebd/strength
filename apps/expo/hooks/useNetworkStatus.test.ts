@@ -7,8 +7,6 @@ const mockSignInEmail = vi.hoisted(() => vi.fn());
 const mockSignUpEmail = vi.hoisted(() => vi.fn());
 const mockGetSession = vi.hoisted(() => vi.fn());
 const mockUseSession = vi.hoisted(() => vi.fn((): { data: unknown } => ({ data: null })));
-const mockWaitForSessionReady = vi.hoisted(() => vi.fn());
-const mockReplace = vi.hoisted(() => vi.fn());
 const mockStorageGetItem = vi.hoisted(() => vi.fn());
 const mockStorageSetItem = vi.hoisted(() => vi.fn());
 const mockStorageRemoveItem = vi.hoisted(() => vi.fn());
@@ -30,16 +28,6 @@ vi.mock('@/lib/auth-client', () => ({
     signUp: { email: mockSignUpEmail },
     getSession: mockGetSession,
     useSession: mockUseSession,
-  },
-}));
-
-vi.mock('@/lib/auth-session', () => ({
-  waitForSessionReady: mockWaitForSessionReady,
-}));
-
-vi.mock('expo-router', () => ({
-  router: {
-    replace: mockReplace,
   },
 }));
 
@@ -181,7 +169,7 @@ describe('useNetworkStatus', () => {
     expect(mockRemove).toHaveBeenCalled();
   });
 
-  test('retries pending sign-in when coming back online and clears key on success', async () => {
+  test('does not retry stored auth credentials when coming back online', async () => {
     stateValues[0] = false;
     stateValues[1] = null;
 
@@ -191,19 +179,6 @@ describe('useNetworkStatus', () => {
     });
     const mockRemove = vi.fn();
     mockAddNetworkStateListener.mockReturnValue({ remove: mockRemove });
-
-    mockStorageGetItem.mockImplementation((key: string) => {
-      if (key === 'auth_pending_signin') {
-        return JSON.stringify({
-          email: 'test@example.com',
-          password: 'secret123',
-          timestamp: Date.now(),
-        });
-      }
-      return null;
-    });
-    mockSignInEmail.mockResolvedValue({ error: null });
-    mockWaitForSessionReady.mockResolvedValue({ user: { id: 'user-1' } });
 
     const { useNetworkStatus } = await import('./useNetworkStatus');
     useNetworkStatus();
@@ -215,13 +190,9 @@ describe('useNetworkStatus', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mockSignInEmail).toHaveBeenCalledWith({
-      email: 'test@example.com',
-      password: 'secret123',
-    });
-    expect(mockWaitForSessionReady).toHaveBeenCalled();
-    expect(mockStorageRemoveItem).toHaveBeenCalledWith('auth_pending_signin');
-    expect(mockReplace).toHaveBeenCalledWith('/(app)/home');
+    expect(mockStorageGetItem).not.toHaveBeenCalled();
+    expect(mockStorageRemoveItem).not.toHaveBeenCalled();
+    expect(mockSignInEmail).not.toHaveBeenCalled();
     expect(mockSignUpEmail).not.toHaveBeenCalled();
   });
 
@@ -238,17 +209,6 @@ describe('useNetworkStatus', () => {
     const mockRemove = vi.fn();
     mockAddNetworkStateListener.mockReturnValue({ remove: mockRemove });
 
-    mockStorageGetItem.mockImplementation((key: string) => {
-      if (key === 'auth_pending_signin') {
-        return JSON.stringify({
-          email: 'test@example.com',
-          password: 'secret123',
-          timestamp: Date.now(),
-        });
-      }
-      return null;
-    });
-
     const { useNetworkStatus } = await import('./useNetworkStatus');
     useNetworkStatus();
 
@@ -261,6 +221,5 @@ describe('useNetworkStatus', () => {
 
     expect(mockSignInEmail).not.toHaveBeenCalled();
     expect(mockStorageRemoveItem).not.toHaveBeenCalled();
-    expect(mockReplace).not.toHaveBeenCalled();
   });
 });
