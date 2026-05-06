@@ -1,8 +1,8 @@
 import { roundToPlate } from './utils';
-import { generateWorkoutAccessories } from './accessory-data';
 import { madcowInfo, WEEK_PERCENTAGES, getMadcowAccessories } from './config/madcow';
-import type { OneRMValues, ProgramConfig, ProgramWorkout } from './types';
 import { LIFT_TYPE_LIBRARY_ID } from '@strength/db/exercise-library';
+import { createLinearProgramGenerator } from './factory';
+import type { ProgramExercise } from './types';
 
 function calculateTargetWeight(
   estimatedOneRM: number,
@@ -25,87 +25,80 @@ function calculateTargetWeight(
   return roundToPlate(weight);
 }
 
-function generateWorkouts(oneRMs: OneRMValues): ProgramWorkout[] {
-  const workouts: ProgramWorkout[] = [];
-
-  for (let week = 1; week <= 8; week++) {
+export const madcow = createLinearProgramGenerator({
+  info: madcowInfo,
+  weeks: 8,
+  daysPerWeek: 3,
+  buildExercises: ({ week, day, oneRMs }): ProgramExercise[] => {
     const weekData = WEEK_PERCENTAGES[week - 1];
     const isDeload = weekData.isDeload ?? false;
+    const isDayA = day % 2 === 1;
 
-    for (let session = 1; session <= 3; session++) {
-      const isDayA = session % 2 === 1;
+    const exercises: ProgramExercise[] = [
+      {
+        name: 'Squat',
+        exerciseType: 'weighted',
+        lift: 'squat',
+        libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
+        sets: 5,
+        reps: isDeload ? 3 : 5,
+        targetWeight: calculateTargetWeight(oneRMs.squat, week, day, 'squat'),
+      },
+    ];
 
-      const exercises = [
+    if (isDayA) {
+      exercises.push(
         {
-          name: 'Squat',
-          lift: 'squat' as const,
-          libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
+          name: 'Bench Press',
+          exerciseType: 'weighted',
+          lift: 'bench',
+          libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           sets: 5,
           reps: isDeload ? 3 : 5,
-          targetWeight: calculateTargetWeight(oneRMs.squat, week, session, 'squat'),
+          targetWeight: calculateTargetWeight(oneRMs.bench, week, day, 'bench'),
         },
-        ...(isDayA
-          ? [
-              {
-                name: 'Bench Press',
-                lift: 'bench' as const,
-                libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
-                sets: 5,
-                reps: isDeload ? 3 : 5,
-                targetWeight: calculateTargetWeight(oneRMs.bench, week, session, 'bench'),
-              },
-              {
-                name: 'Barbell Row',
-                lift: 'row' as const,
-                libraryId: LIFT_TYPE_LIBRARY_ID['row'],
-                sets: 5,
-                reps: isDeload ? 3 : 5,
-                targetWeight: calculateTargetWeight(oneRMs.bench * 0.6, week, session, 'row'),
-              },
-            ]
-          : [
-              {
-                name: 'Overhead Press',
-                lift: 'ohp' as const,
-                libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
-                sets: 5,
-                reps: isDeload ? 3 : 5,
-                targetWeight: calculateTargetWeight(oneRMs.ohp, week, session, 'ohp'),
-              },
-              {
-                name: 'Deadlift',
-                lift: 'deadlift' as const,
-                libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
-                sets: 5,
-                reps: isDeload ? 3 : 5,
-                targetWeight: calculateTargetWeight(oneRMs.deadlift, week, session, 'deadlift'),
-              },
-            ]),
-      ];
-
-      workouts.push({
-        weekNumber: week,
-        sessionNumber: (week - 1) * 3 + session,
-        sessionName: `Week ${week} - ${isDayA ? 'Day A' : 'Day B'}${isDeload ? ' (Deload)' : ''}`,
-        exercises,
-      });
+        {
+          name: 'Barbell Row',
+          exerciseType: 'weighted',
+          lift: 'row',
+          libraryId: LIFT_TYPE_LIBRARY_ID['row'],
+          sets: 5,
+          reps: isDeload ? 3 : 5,
+          targetWeight: calculateTargetWeight(oneRMs.bench * 0.6, week, day, 'row'),
+        },
+      );
+    } else {
+      exercises.push(
+        {
+          name: 'Overhead Press',
+          exerciseType: 'weighted',
+          lift: 'ohp',
+          libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
+          sets: 5,
+          reps: isDeload ? 3 : 5,
+          targetWeight: calculateTargetWeight(oneRMs.ohp, week, day, 'ohp'),
+        },
+        {
+          name: 'Deadlift',
+          exerciseType: 'weighted',
+          lift: 'deadlift',
+          libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
+          sets: 5,
+          reps: isDeload ? 3 : 5,
+          targetWeight: calculateTargetWeight(oneRMs.deadlift, week, day, 'deadlift'),
+        },
+      );
     }
-  }
 
-  for (const workout of workouts) {
-    const accessories = getMadcowAccessories(workout.weekNumber, workout.sessionNumber);
-    if (accessories.length > 0) {
-      workout.accessories = generateWorkoutAccessories(accessories, oneRMs);
-    }
-  }
-
-  return workouts;
-}
-
-export const madcow: ProgramConfig = {
-  info: madcowInfo,
-  generateWorkouts,
+    return exercises;
+  },
+  getAccessories: getMadcowAccessories,
   calculateTargetWeight,
-};
+  getSessionName: ({ week, day }) => {
+    const weekData = WEEK_PERCENTAGES[week - 1];
+    const isDeload = weekData.isDeload ?? false;
+    return `Week ${week} - Workout ${day}${isDeload ? ' (Deload)' : ''}`;
+  },
+});
 
 export default madcow;

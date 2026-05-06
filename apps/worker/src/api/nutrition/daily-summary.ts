@@ -4,20 +4,17 @@ import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
 import { getWhoopDataForDay } from '../../lib/whoop-queries';
-import { calculateMacroTargets } from '../../lib/nutrition';
+import { calculateMacroTargets, sumNutritionEntries } from '../../lib/nutrition';
+import { validateDateParam } from '../../lib/validation';
 
 type TargetStrategy = 'manual' | 'bodyweight' | 'default';
 
 export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
   const date = c.req.query('date');
 
-  if (!date) {
-    return c.json({ error: 'date query parameter is required' }, 400);
-  }
-
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(date)) {
-    return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
+  const validated = validateDateParam(date);
+  if (!validated.valid) {
+    return validated.response;
   }
 
   const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
@@ -26,41 +23,38 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
   }
 
   const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
-    date,
+    validated.date,
     timezoneResult.timezone,
   );
 
-  const entries = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.userId, userId),
-        gte(schema.nutritionEntries.loggedAt, startOfDay),
-        lt(schema.nutritionEntries.loggedAt, endOfDay),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .orderBy(schema.nutritionEntries.createdAt)
-    .all();
-
-  const bodyStats = await db
-    .select()
-    .from(schema.userBodyStats)
-    .where(eq(schema.userBodyStats.userId, userId))
-    .get();
-
-  const trainingCtxRow = await db
-    .select()
-    .from(schema.nutritionTrainingContext)
-    .where(
-      and(
-        eq(schema.nutritionTrainingContext.userId, userId),
-        gte(schema.nutritionTrainingContext.createdAt, startOfDay),
-        lt(schema.nutritionTrainingContext.createdAt, endOfDay),
-      ),
-    )
-    .get();
+  const [entries, bodyStats, trainingCtxRow, whoopData] = await Promise.all([
+    db
+      .select()
+      .from(schema.nutritionEntries)
+      .where(
+        and(
+          eq(schema.nutritionEntries.userId, userId),
+          gte(schema.nutritionEntries.loggedAt, startOfDay),
+          lt(schema.nutritionEntries.loggedAt, endOfDay),
+          eq(schema.nutritionEntries.isDeleted, false),
+        ),
+      )
+      .orderBy(schema.nutritionEntries.createdAt)
+      .all(),
+    db.select().from(schema.userBodyStats).where(eq(schema.userBodyStats.userId, userId)).get(),
+    db
+      .select()
+      .from(schema.nutritionTrainingContext)
+      .where(
+        and(
+          eq(schema.nutritionTrainingContext.userId, userId),
+          gte(schema.nutritionTrainingContext.createdAt, startOfDay),
+          lt(schema.nutritionTrainingContext.createdAt, endOfDay),
+        ),
+      )
+      .get(),
+    getWhoopDataForDay(db, userId, validated.date, timezoneResult.timezone),
+  ]);
 
   const trainingContext: TrainingContext | null = trainingCtxRow
     ? {
@@ -68,8 +62,6 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
         customLabel: trainingCtxRow.customLabel ?? undefined,
       }
     : null;
-
-  const whoopData = await getWhoopDataForDay(db, userId, date, timezoneResult.timezone);
 
   const whoopRecovery =
     whoopData.recoveryScore !== null
@@ -95,10 +87,12 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
         }
       : null;
 
-  const totalCalories = entries.reduce((sum, e) => sum + (e.calories ?? 0), 0);
-  const totalProteinG = entries.reduce((sum, e) => sum + (e.proteinG ?? 0), 0);
-  const totalCarbsG = entries.reduce((sum, e) => sum + (e.carbsG ?? 0), 0);
-  const totalFatG = entries.reduce((sum, e) => sum + (e.fatG ?? 0), 0);
+  const {
+    calories: totalCalories,
+    proteinG: totalProteinG,
+    carbsG: totalCarbsG,
+    fatG: totalFatG,
+  } = sumNutritionEntries(entries);
 
   const manualTargetsProvided = [
     bodyStats?.targetCalories,
@@ -106,15 +100,6 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
     bodyStats?.targetCarbsG,
     bodyStats?.targetFatG,
   ].some((value) => value !== null && value !== undefined);
-
-  let calorieMultiplier = 1;
-  if (trainingContext?.type === 'powerlifting') {
-    calorieMultiplier = 1.1;
-  } else if (trainingContext?.type === 'cardio') {
-    calorieMultiplier = 1.05;
-  } else if (trainingContext?.type === 'rest_day') {
-    calorieMultiplier = 0.95;
-  }
 
   let targets: MacroTargets;
   let targetStrategy: TargetStrategy;
@@ -134,16 +119,13 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
     targetStrategy = 'bodyweight';
     targetExplanation = `Targets are estimated from ${bodyStats.bodyweightKg} kg bodyweight, with protein at 2.0 g/kg, fat at 0.8 g/kg, and carbs using the remaining calories.`;
   } else {
-    targets = {
-      calories: Math.round(2500 * calorieMultiplier),
-      proteinG: 150,
-      carbsG: 250,
-      fatG: 80,
-    };
+    targets = calculateMacroTargets(80, trainingContext?.type ?? null, 2500);
     targetStrategy = 'default';
     targetExplanation =
       'Targets are using the app defaults until bodyweight or manual targets are set.';
   }
+
+  const calorieMultiplier = targets.calories / (bodyStats?.targetCalories ?? 2500);
 
   return c.json({
     entries: entries.map((e) => ({
@@ -172,6 +154,11 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
     trainingContext,
     whoopRecovery,
     whoopCycle,
+    whoopUpdatedAt:
+      Math.max(
+        whoopData.recoveryUpdatedAt?.getTime() ?? 0,
+        whoopData.cycleUpdatedAt?.getTime() ?? 0,
+      ) || null,
     programSession: null,
   });
 });

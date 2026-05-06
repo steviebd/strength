@@ -91,7 +91,13 @@ export function generateWorkoutSchedule(
         `${foundDate.getFullYear()}-${foundDate.getMonth()}-${foundDate.getDate()}`,
       );
     } else {
+      let iterations = 0;
       while (!foundDate) {
+        if (iterations >= 365) {
+          throw new Error('Unable to schedule workout: no valid gym day found within 365 days');
+        }
+        iterations++;
+
         const dateToCheck = new Date(currentDate);
         const dateKey = `${dateToCheck.getFullYear()}-${dateToCheck.getMonth()}-${dateToCheck.getDate()}`;
 

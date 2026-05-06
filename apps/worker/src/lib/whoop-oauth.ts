@@ -3,7 +3,7 @@ import type { WorkerEnv } from '../auth';
 
 const WHOOP_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-function base64UrlEncode(value: string) {
+export function base64UrlEncode(value: string) {
   return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
@@ -13,22 +13,35 @@ function base64UrlDecode(value: string) {
   return atob(padded);
 }
 
-async function signWhoopState(secret: string, payload: string) {
+async function deriveWhoopHMACKey(secret: string) {
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
+  const baseKey = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
+    'deriveKey',
+  ]);
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      salt: encoder.encode('whoop-oauth-state-v1'),
+      info: encoder.encode('whoop-state'),
+      hash: 'SHA-256',
+    },
+    baseKey,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
   );
+}
+
+async function signWhoopState(secret: string, payload: string) {
+  const encoder = new TextEncoder();
+  const key = await deriveWhoopHMACKey(secret);
   const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
   return base64UrlEncode(String.fromCharCode(...new Uint8Array(signature)));
 }
 
 export async function encodeWhoopOAuthState(
   secret: string,
-  payload: { nonce: string; returnTo?: string; userId: string },
+  payload: { nonce: string; returnTo?: string; userId: string; codeVerifier?: string },
 ) {
   const encodedPayload = base64UrlEncode(
     JSON.stringify({
@@ -43,10 +56,12 @@ export async function encodeWhoopOAuthState(
 export async function decodeWhoopOAuthState(
   secret: string | undefined,
   state: string | undefined,
+  env?: WorkerEnv,
 ): Promise<{
   nonce?: string;
   returnTo?: string;
   userId?: string;
+  codeVerifier?: string;
 }> {
   if (!state || !secret) {
     return {};
@@ -68,6 +83,7 @@ export async function decodeWhoopOAuthState(
       nonce?: string;
       returnTo?: string;
       userId?: string;
+      codeVerifier?: string;
     };
     if (typeof parsed.expiresAt !== 'number' || parsed.expiresAt < Date.now()) {
       return {};
@@ -75,10 +91,11 @@ export async function decodeWhoopOAuthState(
 
     return {
       ...(typeof parsed.nonce === 'string' ? { nonce: parsed.nonce } : {}),
-      ...(typeof parsed.returnTo === 'string' && isAllowedWhoopReturnTo(parsed.returnTo)
+      ...(typeof parsed.returnTo === 'string' && isAllowedWhoopReturnTo(parsed.returnTo, env)
         ? { returnTo: parsed.returnTo }
         : {}),
       ...(typeof parsed.userId === 'string' ? { userId: parsed.userId } : {}),
+      ...(typeof parsed.codeVerifier === 'string' ? { codeVerifier: parsed.codeVerifier } : {}),
     };
   } catch {
     return {};
@@ -137,10 +154,34 @@ export function isAllowedWhoopRedirectBaseURL(value: string) {
   }
 }
 
-export function isAllowedWhoopReturnTo(value: string) {
+export function isAllowedWhoopReturnTo(value: string, env?: WorkerEnv) {
+  // Reject raw path traversal patterns before URL normalization
+  if (value.includes('..')) {
+    return false;
+  }
   try {
     const url = new URL(value);
-    return ['strength:', 'exp:', 'exps:', 'http:', 'https:'].includes(url.protocol);
+
+    if (url.protocol === 'https:') {
+      const allowedHostnames = new Set(['localhost', '127.0.0.1']);
+      if (env) {
+        const baseURL = resolveBaseURL(env);
+        if (baseURL) {
+          try {
+            allowedHostnames.add(new URL(baseURL).hostname);
+          } catch {
+            // ignore invalid base URL
+          }
+        }
+      }
+      return allowedHostnames.has(url.hostname);
+    }
+
+    if (['strength:', 'exp:', 'exps:'].includes(url.protocol)) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }

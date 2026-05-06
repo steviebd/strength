@@ -6,6 +6,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
 import { hashPassword, verifyPassword } from './auth/password';
+import { sendPasswordResetEmail, sendVerificationEmail } from './auth/email';
 
 export interface WorkerEnv {
   DB: D1Database;
@@ -28,8 +29,9 @@ export interface WorkerEnv {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   RATE_LIMIT_REQUEST_PER_HOUR?: string;
-  E2E_TEST_MODE?: string;
-  E2E_TEST_SECRET?: string;
+  SKIP_RATE_LIMIT?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
 }
 
 export interface NutritionChatQueueMessage {
@@ -120,7 +122,7 @@ export function resolveCookiePolicy(
   if (!isDevMode && baseURLIsHttps) {
     return {
       secure: true,
-      sameSite: 'strict',
+      sameSite: 'lax',
     };
   }
 
@@ -158,6 +160,8 @@ export function resolveWorkerEnv(env: WorkerEnv): WorkerEnv {
     BETTER_AUTH_API_KEY: env.BETTER_AUTH_API_KEY ?? processEnv.BETTER_AUTH_API_KEY,
     GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? processEnv.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? processEnv.GOOGLE_CLIENT_SECRET,
+    RESEND_API_KEY: env.RESEND_API_KEY ?? processEnv.RESEND_API_KEY,
+    RESEND_FROM_EMAIL: env.RESEND_FROM_EMAIL ?? processEnv.RESEND_FROM_EMAIL,
   };
 }
 
@@ -187,7 +191,10 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
   const trustedOrigins = [
     `${appScheme}://`,
     `${appScheme}://*`,
+    `${appScheme}:///`,
+    `${appScheme}:///*`,
     'exp://',
+    'exp://*',
     ...(resolvedEnv.APP_ENV === 'development' ? ['http://localhost:*', 'http://127.0.0.1:*'] : []),
     ...parseTrustedOrigins(resolvedEnv.BETTER_AUTH_TRUSTED_ORIGINS),
     ...(baseURL ? [baseURL] : []),
@@ -203,9 +210,62 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
     }),
     emailAndPassword: {
       enabled: true,
+      revokeSessionsOnPasswordReset: true,
       password: {
         hash: hashPassword,
         verify: verifyPassword,
+      },
+      sendResetPassword: async ({ user, url }) => {
+        await sendPasswordResetEmail({
+          to: user.email,
+          url,
+          apiKey: resolvedEnv.RESEND_API_KEY,
+          fromEmail: resolvedEnv.RESEND_FROM_EMAIL,
+        });
+      },
+      resetPasswordTokenExpiresIn: 3600,
+      requireEmailVerification: true,
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendVerificationEmail({
+          to: user.email,
+          url,
+          apiKey: resolvedEnv.RESEND_API_KEY,
+          fromEmail: resolvedEnv.RESEND_FROM_EMAIL,
+        });
+      },
+    },
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ['google', 'email-password'],
+      },
+    },
+    databaseHooks: {
+      account: {
+        update: {
+          after: async (account, context) => {
+            if (!context) return;
+            const path = context.path;
+            const isPasswordChange =
+              path?.endsWith('/change-password') ||
+              path?.endsWith('/reset-password') ||
+              (path?.endsWith('/update-user') &&
+                (context.body?.password || context.body?.newPassword));
+            if (!isPasswordChange) return;
+
+            const sessions = await context.context.internalAdapter.listSessions(account.userId);
+            const currentToken = context.context.session?.session?.token;
+            const tokensToDelete = sessions
+              .filter((s) => s.token !== currentToken)
+              .map((s) => s.token);
+            if (tokensToDelete.length > 0) {
+              await context.context.internalAdapter.deleteSessions(tokensToDelete);
+            }
+          },
+        },
       },
     },
     session: {

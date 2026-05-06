@@ -90,11 +90,12 @@ describe('getSyncStartDate', () => {
     expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
   });
 
-  test('incremental sync uses 7-day overlap from latest date', () => {
+  test('incremental sync starts at the latest stored day', () => {
     const latest = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const result = getSyncStartDate(latest, false);
-    const expected = new Date(latest.getTime() - 7 * 24 * 60 * 60 * 1000);
-    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
+    const expected = new Date(latest);
+    expected.setUTCHours(0, 0, 0, 0);
+    expect(result.getTime()).toBe(expected.getTime());
   });
 
   test('incremental sync caps at 365 days', () => {
@@ -107,7 +108,8 @@ describe('getSyncStartDate', () => {
   test('accepts numeric timestamps', () => {
     const latest = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const result = getSyncStartDate(latest, false);
-    const expected = new Date(latest - 7 * 24 * 60 * 60 * 1000);
-    expect(result.getTime()).toBeCloseTo(expected.getTime(), -3);
+    const expected = new Date(latest);
+    expected.setUTCHours(0, 0, 0, 0);
+    expect(result.getTime()).toBe(expected.getTime());
   });
 });

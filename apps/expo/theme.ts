@@ -51,6 +51,24 @@ export const accent = {
   subtle: 'rgba(239,111,79,0.12)',
 };
 
+export const overlay = {
+  subtle: 'rgba(255,255,255,0.05)',
+  muted: 'rgba(255,255,255,0.08)',
+  medium: 'rgba(255,255,255,0.1)',
+  inverseSubtle: 'rgba(0,0,0,0.2)',
+};
+
+export const statusBg = {
+  success: 'rgba(34,197,94,0.12)',
+  successBorder: 'rgba(34,197,94,0.3)',
+  warning: 'rgba(245,158,11,0.12)',
+  warningBorder: 'rgba(245,158,11,0.3)',
+  error: 'rgba(239,68,68,0.12)',
+  errorBorder: 'rgba(239,68,68,0.3)',
+  dangerStrong: 'rgba(244,63,94,0.2)',
+  dangerSubtle: 'rgba(244,63,94,0.1)',
+};
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -173,4 +191,6 @@ export const layout = {
   controlHeight: 48,
   controlHeightSmall: 40,
   minTouchTarget: 44,
+  bottomInsetList: 120,
+  bottomInsetForm: spacing.md,
 };

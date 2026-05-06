@@ -1,34 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   AppState,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { ActionButton, PageHeader, SectionTitle, Surface } from '@/components/ui/app-primitives';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, overlay, radius, spacing, typography } from '@/theme';
 import { apiFetch } from '@/lib/api';
+import { authClient } from '@/lib/auth-client';
 import {
   getNutritionChatDraft,
   getNutritionChatMessages,
   getNutritionPendingImage,
+  removeNutritionPendingImage,
   setNutritionChatDraft,
   setNutritionChatMessages,
   setNutritionPendingImage,
 } from '@/lib/storage';
+import { getCachedDailySummary, cacheDailySummary } from '@/db/nutrition';
+import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { useWhoopData } from '@/hooks/useWhoopData';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { getTodayLocalDate } from '@/lib/timezone';
@@ -37,6 +41,13 @@ import {
   resolveMealTypeForAnalysis,
   type MealAnalysis,
 } from '@/lib/nutritionChat';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { useNutritionMutations } from '@/hooks/useNutritionMutations';
+import { getLocalDb } from '@/db/client';
+import { localChatMessageQueue } from '@/db/local-schema';
+import { eq, and } from 'drizzle-orm';
+import { generateId } from '@strength/db/client';
+import { runTrainingSync } from '@/lib/workout-sync';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -48,6 +59,9 @@ interface ChatMessageData {
   analysis?: MealAnalysis;
   savedEntryId?: string | null;
   createdAt?: string | null;
+  isPlaceholder?: boolean;
+  queueId?: string;
+  status?: 'pending' | 'failed';
 }
 
 interface ChatExchangeData {
@@ -146,7 +160,6 @@ function getSuggestedPrompts(trainingType: TrainingType) {
 const CHAT_HISTORY_PAGE_SIZE = 5;
 const CHAT_FOCUS_HISTORY_OFFSET = 260;
 const NUTRITION_BOTTOM_INSET = 120;
-const CHAT_JOB_POLL_INTERVAL_MS = 1500;
 const CHAT_JOB_TIMEOUT_MS = 3 * 60 * 1000;
 
 function delay(ms: number) {
@@ -288,27 +301,10 @@ function buildChatExchanges(messages: ChatMessageData[]): ChatExchangeData[] {
   return exchanges;
 }
 
-function removeEntryFromSummary(summary: DailySummary | undefined, entryId: string) {
-  if (!summary) return summary;
-
-  const removedEntry = summary.entries.find((entry) => entry.id === entryId);
-  if (!removedEntry) return summary;
-
-  return {
-    ...summary,
-    entries: summary.entries.filter((entry) => entry.id !== entryId),
-    totals: {
-      calories: summary.totals.calories - (removedEntry.calories ?? 0),
-      proteinG: summary.totals.proteinG - (removedEntry.proteinG ?? 0),
-      carbsG: summary.totals.carbsG - (removedEntry.carbsG ?? 0),
-      fatG: summary.totals.fatG - (removedEntry.fatG ?? 0),
-    },
-  };
-}
-
 export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
-  const queryClient = useQueryClient();
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
   const { activeTimezone } = useUserPreferences();
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
@@ -331,6 +327,7 @@ export default function NutritionScreen() {
   const [hasRestoredLocalState, setHasRestoredLocalState] = useState(false);
   const [exchangeExpansion, setExchangeExpansion] = useState<Record<string, boolean>>({});
   const [savingAnalysisMessageId, setSavingAnalysisMessageId] = useState<string | null>(null);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const hasAppliedServerHistory = useRef(false);
   const messagesScrollRef = useRef<ScrollView | null>(null);
   const chatInputRef = useRef<TextInput | null>(null);
@@ -341,10 +338,17 @@ export default function NutritionScreen() {
 
   const { data: whoopData } = useWhoopData(date, activeTimezone ?? 'UTC');
 
-  const { data: summary, refetch: refetchSummary } = useQuery<DailySummary>({
+  const { data: summary, refetch: refetchSummary } = useOfflineQuery<DailySummary>({
     queryKey: dailySummaryQueryKey,
-    queryFn: () =>
-      apiFetch(buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone)),
+    enabled: !!userId,
+    apiFn: () =>
+      apiFetch<DailySummary>(
+        buildNutritionDateUrl('/api/nutrition/daily-summary', date, activeTimezone),
+      ),
+    cacheFn: () =>
+      getCachedDailySummary(userId!, date, activeTimezone ?? 'UTC') as Promise<DailySummary | null>,
+    writeCacheFn: (data) => cacheDailySummary(userId!, date, activeTimezone ?? 'UTC', data),
+    fallbackToCacheOnError: true,
   });
 
   useEffect(() => {
@@ -489,66 +493,12 @@ export default function NutritionScreen() {
     };
   }, [historyQuery.refetch]);
 
-  const saveMealMutation = useMutation({
-    mutationFn: (data: {
-      name: string;
-      mealType: string;
-      calories: number;
-      protein: number;
-      carbs: number;
-      fat: number;
-    }) => {
-      const payload = {
-        name: data.name,
-        mealType: data.mealType,
-        calories: data.calories,
-        proteinG: data.protein,
-        carbsG: data.carbs,
-        fatG: data.fat,
-      };
-
-      return apiFetch('/api/nutrition/entries', {
-        method: 'POST',
-        body: payload,
-      });
-    },
-    onSuccess: () => {
-      refetchSummary();
-    },
-  });
-
-  const deleteMealMutation = useMutation({
-    mutationFn: (id: string) => apiFetch(`/api/nutrition/entries/${id}`, { method: 'DELETE' }),
-    onMutate: async (entryId) => {
-      await queryClient.cancelQueries({ queryKey: dailySummaryQueryKey });
-      const previousSummary = queryClient.getQueryData<DailySummary>(dailySummaryQueryKey);
-
-      queryClient.setQueryData<DailySummary | undefined>(dailySummaryQueryKey, (current) =>
-        removeEntryFromSummary(current, entryId),
-      );
-
-      return { previousSummary };
-    },
-    onError: (_error, _entryId, context) => {
-      if (context?.previousSummary) {
-        queryClient.setQueryData(dailySummaryQueryKey, context.previousSummary);
-      }
-    },
-    onSuccess: (_data, entryId) => {
-      clearSavedEntryFromMessages(entryId);
-      void queryClient.invalidateQueries({ queryKey: dailySummaryQueryKey });
-    },
-  });
-
-  const trainingContextMutation = useMutation({
-    mutationFn: (type: TrainingType) =>
-      apiFetch('/api/nutrition/training-context', {
-        method: 'POST',
-        body: { trainingType: type, date, timezone: activeTimezone },
-      }),
-    onSuccess: () => {
-      refetchSummary();
-    },
+  const { saveMealMutation, deleteMealMutation, trainingContextMutation } = useNutritionMutations({
+    date,
+    activeTimezone,
+    dailySummaryQueryKey,
+    refetchSummary,
+    clearSavedEntryFromMessages,
   });
 
   const handleTrainingTypeChange = useCallback(
@@ -563,6 +513,10 @@ export default function NutritionScreen() {
     (entryId: string) => {
       deleteMealMutation.mutate(entryId, {
         onError: (error) => {
+          if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
+            setOfflineMessage("Saved locally. Will sync when you're back online.");
+            return;
+          }
           const message = error instanceof Error ? error.message : 'Unable to delete meal.';
           Alert.alert('Delete failed', message);
         },
@@ -573,6 +527,7 @@ export default function NutritionScreen() {
 
   const sendMessage = useCallback(
     async (text: string, imageOverride?: { base64: string; uri: string } | null) => {
+      if (!userId) return;
       const attachedImage = imageOverride ?? pendingImage;
       const userMsg: ChatMessageData = {
         id: Date.now().toString(),
@@ -583,35 +538,73 @@ export default function NutritionScreen() {
 
       setMessages((prev) => [...prev, userMsg]);
       setPendingImage(null);
-      void setNutritionPendingImage(localStateKey, null);
+      void removeNutritionPendingImage(localStateKey);
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
       let assistantContent = '';
 
-      setMessages((prev) => [...prev, { id: assistantMsgId, role: 'assistant', content: '' }]);
+      const messagesToSend = [...messages, userMsg].map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
+
+      const queueId = generateId();
+
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantMsgId, role: 'assistant', content: '', isPlaceholder: true, queueId },
+      ]);
 
       try {
-        const requestBody: Record<string, unknown> = {
-          messages: [...messages, userMsg].map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-          date,
-          timezone: activeTimezone,
-        };
-
-        if (attachedImage) {
-          requestBody.hasImage = true;
-          requestBody.imageBase64 = attachedImage.base64;
-        }
-
-        const response = await apiFetch<ChatCreateResponse>('/api/nutrition/chat', {
-          method: 'POST',
-          body: requestBody,
+        const response = await tryOnlineOrEnqueue({
+          apiCall: () =>
+            apiFetch<ChatCreateResponse>('/api/nutrition/chat', {
+              method: 'POST',
+              body: {
+                messages: messagesToSend,
+                date,
+                timezone: activeTimezone,
+                hasImage: !!attachedImage,
+                imageBase64: attachedImage?.base64,
+                syncOperationId: queueId,
+              },
+            }),
+          userId,
+          entityType: 'chat_message',
+          operation: 'send_chat_message',
+          entityId: queueId,
+          payload: {
+            messages: messagesToSend,
+            date,
+            timezone: activeTimezone,
+            hasImage: !!attachedImage,
+            imageBase64: attachedImage?.base64,
+          },
+          onEnqueue: async () => {
+            const db = getLocalDb();
+            if (!db) return;
+            db.insert(localChatMessageQueue)
+              .values({
+                id: queueId,
+                userId,
+                date,
+                timezone: activeTimezone ?? 'UTC',
+                content: text,
+                hasImage: !!attachedImage,
+                imageBase64: attachedImage?.base64 ?? null,
+                messagesJson: JSON.stringify(messagesToSend),
+                status: 'pending',
+                attemptCount: 0,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .run();
+          },
         });
 
         const jobStartedAt = Date.now();
+        let pollInterval = 1000;
         while (Date.now() - jobStartedAt < CHAT_JOB_TIMEOUT_MS) {
           const job = await apiFetch<ChatJobResponse>(`/api/nutrition/chat/jobs/${response.jobId}`);
 
@@ -624,7 +617,8 @@ export default function NutritionScreen() {
             throw new Error(job.error ?? 'The assistant could not complete that request.');
           }
 
-          await delay(CHAT_JOB_POLL_INTERVAL_MS);
+          await delay(pollInterval);
+          pollInterval = Math.min(pollInterval * 2, 16000);
         }
 
         if (!assistantContent.trim()) {
@@ -633,10 +627,23 @@ export default function NutritionScreen() {
 
         setMessages((prev) =>
           prev.map((message) =>
-            message.id === assistantMsgId ? { ...message, content: assistantContent } : message,
+            message.id === assistantMsgId
+              ? { ...message, content: assistantContent, isPlaceholder: false, queueId: undefined }
+              : message,
           ),
         );
       } catch (error) {
+        if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantMsgId
+                ? { ...message, isPlaceholder: true, status: 'pending', queueId }
+                : message,
+            ),
+          );
+          return;
+        }
+
         if (assistantContent.trim()) {
           return;
         }
@@ -649,6 +656,8 @@ export default function NutritionScreen() {
               ? {
                   ...entry,
                   content: `I couldn't complete that request. ${message}`,
+                  isPlaceholder: false,
+                  queueId: undefined,
                 }
               : entry,
           ),
@@ -666,7 +675,107 @@ export default function NutritionScreen() {
         }
       }
     },
-    [activeTimezone, date, localStateKey, messages, pendingImage],
+    [activeTimezone, date, localStateKey, messages, pendingImage, userId],
+  );
+
+  const handleRetryChatMessage = useCallback(
+    async (queueId: string) => {
+      if (!userId) return;
+      const db = getLocalDb();
+      if (!db) return;
+      db.update(localChatMessageQueue)
+        .set({ status: 'pending', attemptCount: 0, updatedAt: new Date() })
+        .where(eq(localChatMessageQueue.id, queueId))
+        .run();
+      await runTrainingSync(userId);
+    },
+    [userId],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      const pollStartedAt = Date.now();
+      const interval = setInterval(() => {
+        if (Date.now() - pollStartedAt > CHAT_JOB_TIMEOUT_MS) {
+          clearInterval(interval);
+          return;
+        }
+        const db = getLocalDb();
+        if (!db) return;
+
+        const completed = db
+          .select()
+          .from(localChatMessageQueue)
+          .where(
+            and(
+              eq(localChatMessageQueue.userId, userId),
+              eq(localChatMessageQueue.date, date),
+              eq(localChatMessageQueue.timezone, activeTimezone ?? 'UTC'),
+              eq(localChatMessageQueue.status, 'sent'),
+            ),
+          )
+          .all();
+
+        if (completed.length > 0) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            for (const item of completed) {
+              const idx = updated.findIndex(
+                (m) => m.role === 'assistant' && m.queueId === item.id && m.isPlaceholder,
+              );
+              if (idx !== -1 && item.assistantContent) {
+                updated[idx] = {
+                  ...updated[idx],
+                  content: item.assistantContent,
+                  isPlaceholder: false,
+                  status: undefined,
+                  queueId: undefined,
+                };
+              }
+            }
+            return updated;
+          });
+
+          for (const item of completed) {
+            db.delete(localChatMessageQueue).where(eq(localChatMessageQueue.id, item.id)).run();
+          }
+        }
+
+        const failed = db
+          .select()
+          .from(localChatMessageQueue)
+          .where(
+            and(
+              eq(localChatMessageQueue.userId, userId),
+              eq(localChatMessageQueue.date, date),
+              eq(localChatMessageQueue.timezone, activeTimezone ?? 'UTC'),
+              eq(localChatMessageQueue.status, 'failed'),
+            ),
+          )
+          .all();
+
+        if (failed.length > 0) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            for (const item of failed) {
+              const idx = updated.findIndex(
+                (m) => m.role === 'assistant' && m.queueId === item.id && m.isPlaceholder,
+              );
+              if (idx !== -1 && updated[idx].status !== 'failed') {
+                updated[idx] = {
+                  ...updated[idx],
+                  isPlaceholder: true,
+                  status: 'failed',
+                };
+              }
+            }
+            return updated;
+          });
+        }
+      }, 2000);
+      return () => clearInterval(interval);
+    }, [userId, date, activeTimezone]),
   );
 
   const loadOlderHistory = useCallback(async () => {
@@ -748,8 +857,12 @@ export default function NutritionScreen() {
           ),
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to save meal.';
-        Alert.alert('Save failed', message);
+        if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
+          setOfflineMessage("Saved locally. Will sync when you're back online.");
+        } else {
+          const message = error instanceof Error ? error.message : 'Unable to save meal.';
+          Alert.alert('Save failed', message);
+        }
       } finally {
         savingAnalysisMessageIds.current.delete(messageId);
         setSavingAnalysisMessageId((current) => (current === messageId ? null : current));
@@ -840,10 +953,7 @@ export default function NutritionScreen() {
 
   return (
     <>
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <KeyboardFormLayout style={styles.keyboardAvoidingView}>
         <PageLayout
           header={
             <PageHeader
@@ -903,6 +1013,12 @@ export default function NutritionScreen() {
                 guidance.
               </Text>
 
+              {offlineMessage ? (
+                <View style={styles.offlineBanner}>
+                  <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
+                </View>
+              ) : null}
+
               <View style={styles.quickActions}>
                 {quickPrompts.map((prompt) => (
                   <View key={`quick-prompt:${prompt}`} style={styles.quickActionSlot}>
@@ -959,6 +1075,11 @@ export default function NutritionScreen() {
                             savingAnalysisMessageId === exchange.assistantMessage?.id &&
                             (saveMealMutation.isPending || deleteMealMutation.isPending)
                           }
+                          onRetry={() => {
+                            if (exchange.assistantMessage?.queueId) {
+                              void handleRetryChatMessage(exchange.assistantMessage.queueId);
+                            }
+                          }}
                         />
                       );
                     })}
@@ -984,14 +1105,14 @@ export default function NutritionScreen() {
                   pendingImageUri={pendingImage?.uri ?? null}
                   onClearImage={() => {
                     setPendingImage(null);
-                    void setNutritionPendingImage(localStateKey, null);
+                    void removeNutritionPendingImage(localStateKey);
                   }}
                 />
               </View>
             </Surface>
           </View>
         </PageLayout>
-      </KeyboardAvoidingView>
+      </KeyboardFormLayout>
     </>
   );
 }
@@ -1025,8 +1146,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderColor: overlay.muted,
+    backgroundColor: overlay.inverseSubtle,
     padding: spacing.xl,
     gap: spacing.xs,
   },
@@ -1040,6 +1161,17 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
     lineHeight: 22,
+    textAlign: 'center',
+  },
+  offlineBanner: {
+    backgroundColor: overlay.muted,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.base,
+    color: colors.textMuted,
     textAlign: 'center',
   },
 });

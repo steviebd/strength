@@ -5,7 +5,9 @@ import { requireAuthContext } from '../auth';
 import { resolveUserTimezone, getUtcRangeForLocalDate } from '../../lib/timezone';
 import { getLatestOneRMsForUser } from '../../lib/program-helpers';
 
-function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name: string }> {
+function parseTargetLifts(
+  targetLifts: string | null | undefined,
+): Array<{ name: string; libraryId?: string; lift?: string }> {
   if (!targetLifts) return [];
   if (Array.isArray(targetLifts)) return targetLifts;
   try {
@@ -13,12 +15,12 @@ function parseTargetLifts(targetLifts: string | null | undefined): Array<{ name:
     if (Array.isArray(parsed)) return parsed;
     if (parsed && typeof parsed === 'object') {
       const record = parsed as {
-        exercises?: Array<{ name?: string }>;
-        accessories?: Array<{ name?: string }>;
+        exercises?: Array<{ name?: string; libraryId?: string; lift?: string }>;
+        accessories?: Array<{ name?: string; libraryId?: string; lift?: string }>;
       };
       return [...(record.exercises ?? []), ...(record.accessories ?? [])]
         .filter((lift) => typeof lift?.name === 'string' && lift.name.length > 0)
-        .map((lift) => ({ name: lift.name as string }));
+        .map((lift) => ({ name: lift.name as string, libraryId: lift.libraryId, lift: lift.lift }));
     }
     return [];
   } catch {
@@ -74,26 +76,37 @@ function formatSleepDuration(milliseconds: number | null): string | null {
   return `${hours}h ${minutes}m`;
 }
 
-type GroupedExercise = { name: string; count: number };
+type GroupedExercise = { name: string; count: number; libraryId?: string; lift?: string };
 
-function groupConsecutiveExercises(names: string[]): GroupedExercise[] {
+function groupConsecutiveExercises(
+  items: Array<{ name: string; libraryId?: string; lift?: string }>,
+): GroupedExercise[] {
   const grouped: GroupedExercise[] = [];
-  for (const name of names) {
-    if (grouped.length > 0 && grouped[grouped.length - 1].name === name) {
-      grouped[grouped.length - 1].count++;
+  for (const item of items) {
+    const key = item.libraryId ?? item.lift ?? item.name;
+    const last = grouped[grouped.length - 1];
+    const lastKey = last ? (last.libraryId ?? last.lift ?? last.name) : null;
+    if (last && lastKey === key) {
+      last.count++;
     } else {
-      grouped.push({ name, count: 1 });
+      grouped.push({ name: item.name, count: 1, libraryId: item.libraryId, lift: item.lift });
     }
   }
   return grouped;
 }
 
 export function computeStreak(localDate: string, workoutDates: Set<string>): number {
+  if (workoutDates.size === 0) return 0;
+  let earliestDate = localDate;
+  for (const d of workoutDates) {
+    if (d < earliestDate) earliestDate = d;
+  }
   let streakDays = 0;
   let checkDate = localDate;
   while (workoutDates.has(checkDate)) {
     streakDays++;
     checkDate = addDays(checkDate, -1);
+    if (checkDate < earliestDate) break;
   }
   return streakDays;
 }
@@ -105,6 +118,123 @@ function getRecoveryStatusTone(recoveryScore: number | null): RecoveryStatus {
   if (recoveryScore >= 67) return 'green';
   if (recoveryScore >= 40) return 'yellow';
   return 'red';
+}
+
+export async function recomputeHomeSummary(db: any, userId: string) {
+  const timezoneResult = await resolveUserTimezone(db, userId);
+  const timezone = timezoneResult.timezone ?? 'UTC';
+  const now = new Date();
+  const localDate = formatLocalDate(now, timezone);
+
+  const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
+  const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
+  const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
+
+  const lookbackStartLocal = addDays(localDate, -365);
+  const { start: rangeStart } = getUtcRangeForLocalDate(lookbackStartLocal, timezone);
+  const { end: rangeEnd } = getUtcRangeForLocalDate(localDate, timezone);
+
+  const [activeCycles, weekCompletedWorkouts, recentWorkouts, mostRecentWorkout] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.userProgramCycles)
+        .where(
+          and(
+            eq(schema.userProgramCycles.userId, userId),
+            eq(schema.userProgramCycles.status, 'active'),
+            eq(schema.userProgramCycles.isComplete, false),
+          ),
+        )
+        .orderBy(desc(schema.userProgramCycles.startedAt))
+        .all(),
+      db
+        .select({
+          id: schema.workouts.id,
+          totalVolume: schema.workouts.totalVolume,
+        })
+        .from(schema.workouts)
+        .where(
+          and(
+            eq(schema.workouts.userId, userId),
+            eq(schema.workouts.isDeleted, false),
+            isNotNull(schema.workouts.completedAt),
+            gte(schema.workouts.completedAt, weekStartUtc),
+            lte(schema.workouts.completedAt, weekEndUtcEnd),
+          ),
+        )
+        .all(),
+      db
+        .select({ completedAt: schema.workouts.completedAt })
+        .from(schema.workouts)
+        .where(
+          and(
+            eq(schema.workouts.userId, userId),
+            eq(schema.workouts.isDeleted, false),
+            isNotNull(schema.workouts.completedAt),
+            gte(schema.workouts.completedAt, rangeStart),
+            lte(schema.workouts.completedAt, rangeEnd),
+          ),
+        )
+        .limit(500)
+        .all(),
+      db
+        .select({ completedAt: schema.workouts.completedAt })
+        .from(schema.workouts)
+        .where(
+          and(
+            eq(schema.workouts.userId, userId),
+            eq(schema.workouts.isDeleted, false),
+            isNotNull(schema.workouts.completedAt),
+          ),
+        )
+        .orderBy(desc(schema.workouts.completedAt))
+        .limit(1)
+        .get(),
+    ]);
+
+  const hasActiveProgram = activeCycles.length > 0;
+  const workoutsCompleted = weekCompletedWorkouts.length;
+  const totalVolume = (weekCompletedWorkouts as { totalVolume: number | null }[]).reduce(
+    (sum, w) => sum + (w.totalVolume ?? 0),
+    0,
+  );
+
+  let streakDays = 0;
+  if (hasActiveProgram) {
+    const workoutDates = new Set(
+      (recentWorkouts as { completedAt: Date | null }[])
+        .map((w) => (w.completedAt ? formatLocalDate(new Date(w.completedAt), timezone) : null))
+        .filter((d): d is string => d !== null),
+    );
+    streakDays = computeStreak(localDate, workoutDates);
+  }
+
+  const lastWorkoutDate = mostRecentWorkout?.completedAt
+    ? new Date(mostRecentWorkout.completedAt)
+    : null;
+
+  await db
+    .insert(schema.homeSummary)
+    .values({
+      userId,
+      streakCount: streakDays,
+      lastWorkoutDate,
+      weeklyVolume: totalVolume,
+      weeklyWorkouts: workoutsCompleted,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: schema.homeSummary.userId,
+      set: {
+        streakCount: streakDays,
+        lastWorkoutDate,
+        weeklyVolume: totalVolume,
+        weeklyWorkouts: workoutsCompleted,
+        updatedAt: now,
+      },
+    })
+    .run();
 }
 
 export async function homeSummaryHandler(c: any) {
@@ -127,6 +257,52 @@ export async function homeSummaryHandler(c: any) {
       timeZone: timezone,
     }),
   };
+
+  const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
+  const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
+  const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
+
+  let cached = await db
+    .select()
+    .from(schema.homeSummary)
+    .where(eq(schema.homeSummary.userId, userId))
+    .get();
+
+  let needsRecompute = !cached;
+  if (cached) {
+    const mostRecentWorkout = await db
+      .select({ completedAt: schema.workouts.completedAt })
+      .from(schema.workouts)
+      .where(
+        and(
+          eq(schema.workouts.userId, userId),
+          eq(schema.workouts.isDeleted, false),
+          isNotNull(schema.workouts.completedAt),
+        ),
+      )
+      .orderBy(desc(schema.workouts.completedAt))
+      .limit(1)
+      .get();
+    if (mostRecentWorkout?.completedAt && cached.updatedAt < mostRecentWorkout.completedAt) {
+      needsRecompute = true;
+    }
+    if (!needsRecompute && cached.updatedAt < weekStartUtc) {
+      needsRecompute = true;
+    }
+  }
+
+  if (needsRecompute) {
+    try {
+      await recomputeHomeSummary(db, userId);
+      cached = await db
+        .select()
+        .from(schema.homeSummary)
+        .where(eq(schema.homeSummary.userId, userId))
+        .get();
+    } catch {
+      // ignore recompute failures and continue with stale or missing cache
+    }
+  }
 
   const activeCycles = await db
     .select()
@@ -155,8 +331,9 @@ export async function homeSummaryHandler(c: any) {
 
   const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
+  let cycleWorkouts: (typeof schema.programCycleWorkouts.$inferSelect)[] = [];
   if (activeCycle) {
-    const cycleWorkouts = await db
+    cycleWorkouts = await db
       .select()
       .from(schema.programCycleWorkouts)
       .where(eq(schema.programCycleWorkouts.cycleId, activeCycle.id))
@@ -240,8 +417,7 @@ export async function homeSummaryHandler(c: any) {
 
   if (todayScheduledWorkout && activeCycle) {
     const parsedTargetLifts = parseTargetLifts(todayScheduledWorkout.targetLifts);
-    const exerciseNames = parsedTargetLifts.map((t: any) => t.name).filter(Boolean);
-    const exercises = groupConsecutiveExercises(exerciseNames);
+    const exercises = groupConsecutiveExercises(parsedTargetLifts);
 
     const cycleWorkout = todayScheduledWorkout;
     todayWorkoutOutput = {
@@ -267,80 +443,59 @@ export async function homeSummaryHandler(c: any) {
     };
   }
 
-  const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
-  const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
-  const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
+  const [whoopRecovery, whoopCycles, whoopSleepRecords, whoopProfile, latestOneRMs] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.whoopRecovery)
+        .where(
+          and(
+            eq(schema.whoopRecovery.userId, userId),
+            gte(schema.whoopRecovery.date, todayStart),
+            lte(schema.whoopRecovery.date, todayEnd),
+          ),
+        )
+        .get(),
+      db
+        .select()
+        .from(schema.whoopCycle)
+        .where(
+          and(
+            eq(schema.whoopCycle.userId, userId),
+            gte(schema.whoopCycle.start, todayStart),
+            lte(schema.whoopCycle.start, todayEnd),
+          ),
+        )
+        .all(),
+      db
+        .select()
+        .from(schema.whoopSleep)
+        .where(and(eq(schema.whoopSleep.userId, userId), lte(schema.whoopSleep.start, todayEnd)))
+        .orderBy(desc(schema.whoopSleep.end))
+        .limit(10)
+        .all(),
+      db.select().from(schema.whoopProfile).where(eq(schema.whoopProfile.userId, userId)).get(),
+      getLatestOneRMsForUser(db, userId),
+    ]);
 
-  const weekCompletedWorkouts = await db
-    .select({
-      id: schema.workouts.id,
-      completedAt: schema.workouts.completedAt,
-      totalVolume: schema.workouts.totalVolume,
-    })
-    .from(schema.workouts)
-    .where(
-      and(
-        eq(schema.workouts.userId, userId),
-        eq(schema.workouts.isDeleted, false),
-        isNotNull(schema.workouts.completedAt),
-        gte(schema.workouts.completedAt, weekStartUtc),
-        lte(schema.workouts.completedAt, weekEndUtcEnd),
-      ),
-    )
-    .all();
-
-  const workoutsCompleted = weekCompletedWorkouts.length;
+  const workoutsCompleted = cached?.weeklyWorkouts ?? 0;
 
   let workoutsTarget = 3;
-  if (activeCycle) {
-    const scheduledInWeek = await db
-      .select({ id: schema.programCycleWorkouts.id })
-      .from(schema.programCycleWorkouts)
-      .where(
-        and(
-          eq(schema.programCycleWorkouts.cycleId, activeCycle.id),
-          isNotNull(schema.programCycleWorkouts.scheduledAt),
-          gte(schema.programCycleWorkouts.scheduledAt, weekStartUtc),
-          lte(schema.programCycleWorkouts.scheduledAt, weekEndUtcEnd),
-        ),
-      )
-      .all();
-    workoutsTarget = scheduledInWeek.length;
+  if (activeCycle && cycleWorkouts.length > 0) {
+    workoutsTarget = cycleWorkouts.filter(
+      (workout) =>
+        workout.scheduledAt &&
+        workout.scheduledAt >= weekStartUtc &&
+        workout.scheduledAt <= weekEndUtcEnd,
+    ).length;
   }
 
-  const totalVolume = weekCompletedWorkouts.reduce((sum, w) => sum + (w.totalVolume ?? 0), 0);
+  const totalVolume = cached?.weeklyVolume ?? 0;
 
   const totalVolumeLabel =
     totalVolume > 1000 ? `${Math.round(totalVolume / 1000)}k kg` : `${Math.round(totalVolume)} kg`;
 
-  let streakDays = 0;
-  if (hasActiveProgram) {
-    const lookbackStartLocal = addDays(localDate, -365);
-    const { start: rangeStart } = getUtcRangeForLocalDate(lookbackStartLocal, timezone);
-    const { end: rangeEnd } = getUtcRangeForLocalDate(localDate, timezone);
-
-    const recentWorkouts = await db
-      .select({ completedAt: schema.workouts.completedAt })
-      .from(schema.workouts)
-      .where(
-        and(
-          eq(schema.workouts.userId, userId),
-          eq(schema.workouts.isDeleted, false),
-          isNotNull(schema.workouts.completedAt),
-          gte(schema.workouts.completedAt, rangeStart),
-          lte(schema.workouts.completedAt, rangeEnd),
-        ),
-      )
-      .all();
-
-    const workoutDates = new Set(
-      recentWorkouts
-        .map((w) => (w.completedAt ? formatLocalDate(new Date(w.completedAt), timezone) : null))
-        .filter((d): d is string => d !== null),
-    );
-
-    streakDays = computeStreak(localDate, workoutDates);
-  }
+  const streakDays = cached?.streakCount ?? 0;
 
   const weeklyStats = {
     workoutsCompleted,
@@ -350,70 +505,28 @@ export async function homeSummaryHandler(c: any) {
     totalVolumeLabel,
   };
 
-  const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(localDate, timezone);
-
-  const recovery = await db
-    .select()
-    .from(schema.whoopRecovery)
-    .where(
-      and(
-        eq(schema.whoopRecovery.userId, userId),
-        gte(schema.whoopRecovery.date, dayStart),
-        lte(schema.whoopRecovery.date, dayEnd),
-      ),
-    )
-    .get();
-
-  const cycles = await db
-    .select()
-    .from(schema.whoopCycle)
-    .where(
-      and(
-        eq(schema.whoopCycle.userId, userId),
-        gte(schema.whoopCycle.start, dayStart),
-        lte(schema.whoopCycle.start, dayEnd),
-      ),
-    )
-    .all();
-
-  const sleepRecords = await db
-    .select()
-    .from(schema.whoopSleep)
-    .where(and(eq(schema.whoopSleep.userId, userId), lte(schema.whoopSleep.start, dayEnd)))
-    .orderBy(desc(schema.whoopSleep.end))
-    .limit(10)
-    .all();
+  const isWhoopConnected = !!whoopProfile;
+  const strain = whoopCycles.length > 0 ? (whoopCycles[0].dayStrain ?? null) : null;
 
   const mostRecentSleep =
-    sleepRecords.find((s) => {
+    whoopSleepRecords.find((s) => {
       const sleepEnd = new Date(s.end);
-      const rangeStart = new Date(dayStart);
-      const rangeEnd = new Date(dayEnd);
+      const rangeStart = new Date(todayStart);
+      const rangeEnd = new Date(todayEnd);
       return sleepEnd >= rangeStart && sleepEnd <= rangeEnd;
     }) ?? null;
-
-  const whoopProfile = await db
-    .select()
-    .from(schema.whoopProfile)
-    .where(eq(schema.whoopProfile.userId, userId))
-    .get();
-
-  const isWhoopConnected = !!whoopProfile;
-
-  const strain = cycles.length > 0 ? (cycles[0].dayStrain ?? null) : null;
 
   const recoverySnapshot = {
     sleepDurationLabel: mostRecentSleep
       ? formatSleepDuration(mostRecentSleep.totalSleepTimeMilli)
       : null,
     sleepPerformancePercentage: mostRecentSleep?.sleepPerformancePercentage ?? null,
-    recoveryScore: recovery?.recoveryScore ?? null,
-    recoveryStatus: getRecoveryStatusTone(recovery?.recoveryScore ?? null),
+    recoveryScore: whoopRecovery?.recoveryScore ?? null,
+    recoveryStatus: getRecoveryStatusTone(whoopRecovery?.recoveryScore ?? null),
     strain,
     isWhoopConnected,
   };
 
-  const latestOneRMs = await getLatestOneRMsForUser(db, userId);
   const oneRepMaxes = {
     squat: activeCycle?.squat1rm ?? latestOneRMs?.squat1rm ?? null,
     bench: activeCycle?.bench1rm ?? latestOneRMs?.bench1rm ?? null,

@@ -1,5 +1,14 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, Modal, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -10,10 +19,28 @@ import { ScreenScrollView } from '@/components/ui/Screen';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { useUndo } from '@/hooks/useUndo';
 import { apiFetch } from '@/lib/api';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { authClient } from '@/lib/auth-client';
+import { getLocalDb } from '@/db/client';
+import { localTemplates } from '@/db/local-schema';
+import { eq } from 'drizzle-orm';
+import { exerciseLibrary } from '@strength/db/client';
 import type { SelectedExercise, Template, TemplateEditorProps } from './types';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
+function getLibraryExerciseType(libraryId: string | null | undefined) {
+  if (!libraryId) return null;
+  return exerciseLibrary.find((exercise) => exercise.id === libraryId)?.exerciseType ?? null;
+}
+
+function resolveSelectedExerciseType(exercise: {
+  libraryId?: string | null;
+  exerciseType?: string | null;
+}) {
+  return getLibraryExerciseType(exercise.libraryId) ?? exercise.exerciseType ?? 'weighted';
 }
 
 interface FormData {
@@ -169,21 +196,72 @@ function useTemplateEditorApi({
   const [isLoading, _setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const session = authClient.useSession();
+  const userId = session.data?.user?.id ?? null;
 
   const saveTemplate = useCallback(async (): Promise<Template | null> => {
+    if (!userId) {
+      Alert.alert('Unable to save template', 'You must be signed in.');
+      return null;
+    }
     setIsSaving(true);
     setAutoSaveStatus('saving');
     try {
       const isNew = mode === 'create';
       const url = isNew ? '/api/templates' : `/api/templates/${templateId}`;
       const method = isNew ? 'POST' : 'PUT';
+      const entityId = isNew ? generateId() : templateId!;
 
-      const savedTemplate = await apiFetch<Template>(url, {
-        method,
-        body: {
+      const savedTemplate = await tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch<Template>(url, {
+            method,
+            body: {
+              name: formData.name,
+              description: formData.description || undefined,
+              notes: formData.notes || undefined,
+            },
+          }),
+        userId,
+        entityType: 'template',
+        operation: isNew ? 'create_template' : 'save_template',
+        entityId,
+        payload: {
           name: formData.name,
           description: formData.description || undefined,
           notes: formData.notes || undefined,
+        },
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          if (isNew) {
+            db.insert(localTemplates)
+              .values({
+                id: entityId,
+                userId,
+                name: formData.name,
+                description: formData.description ?? null,
+                notes: formData.notes ?? null,
+                isDeleted: false,
+                createdLocally: true,
+                createdAt: now,
+                updatedAt: now,
+                hydratedAt: now,
+              })
+              .run();
+          } else {
+            db.update(localTemplates)
+              .set({
+                name: formData.name,
+                description: formData.description ?? null,
+                notes: formData.notes ?? null,
+                updatedAt: now,
+              })
+              .where(eq(localTemplates.id, templateId!))
+              .run();
+          }
         },
       });
 
@@ -203,6 +281,10 @@ function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
+              exerciseType: resolveSelectedExerciseType(ex),
+              targetDuration: ex.targetDuration ?? null,
+              targetDistance: ex.targetDistance ?? null,
+              targetHeight: ex.targetHeight ?? null,
             },
           });
         }
@@ -213,16 +295,20 @@ function useTemplateEditorApi({
       onSaved?.(savedTemplate);
       return savedTemplate;
     } catch (error) {
-      Alert.alert(
-        'Unable to save template',
-        error instanceof Error ? error.message : 'Please try again.',
-      );
+      if (error instanceof OfflineError || (error as any)?.name === 'OfflineError') {
+        setOfflineMessage("Changes saved locally. Will sync when you're back online.");
+      } else {
+        Alert.alert(
+          'Unable to save template',
+          error instanceof Error ? error.message : 'Please try again.',
+        );
+      }
       setAutoSaveStatus('idle');
       return null;
     } finally {
       setIsSaving(false);
     }
-  }, [mode, templateId, formData, selectedExercises, onSaved]);
+  }, [mode, templateId, formData, selectedExercises, onSaved, userId]);
 
   const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
     const newExerciseIds = new Set(selectedExercises.map((e) => e.exerciseId));
@@ -258,6 +344,10 @@ function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
+              exerciseType: resolveSelectedExerciseType(ex),
+              targetDuration: ex.targetDuration ?? null,
+              targetDistance: ex.targetDistance ?? null,
+              targetHeight: ex.targetHeight ?? null,
             },
           }),
         );
@@ -271,6 +361,8 @@ function useTemplateEditorApi({
     isLoading,
     isSaving,
     autoSaveStatus,
+    offlineMessage,
+    clearOfflineMessage: () => setOfflineMessage(null),
     saveTemplate,
   };
 }
@@ -294,6 +386,7 @@ export function TemplateEditor({
   const initialExercises =
     initialData?.exercises?.map((ex) => ({
       ...ex,
+      exerciseType: resolveSelectedExerciseType(ex),
       id: ex.id || generateId(),
     })) ?? [];
 
@@ -310,7 +403,7 @@ export function TemplateEditor({
     pushUndo,
   } = useTemplateEditorState(initialFormData, initialExercises);
 
-  const { saveTemplate, isSaving } = useTemplateEditorApi({
+  const { saveTemplate, isSaving, offlineMessage, clearOfflineMessage } = useTemplateEditorApi({
     mode,
     templateId,
     formData,
@@ -325,6 +418,8 @@ export function TemplateEditor({
         libraryId?: string | null;
         name: string;
         muscleGroup: string | null;
+        exerciseType?: string;
+        isAmrap?: boolean;
       }>,
     ) => {
       pushUndo();
@@ -335,7 +430,8 @@ export function TemplateEditor({
           libraryId: exercise.libraryId ?? undefined,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
-          isAmrap: false,
+          exerciseType: resolveSelectedExerciseType(exercise),
+          isAmrap: exercise.isAmrap ?? false,
           isAccessory: false,
           isRequired: true,
           sets: 3,
@@ -386,14 +482,16 @@ export function TemplateEditor({
   );
 
   const handleSave = useCallback(async () => {
+    clearOfflineMessage();
     if (!validateForm()) return;
     const result = await saveTemplate();
     if (result && onSaved) {
       onSaved(result);
     }
-  }, [validateForm, saveTemplate, onSaved]);
+  }, [clearOfflineMessage, validateForm, saveTemplate, onSaved]);
 
   const handleCancel = useCallback(() => {
+    clearOfflineMessage();
     if (mode === 'create' && (formData.name || selectedExercises.length > 0)) {
       Alert.alert(
         'Discard Changes?',
@@ -410,7 +508,7 @@ export function TemplateEditor({
     } else {
       onClose?.();
     }
-  }, [mode, formData.name, selectedExercises.length, onClose]);
+  }, [clearOfflineMessage, mode, formData.name, selectedExercises.length, onClose]);
 
   const currentExercises = selectedExercises;
 
@@ -510,6 +608,37 @@ export function TemplateEditor({
                     </View>
                   </View>
 
+                  <View style={styles.typeRow}>
+                    {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map(
+                      (type) => {
+                        const isSelected = (exercise.exerciseType ?? 'weighted') === type;
+                        return (
+                          <Pressable
+                            key={`ex-type:${exercise.id}:${type}`}
+                            onPress={() =>
+                              handleUpdateExercise(exercise.id, { exerciseType: type })
+                            }
+                            style={[
+                              styles.typeChip,
+                              isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.typeChipText,
+                                isSelected
+                                  ? styles.typeChipTextSelected
+                                  : styles.typeChipTextDefault,
+                              ]}
+                            >
+                              {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </Text>
+                          </Pressable>
+                        );
+                      },
+                    )}
+                  </View>
+
                   <View style={styles.exerciseRow}>
                     <View style={styles.exerciseField}>
                       <Text style={styles.fieldLabel}>Sets</Text>
@@ -520,87 +649,280 @@ export function TemplateEditor({
                             const newSets = currentSets > 1 ? currentSets - 1 : 1;
                             handleUpdateExercise(exercise.id, { sets: newSets });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { left: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text style={styles.counterValue}>{exercise.sets ?? 3}</Text>
+                        <TextInput
+                          style={styles.counterInput}
+                          keyboardType="numeric"
+                          selectTextOnFocus
+                          value={exercise.sets?.toString() ?? ''}
+                          onChangeText={(text) => {
+                            const num = parseInt(text, 10);
+                            updateExercise(exercise.id, { sets: isNaN(num) ? undefined : num });
+                          }}
+                          onBlur={() => {
+                            const current = exercise.sets ?? 3;
+                            updateExercise(exercise.id, { sets: Math.max(1, current) });
+                          }}
+                        />
                         <Pressable
                           onPress={() => {
                             const currentSets = exercise.sets ?? 3;
                             const newSets = currentSets + 1;
                             handleUpdateExercise(exercise.id, { sets: newSets });
                           }}
-                          style={styles.counterButton}
+                          style={[styles.counterButton, { right: 0 }]}
                         >
                           <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
-                    <View style={styles.exerciseField}>
-                      <Text style={styles.fieldLabel}>Reps</Text>
-                      <View style={styles.counterContainer}>
-                        <Pressable
-                          onPress={() => {
-                            const currentReps = exercise.reps ?? 10;
-                            const newReps = currentReps > 1 ? currentReps - 1 : 1;
-                            handleUpdateExercise(exercise.id, {
-                              reps: newReps,
-                              repsRaw: newReps.toString(),
-                            });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>-</Text>
-                        </Pressable>
-                        <Text style={styles.counterValue}>
-                          {exercise.repsRaw || (exercise.reps ?? 10).toString()}
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            const currentReps = exercise.reps ?? 10;
-                            const newReps = currentReps + 1;
-                            handleUpdateExercise(exercise.id, {
-                              reps: newReps,
-                              repsRaw: newReps.toString(),
-                            });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>+</Text>
-                        </Pressable>
+
+                    {(exercise.exerciseType === 'weighted' ||
+                      exercise.exerciseType === 'bodyweight' ||
+                      exercise.exerciseType === 'plyo' ||
+                      !exercise.exerciseType) && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Reps</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const currentReps = exercise.reps ?? 10;
+                              const newReps = currentReps > 1 ? currentReps - 1 : 1;
+                              handleUpdateExercise(exercise.id, {
+                                reps: newReps,
+                                repsRaw: newReps.toString(),
+                              });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.repsRaw ?? (exercise.reps ?? 10).toString()}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                reps: isNaN(num) ? undefined : num,
+                                repsRaw: text,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.reps ?? 10;
+                              const normalized = Math.max(1, current);
+                              updateExercise(exercise.id, {
+                                reps: normalized,
+                                repsRaw: normalized.toString(),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const currentReps = exercise.reps ?? 10;
+                              const newReps = currentReps + 1;
+                              handleUpdateExercise(exercise.id, {
+                                reps: newReps,
+                                repsRaw: newReps.toString(),
+                              });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
-                    <View style={styles.exerciseField}>
-                      <Text style={styles.fieldLabel}>Weight</Text>
-                      <View style={styles.counterContainer}>
-                        <Pressable
-                          onPress={() => {
-                            const currentWeight = exercise.targetWeight ?? 0;
-                            const newWeight = Math.max(0, currentWeight - 5);
-                            handleUpdateExercise(exercise.id, { targetWeight: newWeight });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>-</Text>
-                        </Pressable>
-                        <Text style={styles.counterValue}>
-                          {exercise.targetWeight && exercise.targetWeight > 0
-                            ? exercise.targetWeight
-                            : '0'}
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            const currentWeight = exercise.targetWeight ?? 0;
-                            const newWeight = currentWeight + 5;
-                            handleUpdateExercise(exercise.id, { targetWeight: newWeight });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>+</Text>
-                        </Pressable>
+                    )}
+
+                    {(exercise.exerciseType === 'weighted' ||
+                      exercise.exerciseType === 'bodyweight' ||
+                      !exercise.exerciseType) && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Weight</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const currentWeight = exercise.targetWeight ?? 0;
+                              const newWeight = Math.max(0, currentWeight - 5);
+                              handleUpdateExercise(exercise.id, { targetWeight: newWeight });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetWeight?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetWeight: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetWeight ?? 0;
+                              updateExercise(exercise.id, {
+                                targetWeight: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const currentWeight = exercise.targetWeight ?? 0;
+                              const newWeight = currentWeight + 5;
+                              handleUpdateExercise(exercise.id, { targetWeight: newWeight });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
+                    )}
+
+                    {(exercise.exerciseType === 'timed' || exercise.exerciseType === 'cardio') && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Duration (s)</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDuration ?? 0;
+                              const newValue = Math.max(0, current - 5);
+                              handleUpdateExercise(exercise.id, { targetDuration: newValue });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetDuration?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetDuration: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetDuration ?? 0;
+                              updateExercise(exercise.id, {
+                                targetDuration: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDuration ?? 0;
+                              const newValue = current + 5;
+                              handleUpdateExercise(exercise.id, { targetDuration: newValue });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+
+                    {exercise.exerciseType === 'cardio' && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Distance</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDistance ?? 0;
+                              const newValue = Math.max(0, current - 1);
+                              handleUpdateExercise(exercise.id, { targetDistance: newValue });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetDistance?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetDistance: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetDistance ?? 0;
+                              updateExercise(exercise.id, {
+                                targetDistance: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDistance ?? 0;
+                              const newValue = current + 1;
+                              handleUpdateExercise(exercise.id, { targetDistance: newValue });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+
+                    {exercise.exerciseType === 'plyo' && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Height (cm)</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetHeight ?? 0;
+                              const newValue = Math.max(0, current - 5);
+                              handleUpdateExercise(exercise.id, { targetHeight: newValue });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetHeight?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetHeight: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetHeight ?? 0;
+                              updateExercise(exercise.id, {
+                                targetHeight: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetHeight ?? 0;
+                              const newValue = current + 5;
+                              handleUpdateExercise(exercise.id, { targetHeight: newValue });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.toggleRow}>
@@ -693,6 +1015,23 @@ export function TemplateEditor({
           )}
         </View>
       </ScreenScrollView>
+
+      {offlineMessage && (
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(239, 68, 68, 0.2)',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            marginHorizontal: 16,
+            marginBottom: 8,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+        </View>
+      )}
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <View style={styles.footerButton}>
@@ -883,21 +1222,52 @@ const styles = StyleSheet.create({
   },
   counterButton: {
     position: 'absolute',
-    left: 0,
     top: 0,
     bottom: 0,
     width: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   counterButtonText: {
     fontSize: typography.fontSizes.lg,
     color: colors.textMuted,
   },
-  counterValue: {
+  counterInput: {
+    flex: 1,
     fontSize: typography.fontSizes.base,
     color: colors.text,
     textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  typeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  typeChip: {
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  typeChipSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  typeChipDefault: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  typeChipText: {
+    fontSize: typography.fontSizes.xs,
+  },
+  typeChipTextSelected: {
+    color: colors.text,
+  },
+  typeChipTextDefault: {
+    color: colors.textMuted,
   },
   toggleRow: {
     flexDirection: 'row',

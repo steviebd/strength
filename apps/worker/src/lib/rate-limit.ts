@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
@@ -14,6 +14,23 @@ export function getRateLimitPerHour(env: { RATE_LIMIT_REQUEST_PER_HOUR?: string 
   return 1000;
 }
 
+export function shouldSkipRateLimit(env: { APP_ENV?: string; SKIP_RATE_LIMIT?: string }): boolean {
+  return env.APP_ENV === 'development' && env.SKIP_RATE_LIMIT === 'true';
+}
+
+export function getRateLimitByEndpoint(path: string): number {
+  if (path.startsWith('/api/auth/sign-in/') || path.startsWith('/api/auth/sign-up/')) {
+    return 20;
+  }
+  if (path === '/api/auth/request-password-reset' || path === '/api/auth/check-email-provider') {
+    return 5;
+  }
+  if (path === '/api/nutrition/chat') {
+    return 60;
+  }
+  return 500;
+}
+
 export async function checkRateLimit(
   db: DrizzleD1Database<typeof schema>,
   userId: string,
@@ -23,54 +40,40 @@ export async function checkRateLimit(
   const now = Date.now();
   const windowStart = Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000);
 
-  const existing = await db
+  await db
+    .insert(schema.rateLimit)
+    .values({
+      userId,
+      endpoint,
+      requests: 1,
+      windowStart: new Date(windowStart),
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    })
+    .onConflictDoUpdate({
+      target: [schema.rateLimit.userId, schema.rateLimit.endpoint],
+      set: {
+        requests: sql`CASE WHEN window_start < ${windowStart} THEN 1 ELSE min(requests + 1, ${limitPerHour + 1}) END`,
+        windowStart: sql`CASE WHEN window_start < ${windowStart} THEN ${windowStart} ELSE window_start END`,
+        updatedAt: new Date(now),
+      },
+    })
+    .run();
+
+  const current = await db
     .select()
     .from(schema.rateLimit)
     .where(and(eq(schema.rateLimit.userId, userId), eq(schema.rateLimit.endpoint, endpoint)))
     .get();
 
-  if (!existing) {
-    await db
-      .insert(schema.rateLimit)
-      .values({
-        userId,
-        endpoint,
-        requests: 1,
-        windowStart: new Date(windowStart),
-        createdAt: new Date(now),
-        updatedAt: new Date(now),
-      })
-      .run();
-    return { allowed: true, remaining: limitPerHour - 1 };
+  if (!current || current.windowStart.getTime() < windowStart) {
+    return { allowed: false, remaining: 0 };
   }
 
-  const existingWindowStart = existing.windowStart.getTime();
-  if (existingWindowStart < windowStart) {
-    await db
-      .update(schema.rateLimit)
-      .set({
-        requests: 1,
-        windowStart: new Date(windowStart),
-        updatedAt: new Date(now),
-      })
-      .where(eq(schema.rateLimit.id, existing.id))
-      .run();
-    return { allowed: true, remaining: limitPerHour - 1 };
+  if (current.requests <= limitPerHour) {
+    return { allowed: true, remaining: limitPerHour - current.requests };
   }
 
-  if (existing.requests >= limitPerHour) {
-    const retryAfter = Math.ceil((existingWindowStart + 60 * 60 * 1000 - now) / 1000);
-    return { allowed: false, remaining: 0, retryAfter: retryAfter > 0 ? retryAfter : 0 };
-  }
-
-  await db
-    .update(schema.rateLimit)
-    .set({
-      requests: existing.requests + 1,
-      updatedAt: new Date(now),
-    })
-    .where(eq(schema.rateLimit.id, existing.id))
-    .run();
-
-  return { allowed: true, remaining: limitPerHour - (existing.requests + 1) };
+  const retryAfter = Math.ceil((current.windowStart.getTime() + 60 * 60 * 1000 - now) / 1000);
+  return { allowed: false, remaining: 0, retryAfter: retryAfter > 0 ? retryAfter : 0 };
 }

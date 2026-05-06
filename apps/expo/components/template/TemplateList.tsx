@@ -75,17 +75,32 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
             <View style={styles.exercisesSection}>
               <SectionTitle title="Exercises" />
               <View style={styles.exerciseList}>
-                {template.exercises.slice(0, 3).map((ex) => (
-                  <View key={`template-exercise:${ex.id}`} style={styles.exerciseRow}>
-                    <Text style={styles.exerciseName} numberOfLines={1}>
-                      {ex.name}
-                    </Text>
-                    <Text style={styles.exerciseSets}>
-                      {ex.sets} × {ex.reps}
-                      {ex.isAmrap ? '+' : ''}
-                    </Text>
-                  </View>
-                ))}
+                {template.exercises.slice(0, 3).map((ex) => {
+                  const type = ex.exerciseType ?? 'weighted';
+                  let detailText = '';
+                  if (type === 'weighted') {
+                    detailText = `${ex.sets} × ${ex.reps} @ ${ex.targetWeight}`;
+                  } else if (type === 'bodyweight') {
+                    detailText = `${ex.sets} × ${ex.reps}`;
+                  } else if (type === 'timed') {
+                    detailText = `${ex.sets} × ${ex.targetDuration}s`;
+                  } else if (type === 'cardio') {
+                    detailText = `${ex.sets} × ${ex.targetDuration}s`;
+                  } else if (type === 'plyo') {
+                    detailText = `${ex.sets} × ${ex.reps} × ${ex.targetHeight}cm`;
+                  }
+                  return (
+                    <View key={`template-exercise:${ex.id}`}>
+                      <View style={styles.exerciseRow}>
+                        <Text style={styles.exerciseName} numberOfLines={1}>
+                          {ex.name}
+                        </Text>
+                        <Text style={styles.exerciseSets}>{detailText}</Text>
+                      </View>
+                      {ex.isAmrap && <Text style={styles.amrapBadge}>AMRAP</Text>}
+                    </View>
+                  );
+                })}
                 {template.exercises.length > 3 && (
                   <Text style={styles.moreExercises}>+{template.exercises.length - 3} more</Text>
                 )}
@@ -224,5 +239,11 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     fontSize: 16,
+  },
+  amrapBadge: {
+    fontSize: 10,
+    color: colors.accent,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });

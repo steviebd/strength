@@ -49,10 +49,10 @@ describe('apiFetch', () => {
     });
   });
 
-  test('returns undefined for empty success payloads', async () => {
+  test('returns null for empty success payloads', async () => {
     const { apiFetch } = await import('./api');
     fetchMock.mockResolvedValue({ data: null, error: null });
 
-    await expect(apiFetch('/api/no-content')).resolves.toBeUndefined();
+    await expect(apiFetch('/api/no-content')).resolves.toBeNull();
   });
 });

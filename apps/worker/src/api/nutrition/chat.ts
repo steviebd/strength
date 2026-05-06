@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { getModel } from '../../lib/ai';
-import { checkRateLimit, getRateLimitPerHour } from '../../lib/rate-limit';
+import { checkRateLimit, getRateLimitPerHour, shouldSkipRateLimit } from '../../lib/rate-limit';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
@@ -16,7 +16,8 @@ import { createDb, createHandler } from '../auth';
 import { formatLocalDate } from '@strength/db';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
 import { getWhoopDataForDay } from '../../lib/whoop-queries';
-import { calculateMacroTargets } from '../../lib/nutrition';
+import { calculateMacroTargets, sumNutritionEntries } from '../../lib/nutrition';
+import { validateDateParam } from '../../lib/validation';
 import type { NutritionChatQueueMessage, WorkerEnv } from '../../auth';
 
 interface ChatRequest {
@@ -25,6 +26,7 @@ interface ChatRequest {
   hasImage: boolean;
   imageBase64?: string;
   timezone?: string;
+  syncOperationId?: string;
 }
 
 interface QueuedChatPayload {
@@ -48,64 +50,6 @@ interface ChatJobResponse {
   error: string | null;
 }
 
-function isE2ENutritionMockEnabled(env: { APP_ENV?: string; E2E_TEST_MODE?: string }) {
-  return env.APP_ENV === 'development' && env.E2E_TEST_MODE === 'true';
-}
-
-function buildMockMealAnalysisContent(userMessageContent: string) {
-  const normalized = userMessageContent.toLowerCase();
-  const isBigMacMeal = normalized.includes('big mac') || normalized.includes('fries');
-  const analysis = isBigMacMeal
-    ? {
-        name: 'Large Big Mac and Fries',
-        calories: 1320,
-        proteinG: 34,
-        carbsG: 156,
-        fatG: 63,
-        confidence: 'medium',
-        mealType: 'Lunch',
-      }
-    : {
-        name: 'E2E Test Meal',
-        calories: 600,
-        proteinG: 35,
-        carbsG: 65,
-        fatG: 20,
-        confidence: 'medium',
-        mealType: 'Snack',
-      };
-
-  return [
-    `${analysis.name}: ${analysis.calories} kcal, ${analysis.proteinG}g protein, ${analysis.carbsG}g carbs, ${analysis.fatG}g fat.`,
-    '',
-    '```json',
-    JSON.stringify(analysis, null, 2),
-    '```',
-  ].join('\n');
-}
-
-async function persistMockAssistantResponse({
-  db,
-  userId,
-  userMessageContent,
-}: {
-  db: any;
-  userId: string;
-  userMessageContent: string;
-}) {
-  const content = buildMockMealAnalysisContent(userMessageContent);
-  const id = crypto.randomUUID();
-  await db.insert(schema.nutritionChatMessages).values({
-    id,
-    userId,
-    role: 'assistant',
-    content,
-    hasImage: false,
-    createdAt: new Date(),
-  });
-  return { content, assistantMessageId: id };
-}
-
 function validateChatMessages(messages: ChatRequest['messages']) {
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return false;
@@ -119,6 +63,12 @@ function validateChatMessages(messages: ChatRequest['messages']) {
   );
 }
 
+/**
+ * Validates the image rate limit for a user.
+ * NOTE: This is a soft limit with approximate enforcement. A small race
+ * window exists between the count query and the subsequent user message
+ * insert, so concurrent requests may occasionally exceed the limit by 1.
+ */
 async function validateImageRateLimit({
   db,
   userId,
@@ -160,15 +110,15 @@ async function resolveChatDate({
   }
 
   const timezone = timezoneResult.timezone;
-  const date =
-    requestedDate === undefined
-      ? formatLocalDate(new Date(), timezone)
-      : /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
-        ? requestedDate
-        : null;
-
-  if (!date) {
-    return { error: 'Valid date (YYYY-MM-DD) is required' };
+  let date: string;
+  if (requestedDate === undefined) {
+    date = formatLocalDate(new Date(), timezone);
+  } else {
+    const validated = validateDateParam(requestedDate);
+    if (!validated.valid) {
+      return { error: 'Valid date (YYYY-MM-DD) is required' };
+    }
+    date = validated.date;
   }
 
   return { date, timezone };
@@ -198,70 +148,70 @@ async function generateNutritionChatAssistantContent({
   }
 
   const { date, timezone } = dateResult;
-  const prefs = await db
-    .select()
-    .from(schema.userPreferences)
-    .where(eq(schema.userPreferences.userId, userId))
-    .get();
+  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
 
-  const bodyStats = await db
-    .select()
-    .from(schema.userBodyStats)
-    .where(eq(schema.userBodyStats.userId, userId))
-    .get();
-
-  const activeProgram = await db
-    .select()
-    .from(schema.userProgramCycles)
-    .where(
-      and(
-        eq(schema.userProgramCycles.userId, userId),
-        eq(schema.userProgramCycles.status, 'active'),
-      ),
-    )
-    .get();
+  const [prefs, bodyStats, activeProgram, entries, trainingContextRow, whoopData] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.userPreferences)
+        .where(eq(schema.userPreferences.userId, userId))
+        .get(),
+      db.select().from(schema.userBodyStats).where(eq(schema.userBodyStats.userId, userId)).get(),
+      db
+        .select()
+        .from(schema.userProgramCycles)
+        .where(
+          and(
+            eq(schema.userProgramCycles.userId, userId),
+            eq(schema.userProgramCycles.status, 'active'),
+          ),
+        )
+        .get(),
+      db
+        .select()
+        .from(schema.nutritionEntries)
+        .where(
+          and(
+            eq(schema.nutritionEntries.userId, userId),
+            gte(schema.nutritionEntries.loggedAt, startOfDay),
+            lt(schema.nutritionEntries.loggedAt, endOfDay),
+            eq(schema.nutritionEntries.isDeleted, false),
+          ),
+        )
+        .all() as Promise<
+        Array<{
+          calories: number | null;
+          proteinG: number | null;
+          carbsG: number | null;
+          fatG: number | null;
+        }>
+      >,
+      db
+        .select()
+        .from(schema.nutritionTrainingContext)
+        .where(
+          and(
+            eq(schema.nutritionTrainingContext.userId, userId),
+            gte(schema.nutritionTrainingContext.createdAt, startOfDay),
+            lt(schema.nutritionTrainingContext.createdAt, endOfDay),
+          ),
+        )
+        .get(),
+      getWhoopDataForDay(db, userId, date, timezone),
+    ]);
 
   const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
   const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
   const bodyweightKg = bodyStats?.bodyweightKg ?? null;
   const hasProgram = !!activeProgram;
 
-  const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
-
-  const entries: Array<{
-    calories: number | null;
-    proteinG: number | null;
-    carbsG: number | null;
-    fatG: number | null;
-  }> = await db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.userId, userId),
-        gte(schema.nutritionEntries.loggedAt, startOfDay),
-        lt(schema.nutritionEntries.loggedAt, endOfDay),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .all();
-
-  const totalCalories = entries.reduce((sum, e) => sum + (e.calories ?? 0), 0);
-  const totalProteinG = entries.reduce((sum, e) => sum + (e.proteinG ?? 0), 0);
-  const totalCarbsG = entries.reduce((sum, e) => sum + (e.carbsG ?? 0), 0);
-  const totalFatG = entries.reduce((sum, e) => sum + (e.fatG ?? 0), 0);
-
-  const trainingContextRow = await db
-    .select()
-    .from(schema.nutritionTrainingContext)
-    .where(
-      and(
-        eq(schema.nutritionTrainingContext.userId, userId),
-        gte(schema.nutritionTrainingContext.createdAt, startOfDay),
-        lt(schema.nutritionTrainingContext.createdAt, endOfDay),
-      ),
-    )
-    .get();
+  const {
+    calories: totalCalories,
+    proteinG: totalProteinG,
+    carbsG: totalCarbsG,
+    fatG: totalFatG,
+  } = sumNutritionEntries(entries);
 
   const trainingCtx: TrainingContext | null = trainingContextRow
     ? {
@@ -269,8 +219,6 @@ async function generateNutritionChatAssistantContent({
         customLabel: trainingContextRow.customLabel ?? undefined,
       }
     : null;
-
-  const whoopData = await getWhoopDataForDay(db, userId, date, timezone);
 
   const macroTargets = calculateMacroTargets(
     bodyweightKg ?? 80,
@@ -325,40 +273,32 @@ async function generateNutritionChatAssistantContent({
     userContent = userMessageContent;
   }
 
-  const systemMessage = { role: 'system' as const, content: systemPrompt };
-  const structuredContextMessage = {
-    role: 'system' as const,
-    content: structuredContextPrompt,
-  };
-  const priorMessages = messages.slice(0, -1).map(compactNutritionChatHistoryMessage);
+  const combinedSystemPrompt = `${systemPrompt}\n\n${structuredContextPrompt}`;
+  const priorMessages = messages.slice(0, -1).slice(-20).map(compactNutritionChatHistoryMessage);
   const userMessage = { role: 'user' as const, content: userContent };
-  const aiMessages = [systemMessage, structuredContextMessage, ...priorMessages, userMessage];
+  const aiMessages = [...priorMessages, userMessage];
 
   let assistantContent: string;
   let assistantMessageId: string;
 
-  if (isE2ENutritionMockEnabled(env)) {
-    const persisted = await persistMockAssistantResponse({ db, userId, userMessageContent });
-    assistantContent = persisted.content;
-    assistantMessageId = persisted.assistantMessageId;
-  } else {
-    const model = getModel(env);
+  const model = getModel(env);
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 30000);
+
+  try {
     const result = await generateText({
       model,
+      system: combinedSystemPrompt,
       messages: aiMessages,
+      abortSignal: abortController.signal,
     });
     assistantContent = result.text;
-    assistantMessageId = crypto.randomUUID();
-
-    await db.insert(schema.nutritionChatMessages).values({
-      id: assistantMessageId,
-      userId,
-      role: 'assistant',
-      content: assistantContent,
-      hasImage: false,
-      createdAt: new Date(),
-    });
+  } finally {
+    clearTimeout(timeoutId);
   }
+
+  assistantContent = assistantContent.slice(0, 10_000);
+  assistantMessageId = crypto.randomUUID();
 
   return { content: assistantContent, assistantMessageId };
 }
@@ -420,17 +360,29 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     hasImage = false,
     imageBase64,
     timezone: requestedTimezone,
+    syncOperationId,
   } = body;
   if (!validateChatMessages(messages)) {
     return c.json({ error: 'Messages are required' }, 400);
   }
 
-  const rateLimit = await checkRateLimit(db, userId, 'nutrition-chat', getRateLimitPerHour(c.env));
-  if (!rateLimit.allowed) {
-    return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
+  if (!shouldSkipRateLimit(c.env)) {
+    const rateLimit = await checkRateLimit(
+      db,
+      userId,
+      'nutrition-chat',
+      getRateLimitPerHour(c.env),
+    );
+    if (!rateLimit.allowed) {
+      return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
+    }
   }
 
   const hasImageFlag = hasImage && !!imageBase64;
+  if (hasImageFlag && imageBase64 && imageBase64.length > 683_594) {
+    return c.json({ error: 'Image too large' }, 413);
+  }
+
   const imageAllowed = await validateImageRateLimit({ db, userId, hasImage: hasImageFlag });
   if (!imageAllowed) {
     return c.json({ error: 'Rate limit exceeded', code: 'RATE_LIMITED' }, 429);
@@ -442,26 +394,66 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   const userMessageContent = messages[messages.length - 1].content;
+  const jobId = crypto.randomUUID();
+  const now = new Date();
+
+  if (syncOperationId) {
+    const jobInsertResult = await db
+      .insert(schema.nutritionChatJobs)
+      .values({
+        id: jobId,
+        userId,
+        status: 'pending',
+        messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
+        date: dateResult.date,
+        hasImage: hasImageFlag,
+        imageBase64: hasImageFlag ? imageBase64 : null,
+        syncOperationId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({
+        target: [schema.nutritionChatJobs.userId, schema.nutritionChatJobs.syncOperationId],
+      })
+      .run();
+
+    if ((jobInsertResult.meta?.changes ?? 0) === 0) {
+      const existing = await db
+        .select()
+        .from(schema.nutritionChatJobs)
+        .where(
+          and(
+            eq(schema.nutritionChatJobs.userId, userId),
+            eq(schema.nutritionChatJobs.syncOperationId, syncOperationId),
+          ),
+        )
+        .get();
+      if (existing) {
+        return c.json({ jobId: existing.id });
+      }
+      return c.json({ error: 'Failed to create chat job' }, 500);
+    }
+  } else {
+    await db.insert(schema.nutritionChatJobs).values({
+      id: jobId,
+      userId,
+      status: 'pending',
+      messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
+      date: dateResult.date,
+      hasImage: hasImageFlag,
+      imageBase64: hasImageFlag ? imageBase64 : null,
+      syncOperationId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
   await db.insert(schema.nutritionChatMessages).values({
     userId,
     role: 'user',
     content: userMessageContent,
     hasImage: hasImageFlag,
     createdAt: new Date(),
-  });
-
-  const jobId = crypto.randomUUID();
-  const now = new Date();
-  await db.insert(schema.nutritionChatJobs).values({
-    id: jobId,
-    userId,
-    status: 'pending',
-    messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
-    date: dateResult.date,
-    hasImage: hasImageFlag,
-    imageBase64: hasImageFlag ? imageBase64 : null,
-    createdAt: now,
-    updatedAt: now,
   });
 
   if (!c.env.NUTRITION_CHAT_QUEUE) {
@@ -527,10 +519,17 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
     return;
   }
 
-  await db
+  const statusUpdateResult = await db
     .update(schema.nutritionChatJobs)
     .set({ status: 'processing', updatedAt: new Date() })
-    .where(eq(schema.nutritionChatJobs.id, job.id));
+    .where(
+      and(eq(schema.nutritionChatJobs.id, job.id), eq(schema.nutritionChatJobs.status, 'pending')),
+    )
+    .run();
+
+  if ((statusUpdateResult.meta?.changes ?? 0) === 0) {
+    return; // another worker took it
+  }
 
   try {
     const payload = JSON.parse(job.messagesJson) as ChatRequest['messages'] | QueuedChatPayload;
@@ -552,6 +551,15 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
     if (!assistant.content.trim()) {
       throw new Error('The assistant returned an empty response.');
     }
+
+    await db.insert(schema.nutritionChatMessages).values({
+      id: assistant.assistantMessageId,
+      userId: job.userId,
+      role: 'assistant',
+      content: assistant.content,
+      hasImage: false,
+      createdAt: new Date(),
+    });
 
     await db
       .update(schema.nutritionChatJobs)
@@ -588,8 +596,9 @@ export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => 
     return c.json({ error: timezoneResult.error }, 400);
   }
 
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return c.json({ error: 'Valid date (YYYY-MM-DD) is required' }, 400);
+  const validated = validateDateParam(date);
+  if (!validated.valid) {
+    return validated.response;
   }
 
   const parsedLimit = Number.parseInt(limitParam ?? '5', 10);
@@ -597,7 +606,7 @@ export const getChatHistoryHandler = createHandler(async (c, { userId, db }) => 
   const beforeTimestamp = before ? Number.parseInt(before, 10) : Number.NaN;
 
   const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
-    date,
+    validated.date,
     timezoneResult.timezone,
   );
 

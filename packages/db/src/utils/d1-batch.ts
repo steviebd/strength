@@ -3,10 +3,15 @@ import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core/table';
 
 type DbClient = DrizzleD1Database<Record<string, unknown>>;
 
+export interface ChunkedInsertOnConflictConfig {
+  target: any;
+  set: Record<string, any>;
+}
+
 export const DEFAULT_CHUNK_SIZE = 100;
 export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_MAX_QUERY_PARAMS = 100;
-export const DEFAULT_STATEMENTS_PER_BATCH = 95;
+export const DEFAULT_STATEMENTS_PER_BATCH = 45;
 
 export async function batchParallel<T>(
   tasks: (() => Promise<T>)[],
@@ -130,6 +135,9 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     rows: T['$inferInsert'][];
     chunkSize?: number;
     maxQueryParams?: number;
+    maxStatementsPerBatch?: number;
+    maxRounds?: number;
+    onConflictDoUpdate?: ChunkedInsertOnConflictConfig;
   },
 ): Promise<number> {
   const {
@@ -137,9 +145,15 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
     rows,
     chunkSize = DEFAULT_CHUNK_SIZE,
     maxQueryParams = DEFAULT_MAX_QUERY_PARAMS,
+    maxStatementsPerBatch = DEFAULT_STATEMENTS_PER_BATCH,
+    maxRounds = 100,
+    onConflictDoUpdate,
   } = config;
 
   if (rows.length === 0) return 0;
+  if (maxStatementsPerBatch < 1) {
+    throw new Error('maxStatementsPerBatch must be at least 1');
+  }
 
   const safeChunkSize = getSafeInsertChunkSize(
     rows as Record<string, unknown>[],
@@ -148,15 +162,53 @@ export async function chunkedInsert<T extends AnySQLiteTable>(
   );
   const chunks = chunkArray(rows, safeChunkSize);
 
-  const STATEMENTS_PER_BATCH = DEFAULT_STATEMENTS_PER_BATCH;
   let insertedRows = 0;
+  let rounds = 0;
 
-  for (let i = 0; i < chunks.length; i += STATEMENTS_PER_BATCH) {
-    const batchChunks = chunks.slice(i, i + STATEMENTS_PER_BATCH);
-    const statements = batchChunks.map((chunk) => db.insert(table).values(chunk));
+  for (let i = 0; i < chunks.length; i += maxStatementsPerBatch) {
+    rounds++;
+    if (rounds > maxRounds) {
+      throw new Error(`chunkedInsert exceeded maxRounds (${maxRounds})`);
+    }
+    const batchChunks = chunks.slice(i, i + maxStatementsPerBatch);
+    const statements = batchChunks.map((chunk) => {
+      const stmt = db.insert(table).values(chunk) as any;
+      if (onConflictDoUpdate) {
+        return stmt.onConflictDoUpdate({
+          target: onConflictDoUpdate.target,
+          set: onConflictDoUpdate.set,
+        });
+      }
+      return stmt;
+    });
     const results = await db.batch(statements as any);
-    insertedRows += results.reduce((sum, r) => sum + r.rowsAffected, 0);
+    const batchInsertedRows = results.reduce((sum, r) => sum + getRowsAffected(r), 0);
+    insertedRows += batchInsertedRows;
+    if (chunks.length > maxStatementsPerBatch) {
+      console.info('chunkedInsert batch completed', {
+        batch: Math.floor(i / maxStatementsPerBatch) + 1,
+        statements: statements.length,
+        rowsAffected: batchInsertedRows,
+      });
+    }
   }
 
   return insertedRows;
+}
+
+function getRowsAffected(result: unknown): number {
+  if (!result || typeof result !== 'object') {
+    return 0;
+  }
+
+  if ('rowsAffected' in result && typeof result.rowsAffected === 'number') {
+    return result.rowsAffected;
+  }
+
+  const meta = 'meta' in result ? result.meta : null;
+  if (meta && typeof meta === 'object' && 'changes' in meta && typeof meta.changes === 'number') {
+    return meta.changes;
+  }
+
+  return 0;
 }

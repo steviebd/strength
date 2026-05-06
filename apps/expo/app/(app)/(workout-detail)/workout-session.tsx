@@ -1,8 +1,6 @@
-import { useState, useCallback, useEffect, useRef, createRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createRef, useMemo } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   ActivityIndicator,
   LayoutChangeEvent,
   View,
@@ -18,8 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { PageLayout } from '@/components/ui/PageLayout';
 import { Button } from '@/components/ui/Button';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { apiFetch } from '@/lib/api';
@@ -27,8 +26,18 @@ import { removePendingWorkout } from '@/lib/storage';
 import { getLocalWorkout } from '@/db/workouts';
 import { resolveSetCompletionNavigation } from '@/lib/workoutSetNavigation';
 import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
-import { ScrollProvider } from '@/context/ScrollContext';
-import { colors, spacing, radius, typography } from '@/theme';
+import {
+  accent,
+  border,
+  colors,
+  layout,
+  overlay,
+  radius,
+  spacing,
+  statusBg,
+  typography,
+} from '@/theme';
+import { formatDuration, formatDistance } from '@/lib/units';
 
 interface ExerciseLayout {
   id: string;
@@ -70,10 +79,11 @@ export default function WorkoutSessionScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const isNarrowHeader = windowWidth < 400;
-  const { workoutId, source, cycleId, programName } = useLocalSearchParams<{
+  const { workoutId, source, cycleId, cycleWorkoutId, programName } = useLocalSearchParams<{
     workoutId?: string;
     source?: string;
     cycleId?: string;
+    cycleWorkoutId?: string;
     programName?: string;
   }>();
   const {
@@ -105,7 +115,7 @@ export default function WorkoutSessionScreen() {
   const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
-  const { activeTimezone, weightUnit: userWeightUnit } = useUserPreferences();
+  const { activeTimezone, weightUnit: userWeightUnit, distanceUnit } = useUserPreferences();
 
   const scrollYRef = useRef(0);
   const setRefsRef = useRef(new Map<string, React.RefObject<View | null>>());
@@ -137,9 +147,13 @@ export default function WorkoutSessionScreen() {
 
   useEffect(() => {
     if (loadedWorkout) {
-      loadWorkout(loadedWorkout);
+      loadWorkout({
+        ...loadedWorkout,
+        cycleWorkoutId: loadedWorkout.cycleWorkoutId ?? cycleWorkoutId ?? null,
+        programCycleId: loadedWorkout.programCycleId ?? cycleId ?? null,
+      });
     }
-  }, [loadedWorkout, loadWorkout]);
+  }, [cycleId, cycleWorkoutId, loadedWorkout, loadWorkout]);
 
   const getSetRef = useCallback((setId: string) => {
     if (!setRefsRef.current.has(setId)) {
@@ -211,14 +225,23 @@ export default function WorkoutSessionScreen() {
   const isViewingCompleted = !!workoutId && !!workout?.completedAt;
   const isProgramSession = source === 'program';
   const isProgramOneRMTest = source === 'program-1rm-test';
+  const hasLoadedRequestedWorkout = !!workoutId && workout?.id === workoutId;
 
   const computedVolume = exercises.reduce((total, ex) => {
+    const type = ex.exerciseType ?? 'weighted';
+    if (type !== 'weighted' && type !== 'bodyweight' && type !== 'plyo') {
+      return total;
+    }
     return (
       total +
       (ex.sets ?? []).reduce((setTotal, set) => {
-        if (set.isComplete && set.weight && set.reps) {
-          const weight = userWeightUnit === 'lbs' ? set.weight * KG_TO_LBS : set.weight;
-          return setTotal + weight * set.reps;
+        if (!set.isComplete) return setTotal;
+        const hasWeight = set.weight !== null && set.weight > 0;
+        const hasReps = set.reps !== null && set.reps > 0;
+        if (hasReps && (type === 'bodyweight' || hasWeight)) {
+          const weight =
+            userWeightUnit === 'lbs' ? (set.weight ?? 0) * KG_TO_LBS : (set.weight ?? 0);
+          return setTotal + weight * set.reps!;
         }
         return setTotal;
       }, 0)
@@ -229,6 +252,36 @@ export default function WorkoutSessionScreen() {
     if (volume >= 1000) return `${(volume / 1000).toFixed(1)}k`;
     return volume.toString();
   };
+
+  const { totalTimeSeconds, totalDistanceMeters, totalCompletedSets, hasWeightedSets } =
+    useMemo(() => {
+      let time = 0;
+      let distance = 0;
+      let sets = 0;
+      let weighted = false;
+      for (const ex of exercises) {
+        const type = ex.exerciseType ?? 'weighted';
+        for (const set of ex.sets ?? []) {
+          if (!set.isComplete) continue;
+          sets++;
+          if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+            weighted = true;
+          }
+          if (type === 'timed' || type === 'cardio') {
+            time += set.duration ?? 0;
+          }
+          if (type === 'cardio' && set.distance) {
+            distance += set.distance;
+          }
+        }
+      }
+      return {
+        totalTimeSeconds: time,
+        totalDistanceMeters: distance,
+        totalCompletedSets: sets,
+        hasWeightedSets: weighted,
+      };
+    }, [exercises]);
 
   const handleStartWorkout = useCallback(async () => {
     const name = workoutName.trim() || 'Workout';
@@ -259,6 +312,9 @@ export default function WorkoutSessionScreen() {
             updateSet(set.id, {
               weight: sets[idx].weight,
               reps: sets[idx].reps,
+              duration: sets[idx].duration,
+              distance: sets[idx].distance,
+              height: sets[idx].height,
               isComplete: sets[idx].completed,
             });
           }
@@ -363,15 +419,39 @@ export default function WorkoutSessionScreen() {
 
   const findFirstIncompleteSet = useCallback(() => {
     for (let i = 0; i < exercises.length; i++) {
+      const type = exercises[i].exerciseType ?? 'weighted';
       for (let j = 0; j < exercises[i].sets.length; j++) {
         const set = exercises[i].sets[j];
-        if ((set.weight !== null || set.reps !== null) && !set.isComplete) {
-          return { exerciseIndex: i, setIndex: j };
+        if (set.isComplete) continue;
+        if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+          if (set.weight !== null || set.reps !== null) {
+            return { exerciseIndex: i, setIndex: j };
+          }
+        } else if (type === 'timed') {
+          if (set.duration !== null) {
+            return { exerciseIndex: i, setIndex: j };
+          }
+        } else if (type === 'cardio') {
+          if (set.duration !== null || set.distance !== null) {
+            return { exerciseIndex: i, setIndex: j };
+          }
         }
       }
     }
     return null;
   }, [exercises]);
+
+  const handleDiscardWorkout = useCallback(async () => {
+    await discardWorkout();
+    const programCycleId =
+      workout?.programCycleId ?? (typeof cycleId === 'string' ? cycleId : null);
+    if (isProgramSession && programCycleId) {
+      queryClient.invalidateQueries({ queryKey: ['programSchedule', programCycleId] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
+    queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
+    queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+  }, [cycleId, discardWorkout, isProgramSession, queryClient, workout?.programCycleId]);
 
   const executeCompleteWorkout = useCallback(async () => {
     await completeWorkout();
@@ -450,7 +530,7 @@ export default function WorkoutSessionScreen() {
     }
   }, [findFirstIncompleteSet, scrollToExerciseIndex, executeCompleteWorkout]);
 
-  if (workoutId && isLoadingWorkout) {
+  if (workoutId && isLoadingWorkout && !hasLoadedRequestedWorkout) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -459,7 +539,7 @@ export default function WorkoutSessionScreen() {
     );
   }
 
-  if (workoutId && loadError) {
+  if (workoutId && loadError && !hasLoadedRequestedWorkout) {
     return (
       <View style={[styles.container, styles.centered, { paddingHorizontal: spacing.lg }]}>
         <Text style={styles.errorTitle}>Error Loading Workout</Text>
@@ -531,7 +611,7 @@ export default function WorkoutSessionScreen() {
                 e.sets.some((s) => (s.weight !== null && s.weight > 0) || s.isComplete),
               );
               const doDiscard = async () => {
-                await discardWorkout();
+                await handleDiscardWorkout();
                 router.push('/(app)/workouts');
               };
               if (isProgramOneRMTest && hasEnteredData) {
@@ -569,132 +649,153 @@ export default function WorkoutSessionScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-      style={{ flex: 1 }}
-    >
-      <ScrollProvider scrollViewRef={scrollViewRef}>
-        <View
-          style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}
-          onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
-        >
-          <View style={styles.headerTop}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.subtitle}>
-                {isProgramOneRMTest
-                  ? '1RM Test'
-                  : isViewingCompleted
-                    ? 'Completed Workout'
-                    : 'Active Workout'}
+    <KeyboardFormLayout keyboardVerticalOffset={88}>
+      <View
+        style={[styles.fixedHeader, { paddingTop: insets.top + spacing.md }]}
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.subtitle}>
+              {isProgramOneRMTest
+                ? '1RM Test'
+                : isViewingCompleted
+                  ? 'Completed Workout'
+                  : 'Active Workout'}
+            </Text>
+            <Text
+              style={[styles.title, isProgramOneRMTest && isNarrowHeader && styles.titleNarrow]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {isProgramOneRMTest && programName ? programName : workout?.name || 'Workout'}
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <Text style={styles.durationPrimary}>{formattedDuration}</Text>
+            {isViewingCompleted && computedVolume > 0 && (
+              <Text style={styles.durationSecondary}>
+                {formatVolume(computedVolume)} {userWeightUnit}
               </Text>
-              <Text
-                style={[styles.title, isProgramOneRMTest && isNarrowHeader && styles.titleNarrow]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {isProgramOneRMTest && programName ? programName : workout?.name || 'Workout'}
-              </Text>
-            </View>
-            <View style={styles.headerRight}>
-              <Text style={styles.durationPrimary}>{formattedDuration}</Text>
-              {isViewingCompleted && computedVolume > 0 && (
-                <Text style={styles.durationSecondary}>
+            )}
+          </View>
+        </View>
+        {isViewingCompleted && (
+          <View style={styles.summaryPills}>
+            {hasWeightedSets && computedVolume > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>
                   {formatVolume(computedVolume)} {userWeightUnit}
                 </Text>
-              )}
-            </View>
+              </View>
+            )}
+            {totalTimeSeconds > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{formatDuration(totalTimeSeconds)}</Text>
+              </View>
+            )}
+            {totalDistanceMeters > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>
+                  {formatDistance(totalDistanceMeters, distanceUnit)}
+                </Text>
+              </View>
+            )}
+            {totalCompletedSets > 0 && (
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{totalCompletedSets} sets</Text>
+              </View>
+            )}
           </View>
-          <View style={styles.headerBottom}>{renderActionButtons()}</View>
-        </View>
-        <PageLayout
-          headerType="none"
-          scrollViewRef={scrollViewRef}
-          screenScrollViewProps={{
-            bottomInset: 400,
-            topPadding: headerHeight + spacing.md,
-            horizontalPadding: spacing.md,
-            showsVerticalScrollIndicator: false,
-            keyboardShouldPersistTaps: 'handled',
-            onScroll: handleScroll,
-            scrollEventThrottle: 16,
-          }}
-        >
-          <View style={styles.exerciseList}>
-            {exercises.map((exercise, idx) => {
-              const localSets = (exercise.sets ?? []).map((s) => ({
-                id: s.id,
-                reps: s.reps ?? 0,
-                weight: s.weight ?? 0,
-                completed: s.isComplete,
-              }));
-              return (
-                <View
-                  key={`workout-exercise:${exercise.id ?? idx}`}
-                  onLayout={(e) => handleExerciseLayout(exercise.id, e)}
-                >
-                  <ExerciseLogger
-                    exercise={{
-                      id: exercise.id,
-                      exerciseId: exercise.exerciseId,
-                      name: exercise.name,
-                      muscleGroup: exercise.muscleGroup,
-                      isAmrap: exercise.isAmrap,
-                    }}
-                    sets={localSets}
-                    onSetsUpdate={(sets) => handleExerciseSetsUpdate(exercise.id, sets)}
-                    onAddSet={() => addSet(exercise.id)}
-                    onDeleteSet={handleDeleteSet}
-                    weightUnit={weightUnit}
-                    isEditMode={isViewingCompleted ? isEditing : true}
-                    getSetRef={getSetRef}
-                    onSetLayout={(setId, layout) => handleSetLayout(exercise.id, setId, layout)}
-                  />
-                </View>
-              );
-            })}
-
-            {(!isViewingCompleted || isEditing) && (
-              <Pressable
-                testID="workout-add-exercise"
-                accessibilityLabel="workout-add-exercise"
-                style={styles.addExerciseButton}
-                onPress={() => setShowAddExercise(true)}
+        )}
+        <View style={styles.headerBottom}>{renderActionButtons()}</View>
+      </View>
+      <FormScrollView
+        ref={scrollViewRef}
+        bottomInset={layout.bottomInsetList}
+        topPadding={headerHeight + spacing.md}
+        horizontalPadding={spacing.md}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        <View style={styles.exerciseList}>
+          {exercises.map((exercise, idx) => {
+            const localSets = (exercise.sets ?? []).map((s) => ({
+              id: s.id,
+              reps: s.reps ?? 0,
+              weight: s.weight ?? null,
+              duration: s.duration ?? 0,
+              distance: s.distance ?? null,
+              height: s.height ?? 0,
+              completed: s.isComplete,
+            }));
+            return (
+              <View
+                key={`workout-exercise:${exercise.id ?? idx}`}
+                onLayout={(e) => handleExerciseLayout(exercise.id, e)}
               >
-                <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
-              </Pressable>
-            )}
+                <ExerciseLogger
+                  exercise={{
+                    id: exercise.id,
+                    exerciseId: exercise.exerciseId,
+                    name: exercise.name,
+                    muscleGroup: exercise.muscleGroup,
+                    exerciseType: exercise.exerciseType,
+                    isAmrap: exercise.isAmrap,
+                  }}
+                  sets={localSets}
+                  onSetsUpdate={(sets) => handleExerciseSetsUpdate(exercise.id, sets)}
+                  onAddSet={() => addSet(exercise.id)}
+                  onDeleteSet={handleDeleteSet}
+                  weightUnit={weightUnit}
+                  isEditMode={isViewingCompleted ? isEditing : true}
+                  getSetRef={getSetRef}
+                  onSetLayout={(setId, layout) => handleSetLayout(exercise.id, setId, layout)}
+                />
+              </View>
+            );
+          })}
 
-            {exercises.length > 0 && (
-              <Pressable style={styles.exerciseProgressBar} onPress={scrollToCurrentExercise}>
-                <View style={styles.exerciseProgressInfo}>
-                  <Text style={styles.exerciseProgressText}>
-                    {exercises[currentExerciseIndex]?.name}
-                  </Text>
-                  <Text style={styles.exerciseProgressSubtext}>
-                    {currentExerciseIndex + 1} of {exercises.length} exercises
-                  </Text>
-                </View>
-                <View style={styles.setCounterInline}>
-                  <Text style={styles.setCounterInlineText}>
-                    Set {currentSetIndex + 1} of {exercises[currentExerciseIndex]?.sets.length}
-                  </Text>
-                </View>
-              </Pressable>
-            )}
-          </View>
+          {(!isViewingCompleted || isEditing) && (
+            <Pressable
+              testID="workout-add-exercise"
+              accessibilityLabel="workout-add-exercise"
+              style={styles.addExerciseButton}
+              onPress={() => setShowAddExercise(true)}
+            >
+              <Text style={styles.addExerciseButtonText}>+ Add Exercise</Text>
+            </Pressable>
+          )}
 
-          <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
-            <ExerciseSearch
-              visible={showAddExercise}
-              onSelect={handleAddExercise}
-              onClose={() => setShowAddExercise(false)}
-              excludeIds={exercises.map((e) => e.exerciseId)}
-            />
-          </Modal>
-        </PageLayout>
-      </ScrollProvider>
-    </KeyboardAvoidingView>
+          {exercises.length > 0 && (
+            <Pressable style={styles.exerciseProgressBar} onPress={scrollToCurrentExercise}>
+              <View style={styles.exerciseProgressInfo}>
+                <Text style={styles.exerciseProgressText}>
+                  {exercises[currentExerciseIndex]?.name}
+                </Text>
+                <Text style={styles.exerciseProgressSubtext}>
+                  {currentExerciseIndex + 1} of {exercises.length} exercises
+                </Text>
+              </View>
+              <View style={styles.setCounterInline}>
+                <Text style={styles.setCounterInlineText}>
+                  Set {currentSetIndex + 1} of {exercises[currentExerciseIndex]?.sets.length}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
+
+        <Modal visible={showAddExercise} animationType="slide" presentationStyle="pageSheet">
+          <ExerciseSearch
+            visible={showAddExercise}
+            onSelect={handleAddExercise}
+            onClose={() => setShowAddExercise(false)}
+            excludeIds={exercises.map((e) => e.exerciseId)}
+          />
+        </Modal>
+      </FormScrollView>
+    </KeyboardFormLayout>
   );
 }
 
@@ -765,8 +866,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: `${colors.error}50`,
-    backgroundColor: `${colors.error}10`,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
     padding: spacing.md,
   },
   errorBannerText: {
@@ -888,10 +989,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: spacing.md,
     right: spacing.md,
-    backgroundColor: `${colors.surface}95`,
+    backgroundColor: overlay.muted,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: `${colors.accent}50`,
+    borderColor: border.focus,
     padding: spacing.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -921,7 +1022,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   setCounterBadge: {
-    backgroundColor: `${colors.accent}20`,
+    backgroundColor: accent.subtle,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -976,7 +1077,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
   },
   setCounterInline: {
-    backgroundColor: `${colors.accent}20`,
+    backgroundColor: accent.subtle,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -985,5 +1086,24 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.bold,
+  },
+  summaryPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pill: {
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pillText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
   },
 });

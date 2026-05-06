@@ -1,8 +1,8 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import { exercises, generateId } from '../schema';
 import type { ExerciseLibraryItem } from '../exercise-library';
-import { exerciseLibrary } from '../exercise-library';
+import { exerciseLibrary, getExerciseTypeByLibraryId } from '../exercise-library';
 
 export type LiftType = 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row';
 
@@ -35,23 +35,30 @@ export async function getOrCreateExerciseForUser(
 ): Promise<string> {
   if (libraryId) {
     const now = new Date();
+    const libraryItem = exerciseLibrary.find((e) => e.id === libraryId);
+    const canonicalName = libraryItem?.name ?? exerciseName;
+    const canonicalMuscleGroup = libraryItem?.muscleGroup ?? inferMuscleGroup(liftType);
+    const canonicalDescription = libraryItem?.description ?? null;
+
     const result = await db
       .insert(exercises)
       .values({
         id: generateId(),
         userId,
-        name: exerciseName,
-        muscleGroup: inferMuscleGroup(liftType),
-        description: null,
+        name: canonicalName,
+        muscleGroup: canonicalMuscleGroup,
+        description: canonicalDescription,
         libraryId,
+        exerciseType: getExerciseTypeByLibraryId(libraryId),
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [exercises.userId, exercises.libraryId],
         set: {
-          name: exerciseName,
-          muscleGroup: inferMuscleGroup(liftType),
+          muscleGroup: canonicalMuscleGroup,
+          description: canonicalDescription,
+          exerciseType: getExerciseTypeByLibraryId(libraryId),
           updatedAt: now,
         },
       })
@@ -83,6 +90,7 @@ export async function getOrCreateExerciseForUser(
         muscleGroup: libraryItem.muscleGroup,
         description: libraryItem.description,
         libraryId: libraryItem.id,
+        exerciseType: getExerciseTypeByLibraryId(libraryItem.id),
         createdAt: now,
         updatedAt: now,
       })
@@ -92,6 +100,7 @@ export async function getOrCreateExerciseForUser(
           name: libraryItem.name,
           muscleGroup: libraryItem.muscleGroup,
           description: libraryItem.description,
+          exerciseType: getExerciseTypeByLibraryId(libraryItem.id),
           updatedAt: now,
         },
       })
@@ -110,11 +119,34 @@ export async function getOrCreateExerciseForUser(
       muscleGroup: inferMuscleGroup(liftType),
       description: null,
       libraryId: null,
+      exerciseType: 'weighted',
       createdAt: now,
       updatedAt: now,
+    })
+    .onConflictDoNothing({
+      target: [exercises.userId, sql`lower(${exercises.name})`],
     })
     .returning({ id: exercises.id })
     .get();
 
-  return created.id;
+  if (created) {
+    return created.id;
+  }
+
+  // Fallback: another request created it concurrently
+  const fallback = await db
+    .select({ id: exercises.id })
+    .from(exercises)
+    .where(
+      and(
+        eq(exercises.userId, userId),
+        eq(sql`lower(${exercises.name})`, exerciseName.toLowerCase()),
+      ),
+    )
+    .get();
+
+  if (!fallback) {
+    throw new Error('Failed to create or find exercise');
+  }
+  return fallback.id;
 }

@@ -8,19 +8,24 @@ const createSecureStoreStorage = () => ({
     try {
       const result = SecureStore.getItem(key);
       return result as string | null;
-    } catch {
+    } catch (e) {
+      console.error(`[platform-storage] Failed to get ${key} from SecureStore:`, e);
       return null;
     }
   },
   setItem: (key: string, value: string): void => {
     try {
       SecureStore.setItem(key, value);
-    } catch {}
+    } catch (e) {
+      console.error(`[platform-storage] Failed to set ${key} in SecureStore:`, e);
+    }
   },
   removeItem: (key: string): void => {
     try {
       SecureStore.deleteItemAsync(key);
-    } catch {}
+    } catch (e) {
+      console.error(`[platform-storage] Failed to remove ${key} from SecureStore:`, e);
+    }
   },
   getItemAsync: (key: string): Promise<string | null> => {
     return SecureStore.getItemAsync(key);
@@ -33,17 +38,49 @@ const createSecureStoreStorage = () => ({
   },
 });
 
+const AUTH_KEY_PREFIX = 'strength';
+
+function getCookie(key: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const encodedKey = encodeURIComponent(key);
+  const match = document.cookie.match(
+    new RegExp('(?:^|; )' + encodedKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setCookie(key: string, value: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; path=/; max-age=31536000`;
+}
+
+function removeCookie(key: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${encodeURIComponent(key)}=; path=/; max-age=0`;
+}
+
 const createWebStorage = () => ({
   getItem: (key: string): string | null => {
     if (typeof window === 'undefined') return null;
+    if (key.startsWith(AUTH_KEY_PREFIX)) {
+      return getCookie(key);
+    }
     return window.localStorage.getItem(key);
   },
   setItem: (key: string, value: string): void => {
     if (typeof window === 'undefined') return;
+    if (key.startsWith(AUTH_KEY_PREFIX)) {
+      setCookie(key, value);
+      return;
+    }
     window.localStorage.setItem(key, value);
   },
   removeItem: (key: string): void => {
     if (typeof window === 'undefined') return;
+    if (key.startsWith(AUTH_KEY_PREFIX)) {
+      removeCookie(key);
+      return;
+    }
     window.localStorage.removeItem(key);
   },
   getItemAsync: (key: string): Promise<string | null> => {

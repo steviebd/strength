@@ -63,13 +63,15 @@ function getNativeAuthHeaders(): HeadersInit {
   };
 }
 
+function resolveApiUrl(endpoint: string): string {
+  const isRelative = !endpoint.startsWith('http');
+  return isRelative ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}` : endpoint;
+}
+
 async function apiFetchStream(endpoint: string, options: ApiFetchOptions): Promise<Response> {
   assertAppConfigured();
 
-  const isRelative = !endpoint.startsWith('http');
-  const url = isRelative
-    ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
-    : endpoint;
+  const url = resolveApiUrl(endpoint);
   const headers = new Headers(options.headers);
   const body = serializeFetchBody(normalizeBody(options.body));
 
@@ -106,10 +108,7 @@ async function apiFetchStream(endpoint: string, options: ApiFetchOptions): Promi
 export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): Promise<T> {
   assertAppConfigured();
 
-  const isRelative = !endpoint.startsWith('http');
-  const url = isRelative
-    ? `${env.apiUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
-    : endpoint;
+  const url = resolveApiUrl(endpoint);
 
   const normalizedOptions = options ? { ...options, body: normalizeBody(options.body) } : options;
 
@@ -128,11 +127,11 @@ export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): 
   }
 
   if (result.data === null && result.error === null) {
-    return undefined as T;
+    return null as T;
   }
 
   if (!result.data || (typeof result.data === 'string' && !result.data.trim())) {
-    return undefined as T;
+    return null as T;
   }
 
   return result.data as T;

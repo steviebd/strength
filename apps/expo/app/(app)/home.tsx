@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { OfflineError } from '@/lib/offline-mutation';
 import { convertToDisplayWeight } from '@strength/db/client';
 import { colors, radius, spacing, typography, textRoles } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -19,12 +20,21 @@ import {
 import { PageLayout } from '@/components/ui/PageLayout';
 import { useHomeSummary } from '@/hooks/useHomeSummary';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { createLocalWorkoutFromProgramCycleWorkout } from '@/db/workouts';
+import {
+  createLocalWorkoutFromProgramCycleWorkout,
+  createLocalWorkoutFromProgramCycleWorkoutDefinition,
+  discardLocalWorkout,
+  listLocalActiveWorkoutDrafts,
+  type LocalActiveWorkoutDraftItem,
+} from '@/db/workouts';
+import { cleanupStaleLocalData } from '@/db/local-cleanup';
 
 export default function HomeScreen() {
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [activeDrafts, setActiveDrafts] = useState<LocalActiveWorkoutDraftItem[]>([]);
   const session = authClient.useSession();
   const user = session.data?.user;
   const displayName = user?.name || user?.email || 'Athlete';
@@ -37,7 +47,14 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] });
-    }, [activeTimezone, queryClient]),
+      if (user?.id) {
+        void cleanupStaleLocalData(user.id).then(() =>
+          listLocalActiveWorkoutDrafts(user.id, 20).then(setActiveDrafts),
+        );
+      } else {
+        setActiveDrafts([]);
+      }
+    }, [activeTimezone, queryClient, user?.id]),
   );
 
   useEffect(() => {
@@ -70,7 +87,7 @@ export default function HomeScreen() {
   const workoutTitle = workout?.programName ?? nextWorkout?.programName ?? 'No Active Program';
   const workoutSubtitle = workout?.name ?? (nextWorkout ? `Next: ${nextWorkout.name}` : null);
 
-  const handleStartWorkout = async () => {
+  const handleStartWorkout = async (skipDraftId?: string) => {
     if (!startableCycleWorkoutId) {
       router.push('/(app)/workouts');
       return;
@@ -78,33 +95,93 @@ export default function HomeScreen() {
 
     try {
       if (user?.id) {
+        const existingDraft = activeDrafts.find(
+          (draft) =>
+            draft.workoutType === 'training' &&
+            draft.cycleWorkoutId === startableCycleWorkoutId &&
+            draft.id !== skipDraftId,
+        );
+        if (existingDraft) {
+          Alert.alert(
+            'Resume workout?',
+            'You already have an in-progress workout from this program.',
+            [
+              {
+                text: 'Resume',
+                onPress: () => {
+                  const params = new URLSearchParams({
+                    workoutId: existingDraft.id,
+                    source: 'program',
+                    cycleWorkoutId: startableCycleWorkoutId,
+                  });
+                  if (existingDraft.programCycleId) {
+                    params.set('cycleId', existingDraft.programCycleId);
+                  }
+                  router.push(`/workout-session?${params.toString()}`);
+                },
+              },
+              {
+                text: 'Start Fresh',
+                style: 'destructive',
+                onPress: () => {
+                  void (async () => {
+                    await discardLocalWorkout(existingDraft.id, existingDraft.cycleWorkoutId);
+                    const drafts = await listLocalActiveWorkoutDrafts(user.id, 20);
+                    setActiveDrafts(drafts);
+                    await handleStartWorkout(existingDraft.id);
+                  })();
+                },
+              },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+          return;
+        }
+
         const local = await createLocalWorkoutFromProgramCycleWorkout(
           user.id,
           startableCycleWorkoutId,
         );
         if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+          const params = new URLSearchParams({
+            workoutId: local.id,
+            source: 'program',
+            cycleWorkoutId: startableCycleWorkoutId,
+          });
+          if (local.programCycleId) params.set('cycleId', local.programCycleId);
+          router.push(`/workout-session?${params.toString()}`);
           return;
         }
       }
-      const result = await apiFetch<{
-        workoutId: string;
-        sessionName: string;
-        created: boolean;
-        completed: boolean;
-      }>(`/api/programs/cycle-workouts/${startableCycleWorkoutId}/start`, {
-        method: 'POST',
-        body: {},
-      });
+      if (!user?.id) {
+        throw new Error('Not authenticated');
+      }
 
-      if (result.completed) {
+      const definition = await apiFetch<any>(
+        `/api/programs/cycle-workouts/${startableCycleWorkoutId}`,
+      );
+      if (definition.isComplete) {
         Alert.alert('Already Completed', 'This workout has already been completed.');
         return;
       }
 
-      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
+        user.id,
+        definition,
+      );
+      if (!remoteLocal?.id) {
+        throw new Error('Failed to start workout');
+      }
+
+      router.push(
+        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleWorkoutId=${startableCycleWorkoutId}`,
+      );
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start workout');
+      if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
+        setOfflineMessage('Unable to start workout while offline.');
+      } else {
+        Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start workout');
+      }
     }
   };
 
@@ -187,6 +264,12 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               ))}
+            </View>
+          )}
+
+          {offlineMessage && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
             </View>
           )}
 
@@ -475,6 +558,16 @@ const styles = StyleSheet.create({
   workoutActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  offlineBanner: {
+    backgroundColor: 'rgba(251,146,60,0.15)',
+    borderRadius: 12,
+    padding: 12,
+  },
+  offlineBannerText: {
+    color: '#fdba74',
+    fontSize: 14,
+    fontWeight: '500',
   },
   metricsRow: {
     flexDirection: 'row',

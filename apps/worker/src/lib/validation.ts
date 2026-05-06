@@ -1,3 +1,16 @@
+export function pickAllowedKeys<T extends string>(
+  body: Record<string, unknown>,
+  keys: readonly T[],
+): Record<string, unknown> {
+  const allowed: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in body) {
+      allowed[key] = body[key];
+    }
+  }
+  return allowed;
+}
+
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export function validateDateParam(

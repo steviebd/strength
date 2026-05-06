@@ -13,44 +13,23 @@ function notFound(body: NotFoundBody) {
   return Response.json(body, { status: 404 });
 }
 
-export async function requireOwnedTemplate(
+export async function requireOwnedRecord(
   ctx: AuthContextLike,
-  templateId: string,
-  body: NotFoundBody = { message: 'Template not found' },
-) {
-  const template = await ctx.db
-    .select()
-    .from(schema.templates)
-    .where(
-      and(
-        eq(schema.templates.id, templateId),
-        eq(schema.templates.userId, ctx.userId),
-        eq(schema.templates.isDeleted, false),
-      ),
-    )
+  table: any,
+  id: string,
+  options: {
+    notFoundBody?: NotFoundBody;
+    extraConditions?: any[];
+    columns?: Record<string, any>;
+  } = {},
+): Promise<any> {
+  const queryBuilder = options.columns ? ctx.db.select(options.columns) : ctx.db.select();
+  const record = await queryBuilder
+    .from(table)
+    .where(and(eq(table.id, id), eq(table.userId, ctx.userId), ...(options.extraConditions ?? [])))
     .get();
 
-  return template ?? notFound(body);
-}
-
-export async function requireOwnedWorkout(
-  ctx: AuthContextLike,
-  workoutId: string,
-  body: NotFoundBody = { message: 'Workout not found' },
-) {
-  const workout = await ctx.db
-    .select()
-    .from(schema.workouts)
-    .where(
-      and(
-        eq(schema.workouts.id, workoutId),
-        eq(schema.workouts.userId, ctx.userId),
-        eq(schema.workouts.isDeleted, false),
-      ),
-    )
-    .get();
-
-  return workout ?? notFound(body);
+  return record ?? notFound(options.notFoundBody ?? { message: 'Not found' });
 }
 
 export async function requireOwnedWorkoutExercise(
@@ -114,25 +93,6 @@ export async function requireOwnedWorkoutSet(
   return set ?? notFound(body);
 }
 
-export async function requireOwnedProgramCycle(
-  ctx: AuthContextLike,
-  cycleId: string,
-  body: NotFoundBody = { message: 'Program cycle not found' },
-) {
-  const cycle = await ctx.db
-    .select()
-    .from(schema.userProgramCycles)
-    .where(
-      and(
-        eq(schema.userProgramCycles.id, cycleId),
-        eq(schema.userProgramCycles.userId, ctx.userId),
-      ),
-    )
-    .get();
-
-  return cycle ?? notFound(body);
-}
-
 export async function requireOwnedProgramCycleWorkout(
   ctx: AuthContextLike,
   cycleWorkoutId: string,
@@ -167,24 +127,4 @@ export async function requireOwnedProgramCycleWorkout(
     .get();
 
   return cycleWorkout ?? notFound(body);
-}
-
-export async function requireOwnedNutritionEntry(
-  ctx: AuthContextLike,
-  entryId: string,
-  body: NotFoundBody = { error: 'Nutrition entry not found' },
-) {
-  const entry = await ctx.db
-    .select()
-    .from(schema.nutritionEntries)
-    .where(
-      and(
-        eq(schema.nutritionEntries.id, entryId),
-        eq(schema.nutritionEntries.userId, ctx.userId),
-        eq(schema.nutritionEntries.isDeleted, false),
-      ),
-    )
-    .get();
-
-  return entry ?? notFound(body);
 }

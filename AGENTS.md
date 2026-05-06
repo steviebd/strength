@@ -19,9 +19,7 @@ Note: `bun run check` exits 0 even with lint warnings (warnings are not errors).
 Worker config is generated from Infisical-injected environment variables. For local development, authenticate with `infisical login` and create/confirm the ignored local `.infisical.json` with `infisical init`; do not use Machine Identity client credentials for local commands.
 
 ```bash
-bun run web:build    # builds Expo web static assets to apps/expo/dist/ (run first, or after code changes)
 bun run dev          # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with local D1
-bun run dev:remote   # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with remote dev D1
 
 bun run db:generate   # generate Drizzle migrations (runs @strength/db)
 bun run db:apply:local # apply migrations to local D1 (runs @strength/worker)
@@ -41,7 +39,7 @@ Migrations: `packages/db/drizzle/migrations/`
 
 ## Auth
 
-Auth is **intentionally disabled** unless `APP_ENV=development`. The worker skips auth middleware entirely in non-dev mode. Do not assume auth is active when working on API endpoints.
+Auth is **enforced on all protected API routes** regardless of environment. The `createHandler` wrapper and `requireAuth` helper validate sessions on every request. Do not bypass auth when working on API endpoints.
 
 ### Shared Auth Helper
 
@@ -89,6 +87,10 @@ Root `tsconfig.json` extends `expo/tsconfig.base` with `strict: true`. Each pack
 ## No .env File
 
 Secrets are injected by Infisical at runtime. There is no `.env` file in the repo.
+
+## Public Endpoints
+
+`GET /api/programs` is intentionally unauthenticated — it returns static program metadata (names, descriptions, difficulty, etc.) that does not vary by user.
 
 ## Package Manager
 

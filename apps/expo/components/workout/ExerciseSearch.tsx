@@ -4,8 +4,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -23,7 +21,9 @@ import {
   type UserExercise,
 } from '@/lib/exercises';
 import type { ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
-import { colors, radius, spacing, typography } from '@/theme';
+import { accent, border, colors, layout, radius, spacing, statusBg, typography } from '@/theme';
+import { FormScrollView } from '@/components/ui/FormScrollView';
+import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 
 interface ExerciseSearchProps {
   onSelect: (exercises: ExerciseLibraryItem[]) => void | Promise<void>;
@@ -57,6 +57,8 @@ interface CreateFormState {
   name: string;
   muscleGroup: string;
   description: string;
+  exerciseType: string;
+  isAmrap: boolean;
 }
 
 function getUserSelectionKey(id: string) {
@@ -71,6 +73,11 @@ function getListItemKey(item: ListItem) {
   return item.type === 'header'
     ? `header:${item.title}`
     : `${item.isUser ? 'user' : 'library'}:${item.data.id}`;
+}
+
+function formatExerciseType(type: string | null | undefined) {
+  const value = type ?? 'weighted';
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function ExerciseSearch({
@@ -88,6 +95,8 @@ export function ExerciseSearch({
     name: '',
     muscleGroup: '',
     description: '',
+    exerciseType: 'weighted',
+    isAmrap: false,
   });
   const [creating, setCreating] = useState(false);
   const [deletingExerciseId, setDeletingExerciseId] = useState<string | null>(null);
@@ -158,6 +167,8 @@ export function ExerciseSearch({
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
           libraryId: newExercise.libraryId ?? null,
+          exerciseType: newExercise.exerciseType,
+          isAmrap: newExercise.isAmrap,
         };
         return [exercise, ...prev.filter((existing) => existing.id !== newExercise.id)];
       });
@@ -166,7 +177,13 @@ export function ExerciseSearch({
         return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
       });
       setShowCreateForm(false);
-      setCreateForm({ name: '', muscleGroup: '', description: '' });
+      setCreateForm({
+        name: '',
+        muscleGroup: '',
+        description: '',
+        exerciseType: 'weighted',
+        isAmrap: false,
+      });
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
@@ -262,6 +279,8 @@ export function ExerciseSearch({
               name: userEx.name,
               muscleGroup: userEx.muscleGroup ?? '',
               description: userEx.description ?? '',
+              exerciseType: userEx.exerciseType ?? 'weighted',
+              isAmrap: userEx.isAmrap ?? false,
             });
             continue;
           }
@@ -285,6 +304,9 @@ export function ExerciseSearch({
               name: persistedExercise.name,
               muscleGroup: persistedExercise.muscleGroup ?? '',
               description: persistedExercise.description ?? '',
+              exerciseType:
+                libraryExercise.exerciseType ?? persistedExercise.exerciseType ?? 'weighted',
+              isAmrap: persistedExercise.isAmrap ?? false,
             });
           } catch {
             selectedExercises.push({
@@ -293,6 +315,8 @@ export function ExerciseSearch({
               name: libraryExercise.name,
               muscleGroup: libraryExercise.muscleGroup,
               description: libraryExercise.description,
+              exerciseType: (libraryExercise as any).exerciseType ?? 'weighted',
+              isAmrap: (libraryExercise as any).isAmrap ?? false,
             });
           }
         }
@@ -410,7 +434,12 @@ export function ExerciseSearch({
               </View>
             )}
           </View>
-          <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
+          <View style={styles.exerciseMetaRow}>
+            <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
+            <View style={styles.typeBadge}>
+              <Text style={styles.typeBadgeText}>{formatExerciseType(ex.exerciseType)}</Text>
+            </View>
+          </View>
         </View>
         {deletingExerciseId === ex.id ? (
           <View style={styles.addBadge}>
@@ -461,18 +490,12 @@ export function ExerciseSearch({
       </View>
 
       {showCreateForm ? (
-        <KeyboardAvoidingView
-          style={styles.createForm}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={insets.top}
-        >
-          <ScrollView
+        <KeyboardFormLayout style={styles.createForm}>
+          <FormScrollView
             ref={createScrollRef}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[
-              styles.createFormContent,
-              { paddingBottom: insets.bottom + spacing.xxl * 4 },
-            ]}
+            horizontalPadding={spacing.md}
+            bottomInset={layout.bottomInsetList}
+            contentContainerStyle={styles.createFormContent}
           >
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Name *</Text>
@@ -539,17 +562,61 @@ export function ExerciseSearch({
               />
             </View>
 
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Exercise Type</Text>
+              <View style={styles.typeGrid}>
+                {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map((type) => {
+                  const isSelected = createForm.exerciseType === type;
+                  return (
+                    <Pressable
+                      key={`exercise-type:${type}`}
+                      onPress={() => setCreateForm((f) => ({ ...f, exerciseType: type }))}
+                      style={[
+                        styles.typeChip,
+                        isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.typeChipText,
+                          isSelected ? styles.typeChipTextSelected : styles.typeChipTextDefault,
+                        ]}
+                      >
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={[styles.formField, styles.amrapRow]}>
+              <Text style={styles.formLabel}>AMRAP</Text>
+              <Pressable
+                onPress={() => setCreateForm((f) => ({ ...f, isAmrap: !f.isAmrap }))}
+                style={[styles.amrapTrack, createForm.isAmrap && styles.amrapTrackOn]}
+              >
+                <View style={[styles.amrapThumb, createForm.isAmrap && styles.amrapThumbOn]} />
+              </Pressable>
+            </View>
+
             {createError && (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{createError}</Text>
               </View>
             )}
-          </ScrollView>
+          </FormScrollView>
           <View style={[styles.formFooter, { paddingBottom: insets.bottom + spacing.sm }]}>
             <Pressable
               onPress={() => {
                 setShowCreateForm(false);
-                setCreateForm({ name: '', muscleGroup: '', description: '' });
+                setCreateForm({
+                  name: '',
+                  muscleGroup: '',
+                  description: '',
+                  exerciseType: 'weighted',
+                  isAmrap: false,
+                });
                 setCreateError(null);
               }}
               style={({ pressed }) => [styles.cancelButton, pressed && styles.buttonPressed]}
@@ -568,7 +635,7 @@ export function ExerciseSearch({
               <Text style={styles.createButtonText}>{creating ? 'Creating...' : 'Create'}</Text>
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardFormLayout>
       ) : (
         <>
           <Pressable
@@ -661,7 +728,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     fontSize: typography.fontSizes.base,
     color: colors.text,
   },
@@ -692,12 +759,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   exerciseRowSelected: {
-    backgroundColor: 'rgba(239,111,79,0.1)',
-    borderBottomColor: 'rgba(239,111,79,0.5)',
+    backgroundColor: accent.subtle,
+    borderBottomColor: border.focus,
   },
   exerciseRowDefault: {
     backgroundColor: colors.surface,
-    borderBottomColor: 'rgba(63,63,70,0.5)',
+    borderBottomColor: border.subtle,
   },
   exerciseRowPressed: {
     opacity: 0.8,
@@ -717,7 +784,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   libraryBadge: {
-    borderRadius: 9999,
+    borderRadius: radius.full,
     backgroundColor: colors.border,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -729,11 +796,30 @@ const styles = StyleSheet.create({
   muscleGroupText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+  },
+  exerciseMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: 2,
+  },
+  typeBadge: {
+    borderRadius: radius.sm,
+    backgroundColor: accent.subtle,
+    borderWidth: 1,
+    borderColor: border.focus,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  typeBadgeText: {
+    color: colors.accent,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
   },
   selectedBadge: {
     marginLeft: spacing.md,
-    borderRadius: 9999,
+    borderRadius: radius.full,
     backgroundColor: colors.accent,
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -745,8 +831,8 @@ const styles = StyleSheet.create({
   },
   addBadge: {
     marginLeft: spacing.md,
-    borderRadius: 9999,
-    backgroundColor: 'rgba(239,111,79,0.2)',
+    borderRadius: radius.full,
+    backgroundColor: accent.subtle,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
@@ -759,7 +845,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   createFormContent: {
-    padding: spacing.md,
+    paddingTop: spacing.md,
   },
   formFooter: {
     flexDirection: 'row',
@@ -790,7 +876,7 @@ const styles = StyleSheet.create({
   },
   formInputMultiline: {
     height: 80,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     textAlignVertical: 'top',
   },
   muscleGroupGrid: {
@@ -799,8 +885,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   muscleGroupChip: {
-    borderRadius: 9999,
-    paddingHorizontal: 12,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md - spacing.xs,
     paddingVertical: 8,
     borderWidth: 1,
   },
@@ -823,7 +909,9 @@ const styles = StyleSheet.create({
   },
   errorBox: {
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(239,68,68,0.2)',
+    backgroundColor: statusBg.error,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
@@ -837,7 +925,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   cancelButtonText: {
     fontSize: typography.fontSizes.base,
@@ -849,7 +937,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   createButtonPressed: {
     opacity: 0.9,
@@ -878,8 +966,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.accent,
-    backgroundColor: 'rgba(239,111,79,0.1)',
-    paddingVertical: 12,
+    backgroundColor: accent.subtle,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   createExerciseButtonPressed: {
     opacity: 0.8,
@@ -916,14 +1004,67 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   confirmButton: {
-    borderRadius: 9999,
+    borderRadius: radius.full,
     backgroundColor: colors.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + spacing.xs,
   },
   confirmButtonText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+  },
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  typeChip: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md - spacing.xs,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  typeChipSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  typeChipDefault: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  typeChipText: {
+    fontSize: typography.fontSizes.sm,
+  },
+  typeChipTextSelected: {
+    color: colors.text,
+  },
+  typeChipTextDefault: {
+    color: colors.text,
+  },
+  amrapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  amrapTrack: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.border,
+    padding: 2,
+  },
+  amrapTrackOn: {
+    backgroundColor: colors.accent,
+  },
+  amrapThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.text,
+    transform: [{ translateX: 0 }],
+  },
+  amrapThumbOn: {
+    transform: [{ translateX: 20 }],
   },
 });

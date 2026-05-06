@@ -1,7 +1,8 @@
 import { type ReactNode, type RefObject } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { spacing } from '@/theme';
+import { layout, spacing } from '@/theme';
+import { OfflineBanner } from '../OfflineBanner';
 import { Screen, ScreenScrollView, type ScreenScrollViewProps } from './Screen';
 
 interface PageLayoutProps {
@@ -28,10 +29,11 @@ export function PageLayout({
       <ScreenScrollView
         ref={scrollViewRef}
         topPadding={headerSafeArea === 'layout' ? insets.top + spacing.md : 0}
-        bottomInset={120}
-        horizontalPadding={20}
+        bottomInset={layout.bottomInsetList}
+        horizontalPadding={layout.screenPadding}
         {...screenScrollViewProps}
       >
+        <OfflineBanner />
         {headerType !== 'none' && header}
         {children}
       </ScreenScrollView>

@@ -93,6 +93,14 @@ describe('program scheduler', () => {
     expect(range.days).toHaveLength(7);
   });
 
+  test('throws when preferredDays is empty', () => {
+    expect(() =>
+      generateWorkoutSchedule(workouts, new Date('2026-04-27T00:00:00'), {
+        preferredDays: [],
+      }),
+    ).toThrow('Unable to schedule workout: no valid gym day found within 365 days');
+  });
+
   test('formats schedule labels', () => {
     expect(formatTime('17:00')).toBe('5:00 PM');
     expect(formatTime('00:30')).toBe('12:00 AM');

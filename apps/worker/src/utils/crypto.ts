@@ -50,7 +50,7 @@ function decodeMasterKey(masterKey: string): Uint8Array {
   }
 
   throw new Error(
-    'Invalid ENCRYPTION_MASTER_KEY format. Expected a 16, 24, or 32-byte key as raw text, hex, base64, or base64url.',
+    'Invalid ENCRYPTION_MASTER_KEY format. Expected a 32-byte key as base64, base64url, hex, or raw text.',
   );
 }
 
@@ -106,5 +106,5 @@ function decodeUtf8Key(value: string): Uint8Array | null {
 }
 
 function validateKeyLength(keyBytes: Uint8Array): Uint8Array | null {
-  return [16, 24, 32].includes(keyBytes.byteLength) ? keyBytes : null;
+  return keyBytes.byteLength === 32 ? keyBytes : null;
 }

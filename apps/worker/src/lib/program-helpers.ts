@@ -1,8 +1,8 @@
-import { eq, and, or, gt, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, gt, gte, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { exerciseLibrary } from '@strength/db';
 import { getProgramCycleById, getOrCreateExerciseForUser } from '@strength/db';
-import { chunkArray, getSafeInsertChunkSize } from '@strength/db';
+import { chunkArray, getSafeInsertChunkSize, chunkedQueryMany } from '@strength/db';
 import {
   consolidateProgramTargetLifts,
   getCurrentCycleWorkout,
@@ -26,6 +26,24 @@ export {
   type NormalizedProgramTargetLift,
   type SerializedProgramTargetLift,
 };
+
+function buildProgramSetValues(segment: NormalizedProgramTargetLift) {
+  const type = segment.exerciseType ?? 'weighted';
+  const reps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
+  const weight =
+    type === 'weighted'
+      ? (segment.targetWeight ?? 0) + segment.addedWeight
+      : type === 'bodyweight' && ((segment.targetWeight ?? 0) > 0 || segment.addedWeight > 0)
+        ? (segment.targetWeight ?? 0) + segment.addedWeight
+        : null;
+  return {
+    weight,
+    reps: type === 'timed' || type === 'cardio' ? null : reps,
+    duration: type === 'timed' || type === 'cardio' ? (segment.targetDuration ?? 0) : null,
+    distance: type === 'cardio' ? segment.targetDistance : null,
+    height: type === 'plyo' ? (segment.targetHeight ?? 0) : null,
+  };
+}
 
 function hasAnyRecordedOneRM(oneRMs: {
   squat1rm?: number | null;
@@ -135,7 +153,7 @@ export async function getLatestOneRMsForUser(db: any, userId: string) {
     .where(
       and(
         eq(schema.workouts.userId, userId),
-        eq(schema.workouts.name, '1RM Test'),
+        eq(schema.workouts.workoutType, schema.WORKOUT_TYPE_ONE_RM_TEST),
         eq(schema.workouts.isDeleted, false),
         sql`${schema.workouts.completedAt} IS NOT NULL`,
       ),
@@ -187,7 +205,7 @@ export async function getLatestOneRMTestWorkoutForCycle(db: any, userId: string,
       and(
         eq(schema.workouts.userId, userId),
         eq(schema.workouts.programCycleId, cycleId),
-        eq(schema.workouts.name, '1RM Test'),
+        eq(schema.workouts.workoutType, schema.WORKOUT_TYPE_ONE_RM_TEST),
         eq(schema.workouts.isDeleted, false),
       ),
     )
@@ -214,6 +232,7 @@ export async function createOneRMTestWorkout(db: any, userId: string, cycleId: s
     id: workoutId,
     userId,
     programCycleId: cycleId,
+    workoutType: schema.WORKOUT_TYPE_ONE_RM_TEST,
     name: '1RM Test',
     notes: null,
     startedAt: now,
@@ -257,7 +276,7 @@ export async function createOneRMTestWorkout(db: any, userId: string, cycleId: s
   }));
 
   await db.batch([
-    db.insert(schema.workouts).values(workoutValues),
+    db.insert(schema.workouts).values(workoutValues).onConflictDoNothing(),
     db.insert(schema.workoutExercises).values(workoutExerciseRows),
     db.insert(schema.workoutSets).values(setRows),
   ]);
@@ -302,6 +321,46 @@ export async function updateProgramCycleOneRMs(
     )
     .returning()
     .get();
+}
+
+export async function completeProgramCycle(db: any, cycleId: string, userId: string) {
+  const result = await db
+    .update(schema.userProgramCycles)
+    .set({
+      status: 'completed',
+      isComplete: true,
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.userProgramCycles.id, cycleId),
+        eq(schema.userProgramCycles.userId, userId),
+        eq(schema.userProgramCycles.isComplete, false),
+        eq(schema.userProgramCycles.status, 'active'),
+      ),
+    )
+    .returning()
+    .get();
+
+  if (result) {
+    return result;
+  }
+
+  const existingCompletedCycle = await db
+    .select()
+    .from(schema.userProgramCycles)
+    .where(
+      and(
+        eq(schema.userProgramCycles.id, cycleId),
+        eq(schema.userProgramCycles.userId, userId),
+        eq(schema.userProgramCycles.isComplete, true),
+        eq(schema.userProgramCycles.status, 'completed'),
+      ),
+    )
+    .get();
+
+  return existingCompletedCycle ?? null;
 }
 
 export async function createWorkoutFromProgramCycleWorkout(
@@ -379,17 +438,12 @@ export async function createWorkoutFromProgramCycleWorkout(
     let nextSetNumber = 1;
     for (const segment of targetLift.segments) {
       const segmentSetCount = normalizeProgramSetCount(segment.sets, 1);
-      const segmentWeight =
-        typeof segment.targetWeight === 'number' && Number.isFinite(segment.targetWeight)
-          ? segment.targetWeight
-          : null;
-      const segmentReps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
+      const segmentValues = buildProgramSetValues(segment);
 
       const setRows = Array.from({ length: segmentSetCount }, () => ({
         workoutExerciseId,
         setNumber: nextSetNumber++,
-        weight: segmentWeight,
-        reps: segmentReps,
+        ...segmentValues,
         rpe: null,
         isComplete: false,
         createdAt: now,
@@ -399,7 +453,9 @@ export async function createWorkoutFromProgramCycleWorkout(
     }
   }
 
-  const statements: any[] = [db.insert(schema.workouts).values(workoutValues)];
+  const statements: any[] = [
+    db.insert(schema.workouts).values(workoutValues).onConflictDoNothing(),
+  ];
 
   const exerciseChunkSize = getSafeInsertChunkSize(
     workoutExerciseRows as Record<string, unknown>[],
@@ -439,11 +495,85 @@ export async function createWorkoutFromProgramCycleWorkout(
   return workoutValues;
 }
 
+export async function startCycleWorkout(
+  db: any,
+  userId: string,
+  cycleWorkout: { id: string; workoutId?: string | null; sessionName: string; cycleId: string },
+) {
+  if (cycleWorkout.workoutId) {
+    const existingWorkout = await db
+      .select({
+        id: schema.workouts.id,
+        name: schema.workouts.name,
+        completedAt: schema.workouts.completedAt,
+        isDeleted: schema.workouts.isDeleted,
+      })
+      .from(schema.workouts)
+      .where(
+        and(
+          eq(schema.workouts.id, cycleWorkout.workoutId),
+          eq(schema.workouts.userId, userId),
+          eq(schema.workouts.isDeleted, false),
+        ),
+      )
+      .get();
+
+    if (existingWorkout) {
+      const exerciseCount = await db
+        .select({ count: sql<number>`count(${schema.workoutExercises.id})` })
+        .from(schema.workoutExercises)
+        .where(eq(schema.workoutExercises.workoutId, existingWorkout.id))
+        .get();
+
+      if ((exerciseCount?.count ?? 0) === 0) {
+        const parsedTargetLifts = parseProgramTargetLifts((cycleWorkout as any).targetLifts);
+        if (parsedTargetLifts.all.length > 0) {
+          const workout = await createWorkoutFromProgramCycleWorkout(
+            db,
+            userId,
+            cycleWorkout.cycleId,
+            cycleWorkout,
+          );
+
+          return {
+            workoutId: workout.id,
+            sessionName: workout.name,
+            created: true,
+            completed: false,
+          };
+        }
+      }
+
+      return {
+        workoutId: existingWorkout.id,
+        sessionName: existingWorkout.name,
+        created: false,
+        completed: !!existingWorkout.completedAt,
+      };
+    }
+  }
+
+  const workout = await createWorkoutFromProgramCycleWorkout(
+    db,
+    userId,
+    cycleWorkout.cycleId,
+    cycleWorkout,
+  );
+
+  return {
+    workoutId: workout.id,
+    sessionName: workout.name,
+    created: true,
+    completed: false,
+  };
+}
+
 export async function advanceProgramCycleForWorkout(db: any, userId: string, workoutId: string) {
   const workout = await db
     .select({
       id: schema.workouts.id,
       name: schema.workouts.name,
+      workoutType: schema.workouts.workoutType,
       programCycleId: schema.workouts.programCycleId,
       isDeleted: schema.workouts.isDeleted,
     })
@@ -451,23 +581,12 @@ export async function advanceProgramCycleForWorkout(db: any, userId: string, wor
     .where(and(eq(schema.workouts.id, workoutId), eq(schema.workouts.userId, userId)))
     .get();
 
-  if (workout?.name === '1RM Test' && workout.programCycleId && workout.isDeleted === false) {
-    const now = new Date();
-    await db
-      .update(schema.userProgramCycles)
-      .set({
-        status: 'completed',
-        isComplete: true,
-        completedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(schema.userProgramCycles.id, workout.programCycleId),
-          eq(schema.userProgramCycles.userId, userId),
-        ),
-      )
-      .run();
+  if (
+    workout?.workoutType === schema.WORKOUT_TYPE_ONE_RM_TEST &&
+    workout.programCycleId &&
+    workout.isDeleted === false
+  ) {
+    await completeProgramCycle(db, workout.programCycleId, userId);
     return;
   }
 
@@ -526,39 +645,58 @@ export async function advanceProgramCycleForWorkout(db: any, userId: string, wor
 
   const now = new Date();
 
-  await db
+  const updateResult = await db
     .update(schema.programCycleWorkouts)
     .set({
       isComplete: true,
       updatedAt: now,
     })
-    .where(eq(schema.programCycleWorkouts.id, linkedCycleWorkout.id))
-    .run();
-
-  const cycleUpdate: Record<string, unknown> = {
-    totalSessionsCompleted: linkedCycleWorkout.totalSessionsCompleted + 1,
-    updatedAt: now,
-  };
-
-  if (nextCycleWorkout) {
-    cycleUpdate.currentWeek = nextCycleWorkout.weekNumber;
-    cycleUpdate.currentSession = nextCycleWorkout.sessionNumber;
-  } else {
-    cycleUpdate.status = 'completed';
-    cycleUpdate.isComplete = true;
-    cycleUpdate.completedAt = now;
-  }
-
-  await db
-    .update(schema.userProgramCycles)
-    .set(cycleUpdate)
     .where(
       and(
-        eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
-        eq(schema.userProgramCycles.userId, userId),
+        eq(schema.programCycleWorkouts.id, linkedCycleWorkout.id),
+        eq(schema.programCycleWorkouts.isComplete, false),
       ),
     )
     .run();
+
+  if ((updateResult.meta?.changes ?? 0) === 0) {
+    return;
+  }
+
+  if (nextCycleWorkout) {
+    await db
+      .update(schema.userProgramCycles)
+      .set({
+        totalSessionsCompleted: sql`${schema.userProgramCycles.totalSessionsCompleted} + 1`,
+        currentWeek: nextCycleWorkout.weekNumber,
+        currentSession: nextCycleWorkout.sessionNumber,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
+          eq(schema.userProgramCycles.userId, userId),
+        ),
+      )
+      .run();
+  } else {
+    const completed = await completeProgramCycle(db, linkedCycleWorkout.cycleId, userId);
+    if (!completed) {
+      return;
+    }
+    await db
+      .update(schema.userProgramCycles)
+      .set({
+        totalSessionsCompleted: sql`${schema.userProgramCycles.totalSessionsCompleted} + 1`,
+      })
+      .where(
+        and(
+          eq(schema.userProgramCycles.id, linkedCycleWorkout.cycleId),
+          eq(schema.userProgramCycles.userId, userId),
+        ),
+      )
+      .run();
+  }
 }
 
 export async function resolveToUserExerciseId(
@@ -601,9 +739,28 @@ export async function resolveToUserExerciseId(
         createdAt: now,
         updatedAt: now,
       })
+      .onConflictDoNothing()
       .returning({ id: schema.exercises.id })
       .get();
-    return created.id;
+
+    if (created) {
+      return created.id;
+    }
+
+    const fallback = await db
+      .select({ id: schema.exercises.id })
+      .from(schema.exercises)
+      .where(
+        and(
+          eq(schema.exercises.userId, userId),
+          eq(schema.exercises.libraryId, libraryExercise.id),
+        ),
+      )
+      .get();
+
+    if (fallback) {
+      return fallback.id;
+    }
   }
 
   return exerciseId;
@@ -685,23 +842,38 @@ export async function getLastCompletedExerciseSnapshots(
 
   if (resolvedIds.length === 0) return [];
 
-  const recentRows = await db
-    .select({
-      exerciseId: schema.workoutExercises.exerciseId,
-      workoutExerciseId: schema.workoutExercises.id,
-      workoutCompletedAt: schema.workouts.completedAt,
-    })
-    .from(schema.workoutExercises)
-    .innerJoin(schema.workouts, eq(schema.workoutExercises.workoutId, schema.workouts.id))
-    .where(
-      and(
-        inArray(schema.workoutExercises.exerciseId, resolvedIds),
-        eq(schema.workouts.userId, userId),
-        sql`${schema.workouts.completedAt} IS NOT NULL`,
-      ),
-    )
-    .orderBy(desc(schema.workouts.completedAt))
-    .all();
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+
+  const recentRows: {
+    exerciseId: string;
+    workoutExerciseId: string;
+    workoutCompletedAt: Date | null;
+  }[] = await chunkedQueryMany(db, {
+    ids: resolvedIds,
+    builder: (chunk) =>
+      db
+        .select({
+          exerciseId: schema.workoutExercises.exerciseId,
+          workoutExerciseId: schema.workoutExercises.id,
+          workoutCompletedAt: schema.workouts.completedAt,
+        })
+        .from(schema.workoutExercises)
+        .innerJoin(schema.workouts, eq(schema.workoutExercises.workoutId, schema.workouts.id))
+        .where(
+          and(
+            inArray(schema.workoutExercises.exerciseId, chunk),
+            eq(schema.workouts.userId, userId),
+            eq(schema.workouts.isDeleted, false),
+            eq(schema.workouts.workoutType, schema.WORKOUT_TYPE_TRAINING),
+            eq(schema.workoutExercises.isDeleted, false),
+            sql`${schema.workouts.completedAt} IS NOT NULL`,
+            gte(schema.workouts.startedAt, ninetyDaysAgo),
+          ),
+        )
+        .orderBy(desc(schema.workouts.completedAt))
+        .limit(50)
+        .all(),
+  });
 
   const seen = new Set<string>();
   const latestByResolvedId = new Map<
@@ -728,20 +900,35 @@ export async function getLastCompletedExerciseSnapshots(
     weight: number | null;
     reps: number | null;
     rpe: number | null;
+    duration: number | null;
+    distance: number | null;
+    height: number | null;
     setNumber: number | null;
   };
-  const allSets: SetRow[] = await db
-    .select({
-      workoutExerciseId: schema.workoutSets.workoutExerciseId,
-      weight: schema.workoutSets.weight,
-      reps: schema.workoutSets.reps,
-      rpe: schema.workoutSets.rpe,
-      setNumber: schema.workoutSets.setNumber,
-    })
-    .from(schema.workoutSets)
-    .where(inArray(schema.workoutSets.workoutExerciseId, workoutExerciseIds))
-    .orderBy(schema.workoutSets.setNumber)
-    .all();
+  const allSets: SetRow[] = await chunkedQueryMany(db, {
+    ids: workoutExerciseIds,
+    builder: (chunk) =>
+      db
+        .select({
+          workoutExerciseId: schema.workoutSets.workoutExerciseId,
+          weight: schema.workoutSets.weight,
+          reps: schema.workoutSets.reps,
+          rpe: schema.workoutSets.rpe,
+          duration: schema.workoutSets.duration,
+          distance: schema.workoutSets.distance,
+          height: schema.workoutSets.height,
+          setNumber: schema.workoutSets.setNumber,
+        })
+        .from(schema.workoutSets)
+        .where(
+          and(
+            inArray(schema.workoutSets.workoutExerciseId, chunk),
+            eq(schema.workoutSets.isDeleted, false),
+          ),
+        )
+        .orderBy(schema.workoutSets.setNumber)
+        .all(),
+  });
 
   const setsByWorkoutExerciseId = new Map<string, SetRow[]>();
   for (const set of allSets) {
@@ -757,6 +944,9 @@ export async function getLastCompletedExerciseSnapshots(
       weight: number | null;
       reps: number | null;
       rpe: number | null;
+      duration: number | null;
+      distance: number | null;
+      height: number | null;
       setNumber: number | null;
     }[];
   }[] = [];
@@ -767,6 +957,9 @@ export async function getLastCompletedExerciseSnapshots(
         weight: s.weight,
         reps: s.reps,
         rpe: s.rpe,
+        duration: s.duration,
+        distance: s.distance,
+        height: s.height,
         setNumber: s.setNumber,
       }));
       results.push({

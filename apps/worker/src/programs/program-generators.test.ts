@@ -45,12 +45,12 @@ describe('program generators', () => {
         expect(exercise.name).toEqual(expect.any(String));
         expect(exercise.sets).toBeGreaterThan(0);
         expect(exercise.reps).toBeGreaterThanOrEqual(0);
-        expect(exercise.targetWeight).toBeGreaterThanOrEqual(0);
+        expect(exercise.targetWeight!).toBeGreaterThanOrEqual(0);
       }
       for (const accessory of workout.accessories ?? []) {
         expect(accessory.name).toEqual(expect.any(String));
         expect(accessory.sets).toBeGreaterThan(0);
-        expect(accessory.targetWeight).toBeGreaterThanOrEqual(0);
+        expect(accessory.targetWeight!).toBeGreaterThanOrEqual(0);
       }
     }
   });
@@ -81,8 +81,8 @@ describe('program generators', () => {
       'Overhead Press',
       'Deadlift',
     ]);
-    expect(workouts[1].exercises[0].targetWeight).toBeGreaterThan(
-      workouts[0].exercises[0].targetWeight,
+    expect(workouts[1].exercises[0]!.targetWeight!).toBeGreaterThan(
+      workouts[0].exercises[0]!.targetWeight!,
     );
   });
 

@@ -9,11 +9,9 @@ vi.mock('react-native', () => ({
 }));
 
 describe('buildAuthCallbackURL', () => {
-  test('builds native callback URLs with encoded return target', async () => {
+  test('builds stable native callback URLs without route state in the query string', async () => {
     const { buildAuthCallbackURL } = await import('./auth-callback-url');
 
-    expect(buildAuthCallbackURL('strength://home?tab=profile')).toBe(
-      'strength://auth/callback?returnTo=strength%3A%2F%2Fhome%3Ftab%3Dprofile',
-    );
+    expect(buildAuthCallbackURL('strength://home?tab=profile')).toBe('strength://auth/callback');
   });
 });

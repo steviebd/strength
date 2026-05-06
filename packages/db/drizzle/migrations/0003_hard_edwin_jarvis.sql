@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `exercises_user_id_name_unique` ON `exercises` (`user_id`,lower("name"));

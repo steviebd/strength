@@ -60,7 +60,17 @@ describe('whoop oauth helpers', () => {
     expect(isAllowedWhoopRedirectBaseURL('http://localhost:8787')).toBe(true);
     expect(isAllowedWhoopRedirectBaseURL('http://evil.com')).toBe(false);
     expect(isAllowedWhoopReturnTo('strength://whoop-callback')).toBe(true);
+    expect(isAllowedWhoopReturnTo('exp://192.168.1.10:8081/auth/callback')).toBe(true);
     expect(isAllowedWhoopReturnTo('javascript:alert(1)')).toBe(false);
+    expect(isAllowedWhoopReturnTo('http://evil.com')).toBe(false);
+    expect(isAllowedWhoopReturnTo('https://evil.com')).toBe(false);
+    expect(isAllowedWhoopReturnTo('strength:///../evil')).toBe(false);
+    expect(isAllowedWhoopReturnTo('strength://whoop-callback/../evil')).toBe(false);
+    expect(
+      isAllowedWhoopReturnTo('https://app.example.com', {
+        WORKER_BASE_URL: 'https://app.example.com',
+      } as never),
+    ).toBe(true);
   });
 
   test('uses request origin for LAN dev when configured base URL is loopback', () => {

@@ -5,6 +5,7 @@ import * as schema from './local-schema';
 
 let sqliteClient: SQLiteDatabase | null | undefined;
 let drizzleClient: ReturnType<typeof drizzle<typeof schema>> | null | undefined;
+let transactionDepth = 0;
 
 function openLocalSqlite() {
   if (sqliteClient !== undefined) {
@@ -22,6 +23,10 @@ function openLocalSqlite() {
   return sqliteClient;
 }
 
+export function getLocalSqlite() {
+  return openLocalSqlite();
+}
+
 export function getLocalDb() {
   if (drizzleClient !== undefined) {
     return drizzleClient;
@@ -30,4 +35,26 @@ export function getLocalDb() {
   const sqlite = openLocalSqlite();
   drizzleClient = sqlite ? drizzle(sqlite, { schema }) : null;
   return drizzleClient;
+}
+
+export function withLocalTransaction<T>(fn: () => T): T {
+  if (transactionDepth > 0) {
+    return fn();
+  }
+
+  const sqlite = openLocalSqlite();
+  if (!sqlite) {
+    return fn();
+  }
+
+  let result: T;
+  transactionDepth++;
+  try {
+    sqlite.withTransactionSync(() => {
+      result = fn();
+    });
+  } finally {
+    transactionDepth--;
+  }
+  return result!;
 }

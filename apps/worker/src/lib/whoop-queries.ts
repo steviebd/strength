@@ -8,7 +8,7 @@ export async function getWhoopDataForDay(
   userId: string,
   date: string,
   timezone: string,
-): Promise<WhoopData> {
+): Promise<WhoopData & { recoveryUpdatedAt: Date | null; cycleUpdatedAt: Date | null }> {
   const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(date, timezone);
 
   const recovery = await db
@@ -42,5 +42,7 @@ export async function getWhoopDataForDay(
     restingHeartRate: recovery?.restingHeartRate ?? null,
     caloriesBurned: cycle?.dayStrain ? Math.round(cycle.dayStrain * 10) : null,
     totalStrain: cycle?.dayStrain ?? null,
+    recoveryUpdatedAt: recovery?.updatedAt ?? null,
+    cycleUpdatedAt: cycle?.updatedAt ?? null,
   };
 }

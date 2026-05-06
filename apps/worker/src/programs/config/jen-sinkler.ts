@@ -11,6 +11,7 @@ export const jenSinklerInfo: ProgramInfo = createProgramInfo({
   estimatedWeeks: 8,
   totalSessions: 24,
   category: "women's",
+  mainLifts: ['squat', 'bench', 'deadlift', 'ohp'],
 });
 
 export const fullBodyAccessories: ProgramAccessory[] = [

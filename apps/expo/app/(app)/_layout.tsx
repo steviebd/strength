@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, AppState } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,9 +8,14 @@ import { UserPreferencesProvider, useUserPreferences } from '@/context/UserPrefe
 import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { getLocalDb } from '@/db/client';
+import { localBodyStats } from '@/db/local-schema';
 import { useTrainingSync } from '@/hooks/useTrainingSync';
+import { TabIconWithBadge } from '@/components/TabIconWithBadge';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
 import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
+import { useEffect, useState, useRef } from 'react';
 
 const TAB_ICONS = {
   home: {
@@ -57,14 +61,49 @@ function AppTabs() {
     recordBodyweight,
   } = useUserPreferences();
 
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+
   const saveBodyweightMutation = useMutation({
-    mutationFn: (bodyweightKg: number) =>
-      apiFetch('/api/nutrition/body-stats', {
-        method: 'POST',
-        body: { bodyweightKg },
-      }),
+    mutationFn: async (bodyweightKg: number) => {
+      if (!userId) throw new Error('Not authenticated');
+      return tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch('/api/nutrition/body-stats', {
+            method: 'POST',
+            body: { bodyweightKg },
+          }),
+        userId,
+        entityType: 'body_stats',
+        operation: 'update_body_stats',
+        entityId: userId,
+        payload: { bodyweightKg },
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          db.insert(localBodyStats)
+            .values({
+              userId,
+              bodyweightKg,
+              recordedAt: now,
+              hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localBodyStats.userId,
+              set: {
+                bodyweightKg,
+                recordedAt: now,
+              },
+            })
+            .run();
+        },
+      });
+    },
   });
   useTrainingSync();
+
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id ?? null;
 
   return (
     <>
@@ -101,11 +140,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.home.title,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                color={color}
-                name={focused ? TAB_ICONS.home.active : TAB_ICONS.home.inactive}
-                size={22}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.home} color={color} focused={focused} />
             ),
           }}
         />
@@ -114,11 +149,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.workouts.title,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                color={color}
-                name={focused ? TAB_ICONS.workouts.active : TAB_ICONS.workouts.inactive}
-                size={22}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.workouts} color={color} focused={focused} />
             ),
           }}
         />
@@ -127,11 +158,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.programs.title,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                color={color}
-                name={focused ? TAB_ICONS.programs.active : TAB_ICONS.programs.inactive}
-                size={22}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.programs} color={color} focused={focused} />
             ),
           }}
         />
@@ -140,11 +167,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.nutrition.title,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                color={color}
-                name={focused ? TAB_ICONS.nutrition.active : TAB_ICONS.nutrition.inactive}
-                size={22}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.nutrition} color={color} focused={focused} />
             ),
           }}
         />
@@ -153,11 +176,7 @@ function AppTabs() {
           options={{
             title: TAB_ICONS.profile.title,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                color={color}
-                name={focused ? TAB_ICONS.profile.active : TAB_ICONS.profile.inactive}
-                size={22}
-              />
+              <TabIconWithBadge icon={TAB_ICONS.profile} color={color} focused={focused} />
             ),
           }}
         />
@@ -208,12 +227,24 @@ function AppTabs() {
         visible={!isLoading && needsWeightSelection}
         weightUnit={weightUnit}
         onSave={async (bodyweightKg) => {
-          await saveBodyweightMutation.mutateAsync(bodyweightKg);
-          await recordBodyweight(bodyweightKg);
-          await markWeightAsPrompted();
+          try {
+            await saveBodyweightMutation.mutateAsync(bodyweightKg);
+            await recordBodyweight(bodyweightKg);
+            await markWeightAsPrompted();
+            setOfflineMessage(null);
+          } catch (error) {
+            if (error instanceof OfflineError || (error as any)?.name === 'OfflineError') {
+              setOfflineMessage("Changes saved locally. Will sync when you're back online.");
+              await recordBodyweight(bodyweightKg);
+              await markWeightAsPrompted();
+            } else {
+              throw error;
+            }
+          }
         }}
         onSkip={markWeightAsPrompted}
         isSaving={saveBodyweightMutation.isPending}
+        offlineMessage={offlineMessage}
       />
     </>
   );
@@ -221,8 +252,55 @@ function AppTabs() {
 
 export default function AppLayout() {
   const session = authClient.useSession();
+  const hasEverHadSession = useRef(false);
+  const hasTriedRecovery = useRef(false);
+  const refreshCountRef = useRef(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  if (session.isPending && !session.data) {
+  useEffect(() => {
+    if (session.data) {
+      hasEverHadSession.current = true;
+      hasTriedRecovery.current = false;
+    }
+  }, [session.data]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshCountRef.current++;
+        setIsRefreshing(true);
+        authClient.getSession().finally(() => {
+          if (--refreshCountRef.current <= 0) {
+            refreshCountRef.current = 0;
+            setIsRefreshing(false);
+          }
+        });
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !session.data &&
+      hasEverHadSession.current &&
+      !session.isPending &&
+      !hasTriedRecovery.current &&
+      refreshCountRef.current === 0
+    ) {
+      hasTriedRecovery.current = true;
+      refreshCountRef.current++;
+      setIsRefreshing(true);
+      authClient.getSession().finally(() => {
+        if (--refreshCountRef.current <= 0) {
+          refreshCountRef.current = 0;
+          setIsRefreshing(false);
+        }
+      });
+    }
+  }, [session.data, session.isPending]);
+
+  if ((session.isPending || isRefreshing) && !session.data) {
     return (
       <View
         style={{
@@ -238,7 +316,7 @@ export default function AppLayout() {
   }
 
   if (!session.data) {
-    return <Redirect href="/auth/sign-in?returnTo=/(app)/home" />;
+    return <Redirect href="/" />;
   }
 
   return (

@@ -2,6 +2,7 @@ import { eq, and, gte, lt } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
 import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone';
+import { validateDateParam } from '../../lib/validation';
 
 export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
   const timezoneResult = await resolveUserTimezone(db, userId);
@@ -11,17 +12,13 @@ export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
 
   const date = c.req.query('date');
 
-  if (!date) {
-    return c.json({ error: 'date query parameter is required' }, 400);
-  }
-
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(date)) {
-    return c.json({ error: 'Invalid date format. Use YYYY-MM-DD' }, 400);
+  const validated = validateDateParam(date);
+  if (!validated.valid) {
+    return validated.response;
   }
 
   const { start: startOfDay, end: endOfDay } = getUtcRangeForLocalDate(
-    date,
+    validated.date,
     timezoneResult.timezone,
   );
 
@@ -37,6 +34,7 @@ export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
       ),
     )
     .orderBy(schema.nutritionEntries.createdAt)
+    .limit(50)
     .all();
 
   return c.json(entries);
@@ -63,6 +61,19 @@ export const createEntryHandler = createHandler(async (c, { userId, db }) => {
 
   if (!name) {
     return c.json({ error: 'name is required' }, 400);
+  }
+
+  if (calories !== undefined && (calories < 0 || calories > 50000)) {
+    return c.json({ error: 'calories must be between 0 and 50000' }, 400);
+  }
+  if (proteinG !== undefined && (proteinG < 0 || proteinG > 1000)) {
+    return c.json({ error: 'proteinG must be between 0 and 1000' }, 400);
+  }
+  if (carbsG !== undefined && (carbsG < 0 || carbsG > 2000)) {
+    return c.json({ error: 'carbsG must be between 0 and 2000' }, 400);
+  }
+  if (fatG !== undefined && (fatG < 0 || fatG > 1000)) {
+    return c.json({ error: 'fatG must be between 0 and 1000' }, 400);
   }
 
   const timezoneResult = await resolveUserTimezone(db, userId);

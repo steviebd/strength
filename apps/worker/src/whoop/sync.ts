@@ -1,7 +1,8 @@
 import type { WorkerEnv } from '../auth';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '@strength/db';
-import { and, eq, max, sql } from 'drizzle-orm';
+import { and, eq, lt, max, sql } from 'drizzle-orm';
+import { chunkedInsert } from '@strength/db';
 import {
   whoopBodyMeasurement,
   whoopCycle,
@@ -19,6 +20,7 @@ import {
   getWhoopProfile as getWhoopProfileWithToken,
 } from './client';
 import { isWhoopAuthError } from './errors';
+import { acquireLock, releaseLock } from './token-rotation';
 import {
   type WhoopBodyMeasurement,
   type WhoopCycle,
@@ -39,8 +41,6 @@ interface SyncResult {
 }
 
 const DAYS_BACK = 365;
-const OVERLAP_DAYS = 7;
-const BATCH_SIZE = 50;
 
 function getScoreTier(score: number): 'low' | 'medium' | 'high' {
   if (score < 40) return 'low';
@@ -67,8 +67,9 @@ export function getSyncStartDate(
     return maxLookback;
   }
 
-  const withOverlap = new Date(date.getTime() - OVERLAP_DAYS * 24 * 60 * 60 * 1000);
-  return withOverlap > maxLookback ? withOverlap : maxLookback;
+  const latestDay = new Date(date);
+  latestDay.setUTCHours(0, 0, 0, 0);
+  return latestDay > maxLookback ? latestDay : maxLookback;
 }
 
 export async function upsertWhoopProfile(
@@ -405,48 +406,45 @@ async function syncWorkouts(
   userId: string,
   workouts: WhoopWorkout[],
 ): Promise<number> {
-  let count = 0;
-  for (let i = 0; i < workouts.length; i += BATCH_SIZE) {
-    const batch = workouts.slice(i, i + BATCH_SIZE);
-    const values = batch.map((workout) => {
-      const zoneDurations = workout.score?.zone_durations;
-      return {
-        userId,
-        whoopWorkoutId: workout.id,
-        start: new Date(workout.start),
-        end: new Date(workout.end),
-        timezoneOffset: workout.timezone_offset,
-        sportName: workout.sport_name,
-        scoreState: workout.score_state,
-        score: workout.score ? JSON.stringify(workout.score) : null,
-        during: workout.during ? JSON.stringify(workout.during) : null,
-        zoneDuration: zoneDurations ? JSON.stringify(zoneDurations) : null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    });
+  if (workouts.length === 0) return 0;
 
-    await db
-      .insert(whoopWorkout)
-      .values(values)
-      .onConflictDoUpdate({
-        target: whoopWorkout.whoopWorkoutId,
-        set: {
-          userId: sql`excluded.user_id`,
-          start: sql`excluded.start`,
-          end: sql`excluded.end`,
-          timezoneOffset: sql`excluded.timezone_offset`,
-          sportName: sql`excluded.sport_name`,
-          scoreState: sql`excluded.score_state`,
-          score: sql`excluded.score`,
-          during: sql`excluded.during`,
-          zoneDuration: sql`excluded.zone_duration`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      });
-    count += batch.length;
-  }
-  return count;
+  const rows = workouts.map((workout) => {
+    const zoneDurations = workout.score?.zone_durations;
+    return {
+      userId,
+      whoopWorkoutId: workout.id,
+      start: new Date(workout.start),
+      end: new Date(workout.end),
+      timezoneOffset: workout.timezone_offset,
+      sportName: workout.sport_name,
+      scoreState: workout.score_state,
+      score: workout.score ? JSON.stringify(workout.score) : null,
+      during: workout.during ? JSON.stringify(workout.during) : null,
+      zoneDuration: zoneDurations ? JSON.stringify(zoneDurations) : null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  });
+
+  return chunkedInsert(db, {
+    table: whoopWorkout,
+    rows,
+    onConflictDoUpdate: {
+      target: whoopWorkout.whoopWorkoutId,
+      set: {
+        userId: sql`excluded.user_id`,
+        start: sql`excluded.start`,
+        end: sql`excluded.end`,
+        timezoneOffset: sql`excluded.timezone_offset`,
+        sportName: sql`excluded.sport_name`,
+        scoreState: sql`excluded.score_state`,
+        score: sql`excluded.score`,
+        during: sql`excluded.during`,
+        zoneDuration: sql`excluded.zone_duration`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    },
+  });
 }
 
 async function syncRecoveries(
@@ -454,62 +452,57 @@ async function syncRecoveries(
   userId: string,
   recoveries: WhoopRecovery[],
 ): Promise<number> {
-  let count = 0;
-  for (let i = 0; i < recoveries.length; i += BATCH_SIZE) {
-    const batch = recoveries.slice(i, i + BATCH_SIZE);
-    const values = batch
-      .map((recovery) => {
-        const whoopRecoveryId =
-          recovery.sleep_id ?? (recovery.cycle_id != null ? String(recovery.cycle_id) : null);
-        if (!whoopRecoveryId) return null;
+  const rows = recoveries
+    .map((recovery) => {
+      const whoopRecoveryId =
+        recovery.sleep_id ?? (recovery.cycle_id != null ? String(recovery.cycle_id) : null);
+      if (!whoopRecoveryId) return null;
 
-        const recoveryScore = recovery.score?.recovery_score ?? null;
-        return {
-          userId,
-          whoopRecoveryId,
-          cycleId: recovery.cycle_id != null ? String(recovery.cycle_id) : null,
-          date: new Date(recovery.created_at ?? recovery.updated_at ?? Date.now()),
-          recoveryScore,
-          hrvRmssdMilli: recovery.score?.hrv_rmssd_milli ?? null,
-          hrvRmssdBaseline: null,
-          restingHeartRate: recovery.score?.resting_heart_rate ?? null,
-          restingHeartRateBaseline: null,
-          respiratoryRate: recovery.score?.respiratory_rate ?? null,
-          respiratoryRateBaseline: null,
-          rawData: JSON.stringify(recovery),
-          recoveryScoreTier: recoveryScore != null ? getScoreTier(recoveryScore) : null,
-          timezoneOffset: null,
-          webhookReceivedAt: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-      })
-      .filter((v): v is Exclude<typeof v, null> => v !== null);
+      const recoveryScore = recovery.score?.recovery_score ?? null;
+      return {
+        userId,
+        whoopRecoveryId,
+        cycleId: recovery.cycle_id != null ? String(recovery.cycle_id) : null,
+        date: new Date(recovery.created_at ?? recovery.updated_at ?? Date.now()),
+        recoveryScore,
+        hrvRmssdMilli: recovery.score?.hrv_rmssd_milli ?? null,
+        hrvRmssdBaseline: null,
+        restingHeartRate: recovery.score?.resting_heart_rate ?? null,
+        restingHeartRateBaseline: null,
+        respiratoryRate: recovery.score?.respiratory_rate ?? null,
+        respiratoryRateBaseline: null,
+        rawData: JSON.stringify(recovery),
+        recoveryScoreTier: recoveryScore != null ? getScoreTier(recoveryScore) : null,
+        timezoneOffset: null,
+        webhookReceivedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    })
+    .filter((v): v is Exclude<typeof v, null> => v !== null);
 
-    if (values.length === 0) continue;
+  if (rows.length === 0) return 0;
 
-    await db
-      .insert(whoopRecovery)
-      .values(values)
-      .onConflictDoUpdate({
-        target: whoopRecovery.whoopRecoveryId,
-        set: {
-          userId: sql`excluded.user_id`,
-          cycleId: sql`excluded.cycle_id`,
-          date: sql`excluded.date`,
-          recoveryScore: sql`excluded.recovery_score`,
-          hrvRmssdMilli: sql`excluded.hrv_rmssd_milli`,
-          restingHeartRate: sql`excluded.resting_heart_rate`,
-          respiratoryRate: sql`excluded.respiratory_rate`,
-          rawData: sql`excluded.raw_data`,
-          recoveryScoreTier: sql`excluded.recovery_score_tier`,
-          webhookReceivedAt: sql`excluded.webhook_received_at`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      });
-    count += values.length;
-  }
-  return count;
+  return chunkedInsert(db, {
+    table: whoopRecovery,
+    rows,
+    onConflictDoUpdate: {
+      target: whoopRecovery.whoopRecoveryId,
+      set: {
+        userId: sql`excluded.user_id`,
+        cycleId: sql`excluded.cycle_id`,
+        date: sql`excluded.date`,
+        recoveryScore: sql`excluded.recovery_score`,
+        hrvRmssdMilli: sql`excluded.hrv_rmssd_milli`,
+        restingHeartRate: sql`excluded.resting_heart_rate`,
+        respiratoryRate: sql`excluded.respiratory_rate`,
+        rawData: sql`excluded.raw_data`,
+        recoveryScoreTier: sql`excluded.recovery_score_tier`,
+        webhookReceivedAt: sql`excluded.webhook_received_at`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    },
+  });
 }
 
 async function syncCycles(
@@ -517,58 +510,55 @@ async function syncCycles(
   userId: string,
   cycles: WhoopCycle[],
 ): Promise<number> {
-  let count = 0;
-  for (let i = 0; i < cycles.length; i += BATCH_SIZE) {
-    const batch = cycles.slice(i, i + BATCH_SIZE);
-    const values = batch.map((cycle) => {
-      const score = cycle.score;
-      return {
-        userId,
-        whoopCycleId: cycle.id,
-        start: new Date(cycle.start),
-        end: new Date(cycle.end),
-        timezoneOffset: cycle.timezone_offset,
-        dayStrain: score?.strain ?? null,
-        averageHeartRate: score?.average_heart_rate ?? null,
-        maxHeartRate: score?.max_heart_rate ?? null,
-        kilojoule: score?.kilojoule ?? null,
-        percentRecorded: score?.percent_recorded ?? null,
-        distanceMeter: score?.distance_meter ?? null,
-        altitudeGainMeter: score?.altitude_gain_meter ?? null,
-        altitudeChangeMeter: score?.altitude_change_meter ?? null,
-        rawData: JSON.stringify(cycle),
-        webhookReceivedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    });
+  if (cycles.length === 0) return 0;
 
-    await db
-      .insert(whoopCycle)
-      .values(values)
-      .onConflictDoUpdate({
-        target: whoopCycle.whoopCycleId,
-        set: {
-          userId: sql`excluded.user_id`,
-          start: sql`excluded.start`,
-          end: sql`excluded.end`,
-          timezoneOffset: sql`excluded.timezone_offset`,
-          dayStrain: sql`excluded.day_strain`,
-          averageHeartRate: sql`excluded.average_heart_rate`,
-          maxHeartRate: sql`excluded.max_heart_rate`,
-          kilojoule: sql`excluded.kilojoule`,
-          percentRecorded: sql`excluded.percent_recorded`,
-          distanceMeter: sql`excluded.distance_meter`,
-          altitudeGainMeter: sql`excluded.altitude_gain_meter`,
-          altitudeChangeMeter: sql`excluded.altitude_change_meter`,
-          rawData: sql`excluded.raw_data`,
-          webhookReceivedAt: sql`excluded.webhook_received_at`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      });
-    count += batch.length;
-  }
-  return count;
+  const rows = cycles.map((cycle) => {
+    const score = cycle.score;
+    return {
+      userId,
+      whoopCycleId: cycle.id,
+      start: new Date(cycle.start),
+      end: new Date(cycle.end),
+      timezoneOffset: cycle.timezone_offset,
+      dayStrain: score?.strain ?? null,
+      averageHeartRate: score?.average_heart_rate ?? null,
+      maxHeartRate: score?.max_heart_rate ?? null,
+      kilojoule: score?.kilojoule ?? null,
+      percentRecorded: score?.percent_recorded ?? null,
+      distanceMeter: score?.distance_meter ?? null,
+      altitudeGainMeter: score?.altitude_gain_meter ?? null,
+      altitudeChangeMeter: score?.altitude_change_meter ?? null,
+      rawData: JSON.stringify(cycle),
+      webhookReceivedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  });
+
+  return chunkedInsert(db, {
+    table: whoopCycle,
+    rows,
+    onConflictDoUpdate: {
+      target: whoopCycle.whoopCycleId,
+      set: {
+        userId: sql`excluded.user_id`,
+        start: sql`excluded.start`,
+        end: sql`excluded.end`,
+        timezoneOffset: sql`excluded.timezone_offset`,
+        dayStrain: sql`excluded.day_strain`,
+        averageHeartRate: sql`excluded.average_heart_rate`,
+        maxHeartRate: sql`excluded.max_heart_rate`,
+        kilojoule: sql`excluded.kilojoule`,
+        percentRecorded: sql`excluded.percent_recorded`,
+        distanceMeter: sql`excluded.distance_meter`,
+        altitudeGainMeter: sql`excluded.altitude_gain_meter`,
+        altitudeChangeMeter: sql`excluded.altitude_change_meter`,
+        rawData: sql`excluded.raw_data`,
+        webhookReceivedAt: sql`excluded.webhook_received_at`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    },
+  });
 }
 
 async function syncSleepRecords(
@@ -576,81 +566,78 @@ async function syncSleepRecords(
   userId: string,
   sleepRecords: WhoopSleep[],
 ): Promise<number> {
-  let count = 0;
-  for (let i = 0; i < sleepRecords.length; i += BATCH_SIZE) {
-    const batch = sleepRecords.slice(i, i + BATCH_SIZE);
-    const values = batch.map((sleep) => {
-      const stageSummary = sleep.score?.stage_summary;
-      const sleepNeeded = sleep.score?.sleep_needed;
-      const totalSleepTimeMilli =
-        (stageSummary?.total_light_sleep_time_milli ?? 0) +
-        (stageSummary?.total_slow_wave_sleep_time_milli ?? 0) +
-        (stageSummary?.total_rem_sleep_time_milli ?? 0);
+  if (sleepRecords.length === 0) return 0;
 
-      return {
-        userId,
-        whoopSleepId: sleep.id,
-        start: new Date(sleep.start),
-        end: new Date(sleep.end),
-        timezoneOffset: sleep.timezone_offset,
-        sleepPerformancePercentage: sleep.score?.sleep_performance_percentage ?? null,
-        totalSleepTimeMilli: totalSleepTimeMilli > 0 ? totalSleepTimeMilli : null,
-        sleepEfficiencyPercentage: sleep.score?.sleep_efficiency_percentage ?? null,
-        slowWaveSleepTimeMilli: stageSummary?.total_slow_wave_sleep_time_milli ?? null,
-        remSleepTimeMilli: stageSummary?.total_rem_sleep_time_milli ?? null,
-        lightSleepTimeMilli: stageSummary?.total_light_sleep_time_milli ?? null,
-        wakeTimeMilli: stageSummary?.total_awake_time_milli ?? null,
-        arousalTimeMilli: null,
-        disturbanceCount: stageSummary?.disturbance_count ?? null,
-        sleepLatencyMilli: null,
-        sleepConsistencyPercentage: sleep.score?.sleep_consistency_percentage ?? null,
-        sleepNeedBaselineMilli: sleepNeeded?.baseline_milli ?? null,
-        sleepNeedFromSleepDebtMilli: sleepNeeded?.need_from_sleep_debt_milli ?? null,
-        sleepNeedFromRecentStrainMilli: sleepNeeded?.need_from_recent_strain_milli ?? null,
-        sleepNeedFromRecentNapMilli: sleepNeeded?.need_from_recent_nap_milli ?? null,
-        rawData: JSON.stringify(sleep),
-        sleepQualityTier:
-          sleep.score?.sleep_performance_percentage != null
-            ? getSleepQualityTier(sleep.score.sleep_performance_percentage)
-            : null,
-        webhookReceivedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    });
+  const rows = sleepRecords.map((sleep) => {
+    const stageSummary = sleep.score?.stage_summary;
+    const sleepNeeded = sleep.score?.sleep_needed;
+    const totalSleepTimeMilli =
+      (stageSummary?.total_light_sleep_time_milli ?? 0) +
+      (stageSummary?.total_slow_wave_sleep_time_milli ?? 0) +
+      (stageSummary?.total_rem_sleep_time_milli ?? 0);
 
-    await db
-      .insert(whoopSleep)
-      .values(values)
-      .onConflictDoUpdate({
-        target: whoopSleep.whoopSleepId,
-        set: {
-          userId: sql`excluded.user_id`,
-          start: sql`excluded.start`,
-          end: sql`excluded.end`,
-          timezoneOffset: sql`excluded.timezone_offset`,
-          sleepPerformancePercentage: sql`excluded.sleep_performance_percentage`,
-          totalSleepTimeMilli: sql`excluded.total_sleep_time_milli`,
-          sleepEfficiencyPercentage: sql`excluded.sleep_efficiency_percentage`,
-          slowWaveSleepTimeMilli: sql`excluded.slow_wave_sleep_time_milli`,
-          remSleepTimeMilli: sql`excluded.rem_sleep_time_milli`,
-          lightSleepTimeMilli: sql`excluded.light_sleep_time_milli`,
-          wakeTimeMilli: sql`excluded.wake_time_milli`,
-          disturbanceCount: sql`excluded.disturbance_count`,
-          sleepConsistencyPercentage: sql`excluded.sleep_consistency_percentage`,
-          sleepNeedBaselineMilli: sql`excluded.sleep_need_baseline_milli`,
-          sleepNeedFromSleepDebtMilli: sql`excluded.sleep_need_from_sleep_debt_milli`,
-          sleepNeedFromRecentStrainMilli: sql`excluded.sleep_need_from_recent_strain_milli`,
-          sleepNeedFromRecentNapMilli: sql`excluded.sleep_need_from_recent_nap_milli`,
-          rawData: sql`excluded.raw_data`,
-          sleepQualityTier: sql`excluded.sleep_quality_tier`,
-          webhookReceivedAt: sql`excluded.webhook_received_at`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      });
-    count += batch.length;
-  }
-  return count;
+    return {
+      userId,
+      whoopSleepId: sleep.id,
+      start: new Date(sleep.start),
+      end: new Date(sleep.end),
+      timezoneOffset: sleep.timezone_offset,
+      sleepPerformancePercentage: sleep.score?.sleep_performance_percentage ?? null,
+      totalSleepTimeMilli: totalSleepTimeMilli > 0 ? totalSleepTimeMilli : null,
+      sleepEfficiencyPercentage: sleep.score?.sleep_efficiency_percentage ?? null,
+      slowWaveSleepTimeMilli: stageSummary?.total_slow_wave_sleep_time_milli ?? null,
+      remSleepTimeMilli: stageSummary?.total_rem_sleep_time_milli ?? null,
+      lightSleepTimeMilli: stageSummary?.total_light_sleep_time_milli ?? null,
+      wakeTimeMilli: stageSummary?.total_awake_time_milli ?? null,
+      arousalTimeMilli: null,
+      disturbanceCount: stageSummary?.disturbance_count ?? null,
+      sleepLatencyMilli: null,
+      sleepConsistencyPercentage: sleep.score?.sleep_consistency_percentage ?? null,
+      sleepNeedBaselineMilli: sleepNeeded?.baseline_milli ?? null,
+      sleepNeedFromSleepDebtMilli: sleepNeeded?.need_from_sleep_debt_milli ?? null,
+      sleepNeedFromRecentStrainMilli: sleepNeeded?.need_from_recent_strain_milli ?? null,
+      sleepNeedFromRecentNapMilli: sleepNeeded?.need_from_recent_nap_milli ?? null,
+      rawData: JSON.stringify(sleep),
+      sleepQualityTier:
+        sleep.score?.sleep_performance_percentage != null
+          ? getSleepQualityTier(sleep.score.sleep_performance_percentage)
+          : null,
+      webhookReceivedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  });
+
+  return chunkedInsert(db, {
+    table: whoopSleep,
+    rows,
+    onConflictDoUpdate: {
+      target: whoopSleep.whoopSleepId,
+      set: {
+        userId: sql`excluded.user_id`,
+        start: sql`excluded.start`,
+        end: sql`excluded.end`,
+        timezoneOffset: sql`excluded.timezone_offset`,
+        sleepPerformancePercentage: sql`excluded.sleep_performance_percentage`,
+        totalSleepTimeMilli: sql`excluded.total_sleep_time_milli`,
+        sleepEfficiencyPercentage: sql`excluded.sleep_efficiency_percentage`,
+        slowWaveSleepTimeMilli: sql`excluded.slow_wave_sleep_time_milli`,
+        remSleepTimeMilli: sql`excluded.rem_sleep_time_milli`,
+        lightSleepTimeMilli: sql`excluded.light_sleep_time_milli`,
+        wakeTimeMilli: sql`excluded.wake_time_milli`,
+        disturbanceCount: sql`excluded.disturbance_count`,
+        sleepConsistencyPercentage: sql`excluded.sleep_consistency_percentage`,
+        sleepNeedBaselineMilli: sql`excluded.sleep_need_baseline_milli`,
+        sleepNeedFromSleepDebtMilli: sql`excluded.sleep_need_from_sleep_debt_milli`,
+        sleepNeedFromRecentStrainMilli: sql`excluded.sleep_need_from_recent_strain_milli`,
+        sleepNeedFromRecentNapMilli: sql`excluded.sleep_need_from_recent_nap_milli`,
+        rawData: sql`excluded.raw_data`,
+        sleepQualityTier: sql`excluded.sleep_quality_tier`,
+        webhookReceivedAt: sql`excluded.webhook_received_at`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    },
+  });
 }
 
 async function syncBodyMeasurements(
@@ -658,50 +645,45 @@ async function syncBodyMeasurements(
   userId: string,
   measurements: WhoopBodyMeasurement[],
 ): Promise<number> {
-  let count = 0;
-  for (let i = 0; i < measurements.length; i += BATCH_SIZE) {
-    const batch = measurements.slice(i, i + BATCH_SIZE);
-    const values = batch.map((measurement) => {
-      const measurementId =
-        measurement.id ??
-        measurement.measurement_date ??
-        `${measurement.height_meter}:${measurement.weight_kilogram}:${measurement.max_heart_rate ?? 'na'}`;
+  if (measurements.length === 0) return 0;
 
-      return {
-        userId,
-        whoopMeasurementId: measurementId,
-        heightMeter: measurement.height_meter,
-        weightKilogram: measurement.weight_kilogram,
-        maxHeartRate: measurement.max_heart_rate ?? null,
-        measurementDate: measurement.measurement_date
-          ? new Date(measurement.measurement_date)
-          : null,
-        rawData: JSON.stringify(measurement),
-        webhookReceivedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    });
+  const rows = measurements.map((measurement) => {
+    const measurementId =
+      measurement.id ??
+      measurement.measurement_date ??
+      `${measurement.height_meter}:${measurement.weight_kilogram}:${measurement.max_heart_rate ?? 'na'}`;
 
-    await db
-      .insert(whoopBodyMeasurement)
-      .values(values)
-      .onConflictDoUpdate({
-        target: whoopBodyMeasurement.whoopMeasurementId,
-        set: {
-          userId: sql`excluded.user_id`,
-          heightMeter: sql`excluded.height_meter`,
-          weightKilogram: sql`excluded.weight_kilogram`,
-          maxHeartRate: sql`excluded.max_heart_rate`,
-          measurementDate: sql`excluded.measurement_date`,
-          rawData: sql`excluded.raw_data`,
-          webhookReceivedAt: sql`excluded.webhook_received_at`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      });
-    count += batch.length;
-  }
-  return count;
+    return {
+      userId,
+      whoopMeasurementId: measurementId,
+      heightMeter: measurement.height_meter,
+      weightKilogram: measurement.weight_kilogram,
+      maxHeartRate: measurement.max_heart_rate ?? null,
+      measurementDate: measurement.measurement_date ? new Date(measurement.measurement_date) : null,
+      rawData: JSON.stringify(measurement),
+      webhookReceivedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  });
+
+  return chunkedInsert(db, {
+    table: whoopBodyMeasurement,
+    rows,
+    onConflictDoUpdate: {
+      target: whoopBodyMeasurement.whoopMeasurementId,
+      set: {
+        userId: sql`excluded.user_id`,
+        heightMeter: sql`excluded.height_meter`,
+        weightKilogram: sql`excluded.weight_kilogram`,
+        maxHeartRate: sql`excluded.max_heart_rate`,
+        measurementDate: sql`excluded.measurement_date`,
+        rawData: sql`excluded.raw_data`,
+        webhookReceivedAt: sql`excluded.webhook_received_at`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    },
+  });
 }
 
 function formatSyncError(error: unknown) {
@@ -742,6 +724,13 @@ export async function syncAllWhoopData(
   };
 
   const isInitial = options.isInitialSync ?? false;
+
+  const syncLockId = `whoop-sync-${userId}`;
+  const lockAcquired = await acquireLock(db, syncLockId, 5 * 60 * 1000);
+  if (!lockAcquired) {
+    result.errors.push('Sync already in progress');
+    return result;
+  }
 
   try {
     try {
@@ -786,88 +775,78 @@ export async function syncAllWhoopData(
     const cycleStart = getSyncStartDate(latestCycle?.maxStart, isInitial);
     const sleepStart = getSyncStartDate(latestSleep?.maxStart, isInitial);
 
-    // Fetch all data categories in parallel with independent error handling
-    let workouts: WhoopWorkout[] = [];
-    let recoveries: WhoopRecovery[] = [];
-    let cycles: WhoopCycle[] = [];
-    let sleepRecords: WhoopSleep[] = [];
-    let measurements: WhoopBodyMeasurement[] = [];
-
-    await Promise.all([
-      (async () => {
-        try {
-          workouts = await fetchWorkoutsWithToken(db, env, userId, workoutStart);
-        } catch (e) {
-          result.errors.push(`Workouts: ${formatSyncError(e)}`);
-        }
-      })(),
-      (async () => {
-        try {
-          recoveries = await fetchRecoveriesWithToken(db, env, userId, recoveryStart);
-        } catch (e) {
-          result.errors.push(`Recovery: ${formatSyncError(e)}`);
-        }
-      })(),
-      (async () => {
-        try {
-          cycles = await fetchCyclesWithToken(db, env, userId, cycleStart);
-        } catch (e) {
-          const msg = formatSyncError(e);
-          if (e && typeof e === 'object' && 'status' in e && e.status === 403) {
-            // no-op
-          } else {
-            result.errors.push(`Cycles: ${msg}`);
-          }
-        }
-      })(),
-      (async () => {
-        try {
-          sleepRecords = await fetchSleepWithToken(db, env, userId, sleepStart);
-        } catch (e) {
-          result.errors.push(`Sleep: ${formatSyncError(e)}`);
-        }
-      })(),
-      (async () => {
-        try {
-          measurements = await fetchBodyMeasurementsWithToken(db, env, userId);
-        } catch (e) {
-          result.errors.push(`Body Measurements: ${formatSyncError(e)}`);
-        }
-      })(),
-    ]);
-
-    // Batch insert each category
+    // Fetch and upsert each category sequentially to cap peak memory
     try {
+      const workouts = await fetchWorkoutsWithToken(db, env, userId, workoutStart);
       result.workouts = await syncWorkouts(db, userId, workouts);
     } catch (e) {
-      result.errors.push(`Workouts insert: ${formatSyncError(e)}`);
+      result.errors.push(`Workouts: ${formatSyncError(e)}`);
     }
 
     try {
+      const recoveries = await fetchRecoveriesWithToken(db, env, userId, recoveryStart);
       result.recovery = await syncRecoveries(db, userId, recoveries);
     } catch (e) {
-      result.errors.push(`Recovery insert: ${formatSyncError(e)}`);
+      result.errors.push(`Recovery: ${formatSyncError(e)}`);
     }
 
     try {
+      const cycles = await fetchCyclesWithToken(db, env, userId, cycleStart);
       result.cycles = await syncCycles(db, userId, cycles);
     } catch (e) {
-      result.errors.push(`Cycles insert: ${formatSyncError(e)}`);
+      const msg = formatSyncError(e);
+      if (e && typeof e === 'object' && 'status' in e && e.status === 403) {
+        // no-op
+      } else {
+        result.errors.push(`Cycles: ${msg}`);
+      }
     }
 
     try {
+      const sleepRecords = await fetchSleepWithToken(db, env, userId, sleepStart);
       result.sleep = await syncSleepRecords(db, userId, sleepRecords);
     } catch (e) {
-      result.errors.push(`Sleep insert: ${formatSyncError(e)}`);
+      result.errors.push(`Sleep: ${formatSyncError(e)}`);
     }
 
     try {
+      const measurements = await fetchBodyMeasurementsWithToken(db, env, userId);
       result.bodyMeasurements = await syncBodyMeasurements(db, userId, measurements);
     } catch (e) {
-      result.errors.push(`Body Measurements insert: ${formatSyncError(e)}`);
+      result.errors.push(`Body Measurements: ${formatSyncError(e)}`);
+    }
+
+    // Prune rawData for WHOOP records older than 30 days
+    try {
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      await db
+        .update(whoopRecovery)
+        .set({ rawData: null })
+        .where(and(eq(whoopRecovery.userId, userId), lt(whoopRecovery.date, cutoff)));
+      await db
+        .update(whoopCycle)
+        .set({ rawData: null })
+        .where(and(eq(whoopCycle.userId, userId), lt(whoopCycle.start, cutoff)));
+      await db
+        .update(whoopSleep)
+        .set({ rawData: null })
+        .where(and(eq(whoopSleep.userId, userId), lt(whoopSleep.start, cutoff)));
+      await db
+        .update(whoopBodyMeasurement)
+        .set({ rawData: null })
+        .where(
+          and(
+            eq(whoopBodyMeasurement.userId, userId),
+            lt(whoopBodyMeasurement.measurementDate, cutoff),
+          ),
+        );
+    } catch {
+      // silently ignore cleanup errors so they don't fail the sync
     }
   } catch (e) {
     result.errors.push(`Sync error: ${formatSyncError(e)}`);
+  } finally {
+    await releaseLock(db, syncLockId);
   }
 
   return result;

@@ -2,10 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
-const APP_ID = 'com.strength.app';
+const DEFAULT_APP_ID = 'com.strength.app';
 const BUILDS_DIR = join(process.cwd(), 'builds');
 
 type Options = {
+  appId: string;
   apkPath: string | null;
   install: boolean;
   seconds: number;
@@ -14,6 +15,7 @@ type Options = {
 function parseArgs(): Options {
   const args = process.argv.slice(2);
   const options: Options = {
+    appId: DEFAULT_APP_ID,
     apkPath: null,
     install: true,
     seconds: 20,
@@ -25,6 +27,8 @@ function parseArgs(): Options {
       options.install = false;
     } else if (arg === '--apk') {
       options.apkPath = args[++i] ? resolve(args[i]) : null;
+    } else if (arg === '--app-id') {
+      options.appId = args[++i] || DEFAULT_APP_ID;
     } else if (arg === '--seconds') {
       const seconds = Number(args[++i]);
       if (Number.isFinite(seconds) && seconds > 0) {
@@ -114,9 +118,9 @@ if (options.install) {
 }
 
 console.log('Clearing logcat and launching app...');
-runAdb(['shell', 'am', 'force-stop', APP_ID], { allowFailure: true });
+runAdb(['shell', 'am', 'force-stop', options.appId], { allowFailure: true });
 runAdb(['logcat', '-c'], { allowFailure: true });
-runAdb(['shell', 'monkey', '-p', APP_ID, '-c', 'android.intent.category.LAUNCHER', '1'], {
+runAdb(['shell', 'monkey', '-p', options.appId, '-c', 'android.intent.category.LAUNCHER', '1'], {
   allowFailure: true,
 });
 

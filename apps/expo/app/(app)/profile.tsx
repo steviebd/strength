@@ -16,9 +16,13 @@ import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
+import { getLocalDb } from '@/db/client';
+import { localBodyStats } from '@/db/local-schema';
+import { getCachedBodyStats, cacheBodyStats } from '@/db/body-stats';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, overlay, radius, spacing, statusBg, textRoles, typography } from '@/theme';
 import { Input } from '@/components/ui/Input';
 import { convertToDisplayWeight, convertToStorageWeight } from '@strength/db/client';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
@@ -75,9 +79,11 @@ export default function Profile() {
   const { data: session, isPending } = authClient.useSession();
   const {
     weightUnit,
+    distanceUnit,
     timezone,
     deviceTimezone,
     setWeightUnit,
+    setDistanceUnit,
     setTimezone,
     recordBodyweight,
     bodyweightKg,
@@ -106,43 +112,171 @@ export default function Profile() {
   const [targetsDirty, setTargetsDirty] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
 
+  const latestServerUpdatedAtRef = useRef(0);
+
   const { data: bodyStats } = useQuery({
     queryKey: ['body-stats'],
-    queryFn: () =>
-      apiFetch<{
+    queryFn: async () => {
+      const userId = session?.user?.id;
+      if (userId) {
+        const cached = await getCachedBodyStats(userId);
+        if (cached) {
+          // Kick off background refresh without awaiting
+          apiFetch<{
+            bodyweightKg: number | null;
+            targetCalories: number | null;
+            targetProteinG: number | null;
+            targetCarbsG: number | null;
+            targetFatG: number | null;
+            updatedAt?: string | Date | null;
+          }>('/api/nutrition/body-stats')
+            .then((fresh) => {
+              const incomingUpdatedAt = fresh.updatedAt
+                ? typeof fresh.updatedAt === 'string'
+                  ? new Date(fresh.updatedAt).getTime()
+                  : fresh.updatedAt.getTime()
+                : 0;
+              if (!incomingUpdatedAt || incomingUpdatedAt >= latestServerUpdatedAtRef.current) {
+                latestServerUpdatedAtRef.current = incomingUpdatedAt;
+                void cacheBodyStats(userId, fresh);
+              }
+            })
+            .catch(() => {
+              // Offline is fine, serve cached
+            });
+          return cached;
+        }
+      }
+      const fresh = await apiFetch<{
         bodyweightKg: number | null;
         targetCalories: number | null;
         targetProteinG: number | null;
         targetCarbsG: number | null;
         targetFatG: number | null;
-      }>('/api/nutrition/body-stats'),
+        updatedAt?: string | Date | null;
+      }>('/api/nutrition/body-stats');
+      const incomingUpdatedAt = fresh.updatedAt
+        ? typeof fresh.updatedAt === 'string'
+          ? new Date(fresh.updatedAt).getTime()
+          : fresh.updatedAt.getTime()
+        : 0;
+      if (incomingUpdatedAt) {
+        latestServerUpdatedAtRef.current = incomingUpdatedAt;
+      }
+      if (userId) {
+        await cacheBodyStats(userId, fresh, true);
+      }
+      return fresh;
+    },
   });
 
   const saveBodyweightMutation = useMutation({
-    mutationFn: (bodyweightKg: number) =>
-      apiFetch('/api/nutrition/body-stats', {
-        method: 'POST',
-        body: { bodyweightKg },
-      }),
-    onSuccess: async (_data, bodyweightKg) => {
+    mutationFn: async (bodyweightKg: number) => {
+      const uid = session?.user?.id;
+      if (!uid) throw new Error('Not authenticated');
+      return tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch('/api/nutrition/body-stats', {
+            method: 'POST',
+            body: { bodyweightKg },
+          }),
+        userId: uid,
+        entityType: 'body_stats',
+        operation: 'update_body_stats',
+        entityId: uid,
+        payload: { bodyweightKg },
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          db.insert(localBodyStats)
+            .values({
+              userId: uid,
+              bodyweightKg,
+              recordedAt: now,
+              hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localBodyStats.userId,
+              set: {
+                bodyweightKg,
+                recordedAt: now,
+              },
+            })
+            .run();
+        },
+      });
+    },
+    onSuccess: async (data, bodyweightKg) => {
       await recordBodyweight(bodyweightKg);
+      const userId = session?.user?.id;
+      if (userId) {
+        await cacheBodyStats(userId, data as any, true);
+      }
       queryClient.invalidateQueries({ queryKey: ['body-stats'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
     },
   });
 
   const saveTargetsMutation = useMutation({
-    mutationFn: (targets: {
+    mutationFn: async (targets: {
       targetCalories?: number | null;
       targetProteinG?: number | null;
       targetCarbsG?: number | null;
       targetFatG?: number | null;
-    }) =>
-      apiFetch('/api/nutrition/body-stats', {
-        method: 'POST',
-        body: targets,
-      }),
-    onSuccess: () => {
+    }) => {
+      const uid = session?.user?.id;
+      if (!uid) throw new Error('Not authenticated');
+      return tryOnlineOrEnqueue({
+        apiCall: () =>
+          apiFetch('/api/nutrition/body-stats', {
+            method: 'POST',
+            body: targets,
+          }),
+        userId: uid,
+        entityType: 'body_stats',
+        operation: 'update_body_stats',
+        entityId: uid,
+        payload: targets,
+        onEnqueue: async () => {
+          const db = getLocalDb();
+          if (!db) return;
+          const now = new Date();
+          db.insert(localBodyStats)
+            .values({
+              userId: uid,
+              targetCalories: targets.targetCalories ?? null,
+              targetProteinG: targets.targetProteinG ?? null,
+              targetCarbsG: targets.targetCarbsG ?? null,
+              targetFatG: targets.targetFatG ?? null,
+              hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localBodyStats.userId,
+              set: {
+                ...(targets.targetCalories !== undefined && {
+                  targetCalories: targets.targetCalories,
+                }),
+                ...(targets.targetProteinG !== undefined && {
+                  targetProteinG: targets.targetProteinG,
+                }),
+                ...(targets.targetCarbsG !== undefined && {
+                  targetCarbsG: targets.targetCarbsG,
+                }),
+                ...(targets.targetFatG !== undefined && {
+                  targetFatG: targets.targetFatG,
+                }),
+              },
+            })
+            .run();
+        },
+      });
+    },
+    onSuccess: async (data) => {
+      const userId = session?.user?.id;
+      if (userId) {
+        await cacheBodyStats(userId, data as any, true);
+      }
       queryClient.invalidateQueries({ queryKey: ['body-stats'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition-daily-summary'] });
       setTargetsDirty(false);
@@ -344,6 +478,7 @@ export default function Profile() {
 
   const handleSignOut = () => {
     authClient.signOut();
+    router.replace('/');
   };
 
   const loadWhoopStatus = async () => {
@@ -568,6 +703,14 @@ export default function Profile() {
             </Pressable>
           </View>
         </View>
+
+        {saveBodyweightMutation.error instanceof OfflineError && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>
+              Changes saved locally. Will sync when you're back online.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.nutritionGoalsSection}>
           <View style={styles.nutritionGoalsHeader}>
@@ -845,6 +988,50 @@ export default function Profile() {
           </View>
         </View>
 
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Distance Unit</Text>
+          <View style={styles.unitToggle}>
+            <Pressable
+              onPress={() => setDistanceUnit('km')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                distanceUnit === 'km' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  distanceUnit === 'km'
+                    ? styles.unitButtonTextActive
+                    : styles.unitButtonTextInactive,
+                ]}
+              >
+                km
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setDistanceUnit('mi')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                distanceUnit === 'mi' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  distanceUnit === 'mi'
+                    ? styles.unitButtonTextActive
+                    : styles.unitButtonTextInactive,
+                ]}
+              >
+                mi
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
         <Pressable style={styles.row} onPress={() => setTimezoneModalVisible(true)}>
           <Text style={styles.rowLabel}>Timezone</Text>
           <View style={styles.rowValueRight}>
@@ -930,8 +1117,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: typography.fontWeights.semibold,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
     color: colors.text,
     marginBottom: spacing.xs,
   },
@@ -945,7 +1133,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 20,
+    padding: spacing.lg - spacing.xs,
     marginBottom: spacing.md,
   },
   cardHighlighted: {
@@ -960,13 +1148,13 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -1012,16 +1200,16 @@ const styles = StyleSheet.create({
   },
   loadingRow: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
   },
   buttonGroup: {
-    marginTop: 16,
-    gap: 12,
+    marginTop: spacing.md,
+    gap: spacing.sm + spacing.xs,
   },
   button: {
     borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.sm + spacing.xs,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1061,10 +1249,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   syncResultBox: {
-    marginTop: 12,
+    marginTop: spacing.sm + spacing.xs,
     borderRadius: radius.sm,
     backgroundColor: colors.border,
-    padding: 12,
+    padding: spacing.sm + spacing.xs,
   },
   syncResultText: {
     fontSize: typography.fontSizes.xs,
@@ -1073,14 +1261,16 @@ const styles = StyleSheet.create({
   connectDescription: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
-    marginBottom: 16,
+    marginBottom: spacing.md,
     lineHeight: 22,
   },
   errorBox: {
-    marginTop: 12,
+    marginTop: spacing.sm + spacing.xs,
     borderRadius: radius.sm,
-    backgroundColor: `${colors.error}20`,
-    padding: 12,
+    backgroundColor: statusBg.error,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
+    padding: spacing.sm + spacing.xs,
   },
   errorText: {
     fontSize: typography.fontSizes.sm,
@@ -1155,7 +1345,7 @@ const styles = StyleSheet.create({
   saveButton: {
     backgroundColor: colors.accent,
     borderRadius: radius.md,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
   saveButtonDisabled: {
@@ -1165,6 +1355,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+  },
+  offlineBanner: {
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
+    padding: spacing.md,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
   },
   nutritionGoalsSection: {
     marginTop: spacing.md,
@@ -1180,9 +1382,9 @@ const styles = StyleSheet.create({
   },
   autoTargetsBox: {
     borderRadius: radius.md,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: overlay.inverseSubtle,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: overlay.muted,
     padding: spacing.md,
   },
   autoTargetsText: {
@@ -1234,7 +1436,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.border,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1248,7 +1450,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

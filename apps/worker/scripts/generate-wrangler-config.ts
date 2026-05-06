@@ -25,10 +25,12 @@ const INFISICAL_KEYS = [
   'AI_GATEWAY_NAME',
   'AI_MODEL_NAME',
   'BETTER_AUTH_SECRET',
+  'BETTER_AUTH_API_KEY',
   'BETTER_AUTH_TRUSTED_ORIGINS',
   'WORKER_BASE_URL',
   'CF_AI_GATEWAY_TOKEN',
   'ENCRYPTION_MASTER_KEY',
+  'EXPO_PUBLIC_APP_SCHEME',
 
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -37,9 +39,9 @@ const INFISICAL_KEYS = [
   'WHOOP_SYNC_RATE_LIMIT_PER_HOUR',
   'WHOOP_WEBHOOK_SECRET',
   'RATE_LIMIT_REQUEST_PER_HOUR',
+  'RESEND_API_KEY',
+  'RESEND_FROM_EMAIL',
 ] as const;
-
-const OPTIONAL_LOCAL_KEYS = ['E2E_TEST_MODE', 'E2E_TEST_SECRET'] as const;
 
 function parseArgs(): Args {
   const values = process.argv.slice(2);
@@ -104,22 +106,24 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
+const OPTIONAL_INFISICAL_KEYS = new Set(['EXPO_PUBLIC_APP_SCHEME']);
+
 function getInfisicalVars(): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const key of INFISICAL_KEYS) {
     const value = process.env[key];
-    if (!value) {
+    if (!value && !OPTIONAL_INFISICAL_KEYS.has(key)) {
       console.error(`Missing required Infisical variable '${key}'.`);
       process.exit(1);
     }
-    vars[key] = value;
-  }
-
-  for (const key of OPTIONAL_LOCAL_KEYS) {
-    const value = process.env[key];
     if (value) {
       vars[key] = value;
     }
+  }
+
+  // Map EXPO_PUBLIC_APP_SCHEME to APP_SCHEME so the Worker can read it consistently
+  if (vars.EXPO_PUBLIC_APP_SCHEME) {
+    vars.APP_SCHEME = vars.EXPO_PUBLIC_APP_SCHEME;
   }
 
   return vars;

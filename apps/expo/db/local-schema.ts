@@ -1,4 +1,5 @@
 import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { WORKOUT_TYPE_TRAINING } from '@strength/db/client';
 
 export const localSchemaMigrations = sqliteTable('local_schema_migrations', {
   id: text('id').primaryKey(),
@@ -8,6 +9,7 @@ export const localSchemaMigrations = sqliteTable('local_schema_migrations', {
 export const localUserPreferences = sqliteTable('local_user_preferences', {
   userId: text('user_id').primaryKey(),
   weightUnit: text('weight_unit').notNull().default('kg'),
+  distanceUnit: text('distance_unit').notNull().default('km'),
   timezone: text('timezone'),
   bodyweightKg: real('bodyweight_kg'),
   weightPromptedAt: integer('weight_prompted_at', { mode: 'timestamp_ms' }),
@@ -32,6 +34,7 @@ export const localWorkouts = sqliteTable('local_workouts', {
   templateId: text('template_id'),
   programCycleId: text('program_cycle_id'),
   cycleWorkoutId: text('cycle_workout_id'),
+  workoutType: text('workout_type').notNull().default(WORKOUT_TYPE_TRAINING),
   name: text('name').notNull(),
   startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
@@ -58,6 +61,7 @@ export const localWorkoutExercises = sqliteTable('local_workout_exercises', {
   libraryId: text('library_id'),
   name: text('name').notNull(),
   muscleGroup: text('muscle_group'),
+  exerciseType: text('exercise_type'),
   orderIndex: integer('order_index').notNull(),
   notes: text('notes'),
   isAmrap: integer('is_amrap', { mode: 'boolean' }).notNull().default(false),
@@ -73,6 +77,9 @@ export const localWorkoutSets = sqliteTable('local_workout_sets', {
   weight: real('weight'),
   reps: integer('reps'),
   rpe: real('rpe'),
+  duration: integer('duration'),
+  distance: integer('distance'),
+  height: integer('height'),
   isComplete: integer('is_complete', { mode: 'boolean' }).notNull().default(false),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
@@ -87,6 +94,7 @@ export const localTemplates = sqliteTable('local_templates', {
   description: text('description'),
   notes: text('notes'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  createdLocally: integer('created_locally', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
   serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
@@ -99,12 +107,16 @@ export const localTemplateExercises = sqliteTable('local_template_exercises', {
   exerciseId: text('exercise_id').notNull(),
   name: text('name').notNull(),
   muscleGroup: text('muscle_group'),
+  exerciseType: text('exercise_type').notNull().default('weighted'),
   orderIndex: integer('order_index').notNull(),
   targetWeight: real('target_weight'),
   addedWeight: real('added_weight'),
   sets: integer('sets'),
   reps: integer('reps'),
   repsRaw: text('reps_raw'),
+  targetDuration: integer('target_duration'),
+  targetDistance: integer('target_distance'),
+  targetHeight: integer('target_height'),
   isAmrap: integer('is_amrap', { mode: 'boolean' }).notNull().default(false),
   isAccessory: integer('is_accessory', { mode: 'boolean' }).notNull().default(false),
   isRequired: integer('is_required', { mode: 'boolean' }).notNull().default(true),
@@ -117,6 +129,8 @@ export const localUserExercises = sqliteTable('local_user_exercises', {
   muscleGroup: text('muscle_group'),
   description: text('description'),
   libraryId: text('library_id'),
+  exerciseType: text('exercise_type'),
+  isAmrap: integer('is_amrap', { mode: 'boolean' }).notNull().default(false),
   createdLocally: integer('created_locally', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
@@ -196,8 +210,101 @@ export const localSyncQueue = sqliteTable('local_sync_queue', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const localLastWorkouts = sqliteTable(
+  'local_last_workouts',
+  {
+    userId: text('user_id').notNull(),
+    exerciseId: text('exercise_id').notNull(),
+    weight: real('weight'),
+    reps: integer('reps'),
+    rpe: real('rpe'),
+    duration: integer('duration'),
+    distance: integer('distance'),
+    height: integer('height'),
+    date: text('date').notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.exerciseId] })],
+);
+
+export const localNutritionDailySummaries = sqliteTable(
+  'local_nutrition_daily_summaries',
+  {
+    userId: text('user_id').notNull(),
+    date: text('date').notNull(),
+    timezone: text('timezone').notNull().default('UTC'),
+    json: text('json').notNull(),
+    hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.date, table.timezone] })],
+);
+
+export const localBodyStats = sqliteTable('local_body_stats', {
+  userId: text('user_id').primaryKey(),
+  bodyweightKg: real('bodyweight_kg'),
+  heightCm: real('height_cm'),
+  targetCalories: integer('target_calories'),
+  targetProteinG: integer('target_protein_g'),
+  targetCarbsG: integer('target_carbs_g'),
+  targetFatG: integer('target_fat_g'),
+  recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }),
+  serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
+  hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localWhoopData = sqliteTable(
+  'local_whoop_data',
+  {
+    userId: text('user_id').notNull(),
+    date: text('date').notNull(),
+    timezone: text('timezone').notNull().default('UTC'),
+    recoveryScore: real('recovery_score'),
+    status: text('status'),
+    hrv: real('hrv'),
+    caloriesBurned: real('calories_burned'),
+    totalStrain: real('total_strain'),
+    serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
+    hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.date, table.timezone] })],
+);
+
+export const localChatMessageQueue = sqliteTable('local_chat_message_queue', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  date: text('date').notNull(),
+  timezone: text('timezone').notNull(),
+  content: text('content').notNull(),
+  hasImage: integer('has_image', { mode: 'boolean' }).notNull().default(false),
+  imageBase64: text('image_base64'),
+  messagesJson: text('messages_json').notNull(),
+  status: text('status').notNull().default('pending'),
+  jobId: text('job_id'),
+  assistantContent: text('assistant_content'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localPendingWorkouts = sqliteTable('local_pending_workouts', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  startedAt: text('started_at').notNull(),
+  source: text('source').notNull().default('program'),
+  programCycleId: text('program_cycle_id').notNull(),
+  cycleWorkoutId: text('cycle_workout_id').notNull(),
+  exercisesJson: text('exercises_json').notNull(),
+  exerciseCount: integer('exercise_count').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export type LocalUserPreferences = typeof localUserPreferences.$inferSelect;
 export type LocalWorkout = typeof localWorkouts.$inferSelect;
 export type LocalWorkoutExercise = typeof localWorkoutExercises.$inferSelect;
 export type LocalWorkoutSet = typeof localWorkoutSets.$inferSelect;
 export type LocalSyncQueueItem = typeof localSyncQueue.$inferSelect;
+export type LocalLastWorkout = typeof localLastWorkouts.$inferSelect;
+export type LocalNutritionDailySummary = typeof localNutritionDailySummaries.$inferSelect;
+export type LocalBodyStat = typeof localBodyStats.$inferSelect;
+export type LocalWhoopDatum = typeof localWhoopData.$inferSelect;

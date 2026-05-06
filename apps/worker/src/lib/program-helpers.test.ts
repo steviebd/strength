@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { WORKOUT_TYPE_ONE_RM_TEST } from '@strength/db';
 import {
   normalizeProgramSetCount,
   normalizeProgramReps,
@@ -11,6 +12,7 @@ import {
   createOneRMTestWorkout,
   createWorkoutFromProgramCycleWorkout,
   advanceProgramCycleForWorkout,
+  completeProgramCycle,
 } from './program-helpers';
 
 vi.mock('@strength/db', async (importOriginal) => {
@@ -104,6 +106,10 @@ describe('normalizeProgramTargetLift', () => {
       isAccessory: false,
       isRequired: true,
       isAmrap: false,
+      exerciseType: 'weighted',
+      targetDuration: null,
+      targetDistance: null,
+      targetHeight: null,
     });
   });
 
@@ -120,6 +126,10 @@ describe('normalizeProgramTargetLift', () => {
       isAmrap: true,
       libraryId: 'lib-1',
       exerciseId: 'ex-1',
+      exerciseType: 'bodyweight',
+      targetDuration: 60,
+      targetDistance: 100,
+      targetHeight: 50,
     });
     expect(result).toEqual({
       name: 'Bench',
@@ -133,6 +143,10 @@ describe('normalizeProgramTargetLift', () => {
       isAmrap: true,
       libraryId: 'lib-1',
       exerciseId: 'ex-1',
+      exerciseType: 'bodyweight',
+      targetDuration: 60,
+      targetDistance: 100,
+      targetHeight: 50,
     });
   });
 });
@@ -193,6 +207,86 @@ describe('consolidateProgramTargetLifts', () => {
     expect(consolidated[0].sets).toBe(4);
     expect(consolidated[0].segments).toHaveLength(2);
     expect(consolidated[1].name).toBe('Bench Press');
+  });
+
+  test('groups exercises by libraryId even when exerciseId differs', () => {
+    const parsed = parseProgramTargetLifts(
+      JSON.stringify({
+        exercises: [
+          {
+            name: 'Squat',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            exerciseId: 'ex-a',
+            sets: 3,
+            reps: 5,
+            targetWeight: 100,
+          },
+          {
+            name: 'Squat 2',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            exerciseId: 'ex-b',
+            sets: 1,
+            reps: 5,
+            targetWeight: 120,
+          },
+          {
+            name: 'Squat 3+',
+            lift: 'squat',
+            libraryId: 'barbell-squat',
+            exerciseId: 'ex-c',
+            sets: 1,
+            reps: 5,
+            targetWeight: 140,
+            isAmrap: true,
+          },
+        ],
+      }),
+    );
+
+    const consolidated = consolidateProgramTargetLifts(parsed.all);
+
+    expect(consolidated).toHaveLength(1);
+    expect(consolidated[0].name).toBe('Squat');
+    expect(consolidated[0].sets).toBe(5);
+    expect(consolidated[0].isAmrap).toBe(true);
+    expect(consolidated[0].segments).toHaveLength(3);
+  });
+
+  test('groups accessories by accessoryId regardless of libraryId presence', () => {
+    const parsed = parseProgramTargetLifts(
+      JSON.stringify({
+        exercises: [
+          {
+            name: 'Bench Press',
+            lift: 'bench',
+            libraryId: 'barbell-bench-press',
+            sets: 3,
+            reps: 5,
+            targetWeight: 80,
+          },
+        ],
+        accessories: [
+          {
+            name: 'Dips',
+            accessoryId: 'dips',
+            isAccessory: true,
+            sets: 3,
+            reps: '50-100 reps total',
+          },
+          { name: 'Dips', accessoryId: 'dips', isAccessory: true, sets: 2, reps: 15 },
+        ],
+      }),
+    );
+
+    const consolidated = consolidateProgramTargetLifts(parsed.all);
+
+    expect(consolidated).toHaveLength(2);
+    expect(consolidated[0].name).toBe('Bench Press');
+    expect(consolidated[1].name).toBe('Dips');
+    expect(consolidated[1].sets).toBe(5);
+    expect(consolidated[1].segments).toHaveLength(2);
   });
 });
 
@@ -274,6 +368,10 @@ function createMockDb() {
         return {
           returning: () => ({ get: async () => ({ id: 'test-id' }) }),
           run: async () => ({ success: true }),
+          onConflictDoNothing: () => ({
+            returning: () => ({ get: async () => ({ id: 'test-id' }) }),
+            run: async () => ({ success: true }),
+          }),
           onConflictDoUpdate: () => ({
             returning: () => ({ get: async () => ({ id: 'test-id' }) }),
             run: async () => ({ success: true }),
@@ -289,6 +387,12 @@ function createMockDb() {
             updatedCycleWorkouts.push(vals);
             return { success: true };
           },
+          returning: () => ({
+            get: async () => {
+              updatedCycleWorkouts.push(vals);
+              return { ...vals, id: 'test-cycle-id' };
+            },
+          }),
         }),
       }),
     }),
@@ -385,6 +489,7 @@ describe('advanceProgramCycleForWorkout', () => {
     db.get = async () => ({
       id: 'workout-1',
       name: '1RM Test',
+      workoutType: WORKOUT_TYPE_ONE_RM_TEST,
       programCycleId: 'cycle-1',
       isDeleted: false,
     });
@@ -397,5 +502,30 @@ describe('advanceProgramCycleForWorkout', () => {
       isComplete: true,
     });
     expect(db._updatedCycleWorkouts[0].completedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('completeProgramCycle', () => {
+  test('returns an already completed cycle when completion is repeated', async () => {
+    const completedCycle = {
+      id: 'cycle-1',
+      userId: 'user-1',
+      status: 'completed',
+      isComplete: true,
+      completedAt: new Date(),
+    };
+    const db = createMockDb();
+    db.update = () => ({
+      set: () => ({
+        where: () => ({
+          returning: () => ({
+            get: async () => undefined,
+          }),
+        }),
+      }),
+    });
+    db.get = async () => completedCycle;
+
+    await expect(completeProgramCycle(db, 'cycle-1', 'user-1')).resolves.toEqual(completedCycle);
   });
 });

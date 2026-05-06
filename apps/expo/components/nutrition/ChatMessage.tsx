@@ -18,6 +18,9 @@ interface ChatEntry {
   imageUri?: string;
   analysis?: MealAnalysis;
   savedEntryId?: string | null;
+  isPlaceholder?: boolean;
+  queueId?: string;
+  status?: 'pending' | 'failed';
 }
 
 interface ChatExchange {
@@ -36,6 +39,7 @@ interface ChatMessageProps {
     savedEntryId?: string | null,
   ) => void;
   isSavingAnalysis?: boolean;
+  onRetry?: () => void;
 }
 
 const COLLAPSED_USER_LINES = 1;
@@ -102,6 +106,7 @@ export function ChatMessage({
   onToggleExpanded,
   onSaveAnalysis,
   isSavingAnalysis = false,
+  onRetry,
 }: ChatMessageProps) {
   const [userNeedsToggle, setUserNeedsToggle] = useState(false);
   const [assistantNeedsToggle, setAssistantNeedsToggle] = useState(false);
@@ -243,6 +248,17 @@ export function ChatMessage({
                     {cleanInlineFormatting(assistantDisplayContent)}
                   </Text>
                 )
+              ) : assistantMessage?.status === 'failed' ? (
+                <View style={styles.failedContainer}>
+                  <Text style={styles.failedText}>Failed to send</Text>
+                  <Button size="sm" variant="secondary" onPress={onRetry}>
+                    Retry
+                  </Button>
+                </View>
+              ) : assistantMessage?.status === 'pending' ? (
+                <View style={styles.pendingContainer}>
+                  <Text style={styles.pendingText}>Pending...</Text>
+                </View>
               ) : (
                 <CoachTypingIndicator />
               )}
@@ -421,5 +437,26 @@ const styles = StyleSheet.create({
     color: colors.accentSecondary,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
+  },
+  pendingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  pendingText: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.sm,
+    fontStyle: 'italic',
+  },
+  failedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  failedText: {
+    color: colors.error,
+    fontSize: typography.fontSizes.sm,
   },
 });

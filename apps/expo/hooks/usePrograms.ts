@@ -1,8 +1,18 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { sql, and, or, eq, inArray } from 'drizzle-orm';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
+import { getLocalDb } from '@/db/client';
+import { localSyncQueue } from '@/db/local-schema';
 import { cacheActivePrograms } from '@/db/workouts';
-import { getCachedActivePrograms } from '@/db/training-cache';
+import {
+  getCachedActivePrograms,
+  getCachedProgramsCatalog,
+  cacheProgramsCatalog,
+  getCachedLatestOneRMs,
+  cacheLatestOneRMs,
+  getFallbackLatestOneRMsFromCycles,
+} from '@/db/training-cache';
+import { useOfflineQuery } from './useOfflineQuery';
 
 export interface ProgramListItem {
   slug: string;
@@ -35,12 +45,27 @@ export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
-  const programsQuery = useQuery({
+  const programsQuery = useOfflineQuery({
     queryKey: ['programs', userId],
     enabled: !!userId,
-    queryFn: async (): Promise<ProgramListItem[]> => {
-      const data = await apiFetch<ProgramListItem[]>('/api/programs');
-      return data ?? [];
+    apiFn: () => apiFetch<ProgramListItem[]>('/api/programs'),
+    cacheFn: () => getCachedProgramsCatalog(userId!),
+    writeCacheFn: (data) => cacheProgramsCatalog(userId!, data),
+    isDirtyFn: async () => {
+      const db = getLocalDb();
+      if (!db) return false;
+      const result = db
+        .select({ count: sql<number>`count(*)` })
+        .from(localSyncQueue)
+        .where(
+          and(
+            eq(localSyncQueue.userId, userId!),
+            inArray(localSyncQueue.operation, ['start_program', 'delete_program']),
+            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+          ),
+        )
+        .get();
+      return (result?.count ?? 0) > 0;
     },
     staleTime: 5 * 60 * 1000,
     refetchOnMount: 'always',
@@ -62,43 +87,15 @@ export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
 export function useActivePrograms() {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
-  const queryClient = useQueryClient();
 
-  const activeProgramsQuery = useQuery({
+  const activeProgramsQuery = useOfflineQuery({
     queryKey: ['activePrograms', userId],
     enabled: !!userId,
-    queryFn: async (): Promise<ActiveProgram[]> => {
-      if (userId) {
-        const cached = await getCachedActivePrograms(userId);
-        if (cached.length > 0) {
-          void apiFetch<ActiveProgram[]>('/api/programs/active')
-            .then(async (data) => {
-              await cacheActivePrograms(userId, data ?? []);
-              queryClient.setQueryData(['activePrograms', userId], data ?? []);
-            })
-            .catch(() => {});
-          return cached.map((program) => ({
-            id: program.id,
-            programSlug: program.programSlug,
-            name: program.name,
-            currentWeek: program.currentWeek,
-            currentSession: program.currentSession,
-            totalSessionsCompleted: program.totalSessionsCompleted,
-            totalSessionsPlanned: program.totalSessionsPlanned,
-          }));
-        }
-      }
-      try {
-        const data = await apiFetch<ActiveProgram[]>('/api/programs/active');
-        if (userId) {
-          await cacheActivePrograms(userId, data ?? []);
-        }
-        return data ?? [];
-      } catch (error) {
-        if (userId) {
-          const cached = await getCachedActivePrograms(userId);
-          if (cached.length > 0) {
-            return cached.map((program) => ({
+    apiFn: () => apiFetch<ActiveProgram[]>('/api/programs/active').then((d) => d ?? []),
+    cacheFn: () =>
+      getCachedActivePrograms(userId!).then((rows) =>
+        rows.length
+          ? rows.map((program) => ({
               id: program.id,
               programSlug: program.programSlug,
               name: program.name,
@@ -106,11 +103,26 @@ export function useActivePrograms() {
               currentSession: program.currentSession,
               totalSessionsCompleted: program.totalSessionsCompleted,
               totalSessionsPlanned: program.totalSessionsPlanned,
-            }));
-          }
-        }
-        throw error;
-      }
+            }))
+          : null,
+      ),
+    writeCacheFn: (data) => cacheActivePrograms(userId!, data),
+    isDirtyFn: async () => {
+      const db = getLocalDb();
+      if (!db) return false;
+      const result = db
+        .select({ count: sql<number>`count(*)` })
+        .from(localSyncQueue)
+        .where(
+          and(
+            eq(localSyncQueue.userId, userId!),
+            eq(localSyncQueue.entityType, 'program'),
+            eq(localSyncQueue.operation, 'reschedule_workout'),
+            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
+          ),
+        )
+        .get();
+      return (result?.count ?? 0) > 0;
     },
     staleTime: 0,
     refetchOnMount: 'always',
@@ -130,12 +142,27 @@ export function useLatestOneRms() {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
-  const latestOneRmsQuery = useQuery({
+  const latestOneRmsQuery = useOfflineQuery({
     queryKey: ['latestOneRms', userId],
     enabled: !!userId,
-    queryFn: async (): Promise<LatestOneRMs | null> => {
-      const data = await apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms');
-      return data ?? null;
+    apiFn: () => apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms'),
+    cacheFn: async () => {
+      const cached = await getCachedLatestOneRMs(userId!);
+      if (cached) return cached;
+      return getFallbackLatestOneRMsFromCycles(userId!);
+    },
+    writeCacheFn: (data) => cacheLatestOneRMs(userId!, data),
+    isDirtyFn: async () => {
+      const cached = await getCachedLatestOneRMs(userId!);
+      if (!cached) return false;
+      const fromCycles = await getFallbackLatestOneRMsFromCycles(userId!);
+      if (!fromCycles) return false;
+      return (
+        cached.squat1rm !== fromCycles.squat1rm ||
+        cached.bench1rm !== fromCycles.bench1rm ||
+        cached.deadlift1rm !== fromCycles.deadlift1rm ||
+        cached.ohp1rm !== fromCycles.ohp1rm
+      );
     },
     staleTime: 0,
     refetchOnMount: 'always',

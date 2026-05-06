@@ -30,20 +30,31 @@ import { WorkoutCard } from '@/components/workout/WorkoutCard';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
-import { getPendingWorkouts, addPendingWorkout, removePendingWorkout } from '@/lib/storage';
 import { authClient } from '@/lib/auth-client';
 import {
   cacheTemplates,
+  createLocalOneRMTestDraft,
   createLocalWorkoutFromCurrentProgramCycle,
+  createLocalWorkoutFromProgramCycleWorkoutDefinition,
   createLocalWorkoutFromTemplate,
+  discardLocalWorkout,
+  getLocalActiveOneRMTestDraft,
   getLocalLastCompletedExerciseSnapshots,
+  listLocalActiveWorkoutDrafts,
   listLocalWorkoutHistory,
+  normalizeTemplateExerciseForWorkoutStart,
   upsertServerWorkoutSnapshot,
+  type LocalActiveWorkoutDraftItem,
+  type OneRMTestDraftDefinition,
   type ExerciseHistorySnapshot,
   type WorkoutSyncStatus,
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
+import { getLocalDb } from '@/db/client';
+import { cleanupStaleLocalData } from '@/db/local-cleanup';
+import { eq } from 'drizzle-orm';
+import { localTemplateExercises } from '@/db/local-schema';
 import type { Template } from '@/components/template/TemplateEditor/types';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -59,20 +70,6 @@ interface WorkoutHistoryItem {
   exerciseCount: number | null;
   syncStatus?: WorkoutSyncStatus;
   lastSyncError?: string | null;
-}
-
-interface PendingWorkout {
-  id: string;
-  name: string;
-  startedAt: string;
-  completedAt: null;
-  source: 'program';
-  programCycleId: string;
-  cycleWorkoutId: string;
-  exerciseCount: number;
-  durationMinutes: null;
-  totalVolume: null;
-  totalSets: null;
 }
 
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
@@ -117,18 +114,14 @@ export default function WorkoutsIndex() {
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [opening1RMTestId, setOpening1RMTestId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
-  const [pendingWorkouts, setPendingWorkouts] = useState<PendingWorkout[]>([]);
   const [localHistory, setLocalHistory] = useState<WorkoutHistoryItem[]>([]);
+  const [activeDrafts, setActiveDrafts] = useState<LocalActiveWorkoutDraftItem[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
   const { width } = useWindowDimensions();
   const isNarrow = width < 400;
-
-  const loadPendingWorkouts = useCallback(async () => {
-    const workouts = await getPendingWorkouts();
-    setPendingWorkouts(workouts);
-  }, []);
 
   const loadLocalHistory = useCallback(async () => {
     if (!userId) {
@@ -139,6 +132,16 @@ export default function WorkoutsIndex() {
     setLocalHistory(workouts);
   }, [userId]);
 
+  const loadActiveDrafts = useCallback(async () => {
+    if (!userId) {
+      setActiveDrafts([]);
+      return;
+    }
+    await cleanupStaleLocalData(userId);
+    const drafts = await listLocalActiveWorkoutDrafts(userId, 20);
+    setActiveDrafts(drafts);
+  }, [userId]);
+
   const refreshWorkoutsScreen = useCallback(
     async (showRefreshIndicator = false) => {
       if (showRefreshIndicator) {
@@ -146,12 +149,12 @@ export default function WorkoutsIndex() {
       }
 
       try {
-        await loadPendingWorkouts();
         await Promise.all([
           queryClient.refetchQueries({ queryKey: ['templates'] }),
           queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
           queryClient.refetchQueries({ queryKey: ['workoutHistory'] }),
           loadLocalHistory(),
+          loadActiveDrafts(),
         ]);
       } finally {
         if (showRefreshIndicator) {
@@ -159,13 +162,13 @@ export default function WorkoutsIndex() {
         }
       }
     },
-    [loadLocalHistory, loadPendingWorkouts, queryClient],
+    [loadActiveDrafts, loadLocalHistory, queryClient],
   );
 
   useEffect(() => {
-    void loadPendingWorkouts();
     void loadLocalHistory();
-  }, [loadLocalHistory, loadPendingWorkouts]);
+    void loadActiveDrafts();
+  }, [loadActiveDrafts, loadLocalHistory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -175,11 +178,10 @@ export default function WorkoutsIndex() {
 
   useEffect(() => {
     if (view === 'history') {
-      void loadPendingWorkouts();
       void loadLocalHistory();
       void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     }
-  }, [loadLocalHistory, loadPendingWorkouts, view, queryClient]);
+  }, [loadLocalHistory, view, queryClient]);
 
   useEffect(() => {
     if (params.focusProgramId && activePrograms.length > 0) {
@@ -234,20 +236,16 @@ export default function WorkoutsIndex() {
     for (const item of localHistory) {
       byId.set(item.id, item);
     }
-    for (const pending of pendingWorkouts) {
-      if (!byId.has(pending.id)) {
-        byId.set(pending.id, { ...pending, syncStatus: 'local', lastSyncError: null });
-      }
-    }
     return Array.from(byId.values()).sort(
       (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
     );
-  }, [localHistory, pendingWorkouts, workoutHistory]);
+  }, [localHistory, workoutHistory]);
 
   const getDisplaySessionNumber = (program: ActiveProgram) =>
     Math.min(program.totalSessionsCompleted + 1, program.totalSessionsPlanned);
 
   const handleStartWorkout = async () => {
+    setOfflineMessage(null);
     const name = workoutName.trim() || 'Workout';
     const workout = await startWorkout(name);
     if (workout?.id) {
@@ -257,49 +255,104 @@ export default function WorkoutsIndex() {
       return;
     }
 
+    if (workoutSessionError === 'Network request failed') {
+      setOfflineMessage('Unable to start workout. Please try again.');
+      return;
+    }
+
     Alert.alert('Unable to start workout', workoutSessionError ?? 'Please try again.');
   };
 
-  const handleStartFromTemplate = async (template: Template) => {
+  const handleStartFromTemplate = async (template: Template, skipDraftId?: string) => {
+    setOfflineMessage(null);
     try {
-      if (userId && template.id) {
-        const templateExercises = template.exercises ?? [];
-        const exerciseIds = templateExercises.map((exercise) => exercise.exerciseId);
-        const localHistory = await getLocalLastCompletedExerciseSnapshots(
-          userId,
-          exerciseIds,
-          templateExercises.map((exercise) => exercise.name),
-        );
-        const usableLocalHistory = localHistory.filter(hasUsableHistory);
-        const localHistoryIds = new Set(usableLocalHistory.map((snapshot) => snapshot.exerciseId));
-        const d1History = await Promise.all(
-          templateExercises
-            .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
-            .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
-        );
-        const historySnapshots = [
-          ...usableLocalHistory,
-          ...d1History.filter(
-            (snapshot): snapshot is ExerciseHistorySnapshot =>
-              snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
-          ),
-        ];
-        const local = await createLocalWorkoutFromTemplate(userId, template.id, historySnapshots);
-        if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}`);
-          return;
-        }
+      if (!userId || !template.id) {
+        Alert.alert('Error', 'Unable to start workout. Please try again.');
+        return;
       }
-      const workout = await apiFetch<{ id: string }>('/api/workouts', {
-        method: 'POST',
-        body: {
-          name: template.name,
-          templateId: template.id,
-        },
-      });
-      if (workout?.id) {
-        router.push(`/workout-session?workoutId=${workout.id}`);
+
+      const existingDraft = activeDrafts.find(
+        (draft) =>
+          draft.workoutType === 'training' &&
+          draft.templateId === template.id &&
+          !draft.programCycleId &&
+          !draft.cycleWorkoutId &&
+          draft.id !== skipDraftId,
+      );
+      if (existingDraft) {
+        promptForExistingDraft(existingDraft, {
+          title: 'Resume template workout?',
+          message: 'You already have an in-progress workout from this template.',
+          onStartFresh: () => handleStartFromTemplate(template, existingDraft.id),
+        });
+        return;
       }
+
+      // Get template exercises from local DB (not from the template object which may not have exercises)
+      const db = getLocalDb();
+      const cachedTemplateExercises =
+        db
+          ?.select()
+          .from(localTemplateExercises)
+          .where(eq(localTemplateExercises.templateId, template.id))
+          .orderBy(localTemplateExercises.orderIndex)
+          .all() ?? [];
+
+      let rawTemplateExercises =
+        cachedTemplateExercises.length > 0 ? cachedTemplateExercises : (template.exercises ?? []);
+
+      if (rawTemplateExercises.length === 0) {
+        const remoteTemplate = await apiFetch<any>(`/api/templates/${template.id}`);
+        rawTemplateExercises = (remoteTemplate.exercises ?? []).map((ex: any) => ({
+          ...ex,
+          name: ex.name ?? ex.exercise?.name ?? 'Exercise',
+          muscleGroup: ex.muscleGroup ?? ex.exercise?.muscleGroup ?? null,
+        }));
+      }
+
+      const templateExercises = rawTemplateExercises.map((ex, index) =>
+        normalizeTemplateExerciseForWorkoutStart(ex, index),
+      );
+
+      if (templateExercises.length === 0) {
+        Alert.alert('Error', 'No exercises found for this template.');
+        return;
+      }
+
+      const exerciseIds = templateExercises.map((exercise) => exercise.exerciseId);
+      const localHistory = await getLocalLastCompletedExerciseSnapshots(
+        userId,
+        exerciseIds,
+        templateExercises.map((exercise) => exercise.name),
+      );
+      const usableLocalHistory = localHistory.filter(hasUsableHistory);
+      const localHistoryIds = new Set(usableLocalHistory.map((snapshot) => snapshot.exerciseId));
+      const d1History = await Promise.all(
+        templateExercises
+          .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
+          .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
+      );
+      const historySnapshots = [
+        ...usableLocalHistory,
+        ...d1History.filter(
+          (snapshot): snapshot is ExerciseHistorySnapshot =>
+            snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
+        ),
+      ];
+
+      const local = await createLocalWorkoutFromTemplate(
+        userId,
+        template.id,
+        historySnapshots,
+        templateExercises,
+      );
+
+      if (local?.id) {
+        router.push(`/workout-session?workoutId=${local.id}`);
+        return;
+      }
+
+      Alert.alert('Error', 'Failed to create workout. Please try again.');
     } catch (e) {
       Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
@@ -312,6 +365,82 @@ export default function WorkoutsIndex() {
     await queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
   };
 
+  const getProgramName = useCallback(
+    (cycleId: string | null | undefined) =>
+      activePrograms.find((program) => program.id === cycleId)?.name ?? null,
+    [activePrograms],
+  );
+
+  const getDraftSourceLabel = useCallback((draft: LocalActiveWorkoutDraftItem) => {
+    if (draft.workoutType === 'one_rm_test') return '1RM Test';
+    if (draft.cycleWorkoutId) return 'Program';
+    if (draft.templateId) return 'Template';
+    return 'Custom';
+  }, []);
+
+  const resumeDraft = useCallback(
+    (draft: LocalActiveWorkoutDraftItem) => {
+      const params = new URLSearchParams({ workoutId: draft.id });
+      if (draft.workoutType === 'one_rm_test') {
+        params.set('source', 'program-1rm-test');
+        if (draft.programCycleId) {
+          params.set('cycleId', draft.programCycleId);
+          const programName = getProgramName(draft.programCycleId);
+          if (programName) params.set('programName', programName);
+        }
+      } else if (draft.cycleWorkoutId) {
+        params.set('source', 'program');
+        if (draft.programCycleId) params.set('cycleId', draft.programCycleId);
+        params.set('cycleWorkoutId', draft.cycleWorkoutId);
+      }
+      router.push(`/workout-session?${params.toString()}`);
+    },
+    [getProgramName, router],
+  );
+
+  const promptForExistingDraft = useCallback(
+    (
+      draft: LocalActiveWorkoutDraftItem,
+      options: {
+        title: string;
+        message: string;
+        onStartFresh: () => void | Promise<void>;
+      },
+    ) => {
+      Alert.alert(options.title, options.message, [
+        { text: 'Resume', onPress: () => resumeDraft(draft) },
+        {
+          text: 'Start Fresh',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await discardLocalWorkout(draft.id, draft.cycleWorkoutId);
+              await loadActiveDrafts();
+              await options.onStartFresh();
+            })();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    },
+    [loadActiveDrafts, resumeDraft],
+  );
+
+  const discardDraft = useCallback(
+    async (draft: LocalActiveWorkoutDraftItem) => {
+      await discardLocalWorkout(draft.id, draft.cycleWorkoutId);
+      await loadActiveDrafts();
+      await queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
+      await queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
+      if (draft.programCycleId) {
+        await queryClient.invalidateQueries({
+          queryKey: ['programSchedule', draft.programCycleId],
+        });
+      }
+    },
+    [loadActiveDrafts, queryClient],
+  );
+
   useEffect(() => {
     if (!userId) return;
     const templates = queryClient.getQueryData<Template[]>(['templates', userId]);
@@ -321,11 +450,13 @@ export default function WorkoutsIndex() {
   }, [queryClient, userId]);
 
   const handleNewTemplate = () => {
+    setOfflineMessage(null);
     setEditingTemplate(null);
     setShowTemplateEditor(true);
   };
 
   const handleEditTemplate = (template: Template) => {
+    setOfflineMessage(null);
     setEditingTemplate(template);
     setShowTemplateEditor(true);
   };
@@ -336,28 +467,41 @@ export default function WorkoutsIndex() {
     await queryClient.refetchQueries({ queryKey: ['templates'] });
   };
 
-  const handleOpenCurrentProgramWorkout = async (program: ActiveProgram) => {
+  const handleOpenCurrentProgramWorkout = async (program: ActiveProgram, skipDraftId?: string) => {
     setOpeningProgramWorkoutId(program.id);
     try {
-      if (userId) {
-        const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
-        if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}&source=program`);
-          return;
-        }
+      if (!userId) {
+        Alert.alert('Error', 'User not found. Please sign in again.');
+        return;
       }
-      const result = await apiFetch<{
-        workoutId: string;
-        cycleWorkoutId?: string;
-        sessionName: string;
-        created: boolean;
-        completed: boolean;
-      }>(`/api/programs/cycles/${program.id}/workouts/current/start`, {
-        method: 'POST',
-        body: {},
-      });
 
-      if (result.completed) {
+      const existingDraft = activeDrafts.find(
+        (draft) =>
+          draft.workoutType === 'training' &&
+          draft.programCycleId === program.id &&
+          draft.cycleWorkoutId &&
+          draft.id !== skipDraftId,
+      );
+      if (existingDraft) {
+        promptForExistingDraft(existingDraft, {
+          title: 'Resume program session?',
+          message: 'You already have this program session in progress.',
+          onStartFresh: () => handleOpenCurrentProgramWorkout(program, existingDraft.id),
+        });
+        return;
+      }
+
+      const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
+      if (local?.id) {
+        const params = new URLSearchParams({ workoutId: local.id, source: 'program' });
+        if (local.programCycleId) params.set('cycleId', local.programCycleId);
+        if (local.cycleWorkoutId) params.set('cycleWorkoutId', local.cycleWorkoutId);
+        router.push(`/workout-session?${params.toString()}`);
+        return;
+      }
+
+      const definition = await apiFetch<any>(`/api/programs/cycles/${program.id}/workouts/current`);
+      if (definition.isComplete) {
         Alert.alert(
           'Session Already Completed',
           'This program session has already been completed.',
@@ -366,37 +510,18 @@ export default function WorkoutsIndex() {
         return;
       }
 
-      await addPendingWorkout({
-        id: result.workoutId,
-        name: result.sessionName,
-        startedAt: new Date().toISOString(),
-        completedAt: null,
-        source: 'program',
-        programCycleId: program.id,
-        cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
-        exercises: [],
-        exerciseCount: 0,
-        durationMinutes: null,
-        totalVolume: null,
-        totalSets: null,
-      });
-      setPendingWorkouts((prev) => [
-        ...prev,
-        {
-          id: result.workoutId,
-          name: result.sessionName,
-          startedAt: new Date().toISOString(),
-          completedAt: null,
-          source: 'program',
-          programCycleId: program.id,
-          cycleWorkoutId: result.cycleWorkoutId ?? result.workoutId,
-          exerciseCount: 0,
-          durationMinutes: null,
-          totalVolume: null,
-          totalSets: null,
-        },
-      ]);
-      router.push(`/workout-session?workoutId=${result.workoutId}&source=program`);
+      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
+        userId,
+        definition,
+      );
+      if (!remoteLocal?.id) {
+        Alert.alert('Error', 'Failed to create workout. Please try again.');
+        return;
+      }
+
+      router.push(
+        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleId=${program.id}&cycleWorkoutId=${remoteLocal.cycleWorkoutId ?? definition.id}`,
+      );
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
     } finally {
@@ -407,15 +532,29 @@ export default function WorkoutsIndex() {
   const handleOpen1RMTest = async (program: ActiveProgram) => {
     setOpening1RMTestId(program.id);
     try {
-      const result = await apiFetch<{ workoutId: string; workoutName: string }>(
-        `/api/programs/cycles/${program.id}/create-1rm-test-workout`,
-        {
-          method: 'POST',
-          body: {},
-        },
+      if (!userId) {
+        Alert.alert('Error', 'User not found. Please sign in again.');
+        return;
+      }
+
+      const existingDraft = await getLocalActiveOneRMTestDraft(userId, program.id);
+      if (existingDraft?.id) {
+        router.push(
+          `/workout-session?workoutId=${existingDraft.id}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
+        );
+        return;
+      }
+
+      const definition = await apiFetch<OneRMTestDraftDefinition>(
+        `/api/programs/cycles/${program.id}/1rm-test-draft`,
       );
+      const local = await createLocalOneRMTestDraft(userId, program.id, definition);
+      if (!local?.id) {
+        Alert.alert('Error', 'Failed to create 1RM test. Please try again.');
+        return;
+      }
       router.push(
-        `/workout-session?workoutId=${result.workoutId}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
+        `/workout-session?workoutId=${local.id}&source=program-1rm-test&programName=${encodeURIComponent(program.name)}&cycleId=${program.id}`,
       );
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open 1RM test');
@@ -424,9 +563,55 @@ export default function WorkoutsIndex() {
     }
   };
 
-  const handleDeletePendingWorkout = async (workoutId: string) => {
-    await removePendingWorkout(workoutId);
-    setPendingWorkouts((prev) => prev.filter((p) => p.id !== workoutId));
+  const renderActiveDraftsSection = () => {
+    if (activeDrafts.length === 0) return null;
+
+    return (
+      <View style={styles.draftsContainer}>
+        <SectionTitle title="In progress" />
+        {activeDrafts.map((draft) => (
+          <Surface key={`active-draft:${draft.id}`} style={styles.draftSurface}>
+            <View style={styles.draftHeader}>
+              <View style={styles.draftTitleGroup}>
+                <Text style={styles.draftTitle} numberOfLines={1}>
+                  {draft.name}
+                </Text>
+                <View style={styles.programBadges}>
+                  <Badge label="In progress" tone="orange" />
+                  <Badge label={getDraftSourceLabel(draft)} tone="sky" />
+                </View>
+              </View>
+              <Text style={styles.draftMeta}>
+                Started {new Date(draft.startedAt).toLocaleDateString()} · {draft.exerciseCount}{' '}
+                exercise{draft.exerciseCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+            <View style={styles.draftActions}>
+              <View style={styles.flex1}>
+                <Button label="Resume" icon="play" onPress={() => resumeDraft(draft)} size="sm" />
+              </View>
+              <Button
+                label="Discard"
+                variant="secondary"
+                onPress={() => {
+                  Alert.alert('Discard workout?', 'This in-progress workout will be removed.', [
+                    { text: 'Keep', style: 'cancel' },
+                    {
+                      text: 'Discard',
+                      style: 'destructive',
+                      onPress: () => {
+                        void discardDraft(draft);
+                      },
+                    },
+                  ]);
+                }}
+                size="sm"
+              />
+            </View>
+          </Surface>
+        ))}
+      </View>
+    );
   };
 
   const _handleDeleteProgram = (program: ActiveProgram) => {
@@ -470,6 +655,15 @@ export default function WorkoutsIndex() {
           const isOpening = openingProgramWorkoutId === program.id;
           const isDeleting = deletingProgramId === program.id;
           const isFocused = params.focusProgramId === program.id;
+          const hasTrainingDraft = activeDrafts.some(
+            (draft) =>
+              draft.workoutType === 'training' &&
+              draft.programCycleId === program.id &&
+              draft.cycleWorkoutId,
+          );
+          const hasOneRMDraft = activeDrafts.some(
+            (draft) => draft.workoutType === 'one_rm_test' && draft.programCycleId === program.id,
+          );
           const currentSession = program.currentSession ?? 1;
           const displaySessionNumber = getDisplaySessionNumber(program);
           const progress = Math.min(
@@ -509,7 +703,13 @@ export default function WorkoutsIndex() {
 
                 <View style={styles.programActions}>
                   <Button
-                    label={isOpening ? 'Opening session...' : 'Start next session'}
+                    label={
+                      isOpening
+                        ? 'Opening session...'
+                        : hasTrainingDraft
+                          ? 'Resume session'
+                          : 'Start next session'
+                    }
                     icon="play"
                     onPress={() => void handleOpenCurrentProgramWorkout(program)}
                     disabled={isOpening || isDeleting}
@@ -519,7 +719,13 @@ export default function WorkoutsIndex() {
                   <View style={styles.programActionsRow}>
                     <View style={styles.flex1}>
                       <Button
-                        label={opening1RMTestId === program.id ? 'Opening...' : '1RM Test'}
+                        label={
+                          opening1RMTestId === program.id
+                            ? 'Opening...'
+                            : hasOneRMDraft
+                              ? 'Resume 1RM'
+                              : '1RM Test'
+                        }
                         icon="speedometer-outline"
                         variant="secondary"
                         onPress={() => void handleOpen1RMTest(program)}
@@ -570,16 +776,24 @@ export default function WorkoutsIndex() {
           options={[
             {
               label: 'Templates',
-              onPress: () => setView('templates'),
+              onPress: () => {
+                setOfflineMessage(null);
+                setView('templates');
+              },
               active: view === 'templates',
             },
             {
               label: 'History',
-              onPress: () => setView('history'),
+              onPress: () => {
+                setOfflineMessage(null);
+                setView('history');
+              },
               active: view === 'history',
             },
           ]}
         />
+
+        {renderActiveDraftsSection()}
 
         {view === 'templates' ? (
           <View style={styles.templatesView}>
@@ -600,7 +814,10 @@ export default function WorkoutsIndex() {
                         testID="workouts-start-custom"
                         label="Start custom workout"
                         icon="play"
-                        onPress={() => setShowStartWorkout(true)}
+                        onPress={() => {
+                          setOfflineMessage(null);
+                          setShowStartWorkout(true);
+                        }}
                         fullWidth
                       />
                       <Button
@@ -619,7 +836,10 @@ export default function WorkoutsIndex() {
                           testID="workouts-start-custom"
                           label="Start custom workout"
                           icon="play"
-                          onPress={() => setShowStartWorkout(true)}
+                          onPress={() => {
+                            setOfflineMessage(null);
+                            setShowStartWorkout(true);
+                          }}
                         />
                       </View>
                       <View style={styles.flex1}>
@@ -641,13 +861,28 @@ export default function WorkoutsIndex() {
 
             <View style={styles.templatesSection}>
               <SectionTitle title="Templates" />
+              {offlineMessage && (
+                <View
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.2)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                </View>
+              )}
               <TemplateList
                 onEditTemplate={handleEditTemplate}
                 onStartWorkout={handleStartFromTemplate}
               />
             </View>
           </View>
-        ) : isLoadingHistory && pendingWorkouts.length === 0 ? (
+        ) : isLoadingHistory ? (
           <View style={styles.centerLoading}>
             <ActivityIndicator size="large" color={colors.accentSecondary} />
           </View>
@@ -675,8 +910,7 @@ export default function WorkoutsIndex() {
                 item.syncStatus === 'pending' ||
                 item.syncStatus === 'syncing' ||
                 item.syncStatus === 'failed' ||
-                item.syncStatus === 'conflict' ||
-                pendingWorkouts.some((p) => p.id === item.id);
+                item.syncStatus === 'conflict';
               return (
                 <WorkoutCard
                   key={`workout-history:${item.id}`}
@@ -696,11 +930,6 @@ export default function WorkoutsIndex() {
                       ? () => handleRetrySync(item.id)
                       : undefined
                   }
-                  onDelete={
-                    isPending && !item.syncStatus
-                      ? () => handleDeletePendingWorkout(item.id)
-                      : undefined
-                  }
                 />
               );
             })}
@@ -712,7 +941,10 @@ export default function WorkoutsIndex() {
         visible={showStartWorkout}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowStartWorkout(false)}
+        onRequestClose={() => {
+          setOfflineMessage(null);
+          setShowStartWorkout(false);
+        }}
       >
         <View style={[styles.modalContent, { paddingTop: insets.top + 16 }]}>
           <View style={styles.modalHeader}>
@@ -722,12 +954,29 @@ export default function WorkoutsIndex() {
               label="Close"
               variant="ghost"
               size="sm"
-              onPress={() => setShowStartWorkout(false)}
+              onPress={() => {
+                setOfflineMessage(null);
+                setShowStartWorkout(false);
+              }}
             />
           </View>
 
           <Surface style={styles.modalSurface}>
             <View style={styles.modalForm}>
+              {offlineMessage && (
+                <View
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.2)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                </View>
+              )}
               <TextField
                 testID="workouts-custom-name"
                 label="WORKOUT NAME"
@@ -864,6 +1113,34 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
     color: colors.error,
+  },
+  draftsContainer: {
+    gap: spacing.sm,
+  },
+  draftSurface: {
+    gap: spacing.md,
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    borderColor: 'rgba(251,146,60,0.32)',
+  },
+  draftHeader: {
+    gap: spacing.xs,
+  },
+  draftTitleGroup: {
+    gap: spacing.sm,
+  },
+  draftTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  draftMeta: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textMuted,
+  },
+  draftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
 
   templatesView: {

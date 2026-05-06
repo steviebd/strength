@@ -1,38 +1,40 @@
 import { describe, expect, test } from 'vitest';
-import { checkRateLimit, getRateLimitPerHour } from './rate-limit';
+import { checkRateLimit, getRateLimitPerHour, getRateLimitByEndpoint } from './rate-limit';
 
-function createDb(existing: { requests: number; windowStart: Date; id?: string } | null = null) {
+function createDb(config: { selectResults: (Record<string, unknown> | null)[] }) {
+  let selectIndex = 0;
+
   return {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          get: async () =>
-            existing
-              ? {
-                  ...existing,
-                  id: existing.id ?? 'rl-1',
-                  userId: 'user-1',
-                  endpoint: 'test',
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                }
-              : null,
-        }),
-      }),
-    }),
     insert: () => ({
       values: () => ({
-        run: async () => ({ success: true }),
-      }),
-    }),
-    update: () => ({
-      set: () => ({
-        where: () => ({
+        onConflictDoUpdate: () => ({
           run: async () => ({ success: true }),
         }),
       }),
     }),
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          get: async () => {
+            const result = config.selectResults[selectIndex++];
+            if (!result) return undefined;
+            return {
+              ...result,
+              id: (result.id as string) ?? 'rl-1',
+              userId: 'user-1',
+              endpoint: 'test',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+          },
+        }),
+      }),
+    }),
   } as any;
+}
+
+function makeRow(requests: number, windowStart: Date, id?: string): Record<string, unknown> {
+  return { requests, windowStart, ...(id ? { id } : {}) };
 }
 
 describe('getRateLimitPerHour', () => {
@@ -49,28 +51,55 @@ describe('getRateLimitPerHour', () => {
   });
 });
 
+describe('getRateLimitByEndpoint', () => {
+  test('returns 20 for auth sign-in endpoints', () => {
+    expect(getRateLimitByEndpoint('/api/auth/sign-in/email')).toBe(20);
+  });
+
+  test('returns 20 for auth sign-up endpoints', () => {
+    expect(getRateLimitByEndpoint('/api/auth/sign-up/email')).toBe(20);
+  });
+
+  test('returns 60 for nutrition chat', () => {
+    expect(getRateLimitByEndpoint('/api/nutrition/chat')).toBe(60);
+  });
+
+  test('returns 500 for other endpoints', () => {
+    expect(getRateLimitByEndpoint('/api/workouts')).toBe(500);
+  });
+});
+
 describe('checkRateLimit', () => {
   test('allows first request and inserts row', async () => {
-    const db = createDb(null);
+    const now = Date.now();
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+    const db = createDb({ selectResults: [makeRow(1, windowStart)] });
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(9);
   });
 
-  test('allows request within window', async () => {
+  test('allows request within window (atomic increment)', async () => {
     const now = Date.now();
-    const windowStart = Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000);
-    const db = createDb({ requests: 3, windowStart: new Date(windowStart) });
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+
+    const db = createDb({
+      selectResults: [makeRow(4, windowStart)],
+    });
+
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(6);
   });
 
-  test('resets window and allows after hour', async () => {
+  test('resets old window and allows after hour', async () => {
     const now = Date.now();
-    const oldWindowStart =
-      Math.floor((now - 2 * 60 * 60 * 1000) / (60 * 60 * 1000)) * (60 * 60 * 1000);
-    const db = createDb({ requests: 10, windowStart: new Date(oldWindowStart) });
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+
+    const db = createDb({
+      selectResults: [makeRow(1, windowStart)],
+    });
+
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(9);
@@ -78,11 +107,28 @@ describe('checkRateLimit', () => {
 
   test('blocks when limit reached', async () => {
     const now = Date.now();
-    const windowStart = Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000);
-    const db = createDb({ requests: 10, windowStart: new Date(windowStart) });
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+
+    const db = createDb({
+      selectResults: [makeRow(11, windowStart)],
+    });
+
     const result = await checkRateLimit(db, 'user-1', 'test', 10);
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
     expect(result.retryAfter).toBeGreaterThan(0);
+  });
+
+  test('handles duplicate insert by falling through to atomic increment', async () => {
+    const now = Date.now();
+    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+
+    const db = createDb({
+      selectResults: [makeRow(2, windowStart)],
+    });
+
+    const result = await checkRateLimit(db, 'user-1', 'test', 10);
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBe(8);
   });
 });

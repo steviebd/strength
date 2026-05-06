@@ -93,32 +93,52 @@ Secrets are injected by Infisical at runtime. No `.env` file.
 | Secret | Notes |
 |--------|-------|
 | `APP_ENV` | `development` |
-| `BETTER_AUTH_SECRET` | Generate a long random string |
+| `BETTER_AUTH_SECRET` | `openssl rand -hex 32` |
 | `WORKER_BASE_URL` | `http://<lan-ip>:8787` (local dev) |
 | `EXPO_PUBLIC_WORKER_BASE_URL` | Same as `WORKER_BASE_URL` |
 | `CLOUDFLARE_D1_ID` | Remote dev D1 UUID |
 | `WHOOP_CLIENT_ID` | From Whoop Developer Portal |
 | `WHOOP_CLIENT_SECRET` | From Whoop Developer Portal |
 
-**Required in Infisical `staging` for Android APK builds:**
+**Required in Infisical `staging` and `prod` for native builds:**
 
 | Secret | Notes |
 |--------|-------|
-| `EXPO_PUBLIC_WORKER_BASE_URL` | HTTPS staging Worker URL embedded into the native app bundle |
-| `EXPO_PUBLIC_APP_SCHEME` | Optional; defaults to `strength` |
+| `EXPO_PUBLIC_WORKER_BASE_URL` | HTTPS Worker URL embedded into the native app bundle |
+| `EXPO_PUBLIC_APP_SCHEME` | `strength-staging` for staging, `strength` for prod. Also injected into the Worker as `APP_SCHEME` for CORS/trusted origins. |
 
 `bun run dev:expo` writes Infisical `dev` `EXPO_PUBLIC_*` values to
 `apps/expo/.env.local` before starting Metro. `bun run dev:expo:staging` and
-`bun run build:android:staging` write Infisical `staging` values first. The Android
-staging build also validates that `EXPO_PUBLIC_WORKER_BASE_URL` is present and HTTPS,
-then passes the generated values directly to `eas build --local`.
+`bun run build:android:staging` write Infisical `staging` values first. Build scripts
+validate that `EXPO_PUBLIC_WORKER_BASE_URL` is present and HTTPS for staging/prod,
+then pass the generated values directly to `eas build --local`.
+
+**Build outputs:**
+
+| Environment | App Name | Android Package | iOS Bundle ID |
+|-------------|----------|-----------------|---------------|
+| Staging | `strength-staging` | `com.strength.app.staging` | `com.strength.app.staging` |
+| Production | `strength` | `com.strength.app` | `com.strength.app` |
+
+Staging and production apps can be installed side-by-side because they use different package/bundle identifiers.
 
 **Optional:**
 
 | Secret | Notes |
 |--------|-------|
+| `RATE_LIMIT_REQUEST_PER_HOUR` | Overrides the default rate limit of 1000 req/hr per user per endpoint |
 | `AI_GATEWAY_NAME` | Cloudflare AI Gateway ID |
 | `AI_MODEL_NAME` | Model name (defaults in worker) |
+
+### Local Dev Overrides
+
+Create `apps/worker/.dev.vars` (already gitignored) to override Worker vars locally without touching Infisical:
+
+```env
+SKIP_RATE_LIMIT=true
+```
+
+When `APP_ENV=development` and `SKIP_RATE_LIMIT=true`, all API rate limits are bypassed. Remove the file or set `SKIP_RATE_LIMIT=false` to re-enable them.
 
 ## Development
 
@@ -126,6 +146,11 @@ then passes the generated values directly to `eas build --local`.
 bun run dev              # Worker + Expo concurrently (local D1)
 bun run dev:remote       # Worker against remote dev D1
 bun run dev:expo         # Expo only
+
+bun run build:android:staging  # Local EAS APK build (staging)
+bun run build:android:prod     # Local EAS APK build (production)
+bun run build:ios:staging      # Local EAS IPA build (staging)
+bun run build:ios:prod         # Local EAS IPA build (production)
 
 bun run db:apply:local   # Push migrations to local D1
 bun run db:apply:remote   # Push migrations to remote dev D1

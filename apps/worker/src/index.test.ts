@@ -3,7 +3,7 @@ import app from './index';
 import { decodeWhoopOAuthState } from './lib/whoop-oauth';
 import { exchangeCodeForTokens } from './whoop/auth';
 import { getWhoopProfile } from './whoop/api';
-import { upsertWhoopProfile } from './whoop/sync';
+import { syncAllWhoopData, upsertWhoopProfile } from './whoop/sync';
 
 vi.mock('./api/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api/auth')>();
@@ -28,6 +28,7 @@ vi.mock('./whoop/token-rotation', () => ({
 
 vi.mock('./whoop/sync', () => ({
   upsertWhoopProfile: vi.fn(),
+  syncAllWhoopData: vi.fn(),
 }));
 
 vi.mock('./lib/whoop-oauth', () => ({
@@ -41,8 +42,28 @@ vi.mock('./lib/whoop-oauth', () => ({
 
 function createMockDb() {
   return {
-    select: () => ({ from: () => ({ where: () => ({ get: async () => null }) }) }),
-    insert: () => ({ values: () => ({ run: async () => ({ success: true }) }) }),
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          get: async () => ({
+            id: 'rl-1',
+            userId: 'user-1',
+            endpoint: 'whoop-callback',
+            requests: 1,
+            windowStart: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: () => ({
+        onConflictDoUpdate: () => ({
+          run: async () => ({ success: true }),
+        }),
+      }),
+    }),
     update: () => ({ set: () => ({ where: () => ({ run: async () => ({ success: true }) }) }) }),
   };
 }
@@ -57,6 +78,15 @@ const baseEnv = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(syncAllWhoopData).mockResolvedValue({
+    profile: 1,
+    workouts: 0,
+    recovery: 0,
+    cycles: 0,
+    sleep: 0,
+    bodyMeasurements: 0,
+    errors: [],
+  });
 });
 
 describe('CORS origin', () => {
@@ -98,6 +128,21 @@ describe('CORS origin', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com');
   });
 
+  test('prod allows configured trusted web origin', async () => {
+    const req = new Request('https://api.example.com/api/health', {
+      headers: { origin: 'https://fit.example.com' },
+    });
+    const res = await app.fetch(req, {
+      APP_ENV: 'production',
+      WORKER_BASE_URL: 'https://api.example.com',
+      BETTER_AUTH_TRUSTED_ORIGINS: 'https://fit.example.com',
+      APP_SCHEME: 'strength',
+      DB: {} as D1Database,
+      BETTER_AUTH_SECRET: 'secret',
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://fit.example.com');
+  });
+
   test('prod denies unknown origin', async () => {
     const req = new Request('https://app.example.com/api/health', {
       headers: { origin: 'https://evil.com' },
@@ -124,6 +169,52 @@ describe('/connect-whoop HTML', () => {
   });
 });
 
+describe('/api/auth/reset-password native callback bridge', () => {
+  test('renders a fallback page for Expo reset callbacks', async () => {
+    const callbackURL = encodeURIComponent('exp://10.0.0.44:8081/--/auth/reset-password');
+    const req = new Request(
+      `http://localhost:8787/api/auth/reset-password/token-123?callbackURL=${callbackURL}`,
+    );
+
+    const res = await app.fetch(req, baseEnv);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('Open Strength');
+    expect(html).toContain('exp://10.0.0.44:8081/--/auth/reset-password?token=token-123');
+  });
+
+  test('does not bridge web reset callbacks', async () => {
+    const callbackURL = encodeURIComponent(
+      'https://strength-dev.stevenduong.com/auth/reset-password',
+    );
+    const req = new Request(
+      `http://localhost:8787/api/auth/reset-password/token-123?callbackURL=${callbackURL}`,
+    );
+
+    const res = await app.fetch(req, baseEnv);
+
+    expect(res.status).not.toBe(200);
+  });
+
+  test('escapes native callback URL in the bridge page', async () => {
+    const callbackURL = encodeURIComponent(
+      'exp://10.0.0.44:8081/--/auth/reset-password?next=</script><script>alert(1)</script>',
+    );
+    const req = new Request(
+      `http://localhost:8787/api/auth/reset-password/token-123?callbackURL=${callbackURL}`,
+    );
+
+    const res = await app.fetch(req, baseEnv);
+    const html = await res.text();
+
+    expect(html).not.toContain('</script><script>alert(1)</script>');
+    expect(html).toContain('%3C%2Fscript%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E');
+    expect(html).toContain('\\u0026token=token-123');
+  });
+});
+
 describe('/api/auth/whoop/callback error mapping', () => {
   test('redirects with no_code when code is missing', async () => {
     vi.mocked(decodeWhoopOAuthState).mockResolvedValue({
@@ -141,6 +232,7 @@ describe('/api/auth/whoop/callback error mapping', () => {
     vi.mocked(decodeWhoopOAuthState).mockResolvedValue({
       userId: 'user-1',
       returnTo: 'strength://whoop-callback',
+      codeVerifier: 'verifier-123',
     });
     vi.mocked(exchangeCodeForTokens).mockRejectedValue(new Error('network error'));
     const req = new Request('http://localhost:8787/api/auth/whoop/callback?state=valid&code=123');
@@ -154,6 +246,7 @@ describe('/api/auth/whoop/callback error mapping', () => {
     vi.mocked(decodeWhoopOAuthState).mockResolvedValue({
       userId: 'user-1',
       returnTo: 'strength://whoop-callback',
+      codeVerifier: 'verifier-123',
     });
     vi.mocked(exchangeCodeForTokens).mockResolvedValue({
       access_token: 'tok',
@@ -171,10 +264,44 @@ describe('/api/auth/whoop/callback error mapping', () => {
     expect(location).toContain('error=profile_fetch_failed');
   });
 
+  test('redirects before running initial sync work inline', async () => {
+    vi.mocked(decodeWhoopOAuthState).mockResolvedValue({
+      userId: 'user-1',
+      returnTo: 'strength://whoop-callback',
+      codeVerifier: 'verifier-123',
+    });
+    vi.mocked(exchangeCodeForTokens).mockResolvedValue({
+      access_token: 'tok',
+      refresh_token: 'ref',
+      expires_at: Date.now() + 10000,
+      scope: 'read',
+      token_type: 'bearer',
+      expires_in: 3600,
+    } as any);
+    vi.mocked(getWhoopProfile).mockResolvedValue({ user_id: 'whoop-1' } as any);
+    vi.mocked(upsertWhoopProfile).mockResolvedValue(1);
+    let finishSync!: () => void;
+    const syncPromise = new Promise<void>((resolve) => {
+      finishSync = resolve;
+    });
+    vi.mocked(syncAllWhoopData).mockImplementation(() => syncPromise as any);
+
+    const req = new Request('http://localhost:8787/api/auth/whoop/callback?state=valid&code=123');
+    const res = await app.fetch(req, baseEnv);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('success=true');
+    expect(syncAllWhoopData).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'user-1', {
+      isInitialSync: true,
+    });
+    finishSync();
+  });
+
   test('redirects with unknown on unexpected error', async () => {
     vi.mocked(decodeWhoopOAuthState).mockResolvedValue({
       userId: 'user-1',
       returnTo: 'strength://whoop-callback',
+      codeVerifier: 'verifier-123',
     });
     vi.mocked(exchangeCodeForTokens).mockResolvedValue({
       access_token: 'tok',

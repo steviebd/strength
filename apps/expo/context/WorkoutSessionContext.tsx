@@ -8,6 +8,9 @@ export interface WorkoutSet {
   weight: number | null;
   reps: number | null;
   rpe: number | null;
+  duration: number | null;
+  distance: number | null;
+  height: number | null;
   isComplete: boolean;
   completedAt: string | null;
   createdAt: string | null;
@@ -19,6 +22,7 @@ export interface WorkoutExercise {
   libraryId?: string | null;
   name: string;
   muscleGroup: string | null;
+  exerciseType: string;
   orderIndex: number;
   sets: WorkoutSet[];
   notes: string | null;
@@ -28,6 +32,7 @@ export interface WorkoutExercise {
 export interface Workout {
   id: string;
   name: string;
+  workoutType?: 'training' | 'one_rm_test';
   templateId?: string | null;
   programCycleId?: string | null;
   cycleWorkoutId?: string | null;
@@ -40,6 +45,7 @@ export interface Workout {
   totalSets?: number;
   durationMinutes?: number;
   exerciseCount?: number;
+  createdLocally?: boolean;
 }
 
 export interface Exercise {
@@ -48,6 +54,8 @@ export interface Exercise {
   name: string;
   muscleGroup: string;
   description: string;
+  exerciseType?: string;
+  isAmrap?: boolean;
   videoTutorial?: {
     youtubeId: string;
     title: string;
@@ -78,7 +86,13 @@ interface WorkoutSessionContextValue {
   updateSet: (setId: string, updates: Partial<WorkoutSet>) => void;
   deleteSet: (setId: string) => void;
   toggleSetComplete: (setId: string) => void;
-  getLastWorkoutData: (exerciseId: string) => { weight: number; reps: number } | null;
+  getLastWorkoutData: (exerciseId: string) => {
+    weight: number | null;
+    reps: number | null;
+    duration: number | null;
+    distance: number | null;
+    height: number | null;
+  } | null;
   availableExercises: Exercise[];
 }
 

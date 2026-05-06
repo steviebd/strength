@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
-import { getLastWorkout, setLastWorkout, removePendingWorkout } from '@/lib/storage';
+import { removePendingWorkout } from '@/lib/storage';
+import { getLastWorkout, setLastWorkout } from '@/db/last-workouts';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { generateId } from '@strength/db/client';
+import { generateId, WORKOUT_TYPE_ONE_RM_TEST } from '@strength/db/client';
 import { exerciseLibrary } from '@strength/db/client';
 import {
   completeLocalWorkout,
@@ -70,9 +71,9 @@ async function fetchFirstExerciseHistorySnapshot(exerciseIds: string[], exercise
   return null;
 }
 
-async function getCachedLastWorkoutData(exerciseIds: string[]) {
+async function getCachedLastWorkoutData(userId: string, exerciseIds: string[]) {
   for (const exerciseId of exerciseIds) {
-    const cached = await getLastWorkout(exerciseId);
+    const cached = await getLastWorkout(userId, exerciseId);
     if (cached && (cached.weight !== null || cached.reps !== null)) {
       return cached;
     }
@@ -90,6 +91,7 @@ function buildDirectCompletionPayload(workout: Workout, exercises: WorkoutExerci
       templateId: workout.templateId ?? null,
       programCycleId: workout.programCycleId ?? null,
       cycleWorkoutId: workout.cycleWorkoutId ?? null,
+      workoutType: workout.workoutType ?? null,
       startedAt: workout.startedAt,
       completedAt: completedAt.toISOString(),
       notes: workout.notes ?? null,
@@ -102,6 +104,7 @@ function buildDirectCompletionPayload(workout: Workout, exercises: WorkoutExerci
       orderIndex: exerciseIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
+      exerciseType: exercise.exerciseType,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
     })),
@@ -112,6 +115,9 @@ function buildDirectCompletionPayload(workout: Workout, exercises: WorkoutExerci
         setNumber: setIndex + 1,
         weight: set.weight,
         reps: set.reps,
+        duration: set.duration,
+        distance: set.distance,
+        height: set.height,
         rpe: set.rpe,
         isComplete: set.isComplete,
         completedAt: set.isComplete ? (set.completedAt ?? completedAt.toISOString()) : null,
@@ -128,6 +134,9 @@ function buildHistorySets(historySnapshot: ExerciseHistorySnapshot): WorkoutSet[
     weight: set.weight,
     reps: set.reps,
     rpe: set.rpe ?? null,
+    duration: set.duration ?? null,
+    distance: set.distance ?? null,
+    height: set.height ?? null,
     isComplete: false,
     completedAt: null,
     createdAt: new Date().toISOString(),
@@ -138,6 +147,9 @@ function buildCachedSet(cached: {
   weight: number | null;
   reps: number | null;
   rpe?: number | null;
+  duration?: number | null;
+  distance?: number | null;
+  height?: number | null;
 }) {
   return [
     {
@@ -147,6 +159,9 @@ function buildCachedSet(cached: {
       weight: cached.weight,
       reps: cached.reps,
       rpe: cached.rpe ?? null,
+      duration: cached.duration ?? null,
+      distance: cached.distance ?? null,
+      height: cached.height ?? null,
       isComplete: false,
       completedAt: null,
       createdAt: new Date().toISOString(),
@@ -154,15 +169,19 @@ function buildCachedSet(cached: {
   ];
 }
 
-function buildEmptySet() {
+function buildEmptySet(exerciseType?: string) {
+  const type = exerciseType ?? 'weighted';
   return [
     {
       id: generateLocalId(),
       workoutExerciseId: '',
       setNumber: 1,
-      weight: null,
-      reps: null,
+      weight: type === 'weighted' ? 0 : type === 'bodyweight' ? null : null,
+      reps: type === 'weighted' || type === 'bodyweight' || type === 'plyo' ? 0 : null,
       rpe: null,
+      duration: type === 'timed' || type === 'cardio' ? 0 : null,
+      distance: type === 'cardio' ? null : null,
+      height: type === 'plyo' ? 0 : null,
       isComplete: false,
       completedAt: null,
       createdAt: new Date().toISOString(),
@@ -197,7 +216,13 @@ interface UseWorkoutSessionReturn {
   updateSet: (setId: string, updates: Partial<WorkoutSet>) => void;
   deleteSet: (setId: string) => void;
   toggleSetComplete: (setId: string) => void;
-  getLastWorkoutData: (exerciseId: string) => { weight: number; reps: number } | null;
+  getLastWorkoutData: (exerciseId: string) => {
+    weight: number | null;
+    reps: number | null;
+    duration: number | null;
+    distance: number | null;
+    height: number | null;
+  } | null;
   availableExercises: Exercise[];
 }
 
@@ -243,7 +268,18 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<Date | null>(null);
   const exercisesRef = useRef<WorkoutExercise[]>([]);
-  const lastWorkoutDataRef = useRef<Map<string, { weight: number; reps: number }[]>>(new Map());
+  const lastWorkoutDataRef = useRef<
+    Map<
+      string,
+      {
+        weight: number | null;
+        reps: number | null;
+        duration: number | null;
+        distance: number | null;
+        height: number | null;
+      }[]
+    >
+  >(new Map());
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setExercisesAndRef = useCallback(
@@ -303,24 +339,18 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       setError(null);
       try {
         const local = await createLocalWorkout(session.data.user.id, { name });
-        const workoutData =
-          local ??
-          ({
-            id: generateId(),
-            name,
-            startedAt: new Date().toISOString(),
-            completedAt: null,
-            notes: null,
-            exercises: [],
-          } satisfies Workout);
-        setWorkout(workoutData);
+        if (!local) {
+          setError('Failed to create workout locally. Please try again.');
+          return null;
+        }
+        setWorkout(local);
         setExercisesAndRef([]);
         setDuration(0);
         startTimeRef.current = new Date();
         timerRef.current = setInterval(() => {
           setDuration((d) => d + 1);
         }, 1000);
-        return workoutData;
+        return local;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to start workout');
         return null;
@@ -395,20 +425,52 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       if ((workout as any).cycleWorkoutId) {
         await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
       }
-      for (const exercise of latestExercises) {
-        const completedSets = (exercise.sets ?? []).filter((s) => s.isComplete);
-        if (completedSets.length > 0) {
-          const lastSet = completedSets[completedSets.length - 1];
-          if (lastSet.weight !== null || lastSet.reps !== null) {
-            const lastWorkout = {
-              weight: lastSet.weight,
-              reps: lastSet.reps,
-              rpe: lastSet.rpe,
-              date: new Date().toISOString(),
-            };
-            await setLastWorkout(exercise.exerciseId, lastWorkout);
-            if (exercise.libraryId) {
-              await setLastWorkout(exercise.libraryId, lastWorkout);
+      if (session.data?.user && workout.workoutType !== WORKOUT_TYPE_ONE_RM_TEST) {
+        const userId = session.data.user.id;
+        for (const exercise of latestExercises) {
+          const completedSets = (exercise.sets ?? []).filter((s) => s.isComplete);
+          if (completedSets.length > 0) {
+            const lastSet = completedSets[completedSets.length - 1];
+            const hasRelevantData =
+              lastSet.weight !== null ||
+              lastSet.reps !== null ||
+              lastSet.duration !== null ||
+              lastSet.distance !== null ||
+              lastSet.height !== null;
+            if (hasRelevantData) {
+              const lastWorkout = {
+                weight: lastSet.weight,
+                reps: lastSet.reps,
+                rpe: lastSet.rpe,
+                duration: lastSet.duration,
+                distance: lastSet.distance,
+                height: lastSet.height,
+                date: new Date().toISOString(),
+              };
+              await setLastWorkout(userId, exercise.exerciseId, lastWorkout);
+              if (exercise.libraryId) {
+                await setLastWorkout(userId, exercise.libraryId, lastWorkout);
+              }
+              const existing = lastWorkoutDataRef.current.get(exercise.exerciseId) ?? [];
+              existing.push({
+                weight: lastSet.weight,
+                reps: lastSet.reps,
+                duration: lastSet.duration,
+                distance: lastSet.distance,
+                height: lastSet.height,
+              });
+              lastWorkoutDataRef.current.set(exercise.exerciseId, existing);
+              if (exercise.libraryId) {
+                const existingLibrary = lastWorkoutDataRef.current.get(exercise.libraryId) ?? [];
+                existingLibrary.push({
+                  weight: lastSet.weight,
+                  reps: lastSet.reps,
+                  duration: lastSet.duration,
+                  distance: lastSet.distance,
+                  height: lastSet.height,
+                });
+                lastWorkoutDataRef.current.set(exercise.libraryId, existingLibrary);
+              }
             }
           }
         }
@@ -428,9 +490,24 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   const discardWorkout = useCallback(async () => {
     if (workout?.id) {
       try {
-        await discardLocalWorkout(workout.id);
-        await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
+        const userId = session.data?.user?.id;
+        if (!userId) return;
+        if (draftSaveTimerRef.current) {
+          clearTimeout(draftSaveTimerRef.current);
+          draftSaveTimerRef.current = null;
+        }
+        await discardLocalWorkout(workout.id, workout.cycleWorkoutId);
         await removePendingWorkout(workout.id);
+
+        // Legacy 1RM tests may have been created server-side before local
+        // drafts existed; local-only drafts should never delete D1 rows.
+        if (workout.workoutType === WORKOUT_TYPE_ONE_RM_TEST && workout.createdLocally === false) {
+          try {
+            await apiFetch(`/api/workouts/${workout.id}`, { method: 'DELETE' });
+          } catch {
+            // best-effort cleanup
+          }
+        }
       } catch {
         // no-op
       }
@@ -468,8 +545,8 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         historySnapshot = await fetchFirstExerciseHistorySnapshot(historyIds, exercise.name);
       }
 
-      if (historySnapshot === null) {
-        cached = await getCachedLastWorkoutData(historyIds);
+      if (historySnapshot === null && session.data?.user?.id) {
+        cached = await getCachedLastWorkoutData(session.data.user.id, historyIds);
       }
 
       const newSets: WorkoutSet[] =
@@ -477,7 +554,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           ? buildHistorySets(historySnapshot)
           : cached
             ? buildCachedSet(cached)
-            : buildEmptySet();
+            : buildEmptySet(exercise.exerciseType ?? 'weighted');
 
       const newWorkoutExercise: WorkoutExercise = {
         id: generateLocalId(),
@@ -485,10 +562,11 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
+        exerciseType: exercise.exerciseType ?? 'weighted',
         orderIndex: exercisesRef.current.length,
         sets: newSets,
         notes: null,
-        isAmrap: exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'),
+        isAmrap: exercise.isAmrap ?? false,
       };
       setExercisesAndRef((prev) => {
         const next = [...prev, newWorkoutExercise];
@@ -521,13 +599,20 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           if (ex.id !== workoutExerciseId) return ex;
           const sets = ex.sets ?? [];
           const lastSet = sets[sets.length - 1];
+          const type = ex.exerciseType ?? 'weighted';
           const newSet: WorkoutSet = {
             id: generateLocalId(),
             workoutExerciseId,
             setNumber: sets.length + 1,
-            weight: lastSet?.weight ?? null,
-            reps: lastSet?.reps ?? null,
+            weight:
+              lastSet?.weight ?? (type === 'weighted' ? 0 : type === 'bodyweight' ? null : null),
+            reps:
+              lastSet?.reps ??
+              (type === 'weighted' || type === 'bodyweight' || type === 'plyo' ? 0 : null),
             rpe: null,
+            duration: lastSet?.duration ?? (type === 'timed' || type === 'cardio' ? 0 : null),
+            distance: lastSet?.distance ?? (type === 'cardio' ? null : null),
+            height: lastSet?.height ?? (type === 'plyo' ? 0 : null),
             isComplete: false,
             completedAt: null,
             createdAt: new Date().toISOString(),
@@ -544,7 +629,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       setExercisesAndRef((prev) =>
         prev.map((ex) => ({
           ...ex,
-          sets: (ex.sets ?? []).map((s) => (s.id === setId ? { ...s, ...updates } : s)),
+          sets: (ex.sets ?? []).map((s) => {
+            if (s.id !== setId) return s;
+            const next = { ...s, ...updates };
+            if ('isComplete' in updates && !('completedAt' in updates)) {
+              next.completedAt = updates.isComplete
+                ? (s.completedAt ?? new Date().toISOString())
+                : null;
+            }
+            return next;
+          }),
         })),
       );
     },
@@ -589,11 +683,25 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   );
 
   const getLastWorkoutData = useCallback(
-    (exerciseId: string): { weight: number; reps: number } | null => {
+    (
+      exerciseId: string,
+    ): {
+      weight: number | null;
+      reps: number | null;
+      duration: number | null;
+      distance: number | null;
+      height: number | null;
+    } | null => {
       const data = lastWorkoutDataRef.current.get(exerciseId);
       if (!data || data.length === 0) return null;
       const last = data[data.length - 1];
-      return { weight: last.weight, reps: last.reps };
+      return {
+        weight: last.weight,
+        reps: last.reps,
+        duration: last.duration,
+        distance: last.distance,
+        height: last.height,
+      };
     },
     [],
   );
@@ -625,6 +733,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       name: item.name,
       muscleGroup: item.muscleGroup,
       description: item.description,
+      exerciseType: item.exerciseType,
     })),
   };
 }
