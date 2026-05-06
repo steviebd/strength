@@ -65,6 +65,10 @@ vi.mock('@/lib/storage', () => ({
   removePendingWorkout: vi.fn(),
 }));
 
+vi.mock('@/lib/workout-progression', () => ({
+  hasProgressionHistoryData: vi.fn(() => false),
+}));
+
 vi.mock('@/db/last-workouts', () => ({
   getLastWorkout: vi.fn(),
   setLastWorkout: vi.fn(),
