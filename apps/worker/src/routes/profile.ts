@@ -12,6 +12,7 @@ export function serializePreferences(
 ) {
   return {
     weightUnit: prefs.weightUnit ?? 'kg',
+    distanceUnit: prefs.distanceUnit ?? 'km',
     timezone: prefs.timezone ?? null,
     weightPromptedAt: prefs.weightPromptedAt ?? null,
     bodyweightKg: bodyStats?.bodyweightKg ?? null,
@@ -68,6 +69,7 @@ router.put(
     }
 
     const weightUnit = typeof body.weightUnit === 'string' ? body.weightUnit : undefined;
+    const distanceUnit = typeof body.distanceUnit === 'string' ? body.distanceUnit : undefined;
     const timezone =
       body.timezone === null ? null : typeof body.timezone === 'string' ? body.timezone : undefined;
     const weightPromptedAt =
@@ -79,6 +81,10 @@ router.put(
 
     if (weightUnit !== undefined && !['kg', 'lbs'].includes(weightUnit)) {
       return c.json({ message: 'Invalid weight unit' }, 400);
+    }
+
+    if (distanceUnit !== undefined && !['km', 'mi'].includes(distanceUnit)) {
+      return c.json({ message: 'Invalid distance unit' }, 400);
     }
 
     if (timezone !== undefined && timezone !== null && !isValidTimeZone(timezone)) {
@@ -96,6 +102,7 @@ router.put(
 
       const now = new Date();
       const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
+      const nextDistanceUnit = distanceUnit ?? existing?.distanceUnit ?? 'km';
       const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
       const nextWeightPromptedAt =
         weightPromptedAt === undefined
@@ -109,6 +116,7 @@ router.put(
           .update(schema.userPreferences)
           .set({
             weightUnit: nextWeightUnit,
+            distanceUnit: nextDistanceUnit,
             timezone: nextTimezone,
             weightPromptedAt: nextWeightPromptedAt,
             updatedAt: now,
@@ -132,6 +140,7 @@ router.put(
           .values({
             userId,
             weightUnit: nextWeightUnit,
+            distanceUnit: nextDistanceUnit,
             timezone: nextTimezone,
             weightPromptedAt: nextWeightPromptedAt,
             createdAt: now,

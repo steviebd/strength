@@ -49,9 +49,10 @@ export const candito = createLinearProgramGenerator({
     const liftName = config.t1.charAt(0).toUpperCase() + config.t1.slice(1);
     const t2LiftName = config.t2.charAt(0).toUpperCase() + config.t2.slice(1);
 
-    const t1Sets = [
+    const t1Sets: import('./types').ProgramWorkout['exercises'] = [
       {
         name: liftName,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: blockData.sets[0],
@@ -61,6 +62,7 @@ export const candito = createLinearProgramGenerator({
       },
       {
         name: `${liftName} 2`,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: blockData.sets[1],
@@ -70,6 +72,7 @@ export const candito = createLinearProgramGenerator({
       },
       {
         name: `${liftName} 3+`,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: blockData.sets[2],
@@ -79,9 +82,10 @@ export const candito = createLinearProgramGenerator({
       },
     ];
 
-    const t2Sets = [
+    const t2Sets: import('./types').ProgramWorkout['exercises'] = [
       {
         name: t2LiftName,
+        exerciseType: 'weighted',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 3,
@@ -91,6 +95,7 @@ export const candito = createLinearProgramGenerator({
       },
       {
         name: `${t2LiftName} 2`,
+        exerciseType: 'weighted',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 3,

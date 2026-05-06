@@ -57,6 +57,8 @@ interface CreateFormState {
   name: string;
   muscleGroup: string;
   description: string;
+  exerciseType: string;
+  isAmrap: boolean;
 }
 
 function getUserSelectionKey(id: string) {
@@ -71,6 +73,11 @@ function getListItemKey(item: ListItem) {
   return item.type === 'header'
     ? `header:${item.title}`
     : `${item.isUser ? 'user' : 'library'}:${item.data.id}`;
+}
+
+function formatExerciseType(type: string | null | undefined) {
+  const value = type ?? 'weighted';
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export function ExerciseSearch({
@@ -88,6 +95,8 @@ export function ExerciseSearch({
     name: '',
     muscleGroup: '',
     description: '',
+    exerciseType: 'weighted',
+    isAmrap: false,
   });
   const [creating, setCreating] = useState(false);
   const [deletingExerciseId, setDeletingExerciseId] = useState<string | null>(null);
@@ -158,6 +167,8 @@ export function ExerciseSearch({
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
           libraryId: newExercise.libraryId ?? null,
+          exerciseType: newExercise.exerciseType,
+          isAmrap: newExercise.isAmrap,
         };
         return [exercise, ...prev.filter((existing) => existing.id !== newExercise.id)];
       });
@@ -166,7 +177,13 @@ export function ExerciseSearch({
         return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
       });
       setShowCreateForm(false);
-      setCreateForm({ name: '', muscleGroup: '', description: '' });
+      setCreateForm({
+        name: '',
+        muscleGroup: '',
+        description: '',
+        exerciseType: 'weighted',
+        isAmrap: false,
+      });
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
@@ -262,6 +279,8 @@ export function ExerciseSearch({
               name: userEx.name,
               muscleGroup: userEx.muscleGroup ?? '',
               description: userEx.description ?? '',
+              exerciseType: userEx.exerciseType ?? 'weighted',
+              isAmrap: userEx.isAmrap ?? false,
             });
             continue;
           }
@@ -285,6 +304,9 @@ export function ExerciseSearch({
               name: persistedExercise.name,
               muscleGroup: persistedExercise.muscleGroup ?? '',
               description: persistedExercise.description ?? '',
+              exerciseType:
+                libraryExercise.exerciseType ?? persistedExercise.exerciseType ?? 'weighted',
+              isAmrap: persistedExercise.isAmrap ?? false,
             });
           } catch {
             selectedExercises.push({
@@ -293,6 +315,8 @@ export function ExerciseSearch({
               name: libraryExercise.name,
               muscleGroup: libraryExercise.muscleGroup,
               description: libraryExercise.description,
+              exerciseType: (libraryExercise as any).exerciseType ?? 'weighted',
+              isAmrap: (libraryExercise as any).isAmrap ?? false,
             });
           }
         }
@@ -410,7 +434,12 @@ export function ExerciseSearch({
               </View>
             )}
           </View>
-          <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
+          <View style={styles.exerciseMetaRow}>
+            <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
+            <View style={styles.typeBadge}>
+              <Text style={styles.typeBadgeText}>{formatExerciseType(ex.exerciseType)}</Text>
+            </View>
+          </View>
         </View>
         {deletingExerciseId === ex.id ? (
           <View style={styles.addBadge}>
@@ -539,6 +568,44 @@ export function ExerciseSearch({
               />
             </View>
 
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Exercise Type</Text>
+              <View style={styles.typeGrid}>
+                {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map((type) => {
+                  const isSelected = createForm.exerciseType === type;
+                  return (
+                    <Pressable
+                      key={`exercise-type:${type}`}
+                      onPress={() => setCreateForm((f) => ({ ...f, exerciseType: type }))}
+                      style={[
+                        styles.typeChip,
+                        isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.typeChipText,
+                          isSelected ? styles.typeChipTextSelected : styles.typeChipTextDefault,
+                        ]}
+                      >
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={[styles.formField, styles.amrapRow]}>
+              <Text style={styles.formLabel}>AMRAP</Text>
+              <Pressable
+                onPress={() => setCreateForm((f) => ({ ...f, isAmrap: !f.isAmrap }))}
+                style={[styles.amrapTrack, createForm.isAmrap && styles.amrapTrackOn]}
+              >
+                <View style={[styles.amrapThumb, createForm.isAmrap && styles.amrapThumbOn]} />
+              </Pressable>
+            </View>
+
             {createError && (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{createError}</Text>
@@ -549,7 +616,13 @@ export function ExerciseSearch({
             <Pressable
               onPress={() => {
                 setShowCreateForm(false);
-                setCreateForm({ name: '', muscleGroup: '', description: '' });
+                setCreateForm({
+                  name: '',
+                  muscleGroup: '',
+                  description: '',
+                  exerciseType: 'weighted',
+                  isAmrap: false,
+                });
                 setCreateError(null);
               }}
               style={({ pressed }) => [styles.cancelButton, pressed && styles.buttonPressed]}
@@ -729,7 +802,26 @@ const styles = StyleSheet.create({
   muscleGroupText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+  },
+  exerciseMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: 2,
+  },
+  typeBadge: {
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(239,111,79,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,111,79,0.28)',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  typeBadgeText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: typography.fontWeights.semibold,
   },
   selectedBadge: {
     marginLeft: spacing.md,
@@ -925,5 +1017,58 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+  },
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  typeChip: {
+    borderRadius: 9999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  typeChipSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  typeChipDefault: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  typeChipText: {
+    fontSize: typography.fontSizes.sm,
+  },
+  typeChipTextSelected: {
+    color: colors.text,
+  },
+  typeChipTextDefault: {
+    color: colors.text,
+  },
+  amrapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  amrapTrack: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.border,
+    padding: 2,
+  },
+  amrapTrackOn: {
+    backgroundColor: colors.accent,
+  },
+  amrapThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.text,
+    transform: [{ translateX: 0 }],
+  },
+  amrapThumbOn: {
+    transform: [{ translateX: 20 }],
   },
 });

@@ -24,7 +24,7 @@ export const nuckols = createLinearProgramGenerator({
   info: nuckolsInfo,
   weeks: 8,
   daysPerWeek: 4,
-  buildExercises: ({ week, day, oneRMs }) => {
+  buildExercises: ({ week, day, oneRMs }): import('./types').ProgramExercise[] => {
     const wave = Math.ceil(week / 4);
     const waveWeek = ((week - 1) % 4) + 1;
     const config = getDayLifts(day);
@@ -34,9 +34,10 @@ export const nuckols = createLinearProgramGenerator({
     const liftName = config.t1.charAt(0).toUpperCase() + config.t1.slice(1);
     const t2LiftName = config.t2.charAt(0).toUpperCase() + config.t2.slice(1);
 
-    const t1Sets = [
+    const t1Sets: import('./types').ProgramWorkout['exercises'] = [
       {
         name: liftName,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 3,
@@ -46,6 +47,7 @@ export const nuckols = createLinearProgramGenerator({
       },
       {
         name: `${liftName} 2`,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 3,
@@ -55,6 +57,7 @@ export const nuckols = createLinearProgramGenerator({
       },
       {
         name: `${liftName} 3`,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 3,
@@ -64,9 +67,10 @@ export const nuckols = createLinearProgramGenerator({
       },
     ];
 
-    const t2Sets = [
+    const t2Sets: import('./types').ProgramWorkout['exercises'] = [
       {
         name: t2LiftName,
+        exerciseType: 'weighted',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 3,
@@ -76,6 +80,7 @@ export const nuckols = createLinearProgramGenerator({
       },
       {
         name: `${t2LiftName} 2`,
+        exerciseType: 'weighted',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 3,

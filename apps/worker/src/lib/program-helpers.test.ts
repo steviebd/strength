@@ -106,6 +106,10 @@ describe('normalizeProgramTargetLift', () => {
       isAccessory: false,
       isRequired: true,
       isAmrap: false,
+      exerciseType: 'weighted',
+      targetDuration: null,
+      targetDistance: null,
+      targetHeight: null,
     });
   });
 
@@ -122,6 +126,10 @@ describe('normalizeProgramTargetLift', () => {
       isAmrap: true,
       libraryId: 'lib-1',
       exerciseId: 'ex-1',
+      exerciseType: 'bodyweight',
+      targetDuration: 60,
+      targetDistance: 100,
+      targetHeight: 50,
     });
     expect(result).toEqual({
       name: 'Bench',
@@ -135,6 +143,10 @@ describe('normalizeProgramTargetLift', () => {
       isAmrap: true,
       libraryId: 'lib-1',
       exerciseId: 'ex-1',
+      exerciseType: 'bodyweight',
+      targetDuration: 60,
+      targetDistance: 100,
+      targetHeight: 50,
     });
   });
 });

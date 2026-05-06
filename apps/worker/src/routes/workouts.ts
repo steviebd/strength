@@ -47,6 +47,35 @@ function resolveWorkoutType(input: { workoutType?: unknown; name?: unknown }) {
   return schema.WORKOUT_TYPE_TRAINING;
 }
 
+function buildTemplateSetValues(templateExercise: {
+  exerciseType?: string | null;
+  targetWeight?: number | null;
+  addedWeight?: number | null;
+  reps?: number | null;
+  isAmrap?: boolean | null;
+  targetDuration?: number | null;
+  targetDistance?: number | null;
+  targetHeight?: number | null;
+}) {
+  const type = templateExercise.exerciseType ?? 'weighted';
+  return {
+    weight:
+      type === 'weighted'
+        ? (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0)
+        : type === 'bodyweight' &&
+            ((templateExercise.targetWeight ?? 0) > 0 || (templateExercise.addedWeight ?? 0) > 0)
+          ? (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0)
+          : null,
+    reps:
+      templateExercise.isAmrap || type === 'timed' || type === 'cardio'
+        ? null
+        : (templateExercise.reps ?? 0),
+    duration: type === 'timed' || type === 'cardio' ? (templateExercise.targetDuration ?? 0) : null,
+    distance: type === 'cardio' ? (templateExercise.targetDistance ?? null) : null,
+    height: type === 'plyo' ? (templateExercise.targetHeight ?? 0) : null,
+  };
+}
+
 async function fetchWorkoutSyncSnapshot(db: any, workoutId: string) {
   const workout = await db
     .select()
@@ -63,6 +92,7 @@ async function fetchWorkoutSyncSnapshot(db: any, workoutId: string) {
       name: schema.exercises.name,
       muscleGroup: schema.exercises.muscleGroup,
       libraryId: schema.exercises.libraryId,
+      exerciseType: schema.exercises.exerciseType,
     })
     .from(schema.workoutExercises)
     .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
@@ -201,6 +231,9 @@ router.post(
           weight: number | null;
           reps: number | null;
           rpe: number | null;
+          duration: number | null;
+          distance: number | null;
+          height: number | null;
           setNumber: number | null;
         }[];
       };
@@ -230,14 +263,15 @@ router.post(
         const setCount = Math.max(plannedSetCount, historySetCount);
         const setRows = Array.from({ length: setCount }, (_, s) => {
           const historySet = historySnapshot?.sets[s];
-          const plannedReps = templateExercise.isAmrap ? null : (templateExercise.reps ?? 0);
+          const planned = buildTemplateSetValues(templateExercise);
           return {
             workoutExerciseId,
             setNumber: s + 1,
-            weight:
-              historySet?.weight ??
-              (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0),
-            reps: historySet?.reps ?? plannedReps,
+            weight: historySet?.weight ?? planned.weight,
+            reps: historySet?.reps ?? planned.reps,
+            duration: historySet?.duration ?? planned.duration,
+            distance: historySet?.distance ?? planned.distance,
+            height: historySet?.height ?? planned.height,
             rpe: historySet?.rpe ?? null,
             isComplete: false,
             createdAt: now,
@@ -276,6 +310,7 @@ router.get(
         name: schema.exercises.name,
         muscleGroup: schema.exercises.muscleGroup,
         libraryId: schema.exercises.libraryId,
+        exerciseType: schema.exercises.exerciseType,
       })
       .from(schema.workoutExercises)
       .innerJoin(schema.exercises, eq(schema.workoutExercises.exerciseId, schema.exercises.id))
@@ -295,6 +330,9 @@ router.get(
             setNumber: schema.workoutSets.setNumber,
             weight: schema.workoutSets.weight,
             reps: schema.workoutSets.reps,
+            duration: schema.workoutSets.duration,
+            distance: schema.workoutSets.distance,
+            height: schema.workoutSets.height,
             rpe: schema.workoutSets.rpe,
             isComplete: schema.workoutSets.isComplete,
             completedAt: schema.workoutSets.completedAt,
@@ -672,6 +710,9 @@ router.post(
         setNumber: set.setNumber,
         weight: set.weight ?? null,
         reps: set.reps ?? null,
+        duration: set.duration ?? null,
+        distance: set.distance ?? null,
+        height: set.height ?? null,
         rpe: set.rpe ?? null,
         isComplete,
         completedAt: isComplete ? (parseDateInput(set.completedAt) ?? completedAt) : null,
@@ -864,7 +905,17 @@ router.post(
   '/sets',
   createHandler(async (c, { userId, db }) => {
     const body = await c.req.json();
-    const { workoutExerciseId, setNumber, weight, reps, rpe, isComplete } = body;
+    const {
+      workoutExerciseId,
+      setNumber,
+      weight,
+      reps,
+      duration,
+      distance,
+      height,
+      rpe,
+      isComplete,
+    } = body;
     if (!workoutExerciseId || setNumber === undefined) {
       return c.json({ message: 'workoutExerciseId and setNumber are required' }, 400);
     }
@@ -879,6 +930,9 @@ router.post(
         setNumber,
         weight: weight || null,
         reps: reps || null,
+        duration: duration ?? null,
+        distance: distance ?? null,
+        height: height ?? null,
         rpe: rpe || null,
         isComplete: isComplete || false,
         ...(isComplete ? { completedAt: now } : {}),
@@ -898,7 +952,16 @@ router.put(
     const set = await requireOwnedWorkoutSet({ userId, db }, id);
     if (set instanceof Response) return set;
     const body = await c.req.json();
-    const allowed = pickAllowedKeys(body, ['setNumber', 'weight', 'reps', 'rpe', 'isComplete']);
+    const allowed = pickAllowedKeys(body, [
+      'setNumber',
+      'weight',
+      'reps',
+      'duration',
+      'distance',
+      'height',
+      'rpe',
+      'isComplete',
+    ]);
     const updateData: any = { ...allowed, updatedAt: new Date() };
     if (body.isComplete === true) {
       updateData.completedAt = new Date();

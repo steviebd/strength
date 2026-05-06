@@ -6,7 +6,10 @@ import { colors, radius, spacing, typography } from '@/theme';
 interface WorkoutSetData {
   id: string;
   reps: number;
-  weight: number;
+  weight: number | null;
+  duration: number;
+  distance: number | null;
+  height: number;
   completed: boolean;
 }
 
@@ -15,6 +18,7 @@ interface Exercise {
   exerciseId: string;
   name: string;
   muscleGroup: string | null;
+  exerciseType: string;
   isAmrap?: boolean;
 }
 
@@ -66,6 +70,9 @@ export function ExerciseLogger({
       id: Math.random().toString(36).substring(2, 15),
       reps: lastSet?.reps ?? 0,
       weight: lastSet?.weight ?? 0,
+      duration: lastSet?.duration ?? 0,
+      distance: lastSet?.distance ?? null,
+      height: lastSet?.height ?? 0,
       completed: false,
     };
 
@@ -157,6 +164,8 @@ export function ExerciseLogger({
                 onDelete={onDeleteSet ? () => onDeleteSet(exercise.id, set.id) : undefined}
                 weightUnit={weightUnit}
                 isEditMode={isEditMode}
+                exerciseType={exercise.exerciseType}
+                exerciseName={exercise.name}
               />
             </View>
           ))}

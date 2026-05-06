@@ -26,6 +26,7 @@ export const jenSinkler = createLinearProgramGenerator({
       return [
         {
           name: 'Squat',
+          exerciseType: 'weighted',
           lift: 'squat' as const,
           sets: 5,
           reps: 5,
@@ -34,6 +35,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Deadlift',
+          exerciseType: 'weighted',
           lift: 'deadlift' as const,
           sets: 3,
           reps: 5,
@@ -42,6 +44,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Leg Press',
+          exerciseType: 'weighted',
           lift: 'squat' as const,
           sets: 3,
           reps: 12,
@@ -50,6 +53,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Leg Extensions',
+          exerciseType: 'weighted',
           lift: 'squat' as const,
           sets: 3,
           reps: 15,
@@ -58,6 +62,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Leg Curls',
+          exerciseType: 'weighted',
           lift: 'deadlift' as const,
           sets: 3,
           reps: 15,
@@ -71,6 +76,7 @@ export const jenSinkler = createLinearProgramGenerator({
       return [
         {
           name: 'Bench Press',
+          exerciseType: 'weighted',
           lift: 'bench' as const,
           sets: 5,
           reps: 5,
@@ -79,6 +85,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Barbell Row',
+          exerciseType: 'weighted',
           lift: 'row' as const,
           sets: 4,
           reps: 6,
@@ -87,6 +94,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Overhead Press',
+          exerciseType: 'weighted',
           lift: 'ohp' as const,
           sets: 4,
           reps: 8,
@@ -95,6 +103,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Pull-ups',
+          exerciseType: 'weighted',
           lift: 'row' as const,
           sets: 3,
           reps: 8,
@@ -103,6 +112,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Tricep Pushdowns',
+          exerciseType: 'weighted',
           lift: 'bench' as const,
           sets: 3,
           reps: 12,
@@ -111,6 +121,7 @@ export const jenSinkler = createLinearProgramGenerator({
         },
         {
           name: 'Lateral Raises',
+          exerciseType: 'weighted',
           lift: 'ohp' as const,
           sets: 3,
           reps: 15,
@@ -123,6 +134,7 @@ export const jenSinkler = createLinearProgramGenerator({
     return [
       {
         name: 'Overhead Press',
+        exerciseType: 'weighted',
         lift: 'ohp' as const,
         sets: 4,
         reps: 6,
@@ -131,6 +143,7 @@ export const jenSinkler = createLinearProgramGenerator({
       },
       {
         name: 'Front Squat',
+        exerciseType: 'weighted',
         lift: 'squat' as const,
         sets: 4,
         reps: 8,
@@ -139,6 +152,7 @@ export const jenSinkler = createLinearProgramGenerator({
       },
       {
         name: 'Romanian Deadlift',
+        exerciseType: 'weighted',
         lift: 'deadlift' as const,
         sets: 4,
         reps: 8,
@@ -147,6 +161,7 @@ export const jenSinkler = createLinearProgramGenerator({
       },
       {
         name: 'Dumbbell Bench Press',
+        exerciseType: 'weighted',
         lift: 'bench' as const,
         sets: 3,
         reps: 10,
@@ -155,6 +170,7 @@ export const jenSinkler = createLinearProgramGenerator({
       },
       {
         name: 'Dumbbell Row',
+        exerciseType: 'weighted',
         lift: 'row' as const,
         sets: 3,
         reps: 10,

@@ -2,7 +2,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import { exercises, generateId } from '../schema';
 import type { ExerciseLibraryItem } from '../exercise-library';
-import { exerciseLibrary } from '../exercise-library';
+import { exerciseLibrary, getExerciseTypeByLibraryId } from '../exercise-library';
 
 export type LiftType = 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row';
 
@@ -49,6 +49,7 @@ export async function getOrCreateExerciseForUser(
         muscleGroup: canonicalMuscleGroup,
         description: canonicalDescription,
         libraryId,
+        exerciseType: getExerciseTypeByLibraryId(libraryId),
         createdAt: now,
         updatedAt: now,
       })
@@ -57,6 +58,7 @@ export async function getOrCreateExerciseForUser(
         set: {
           muscleGroup: canonicalMuscleGroup,
           description: canonicalDescription,
+          exerciseType: getExerciseTypeByLibraryId(libraryId),
           updatedAt: now,
         },
       })
@@ -88,6 +90,7 @@ export async function getOrCreateExerciseForUser(
         muscleGroup: libraryItem.muscleGroup,
         description: libraryItem.description,
         libraryId: libraryItem.id,
+        exerciseType: getExerciseTypeByLibraryId(libraryItem.id),
         createdAt: now,
         updatedAt: now,
       })
@@ -97,6 +100,7 @@ export async function getOrCreateExerciseForUser(
           name: libraryItem.name,
           muscleGroup: libraryItem.muscleGroup,
           description: libraryItem.description,
+          exerciseType: getExerciseTypeByLibraryId(libraryItem.id),
           updatedAt: now,
         },
       })
@@ -115,6 +119,7 @@ export async function getOrCreateExerciseForUser(
       muscleGroup: inferMuscleGroup(liftType),
       description: null,
       libraryId: null,
+      exerciseType: 'weighted',
       createdAt: now,
       updatedAt: now,
     })

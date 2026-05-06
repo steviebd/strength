@@ -24,10 +24,23 @@ import { authClient } from '@/lib/auth-client';
 import { getLocalDb } from '@/db/client';
 import { localTemplates } from '@/db/local-schema';
 import { eq } from 'drizzle-orm';
+import { exerciseLibrary } from '@strength/db/client';
 import type { SelectedExercise, Template, TemplateEditorProps } from './types';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
+function getLibraryExerciseType(libraryId: string | null | undefined) {
+  if (!libraryId) return null;
+  return exerciseLibrary.find((exercise) => exercise.id === libraryId)?.exerciseType ?? null;
+}
+
+function resolveSelectedExerciseType(exercise: {
+  libraryId?: string | null;
+  exerciseType?: string | null;
+}) {
+  return getLibraryExerciseType(exercise.libraryId) ?? exercise.exerciseType ?? 'weighted';
 }
 
 interface FormData {
@@ -268,6 +281,10 @@ function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
+              exerciseType: resolveSelectedExerciseType(ex),
+              targetDuration: ex.targetDuration ?? null,
+              targetDistance: ex.targetDistance ?? null,
+              targetHeight: ex.targetHeight ?? null,
             },
           });
         }
@@ -327,6 +344,10 @@ function useTemplateEditorApi({
               reps: ex.reps ?? 10,
               targetWeight: ex.targetWeight ?? 0,
               isAmrap: ex.isAmrap ?? false,
+              exerciseType: resolveSelectedExerciseType(ex),
+              targetDuration: ex.targetDuration ?? null,
+              targetDistance: ex.targetDistance ?? null,
+              targetHeight: ex.targetHeight ?? null,
             },
           }),
         );
@@ -365,6 +386,7 @@ export function TemplateEditor({
   const initialExercises =
     initialData?.exercises?.map((ex) => ({
       ...ex,
+      exerciseType: resolveSelectedExerciseType(ex),
       id: ex.id || generateId(),
     })) ?? [];
 
@@ -396,6 +418,8 @@ export function TemplateEditor({
         libraryId?: string | null;
         name: string;
         muscleGroup: string | null;
+        exerciseType?: string;
+        isAmrap?: boolean;
       }>,
     ) => {
       pushUndo();
@@ -406,7 +430,8 @@ export function TemplateEditor({
           libraryId: exercise.libraryId ?? undefined,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
-          isAmrap: false,
+          exerciseType: resolveSelectedExerciseType(exercise),
+          isAmrap: exercise.isAmrap ?? false,
           isAccessory: false,
           isRequired: true,
           sets: 3,
@@ -583,6 +608,37 @@ export function TemplateEditor({
                     </View>
                   </View>
 
+                  <View style={styles.typeRow}>
+                    {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map(
+                      (type) => {
+                        const isSelected = (exercise.exerciseType ?? 'weighted') === type;
+                        return (
+                          <Pressable
+                            key={`ex-type:${exercise.id}:${type}`}
+                            onPress={() =>
+                              handleUpdateExercise(exercise.id, { exerciseType: type })
+                            }
+                            style={[
+                              styles.typeChip,
+                              isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.typeChipText,
+                                isSelected
+                                  ? styles.typeChipTextSelected
+                                  : styles.typeChipTextDefault,
+                              ]}
+                            >
+                              {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </Text>
+                          </Pressable>
+                        );
+                      },
+                    )}
+                  </View>
+
                   <View style={styles.exerciseRow}>
                     <View style={styles.exerciseField}>
                       <Text style={styles.fieldLabel}>Sets</Text>
@@ -623,101 +679,250 @@ export function TemplateEditor({
                         </Pressable>
                       </View>
                     </View>
-                    <View style={styles.exerciseField}>
-                      <Text style={styles.fieldLabel}>Reps</Text>
-                      <View style={styles.counterContainer}>
-                        <Pressable
-                          onPress={() => {
-                            const currentReps = exercise.reps ?? 10;
-                            const newReps = currentReps > 1 ? currentReps - 1 : 1;
-                            handleUpdateExercise(exercise.id, {
-                              reps: newReps,
-                              repsRaw: newReps.toString(),
-                            });
-                          }}
-                          style={[styles.counterButton, { left: 0 }]}
-                        >
-                          <Text style={styles.counterButtonText}>-</Text>
-                        </Pressable>
-                        <TextInput
-                          style={styles.counterInput}
-                          keyboardType="numeric"
-                          selectTextOnFocus
-                          value={exercise.repsRaw ?? (exercise.reps ?? 10).toString()}
-                          onChangeText={(text) => {
-                            const num = parseInt(text, 10);
-                            updateExercise(exercise.id, {
-                              reps: isNaN(num) ? undefined : num,
-                              repsRaw: text,
-                            });
-                          }}
-                          onBlur={() => {
-                            const current = exercise.reps ?? 10;
-                            const normalized = Math.max(1, current);
-                            updateExercise(exercise.id, {
-                              reps: normalized,
-                              repsRaw: normalized.toString(),
-                            });
-                          }}
-                        />
-                        <Pressable
-                          onPress={() => {
-                            const currentReps = exercise.reps ?? 10;
-                            const newReps = currentReps + 1;
-                            handleUpdateExercise(exercise.id, {
-                              reps: newReps,
-                              repsRaw: newReps.toString(),
-                            });
-                          }}
-                          style={[styles.counterButton, { right: 0 }]}
-                        >
-                          <Text style={styles.counterButtonText}>+</Text>
-                        </Pressable>
+
+                    {(exercise.exerciseType === 'weighted' ||
+                      exercise.exerciseType === 'bodyweight' ||
+                      exercise.exerciseType === 'plyo' ||
+                      !exercise.exerciseType) && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Reps</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const currentReps = exercise.reps ?? 10;
+                              const newReps = currentReps > 1 ? currentReps - 1 : 1;
+                              handleUpdateExercise(exercise.id, {
+                                reps: newReps,
+                                repsRaw: newReps.toString(),
+                              });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.repsRaw ?? (exercise.reps ?? 10).toString()}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                reps: isNaN(num) ? undefined : num,
+                                repsRaw: text,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.reps ?? 10;
+                              const normalized = Math.max(1, current);
+                              updateExercise(exercise.id, {
+                                reps: normalized,
+                                repsRaw: normalized.toString(),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const currentReps = exercise.reps ?? 10;
+                              const newReps = currentReps + 1;
+                              handleUpdateExercise(exercise.id, {
+                                reps: newReps,
+                                repsRaw: newReps.toString(),
+                              });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
-                    <View style={styles.exerciseField}>
-                      <Text style={styles.fieldLabel}>Weight</Text>
-                      <View style={styles.counterContainer}>
-                        <Pressable
-                          onPress={() => {
-                            const currentWeight = exercise.targetWeight ?? 0;
-                            const newWeight = Math.max(0, currentWeight - 5);
-                            handleUpdateExercise(exercise.id, { targetWeight: newWeight });
-                          }}
-                          style={[styles.counterButton, { left: 0 }]}
-                        >
-                          <Text style={styles.counterButtonText}>-</Text>
-                        </Pressable>
-                        <TextInput
-                          style={styles.counterInput}
-                          keyboardType="numeric"
-                          selectTextOnFocus
-                          value={exercise.targetWeight?.toString() ?? '0'}
-                          onChangeText={(text) => {
-                            const num = parseInt(text, 10);
-                            updateExercise(exercise.id, {
-                              targetWeight: isNaN(num) ? undefined : num,
-                            });
-                          }}
-                          onBlur={() => {
-                            const current = exercise.targetWeight ?? 0;
-                            updateExercise(exercise.id, {
-                              targetWeight: Math.max(0, current),
-                            });
-                          }}
-                        />
-                        <Pressable
-                          onPress={() => {
-                            const currentWeight = exercise.targetWeight ?? 0;
-                            const newWeight = currentWeight + 5;
-                            handleUpdateExercise(exercise.id, { targetWeight: newWeight });
-                          }}
-                          style={[styles.counterButton, { right: 0 }]}
-                        >
-                          <Text style={styles.counterButtonText}>+</Text>
-                        </Pressable>
+                    )}
+
+                    {(exercise.exerciseType === 'weighted' ||
+                      exercise.exerciseType === 'bodyweight' ||
+                      !exercise.exerciseType) && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Weight</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const currentWeight = exercise.targetWeight ?? 0;
+                              const newWeight = Math.max(0, currentWeight - 5);
+                              handleUpdateExercise(exercise.id, { targetWeight: newWeight });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetWeight?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetWeight: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetWeight ?? 0;
+                              updateExercise(exercise.id, {
+                                targetWeight: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const currentWeight = exercise.targetWeight ?? 0;
+                              const newWeight = currentWeight + 5;
+                              handleUpdateExercise(exercise.id, { targetWeight: newWeight });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
+                    )}
+
+                    {(exercise.exerciseType === 'timed' || exercise.exerciseType === 'cardio') && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Duration (s)</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDuration ?? 0;
+                              const newValue = Math.max(0, current - 5);
+                              handleUpdateExercise(exercise.id, { targetDuration: newValue });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetDuration?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetDuration: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetDuration ?? 0;
+                              updateExercise(exercise.id, {
+                                targetDuration: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDuration ?? 0;
+                              const newValue = current + 5;
+                              handleUpdateExercise(exercise.id, { targetDuration: newValue });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+
+                    {exercise.exerciseType === 'cardio' && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Distance</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDistance ?? 0;
+                              const newValue = Math.max(0, current - 1);
+                              handleUpdateExercise(exercise.id, { targetDistance: newValue });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetDistance?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetDistance: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetDistance ?? 0;
+                              updateExercise(exercise.id, {
+                                targetDistance: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetDistance ?? 0;
+                              const newValue = current + 1;
+                              handleUpdateExercise(exercise.id, { targetDistance: newValue });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+
+                    {exercise.exerciseType === 'plyo' && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Height (cm)</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetHeight ?? 0;
+                              const newValue = Math.max(0, current - 5);
+                              handleUpdateExercise(exercise.id, { targetHeight: newValue });
+                            }}
+                            style={[styles.counterButton, { left: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.counterInput}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            value={exercise.targetHeight?.toString() ?? '0'}
+                            onChangeText={(text) => {
+                              const num = parseInt(text, 10);
+                              updateExercise(exercise.id, {
+                                targetHeight: isNaN(num) ? undefined : num,
+                              });
+                            }}
+                            onBlur={() => {
+                              const current = exercise.targetHeight ?? 0;
+                              updateExercise(exercise.id, {
+                                targetHeight: Math.max(0, current),
+                              });
+                            }}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const current = exercise.targetHeight ?? 0;
+                              const newValue = current + 5;
+                              handleUpdateExercise(exercise.id, { targetHeight: newValue });
+                            }}
+                            style={[styles.counterButton, { right: 0 }]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.toggleRow}>
@@ -1034,6 +1239,35 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  typeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  typeChip: {
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  typeChipSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  typeChipDefault: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  typeChipText: {
+    fontSize: typography.fontSizes.xs,
+  },
+  typeChipTextSelected: {
+    color: colors.text,
+  },
+  typeChipTextDefault: {
+    color: colors.textMuted,
   },
   toggleRow: {
     flexDirection: 'row',

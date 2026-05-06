@@ -57,6 +57,13 @@
       "when": 1777987200000,
       "tag": "0009_workout_type",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1778025301213,
+      "tag": "0008_damp_eternity",
+      "breakpoints": true
     }
   ]
 }

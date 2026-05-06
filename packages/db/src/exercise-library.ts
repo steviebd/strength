@@ -5,11 +5,14 @@ export interface VideoTutorial {
   keyCues: string[];
 }
 
+export type ExerciseType = 'weighted' | 'bodyweight' | 'timed' | 'cardio' | 'plyo';
+
 export interface ExerciseLibraryItem {
   id: string;
   name: string;
   muscleGroup: string;
   description: string;
+  exerciseType: ExerciseType;
   videoTutorial?: VideoTutorial;
 }
 
@@ -26,6 +29,7 @@ export const LIFT_TYPE_LIBRARY_ID: Record<LiftType, string> = {
 export const exerciseLibrary: ExerciseLibraryItem[] = [
   {
     id: 'barbell-bench-press',
+    exerciseType: 'weighted',
     name: 'Bench Press',
     muscleGroup: 'Chest',
     description:
@@ -39,6 +43,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'dumbbell-bench-press',
+    exerciseType: 'weighted',
     name: 'Dumbbell Bench Press',
     muscleGroup: 'Chest',
     description:
@@ -46,6 +51,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'incline-dumbbell-press',
+    exerciseType: 'weighted',
     name: 'Incline Dumbbell Press',
     muscleGroup: 'Chest',
     description:
@@ -53,6 +59,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'cable-fly',
+    exerciseType: 'weighted',
     name: 'Cable Fly',
     muscleGroup: 'Chest',
     description:
@@ -60,6 +67,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'push-ups',
+    exerciseType: 'bodyweight',
     name: 'Push-ups',
     muscleGroup: 'Chest',
     description:
@@ -67,6 +75,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'chest-dips',
+    exerciseType: 'bodyweight',
     name: 'Dips',
     muscleGroup: 'Chest',
     description:
@@ -81,6 +90,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'barbell-row',
+    exerciseType: 'weighted',
     name: 'Barbell Row',
     muscleGroup: 'Back',
     description:
@@ -94,6 +104,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'deadlift',
+    exerciseType: 'weighted',
     name: 'Deadlift',
     muscleGroup: 'Back',
     description:
@@ -107,6 +118,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'lat-pulldown',
+    exerciseType: 'weighted',
     name: 'Lat Pulldowns',
     muscleGroup: 'Back',
     description:
@@ -120,6 +132,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'pull-ups',
+    exerciseType: 'bodyweight',
     name: 'Pull-ups',
     muscleGroup: 'Back',
     description:
@@ -133,6 +146,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'seated-cable-row',
+    exerciseType: 'weighted',
     name: 'Seated Cable Row',
     muscleGroup: 'Back',
     description:
@@ -140,6 +154,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'dumbbell-row',
+    exerciseType: 'weighted',
     name: 'Dumbbell Row',
     muscleGroup: 'Back',
     description:
@@ -154,6 +169,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'overhead-press',
+    exerciseType: 'weighted',
     name: 'Overhead Press',
     muscleGroup: 'Shoulders',
     description:
@@ -167,6 +183,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'dumbbell-shoulder-press',
+    exerciseType: 'weighted',
     name: 'Dumbbell Shoulder Press',
     muscleGroup: 'Shoulders',
     description:
@@ -174,6 +191,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'lateral-raises',
+    exerciseType: 'weighted',
     name: 'Lateral Raises',
     muscleGroup: 'Shoulders',
     description:
@@ -187,6 +205,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'front-raises',
+    exerciseType: 'weighted',
     name: 'Front Raises',
     muscleGroup: 'Shoulders',
     description:
@@ -194,6 +213,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'face-pulls',
+    exerciseType: 'weighted',
     name: 'Face Pulls',
     muscleGroup: 'Shoulders',
     description:
@@ -207,6 +227,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'rear-delt-fly',
+    exerciseType: 'weighted',
     name: 'Rear Delt Fly',
     muscleGroup: 'Shoulders',
     description:
@@ -215,6 +236,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'barbell-curl',
+    exerciseType: 'weighted',
     name: 'Barbell Curl',
     muscleGroup: 'Biceps',
     description:
@@ -222,6 +244,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'dumbbell-curl',
+    exerciseType: 'weighted',
     name: 'Dumbbell Curl',
     muscleGroup: 'Biceps',
     description:
@@ -235,6 +258,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'hammer-curl',
+    exerciseType: 'weighted',
     name: 'Hammer Curl',
     muscleGroup: 'Biceps',
     description:
@@ -242,6 +266,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'preacher-curl',
+    exerciseType: 'weighted',
     name: 'Preacher Curl',
     muscleGroup: 'Biceps',
     description:
@@ -250,6 +275,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'tricep-pushdown',
+    exerciseType: 'weighted',
     name: 'Tricep Pushdowns',
     muscleGroup: 'Triceps',
     description:
@@ -263,6 +289,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'skull-crushers',
+    exerciseType: 'weighted',
     name: 'Skull Crushers',
     muscleGroup: 'Triceps',
     description:
@@ -270,6 +297,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'overhead-tricep-extension',
+    exerciseType: 'weighted',
     name: 'Overhead Tricep Extension',
     muscleGroup: 'Triceps',
     description:
@@ -283,6 +311,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'tricep-dips',
+    exerciseType: 'bodyweight',
     name: 'Dips',
     muscleGroup: 'Triceps',
     description:
@@ -291,6 +320,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'wrist-curl',
+    exerciseType: 'weighted',
     name: 'Wrist Curl',
     muscleGroup: 'Forearms',
     description:
@@ -298,6 +328,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'reverse-wrist-curl',
+    exerciseType: 'weighted',
     name: 'Reverse Wrist Curl',
     muscleGroup: 'Forearms',
     description:
@@ -305,6 +336,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'farmers-walk',
+    exerciseType: 'weighted',
     name: "Farmer's Walk",
     muscleGroup: 'Forearms',
     description:
@@ -313,6 +345,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'plank',
+    exerciseType: 'timed',
     name: 'Plank',
     muscleGroup: 'Core',
     description:
@@ -326,6 +359,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'hanging-leg-raise',
+    exerciseType: 'weighted',
     name: 'Hanging Leg Raise',
     muscleGroup: 'Core',
     description:
@@ -333,6 +367,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'cable-crunch',
+    exerciseType: 'weighted',
     name: 'Cable Crunch',
     muscleGroup: 'Core',
     description:
@@ -340,6 +375,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'russian-twist',
+    exerciseType: 'weighted',
     name: 'Russian Twist',
     muscleGroup: 'Core',
     description:
@@ -348,6 +384,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'barbell-squat',
+    exerciseType: 'weighted',
     name: 'Squat',
     muscleGroup: 'Quads',
     description:
@@ -361,6 +398,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'leg-press',
+    exerciseType: 'weighted',
     name: 'Leg Press',
     muscleGroup: 'Quads',
     description:
@@ -374,6 +412,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'lunges',
+    exerciseType: 'weighted',
     name: 'Walking Lunges',
     muscleGroup: 'Quads',
     description:
@@ -387,6 +426,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'leg-extension',
+    exerciseType: 'weighted',
     name: 'Leg Extensions',
     muscleGroup: 'Quads',
     description:
@@ -401,6 +441,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'romanian-deadlift',
+    exerciseType: 'weighted',
     name: 'Romanian Deadlift',
     muscleGroup: 'Hamstrings',
     description:
@@ -414,6 +455,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'leg-curl',
+    exerciseType: 'weighted',
     name: 'Leg Curls',
     muscleGroup: 'Hamstrings',
     description:
@@ -427,6 +469,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'good-mornings',
+    exerciseType: 'weighted',
     name: 'Good Mornings',
     muscleGroup: 'Hamstrings',
     description:
@@ -435,6 +478,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'hip-thrust',
+    exerciseType: 'weighted',
     name: 'Hip Thrust',
     muscleGroup: 'Glutes',
     description:
@@ -448,6 +492,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'cable-kickback',
+    exerciseType: 'weighted',
     name: 'Cable Kickback',
     muscleGroup: 'Glutes',
     description:
@@ -456,6 +501,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'standing-calf-raise',
+    exerciseType: 'weighted',
     name: 'Standing Calf Raise',
     muscleGroup: 'Calves',
     description:
@@ -463,6 +509,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'seated-calf-raise',
+    exerciseType: 'weighted',
     name: 'Seated Calf Raise',
     muscleGroup: 'Calves',
     description:
@@ -471,6 +518,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'burpees',
+    exerciseType: 'bodyweight',
     name: 'Burpees',
     muscleGroup: 'Full Body',
     description:
@@ -478,6 +526,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'kettlebell-swings',
+    exerciseType: 'weighted',
     name: 'Kettlebell Swings',
     muscleGroup: 'Full Body',
     description:
@@ -486,6 +535,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'treadmill',
+    exerciseType: 'cardio',
     name: 'Treadmill',
     muscleGroup: 'Cardio',
     description:
@@ -493,6 +543,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'rowing-machine',
+    exerciseType: 'cardio',
     name: 'Rowing Machine',
     muscleGroup: 'Cardio',
     description:
@@ -500,6 +551,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'stationary-bike',
+    exerciseType: 'cardio',
     name: 'Stationary Bike',
     muscleGroup: 'Cardio',
     description:
@@ -507,6 +559,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'box-jump',
+    exerciseType: 'plyo',
     name: 'Box Jumps',
     muscleGroup: 'Cardio',
     description:
@@ -515,6 +568,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'front-squat',
+    exerciseType: 'weighted',
     name: 'Front Squat',
     muscleGroup: 'Quads',
     description:
@@ -529,6 +583,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'back-raises',
+    exerciseType: 'weighted',
     name: 'Back Raises',
     muscleGroup: 'Back',
     description:
@@ -536,6 +591,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'hyperextensions',
+    exerciseType: 'weighted',
     name: 'Hyperextensions',
     muscleGroup: 'Back',
     description:
@@ -543,18 +599,21 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'weighted-pullups',
+    exerciseType: 'weighted',
     name: 'Weighted Pull-ups',
     muscleGroup: 'Back',
     description: 'Pull-ups with added weight (belt or dumbbell) for increased resistance.',
   },
   {
     id: 'weighted-dips',
+    exerciseType: 'weighted',
     name: 'Weighted Dips',
     muscleGroup: 'Chest',
     description: 'Dips with added weight belt or dumbbell between feet for increased difficulty.',
   },
   {
     id: 'inverted-rows',
+    exerciseType: 'weighted',
     name: 'Inverted Rows',
     muscleGroup: 'Back',
     description:
@@ -562,6 +621,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'pause-squat',
+    exerciseType: 'weighted',
     name: 'Pause Squat',
     muscleGroup: 'Quads',
     description:
@@ -569,18 +629,21 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'paused-bench',
+    exerciseType: 'weighted',
     name: 'Paused Bench Press',
     muscleGroup: 'Chest',
     description: 'Bench press with a 2-3 second pause on the chest to build strength and control.',
   },
   {
     id: 'paused-deadlift',
+    exerciseType: 'weighted',
     name: 'Paused Deadlift',
     muscleGroup: 'Back',
     description: 'Deadlift with a pause just above the knee to build lockout strength.',
   },
   {
     id: 'deficit-deadlift',
+    exerciseType: 'weighted',
     name: 'Deficit Deadlift',
     muscleGroup: 'Back',
     description:
@@ -588,6 +651,7 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
   },
   {
     id: 'rack-pull',
+    exerciseType: 'weighted',
     name: 'Rack Pull',
     muscleGroup: 'Back',
     description: 'Deadlift from pins in the rack, emphasizing lockout strength above the knee.',
@@ -595,12 +659,82 @@ export const exerciseLibrary: ExerciseLibraryItem[] = [
 
   {
     id: 'ab-wheel',
+    exerciseType: 'weighted',
     name: 'Ab Wheel',
     muscleGroup: 'Core',
     description:
       'Rolling wheel exercise extending and contracting the core for intense abdominal work.',
   },
 ];
+
+export const EXERCISE_TYPE_BY_LIBRARY_ID: Record<string, ExerciseType> = {
+  'barbell-bench-press': 'weighted',
+  'dumbbell-bench-press': 'weighted',
+  'incline-dumbbell-press': 'weighted',
+  'cable-fly': 'weighted',
+  'barbell-row': 'weighted',
+  deadlift: 'weighted',
+  'lat-pulldown': 'weighted',
+  'seated-cable-row': 'weighted',
+  'dumbbell-row': 'weighted',
+  'overhead-press': 'weighted',
+  'dumbbell-shoulder-press': 'weighted',
+  'lateral-raises': 'weighted',
+  'front-raises': 'weighted',
+  'face-pulls': 'weighted',
+  'rear-delt-fly': 'weighted',
+  'barbell-curl': 'weighted',
+  'dumbbell-curl': 'weighted',
+  'hammer-curl': 'weighted',
+  'preacher-curl': 'weighted',
+  'tricep-pushdown': 'weighted',
+  'skull-crushers': 'weighted',
+  'overhead-tricep-extension': 'weighted',
+  'wrist-curl': 'weighted',
+  'reverse-wrist-curl': 'weighted',
+  'farmers-walk': 'weighted',
+  'russian-twist': 'weighted',
+  'barbell-squat': 'weighted',
+  'leg-press': 'weighted',
+  lunges: 'weighted',
+  'leg-extension': 'weighted',
+  'romanian-deadlift': 'weighted',
+  'leg-curl': 'weighted',
+  'good-mornings': 'weighted',
+  'hip-thrust': 'weighted',
+  'cable-kickback': 'weighted',
+  'standing-calf-raise': 'weighted',
+  'seated-calf-raise': 'weighted',
+  'front-squat': 'weighted',
+  'weighted-pullups': 'weighted',
+  'weighted-dips': 'weighted',
+  'inverted-rows': 'weighted',
+  'pause-squat': 'weighted',
+  'paused-bench': 'weighted',
+  'paused-deadlift': 'weighted',
+  'deficit-deadlift': 'weighted',
+  'rack-pull': 'weighted',
+  'ab-wheel': 'weighted',
+  'kettlebell-swings': 'weighted',
+  'push-ups': 'bodyweight',
+  'pull-ups': 'bodyweight',
+  'chest-dips': 'bodyweight',
+  'tricep-dips': 'bodyweight',
+  burpees: 'bodyweight',
+  plank: 'timed',
+  'hanging-leg-raise': 'weighted',
+  'cable-crunch': 'weighted',
+  'back-raises': 'weighted',
+  hyperextensions: 'weighted',
+  treadmill: 'cardio',
+  'rowing-machine': 'cardio',
+  'stationary-bike': 'cardio',
+  'box-jump': 'plyo',
+};
+
+export function getExerciseTypeByLibraryId(id: string): ExerciseType {
+  return EXERCISE_TYPE_BY_LIBRARY_ID[id] ?? 'weighted';
+}
 
 export function getVideoTutorialByName(
   exerciseName: string | undefined | null,

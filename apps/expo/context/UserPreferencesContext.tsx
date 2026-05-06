@@ -19,12 +19,14 @@ import {
   upsertLocalPreferences,
   type WeightUnit,
 } from '@/db/preferences';
+import type { DistanceUnit } from '@/lib/units';
 import type { LocalUserPreferences } from '@/db/local-schema';
 
 type UserTimezone = string | null;
 
 interface PreferencePayload {
   weightUnit?: WeightUnit;
+  distanceUnit?: DistanceUnit;
   timezone?: UserTimezone;
   weightPromptedAt?: string | Date | null;
   bodyweightKg?: number | null;
@@ -33,6 +35,7 @@ interface PreferencePayload {
 
 interface UserPreferencesContextValue {
   weightUnit: WeightUnit;
+  distanceUnit: DistanceUnit;
   timezone: UserTimezone;
   deviceTimezone: UserTimezone;
   activeTimezone: UserTimezone;
@@ -41,6 +44,7 @@ interface UserPreferencesContextValue {
   needsWeightSelection: boolean;
   showTimezoneMismatchModal: boolean;
   setWeightUnit: (unit: WeightUnit) => Promise<void>;
+  setDistanceUnit: (unit: DistanceUnit) => Promise<void>;
   setTimezone: (timezone: string) => Promise<void>;
   dismissTimezoneMismatchModal: () => Promise<void>;
   markWeightAsPrompted: () => Promise<void>;
@@ -85,6 +89,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
   const latestServerUpdatedAtRef = useRef(0);
 
   const [weightUnit, setWeightUnitState] = useState<WeightUnit>('kg');
+  const [distanceUnit, setDistanceUnitState] = useState<DistanceUnit>('km');
   const [timezone, setTimezoneState] = useState<UserTimezone>(null);
   const [deviceTimezone] = useState<UserTimezone>(() => getCurrentDeviceTimezone());
   const [hasPersistedTimezone, setHasPersistedTimezone] = useState(false);
@@ -107,8 +112,10 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
 
     const nextTimezone = getValidTimezone(payload.timezone ?? null);
     const nextWeightUnit = payload.weightUnit === 'lbs' ? 'lbs' : 'kg';
+    const nextDistanceUnit = payload.distanceUnit === 'mi' ? 'mi' : 'km';
 
     setWeightUnitState(nextWeightUnit);
+    setDistanceUnitState(nextDistanceUnit);
     setTimezoneState(nextTimezone);
     setHasPersistedTimezone(Boolean(nextTimezone));
     setWeightPromptedAtState(serializeDate(payload.weightPromptedAt));
@@ -132,6 +139,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       const serverUpdatedAt = parseDate(payload.updatedAt);
       await upsertLocalPreferences(userId, {
         weightUnit: payload.weightUnit === 'lbs' ? 'lbs' : 'kg',
+        distanceUnit: payload.distanceUnit === 'mi' ? 'mi' : 'km',
         timezone: getValidTimezone(payload.timezone ?? null),
         weightPromptedAt: parseDate(payload.weightPromptedAt),
         bodyweightKg: payload.bodyweightKg ?? null,
@@ -164,6 +172,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
 
     if (!currentUserId) {
       setWeightUnitState('kg');
+      setDistanceUnitState('km');
       setTimezoneState(deviceTimezone);
       setHasPersistedTimezone(false);
       setShowTimezoneMismatchModal(false);
@@ -190,6 +199,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
           hasLocalFastPath = true;
           const validTimezone = getValidTimezone(local.timezone);
           setWeightUnitState(local.weightUnit === 'lbs' ? 'lbs' : 'kg');
+          setDistanceUnitState(local.distanceUnit === 'mi' ? 'mi' : 'km');
           setTimezoneState(validTimezone);
           setHasPersistedTimezone(Boolean(validTimezone));
           setWeightPromptedAtState(local.weightPromptedAt?.toISOString() ?? null);
@@ -269,6 +279,31 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
       }
     },
     [persistServerPreferences, session.data?.user, weightUnit],
+  );
+
+  const setDistanceUnit = useCallback(
+    async (unit: DistanceUnit) => {
+      if (!session.data?.user) {
+        return;
+      }
+
+      const userId = session.data.user.id;
+      const previousUnit = distanceUnit;
+      setDistanceUnitState(unit);
+      try {
+        const data = await apiFetch<PreferencePayload>('/api/profile/preferences', {
+          method: 'PUT',
+          body: { distanceUnit: unit },
+        });
+        if (currentUserIdRef.current === userId) {
+          await persistServerPreferences(userId, data, true);
+          setServerPreferencesChecked(true);
+        }
+      } catch {
+        setDistanceUnitState(previousUnit);
+      }
+    },
+    [persistServerPreferences, session.data?.user, distanceUnit],
   );
 
   const setTimezone = useCallback(
@@ -380,6 +415,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     <UserPreferencesContext.Provider
       value={{
         weightUnit,
+        distanceUnit,
         timezone,
         deviceTimezone,
         activeTimezone,
@@ -389,6 +425,7 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
         showTimezoneMismatchModal:
           isTimezoneMismatch && timezoneDismissed === false && showTimezoneMismatchModal,
         setWeightUnit,
+        setDistanceUnit,
         setTimezone,
         dismissTimezoneMismatchModal,
         markWeightAsPrompted,

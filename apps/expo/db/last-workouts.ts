@@ -7,6 +7,9 @@ export interface LastWorkoutData {
   weight: number | null;
   reps: number | null;
   rpe: number | null;
+  duration: number | null;
+  distance: number | null;
+  height: number | null;
   date: string;
 }
 
@@ -28,6 +31,9 @@ export async function getLastWorkout(
       weight: row.weight ?? null,
       reps: row.reps ?? null,
       rpe: row.rpe ?? null,
+      duration: row.duration ?? null,
+      distance: row.distance ?? null,
+      height: row.height ?? null,
       date: row.date,
     };
   }
@@ -46,6 +52,9 @@ export async function getLastWorkout(
         weight: lastSet.weight ?? null,
         reps: lastSet.reps ?? null,
         rpe: lastSet.rpe ?? null,
+        duration: (lastSet as any).duration ?? null,
+        distance: (lastSet as any).distance ?? null,
+        height: (lastSet as any).height ?? null,
         date: snapshot.workoutDate ?? new Date().toISOString(),
       };
       await setLastWorkout(userId, exerciseId, data);
@@ -74,6 +83,9 @@ export async function setLastWorkout(
       weight: data.weight ?? null,
       reps: data.reps ?? null,
       rpe: data.rpe ?? null,
+      duration: data.duration ?? null,
+      distance: data.distance ?? null,
+      height: data.height ?? null,
       date: data.date,
       updatedAt: now,
     })
@@ -83,6 +95,9 @@ export async function setLastWorkout(
         weight: data.weight ?? null,
         reps: data.reps ?? null,
         rpe: data.rpe ?? null,
+        duration: data.duration ?? null,
+        distance: data.distance ?? null,
+        height: data.height ?? null,
         date: data.date,
         updatedAt: now,
       },

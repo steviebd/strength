@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, createRef } from 'react';
+import { useState, useCallback, useEffect, useRef, createRef, useMemo } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -29,6 +29,7 @@ import { resolveSetCompletionNavigation } from '@/lib/workoutSetNavigation';
 import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
 import { ScrollProvider } from '@/context/ScrollContext';
 import { colors, spacing, radius, typography } from '@/theme';
+import { formatDuration, formatDistance } from '@/lib/units';
 
 interface ExerciseLayout {
   id: string;
@@ -106,7 +107,7 @@ export default function WorkoutSessionScreen() {
   const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
-  const { activeTimezone, weightUnit: userWeightUnit } = useUserPreferences();
+  const { activeTimezone, weightUnit: userWeightUnit, distanceUnit } = useUserPreferences();
 
   const scrollYRef = useRef(0);
   const setRefsRef = useRef(new Map<string, React.RefObject<View | null>>());
@@ -219,12 +220,20 @@ export default function WorkoutSessionScreen() {
   const hasLoadedRequestedWorkout = !!workoutId && workout?.id === workoutId;
 
   const computedVolume = exercises.reduce((total, ex) => {
+    const type = ex.exerciseType ?? 'weighted';
+    if (type !== 'weighted' && type !== 'bodyweight' && type !== 'plyo') {
+      return total;
+    }
     return (
       total +
       (ex.sets ?? []).reduce((setTotal, set) => {
-        if (set.isComplete && set.weight && set.reps) {
-          const weight = userWeightUnit === 'lbs' ? set.weight * KG_TO_LBS : set.weight;
-          return setTotal + weight * set.reps;
+        if (!set.isComplete) return setTotal;
+        const hasWeight = set.weight !== null && set.weight > 0;
+        const hasReps = set.reps !== null && set.reps > 0;
+        if (hasReps && (type === 'bodyweight' || hasWeight)) {
+          const weight =
+            userWeightUnit === 'lbs' ? (set.weight ?? 0) * KG_TO_LBS : (set.weight ?? 0);
+          return setTotal + weight * set.reps!;
         }
         return setTotal;
       }, 0)
@@ -235,6 +244,36 @@ export default function WorkoutSessionScreen() {
     if (volume >= 1000) return `${(volume / 1000).toFixed(1)}k`;
     return volume.toString();
   };
+
+  const { totalTimeSeconds, totalDistanceMeters, totalCompletedSets, hasWeightedSets } =
+    useMemo(() => {
+      let time = 0;
+      let distance = 0;
+      let sets = 0;
+      let weighted = false;
+      for (const ex of exercises) {
+        const type = ex.exerciseType ?? 'weighted';
+        for (const set of ex.sets ?? []) {
+          if (!set.isComplete) continue;
+          sets++;
+          if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+            weighted = true;
+          }
+          if (type === 'timed' || type === 'cardio') {
+            time += set.duration ?? 0;
+          }
+          if (type === 'cardio' && set.distance) {
+            distance += set.distance;
+          }
+        }
+      }
+      return {
+        totalTimeSeconds: time,
+        totalDistanceMeters: distance,
+        totalCompletedSets: sets,
+        hasWeightedSets: weighted,
+      };
+    }, [exercises]);
 
   const handleStartWorkout = useCallback(async () => {
     const name = workoutName.trim() || 'Workout';
@@ -265,6 +304,9 @@ export default function WorkoutSessionScreen() {
             updateSet(set.id, {
               weight: sets[idx].weight,
               reps: sets[idx].reps,
+              duration: sets[idx].duration,
+              distance: sets[idx].distance,
+              height: sets[idx].height,
               isComplete: sets[idx].completed,
             });
           }
@@ -369,10 +411,22 @@ export default function WorkoutSessionScreen() {
 
   const findFirstIncompleteSet = useCallback(() => {
     for (let i = 0; i < exercises.length; i++) {
+      const type = exercises[i].exerciseType ?? 'weighted';
       for (let j = 0; j < exercises[i].sets.length; j++) {
         const set = exercises[i].sets[j];
-        if ((set.weight !== null || set.reps !== null) && !set.isComplete) {
-          return { exerciseIndex: i, setIndex: j };
+        if (set.isComplete) continue;
+        if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+          if (set.weight !== null || set.reps !== null) {
+            return { exerciseIndex: i, setIndex: j };
+          }
+        } else if (type === 'timed') {
+          if (set.duration !== null) {
+            return { exerciseIndex: i, setIndex: j };
+          }
+        } else if (type === 'cardio') {
+          if (set.duration !== null || set.distance !== null) {
+            return { exerciseIndex: i, setIndex: j };
+          }
         }
       }
     }
@@ -623,6 +677,34 @@ export default function WorkoutSessionScreen() {
               )}
             </View>
           </View>
+          {isViewingCompleted && (
+            <View style={styles.summaryPills}>
+              {hasWeightedSets && computedVolume > 0 && (
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>
+                    {formatVolume(computedVolume)} {userWeightUnit}
+                  </Text>
+                </View>
+              )}
+              {totalTimeSeconds > 0 && (
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>{formatDuration(totalTimeSeconds)}</Text>
+                </View>
+              )}
+              {totalDistanceMeters > 0 && (
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>
+                    {formatDistance(totalDistanceMeters, distanceUnit)}
+                  </Text>
+                </View>
+              )}
+              {totalCompletedSets > 0 && (
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>{totalCompletedSets} sets</Text>
+                </View>
+              )}
+            </View>
+          )}
           <View style={styles.headerBottom}>{renderActionButtons()}</View>
         </View>
         <PageLayout
@@ -643,7 +725,10 @@ export default function WorkoutSessionScreen() {
               const localSets = (exercise.sets ?? []).map((s) => ({
                 id: s.id,
                 reps: s.reps ?? 0,
-                weight: s.weight ?? 0,
+                weight: s.weight ?? null,
+                duration: s.duration ?? 0,
+                distance: s.distance ?? null,
+                height: s.height ?? 0,
                 completed: s.isComplete,
               }));
               return (
@@ -657,6 +742,7 @@ export default function WorkoutSessionScreen() {
                       exerciseId: exercise.exerciseId,
                       name: exercise.name,
                       muscleGroup: exercise.muscleGroup,
+                      exerciseType: exercise.exerciseType,
                       isAmrap: exercise.isAmrap,
                     }}
                     sets={localSets}
@@ -1003,5 +1089,24 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.bold,
+  },
+  summaryPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pill: {
+    borderRadius: radius.full,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pillText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.textMuted,
   },
 });

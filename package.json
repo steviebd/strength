@@ -28,7 +28,7 @@
     "lint:keys": "bun scripts/lint-react-keys.mjs",
     "typecheck": "bun --filter '*' typecheck",
     "setup": "bun install",
-    "check": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp check && bun run lint:keys && bun run typecheck",
+    "check": "bash -c 'export PATH=\"$HOME/.vite-plus/bin:$PATH\"; if [ \"$1\" = \"--fix\" ]; then vp check --fix; else vp check; fi && bun run lint:keys && bun run typecheck' --",
     "test": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp test run",
     "lint": "source ~/.vite-plus/env && vp lint && bun run lint:keys",
     "fmt": "source ~/.vite-plus/env && vp fmt"

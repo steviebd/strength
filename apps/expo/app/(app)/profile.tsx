@@ -80,9 +80,11 @@ export default function Profile() {
   const { data: session, isPending } = authClient.useSession();
   const {
     weightUnit,
+    distanceUnit,
     timezone,
     deviceTimezone,
     setWeightUnit,
+    setDistanceUnit,
     setTimezone,
     recordBodyweight,
     bodyweightKg,
@@ -984,6 +986,50 @@ export default function Profile() {
                 ]}
               >
                 lbs
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Distance Unit</Text>
+          <View style={styles.unitToggle}>
+            <Pressable
+              onPress={() => setDistanceUnit('km')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                distanceUnit === 'km' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  distanceUnit === 'km'
+                    ? styles.unitButtonTextActive
+                    : styles.unitButtonTextInactive,
+                ]}
+              >
+                km
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setDistanceUnit('mi')}
+              disabled={isLoading}
+              style={[
+                styles.unitButton,
+                distanceUnit === 'mi' ? styles.unitButtonActive : styles.unitButtonInactive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.unitButtonText,
+                  distanceUnit === 'mi'
+                    ? styles.unitButtonTextActive
+                    : styles.unitButtonTextInactive,
+                ]}
+              >
+                mi
               </Text>
             </Pressable>
           </View>

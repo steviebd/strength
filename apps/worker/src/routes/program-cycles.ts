@@ -281,11 +281,15 @@ router.get(
         reps:
           typeof exercise.reps === 'number' ? exercise.reps : normalizeProgramReps(exercise.reps),
         repsRaw: typeof exercise.reps === 'string' ? exercise.reps : null,
+        exerciseType: exercise.exerciseType,
+        targetDuration: exercise.targetDuration,
+        targetDistance: exercise.targetDistance,
+        targetHeight: exercise.targetHeight,
         isAmrap: exercise.isAmrap,
         isAccessory: exercise.isAccessory,
         isRequired: exercise.isRequired,
         exercise: {
-          id: exercise.accessoryId ?? exercise.lift ?? exercise.name,
+          id: exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
           name: exercise.name,
           muscleGroup: null,
         },
@@ -421,6 +425,10 @@ router.get(
         reps:
           typeof exercise.reps === 'number' ? exercise.reps : normalizeProgramReps(exercise.reps),
         repsRaw: typeof exercise.reps === 'string' ? exercise.reps : null,
+        exerciseType: exercise.exerciseType,
+        targetDuration: exercise.targetDuration,
+        targetDistance: exercise.targetDistance,
+        targetHeight: exercise.targetHeight,
         isAmrap: exercise.isAmrap,
         isAccessory: exercise.isAccessory,
         isRequired: exercise.isRequired,

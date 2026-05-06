@@ -12,6 +12,7 @@ import {
 import { getLatestOneRMsForUser } from '../lib/program-helpers';
 import { getStoredUserTimezone } from '../lib/timezone';
 import { getOrCreateExerciseForUser } from '@strength/db';
+import { getExerciseTypeByLibraryId } from '@strength/db/exercise-library';
 import { batchParallel } from '@strength/db';
 
 const router = createRouter();
@@ -160,27 +161,44 @@ router.post(
       const scheduleEntry = schedule[workoutIndex];
       const exercises = (workout.exercises ?? []).map((e, exerciseIndex) => {
         const key = `${workoutIndex}_${exerciseIndex}`;
+        const exerciseType = e.libraryId
+          ? getExerciseTypeByLibraryId(e.libraryId)
+          : (e.exerciseType ?? 'weighted');
         return {
           name: e.name,
           lift: e.lift,
           targetWeight: e.targetWeight,
           sets: e.sets,
           reps: e.reps,
+          exerciseType,
+          targetDuration: e.targetDuration ?? null,
+          targetDistance: e.targetDistance ?? null,
+          targetHeight: e.targetHeight ?? null,
           isAmrap: e.isAmrap ?? false,
           isAccessory: false,
           libraryId: e.libraryId,
           exerciseId: exerciseIdMap.get(key),
         };
       });
-      const accessories = (workout.accessories || []).map((a) => ({
-        name: a.name,
-        accessoryId: a.accessoryId,
-        targetWeight: a.targetWeight,
-        sets: a.sets,
-        reps: a.reps,
-        isAmrap: a.isAmrap ?? false,
-        isAccessory: true,
-      }));
+      const accessories = (workout.accessories || []).map((a) => {
+        const exerciseType = a.libraryId
+          ? getExerciseTypeByLibraryId(a.libraryId)
+          : (a.exerciseType ?? 'weighted');
+        return {
+          name: a.name,
+          accessoryId: a.accessoryId,
+          libraryId: a.libraryId,
+          targetWeight: a.targetWeight,
+          sets: a.sets,
+          reps: a.reps,
+          exerciseType,
+          targetDuration: a.targetDuration ?? null,
+          targetDistance: a.targetDistance ?? null,
+          targetHeight: a.targetHeight ?? null,
+          isAmrap: a.isAmrap ?? false,
+          isAccessory: true,
+        };
+      });
       return {
         weekNumber: workout.weekNumber,
         sessionNumber: workout.sessionNumber,

@@ -1,5 +1,7 @@
 export type LiftType = 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row';
 
+export type ExerciseType = 'weighted' | 'bodyweight' | 'timed' | 'cardio' | 'plyo';
+
 export type ProgramDifficulty = 'beginner' | 'intermediate' | 'advanced';
 
 export type ProgramCategory = 'powerlifting' | 'general-strength' | "women's";
@@ -18,11 +20,16 @@ export interface ProgramInfo {
 
 export interface ProgramExercise {
   name: string;
-  lift: LiftType;
+  lift?: LiftType;
   sets: number;
-  reps: number;
+  reps?: number;
+  targetWeight?: number;
+  targetDuration?: number;
+  targetDistance?: number;
+  targetHeight?: number;
   isAmrap?: boolean;
   libraryId?: string;
+  exerciseType: ExerciseType;
 }
 
 export interface ProgramSession {
@@ -45,12 +52,16 @@ export interface ProgramWorkout {
   sessionName: string;
   exercises: Array<{
     name: string;
-    lift: LiftType;
+    lift?: LiftType;
     sets: number;
-    reps: number;
-    targetWeight: number;
+    reps?: number;
+    targetWeight?: number;
+    targetDuration?: number;
+    targetDistance?: number;
+    targetHeight?: number;
     isAmrap?: boolean;
     libraryId?: string;
+    exerciseType: ExerciseType;
   }>;
   accessories?: WorkoutAccessory[];
 }
@@ -101,6 +112,7 @@ export interface AccessoryDefinition {
   defaultPercentage: number | null;
   muscleGroup: string;
   libraryId: string;
+  exerciseType: ExerciseType;
 }
 
 export interface ProgramAccessory {
@@ -119,8 +131,12 @@ export interface WorkoutAccessory {
   muscleGroup: string;
   sets: number;
   reps: number | string;
-  targetWeight: number;
-  addedWeight: number;
+  targetWeight: number | null;
+  addedWeight: number | null;
   isRequired: boolean;
   isAmrap?: boolean;
+  exerciseType: ExerciseType;
+  targetDuration?: number;
+  targetDistance?: number;
+  targetHeight?: number;
 }

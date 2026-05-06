@@ -5,11 +5,13 @@ import {
   localUserPreferences,
   type LocalUserPreferences,
 } from './local-schema';
+import type { DistanceUnit } from '@/lib/units';
 
 export type WeightUnit = 'kg' | 'lbs';
 
 export interface LocalPreferencePatch {
   weightUnit?: WeightUnit;
+  distanceUnit?: DistanceUnit;
   timezone?: string | null;
   bodyweightKg?: number | null;
   weightPromptedAt?: Date | null;
@@ -40,6 +42,8 @@ export async function upsertLocalPreferences(userId: string, patch: LocalPrefere
   const next: LocalUserPreferences = {
     userId,
     weightUnit: patch.weightUnit ?? (existing?.weightUnit as WeightUnit | undefined) ?? 'kg',
+    distanceUnit:
+      patch.distanceUnit ?? (existing?.distanceUnit as DistanceUnit | undefined) ?? 'km',
     timezone: patch.timezone !== undefined ? patch.timezone : (existing?.timezone ?? null),
     bodyweightKg:
       patch.bodyweightKg !== undefined ? patch.bodyweightKg : (existing?.bodyweightKg ?? null),

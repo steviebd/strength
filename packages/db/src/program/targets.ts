@@ -11,6 +11,10 @@ export type SerializedProgramTargetLift = {
   isAmrap?: unknown;
   libraryId?: unknown;
   exerciseId?: unknown;
+  exerciseType?: unknown;
+  targetDuration?: unknown;
+  targetDistance?: unknown;
+  targetHeight?: unknown;
 };
 
 export type NormalizedProgramTargetLift = {
@@ -26,6 +30,10 @@ export type NormalizedProgramTargetLift = {
   isAmrap: boolean;
   libraryId?: string;
   exerciseId?: string;
+  exerciseType: string;
+  targetDuration: number | null;
+  targetDistance: number | null;
+  targetHeight: number | null;
 };
 
 export function normalizeProgramSetCount(value: unknown, fallback = 1) {
@@ -98,6 +106,20 @@ export function normalizeProgramTargetLift(
     isAmrap,
     libraryId: typeof targetLift.libraryId === 'string' ? targetLift.libraryId : undefined,
     exerciseId: typeof targetLift.exerciseId === 'string' ? targetLift.exerciseId : undefined,
+    exerciseType:
+      typeof targetLift.exerciseType === 'string' ? targetLift.exerciseType : 'weighted',
+    targetDuration:
+      typeof targetLift.targetDuration === 'number' && Number.isFinite(targetLift.targetDuration)
+        ? targetLift.targetDuration
+        : null,
+    targetDistance:
+      typeof targetLift.targetDistance === 'number' && Number.isFinite(targetLift.targetDistance)
+        ? targetLift.targetDistance
+        : null,
+    targetHeight:
+      typeof targetLift.targetHeight === 'number' && Number.isFinite(targetLift.targetHeight)
+        ? targetLift.targetHeight
+        : null,
   };
 }
 

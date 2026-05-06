@@ -23,6 +23,8 @@ router.get(
         muscleGroup: schema.exercises.muscleGroup,
         description: schema.exercises.description,
         libraryId: schema.exercises.libraryId,
+        exerciseType: schema.exercises.exerciseType,
+        isAmrap: schema.exercises.isAmrap,
         createdAt: schema.exercises.createdAt,
         updatedAt: schema.exercises.updatedAt,
       })
@@ -35,6 +37,8 @@ router.get(
   }),
 );
 
+const VALID_EXERCISE_TYPES = ['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const;
+
 router.post(
   '/',
   createHandler(async (c, { userId, db }) => {
@@ -46,7 +50,16 @@ router.post(
       return c.json({ message: 'Name is required' }, 400);
     }
 
+    const exerciseType =
+      typeof body.exerciseType === 'string' &&
+      (VALID_EXERCISE_TYPES as unknown as string[]).includes(body.exerciseType)
+        ? body.exerciseType
+        : 'weighted';
+    const isAmrap = body.isAmrap === true;
+
     if (libraryId) {
+      const libraryExercise = schema.exerciseLibrary.find((exercise) => exercise.id === libraryId);
+      const resolvedExerciseType = libraryExercise?.exerciseType ?? exerciseType;
       const resolvedExerciseId = await resolveToUserExerciseId(db, userId, libraryId);
       const existingLibraryExercise = await db
         .select()
@@ -70,7 +83,29 @@ router.post(
         existingLibraryExercise.name,
       );
       if (existingByName && existingByName.id !== existingLibraryExercise.id) {
+        if (
+          existingByName.libraryId === libraryId &&
+          existingByName.exerciseType !== resolvedExerciseType
+        ) {
+          const repairedByName = await db
+            .update(schema.exercises)
+            .set({ exerciseType: resolvedExerciseType, updatedAt: new Date() })
+            .where(eq(schema.exercises.id, existingByName.id))
+            .returning()
+            .get();
+          return c.json(repairedByName ?? existingByName, 200);
+        }
         return c.json(existingByName, 200);
+      }
+
+      if (existingLibraryExercise.exerciseType !== resolvedExerciseType) {
+        const repaired = await db
+          .update(schema.exercises)
+          .set({ exerciseType: resolvedExerciseType, updatedAt: new Date() })
+          .where(eq(schema.exercises.id, existingLibraryExercise.id))
+          .returning()
+          .get();
+        return c.json(repaired ?? existingLibraryExercise, 201);
       }
 
       return c.json(existingLibraryExercise, 201);
@@ -91,6 +126,8 @@ router.post(
         muscleGroup: muscleGroup || null,
         description: description || null,
         libraryId: null,
+        exerciseType,
+        isAmrap,
         createdAt: now,
         updatedAt: now,
       })
@@ -121,7 +158,21 @@ router.put(
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
     const body = await c.req.json();
-    const allowed = pickAllowedKeys(body, ['name', 'muscleGroup', 'description']);
+    const allowed = pickAllowedKeys(body, [
+      'name',
+      'muscleGroup',
+      'description',
+      'exerciseType',
+      'isAmrap',
+    ]);
+    const allowedExerciseType = allowed.exerciseType;
+    if (
+      allowedExerciseType !== undefined &&
+      typeof allowedExerciseType === 'string' &&
+      !(VALID_EXERCISE_TYPES as unknown as string[]).includes(allowedExerciseType)
+    ) {
+      return c.json({ message: 'Invalid exercise type' }, 400);
+    }
     const result = await db
       .update(schema.exercises)
       .set({

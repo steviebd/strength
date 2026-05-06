@@ -26,7 +26,13 @@ export function useExerciseSearch({
   const [loading, setLoading] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', muscleGroup: '', description: '' });
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    muscleGroup: '',
+    description: '',
+    exerciseType: 'weighted',
+    isAmrap: false,
+  });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -126,6 +132,8 @@ export function useExerciseSearch({
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
           libraryId: newExercise.libraryId,
+          exerciseType: newExercise.exerciseType,
+          isAmrap: newExercise.isAmrap,
         },
         ...prev,
       ]);
@@ -134,7 +142,13 @@ export function useExerciseSearch({
         return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
       });
       setShowCreateForm(false);
-      setCreateForm({ name: '', muscleGroup: '', description: '' });
+      setCreateForm({
+        name: '',
+        muscleGroup: '',
+        description: '',
+        exerciseType: 'weighted',
+        isAmrap: false,
+      });
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {

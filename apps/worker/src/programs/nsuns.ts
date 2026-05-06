@@ -45,6 +45,7 @@ export const nsuns = createLinearProgramGenerator({
     return [
       {
         name: t1Name,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 5,
@@ -54,6 +55,7 @@ export const nsuns = createLinearProgramGenerator({
       },
       {
         name: `${t1Name} 1+`,
+        exerciseType: 'weighted',
         lift: config.t1,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t1],
         sets: 1,
@@ -63,6 +65,7 @@ export const nsuns = createLinearProgramGenerator({
       },
       {
         name: t2Name,
+        exerciseType: 'weighted',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 5,
@@ -72,6 +75,7 @@ export const nsuns = createLinearProgramGenerator({
       },
       {
         name: `${t2Name} 1+`,
+        exerciseType: 'weighted',
         lift: config.t2,
         libraryId: LIFT_TYPE_LIBRARY_ID[config.t2],
         sets: 1,

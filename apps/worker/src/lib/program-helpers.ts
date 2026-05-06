@@ -27,6 +27,24 @@ export {
   type SerializedProgramTargetLift,
 };
 
+function buildProgramSetValues(segment: NormalizedProgramTargetLift) {
+  const type = segment.exerciseType ?? 'weighted';
+  const reps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
+  const weight =
+    type === 'weighted'
+      ? (segment.targetWeight ?? 0) + segment.addedWeight
+      : type === 'bodyweight' && ((segment.targetWeight ?? 0) > 0 || segment.addedWeight > 0)
+        ? (segment.targetWeight ?? 0) + segment.addedWeight
+        : null;
+  return {
+    weight,
+    reps: type === 'timed' || type === 'cardio' ? null : reps,
+    duration: type === 'timed' || type === 'cardio' ? (segment.targetDuration ?? 0) : null,
+    distance: type === 'cardio' ? segment.targetDistance : null,
+    height: type === 'plyo' ? (segment.targetHeight ?? 0) : null,
+  };
+}
+
 function hasAnyRecordedOneRM(oneRMs: {
   squat1rm?: number | null;
   bench1rm?: number | null;
@@ -420,17 +438,12 @@ export async function createWorkoutFromProgramCycleWorkout(
     let nextSetNumber = 1;
     for (const segment of targetLift.segments) {
       const segmentSetCount = normalizeProgramSetCount(segment.sets, 1);
-      const segmentWeight =
-        typeof segment.targetWeight === 'number' && Number.isFinite(segment.targetWeight)
-          ? segment.targetWeight
-          : null;
-      const segmentReps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
+      const segmentValues = buildProgramSetValues(segment);
 
       const setRows = Array.from({ length: segmentSetCount }, () => ({
         workoutExerciseId,
         setNumber: nextSetNumber++,
-        weight: segmentWeight,
-        reps: segmentReps,
+        ...segmentValues,
         rpe: null,
         isComplete: false,
         createdAt: now,
@@ -887,6 +900,9 @@ export async function getLastCompletedExerciseSnapshots(
     weight: number | null;
     reps: number | null;
     rpe: number | null;
+    duration: number | null;
+    distance: number | null;
+    height: number | null;
     setNumber: number | null;
   };
   const allSets: SetRow[] = await chunkedQueryMany(db, {
@@ -898,6 +914,9 @@ export async function getLastCompletedExerciseSnapshots(
           weight: schema.workoutSets.weight,
           reps: schema.workoutSets.reps,
           rpe: schema.workoutSets.rpe,
+          duration: schema.workoutSets.duration,
+          distance: schema.workoutSets.distance,
+          height: schema.workoutSets.height,
           setNumber: schema.workoutSets.setNumber,
         })
         .from(schema.workoutSets)
@@ -925,6 +944,9 @@ export async function getLastCompletedExerciseSnapshots(
       weight: number | null;
       reps: number | null;
       rpe: number | null;
+      duration: number | null;
+      distance: number | null;
+      height: number | null;
       setNumber: number | null;
     }[];
   }[] = [];
@@ -935,6 +957,9 @@ export async function getLastCompletedExerciseSnapshots(
         weight: s.weight,
         reps: s.reps,
         rpe: s.rpe,
+        duration: s.duration,
+        distance: s.distance,
+        height: s.height,
         setNumber: s.setNumber,
       }));
       results.push({

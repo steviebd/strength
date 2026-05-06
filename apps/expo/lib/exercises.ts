@@ -10,12 +10,16 @@ export interface UserExercise {
   muscleGroup: string | null;
   description: string | null;
   libraryId: string | null;
+  exerciseType?: string | null;
+  isAmrap?: boolean | null;
 }
 
 interface CreateExerciseInput {
   name: string;
   muscleGroup: string;
   description?: string | null;
+  exerciseType?: string;
+  isAmrap?: boolean;
 }
 
 export async function listUserExercises(search?: string, signal?: AbortSignal) {
@@ -41,6 +45,8 @@ export async function listUserExercises(search?: string, signal?: AbortSignal) {
           muscleGroup: exercise.muscleGroup,
           description: exercise.description,
           libraryId: exercise.libraryId,
+          exerciseType: exercise.exerciseType,
+          isAmrap: exercise.isAmrap,
         }));
       }
     }
@@ -55,6 +61,8 @@ export async function createCustomExercise(input: CreateExerciseInput) {
       name: input.name.trim(),
       muscleGroup: input.muscleGroup,
       description: input.description?.trim() || null,
+      exerciseType: input.exerciseType,
+      isAmrap: input.isAmrap,
     },
   });
 
@@ -87,6 +95,8 @@ export async function ensurePersistedExercise(exercise: ExerciseLibraryItem) {
       muscleGroup: exercise.muscleGroup,
       description: exercise.description || null,
       libraryId: exercise.id,
+      exerciseType: (exercise as any).exerciseType,
+      isAmrap: (exercise as any).isAmrap,
     },
   });
 
