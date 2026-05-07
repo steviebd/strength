@@ -16,8 +16,10 @@ export {
   consolidateProgramTargetLifts,
   consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
+  groupConsecutiveExercises,
   type NormalizedProgramTargetLift,
   type SerializedProgramTargetLift,
+  type GroupedExercise,
 } from './program/targets';
 export {
   isValidTimeZone,

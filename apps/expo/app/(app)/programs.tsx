@@ -9,7 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  type TextInput,
+  TextInput,
   View,
   ActionSheetIOS,
 } from 'react-native';
@@ -31,10 +31,10 @@ import { generateId } from '@strength/db/client';
 import { enqueueSyncItem } from '@/db/sync-queue';
 import { runTrainingSync } from '@/lib/workout-sync';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { useScrollToInput } from '@/context/ScrollContext';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { FormScrollView } from '@/components/ui/FormScrollView';
 import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
-import { MetricInput } from '@/components/ui/MetricInput';
 import { PageHeader } from '@/components/ui/app-primitives';
 import {
   useActivePrograms,
@@ -45,7 +45,17 @@ import {
 } from '@/hooks/usePrograms';
 import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
-import { colors, spacing, radius, typography, layout, statusBg } from '@/theme';
+import {
+  colors,
+  spacing,
+  radius,
+  typography,
+  layout,
+  statusBg,
+  border,
+  surface,
+  textRoles,
+} from '@/theme';
 
 const LBS_TO_KG = 0.453592;
 
@@ -376,6 +386,22 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
   },
+  input: {
+    minHeight: layout.controlHeight,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: border.default,
+    backgroundColor: surface.inset,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    color: colors.text,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
+  },
+  inputFocused: {
+    borderColor: border.focus,
+  },
   startButton: {
     borderRadius: radius.lg,
     backgroundColor: colors.accent,
@@ -684,7 +710,19 @@ export default function ProgramsScreen() {
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<ScrollView>(null);
   const detailScrollRef = useRef<ScrollView>(null);
-  const inputRefs = useRef<Record<string, TextInput | null>>({});
+  const squatWrapperRef = useRef<View>(null);
+  const benchWrapperRef = useRef<View>(null);
+  const deadliftWrapperRef = useRef<View>(null);
+  const ohpWrapperRef = useRef<View>(null);
+  const wrapperRefs: Record<keyof OneRmValues, React.RefObject<View>> = {
+    squat: squatWrapperRef,
+    bench: benchWrapperRef,
+    deadlift: deadliftWrapperRef,
+    ohp: ohpWrapperRef,
+  };
+  const scrollToInput = useScrollToInput();
+  const [editingKey, setEditingKey] = useState<keyof OneRmValues | null>(null);
+  const [editValue, setEditValue] = useState('');
   const modalContentY = useRef(0);
   const scheduleSectionY = useRef<number | null>(null);
   const valuesRef = useRef<OneRmValues>(values);
@@ -722,12 +760,33 @@ export default function ProgramsScreen() {
     };
   }, [scheduleStep, scrollToScheduleSection]);
 
+  const handleEditStart = useCallback(
+    (key: keyof OneRmValues) => {
+      if (editingKey === key) return;
+      setEditValue(valuesRef.current[key]);
+      scrollToInput(wrapperRefs[key]);
+      setEditingKey(key);
+    },
+    [editingKey, scrollToInput],
+  );
+
+  const handleEditEnd = useCallback(
+    (key: keyof OneRmValues) => {
+      const sanitized = editValue.replace(/[^0-9.]/g, '');
+      setOneRmValues({ ...valuesRef.current, [key]: sanitized });
+      setEditingKey(null);
+    },
+    [editValue],
+  );
+
   const focusNextInput = (key: (typeof inputOrder)[number]) => {
     const currentIndex = inputOrder.indexOf(key);
     const nextKey = inputOrder[currentIndex + 1];
 
+    handleEditEnd(key);
+
     if (nextKey) {
-      inputRefs.current[nextKey]?.focus();
+      handleEditStart(nextKey);
     }
   };
 
@@ -1246,12 +1305,14 @@ export default function ProgramsScreen() {
                 </Text>
 
                 <View style={styles.inputGroup}>
-                  {[
-                    { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
-                    { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
-                    { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
-                    { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
-                  ].map(({ key, label, icon }) => (
+                  {(
+                    [
+                      { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
+                      { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
+                      { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
+                      { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
+                    ] as const
+                  ).map(({ key, label, icon }) => (
                     <View key={`program-1rm:${key}`} style={styles.inputCard}>
                       <View style={styles.inputHeaderRow}>
                         <View style={styles.inputLabelRow}>
@@ -1260,17 +1321,43 @@ export default function ProgramsScreen() {
                         </View>
                         <Text style={styles.inputUnit}>{weightUnit}</Text>
                       </View>
-                      <MetricInput
-                        testID={`program-1rm-${key}`}
-                        ref={(ref) => {
-                          inputRefs.current[key] = ref;
-                        }}
-                        value={values[key as keyof typeof values]}
-                        onChangeText={(v) => updateOneRmValue(key as keyof OneRmValues, v)}
-                        returnKeyType={key === 'ohp' ? 'done' : 'next'}
-                        blurOnSubmit={key === 'ohp'}
-                        onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
-                      />
+                      <View ref={wrapperRefs[key]} collapsable={false}>
+                        <Pressable
+                          testID={`program-1rm-${key}`}
+                          accessibilityLabel={`program-1rm-${key}`}
+                          onPress={() => handleEditStart(key)}
+                          style={[
+                            styles.input,
+                            editingKey === key && styles.inputFocused,
+                          ]}
+                        >
+                          {editingKey === key ? (
+                            <TextInput
+                              style={styles.editInput}
+                              value={editValue}
+                              onChangeText={setEditValue}
+                              keyboardType="decimal-pad"
+                              autoFocus
+                              returnKeyType={key === 'ohp' ? 'done' : 'next'}
+                              blurOnSubmit={key === 'ohp'}
+                              onBlur={() => handleEditEnd(key)}
+                              onSubmitEditing={() =>
+                                focusNextInput(key as (typeof inputOrder)[number])
+                              }
+                            />
+                          ) : (
+                            <Text
+                              style={
+                                values[key]
+                                  ? styles.inputText
+                                  : styles.inputPlaceholder
+                              }
+                            >
+                              {values[key] || '0'}
+                            </Text>
+                          )}
+                        </Pressable>
+                      </View>
                     </View>
                   ))}
                 </View>

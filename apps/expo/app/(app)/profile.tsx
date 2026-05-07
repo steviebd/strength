@@ -63,18 +63,6 @@ async function syncWhoop(): Promise<{ success: boolean; errors?: string[] }> {
   });
 }
 
-function parseWhoopCallbackResult(url: string) {
-  try {
-    const parsed = new URL(url);
-    return {
-      error: parsed.searchParams.get('error'),
-      success: parsed.searchParams.get('success'),
-    };
-  } catch {
-    return { error: null, success: null };
-  }
-}
-
 export default function Profile() {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{ whoop?: string; error?: string; focus?: string }>();
@@ -462,33 +450,49 @@ export default function Profile() {
       const returnTo = Linking.createURL('/whoop-callback');
       const result = await connectWhoop(returnTo);
       if (result.authUrl) {
-        const authResult = await WebBrowser.openAuthSessionAsync(result.authUrl, returnTo);
-        if (authResult.type === 'success') {
-          const callback = parseWhoopCallbackResult(authResult.url);
-          if (callback.success === 'true') {
-            setSyncResult('WHOOP connected successfully!');
-            setHighlightWhoopCard(true);
-            setShouldFocusWhoopCard(true);
-            await loadWhoopStatus();
-            return;
-          }
-
-          if (callback.error) {
-            setError(decodeURIComponent(callback.error).replace(/_/g, ' '));
-            await loadWhoopStatus();
-            return;
-          }
-        }
-
-        if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
-          setError('WHOOP authorization was not completed');
-        }
+        // Open browser for WHOOP auth. The deep link handler (whoop-callback.tsx)
+        // will handle the redirect result and route back to this screen with
+        // whoop=connected or error params. openBrowserAsync does NOT block on
+        // the redirect, so the deep link is the single source of truth.
+        await WebBrowser.openBrowserAsync(result.authUrl);
+        // Poll whoop status as a fallback in case the deep link does not fire
+        // (e.g. if the user dismisses the browser and the system intent is lost).
+        // Stop once connected or after 60 seconds.
+        let attempts = 0;
+        const maxAttempts = 30;
+        const poll = () => {
+          fetchWhoopStatus()
+            .then((status) => {
+              attempts++;
+              if (status.connected) {
+                setWhoopStatus(status);
+                setSyncResult('WHOOP connected successfully!');
+                setHighlightWhoopCard(true);
+                setShouldFocusWhoopCard(true);
+                setWhoopLoading(false);
+                return;
+              }
+              if (attempts < maxAttempts) {
+                setTimeout(poll, 2000);
+              } else {
+                setWhoopLoading(false);
+              }
+            })
+            .catch(() => {
+              if (attempts < maxAttempts) {
+                setTimeout(poll, 2000);
+              } else {
+                setWhoopLoading(false);
+              }
+            });
+        };
+        setTimeout(poll, 2000);
       } else if (result.error) {
         setError(result.error);
+        setWhoopLoading(false);
       }
     } catch {
       setError('Failed to connect to WHOOP');
-    } finally {
       setWhoopLoading(false);
     }
   };

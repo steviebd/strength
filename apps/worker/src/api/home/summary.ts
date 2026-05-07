@@ -1,5 +1,6 @@
 import { eq, and, gte, lte, desc, isNotNull } from 'drizzle-orm';
 import { formatLocalDate } from '@strength/db';
+import { groupConsecutiveExercises, type GroupedExercise } from '@strength/db/client';
 import * as schema from '@strength/db';
 import { requireAuthContext } from '../auth';
 import { resolveUserTimezone, getUtcRangeForLocalDate } from '../../lib/timezone';
@@ -74,25 +75,6 @@ function formatSleepDuration(milliseconds: number | null): string | null {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${hours}h ${minutes}m`;
-}
-
-type GroupedExercise = { name: string; count: number; libraryId?: string; lift?: string };
-
-function groupConsecutiveExercises(
-  items: Array<{ name: string; libraryId?: string; lift?: string }>,
-): GroupedExercise[] {
-  const grouped: GroupedExercise[] = [];
-  for (const item of items) {
-    const key = item.libraryId ?? item.lift ?? item.name;
-    const last = grouped[grouped.length - 1];
-    const lastKey = last ? (last.libraryId ?? last.lift ?? last.name) : null;
-    if (last && lastKey === key) {
-      last.count++;
-    } else {
-      grouped.push({ name: item.name, count: 1, libraryId: item.libraryId, lift: item.lift });
-    }
-  }
-  return grouped;
 }
 
 export function computeStreak(localDate: string, workoutDates: Set<string>): number {

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Link, router } from 'expo-router';
 import { Text, View } from 'react-native';
-import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
+import { AuthShell } from '@/components/auth-shell';
 import { requestPasswordResetEmail } from '@/lib/password-reset';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Input';
@@ -12,7 +12,6 @@ export default function ForgotPasswordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const authShellRef = useRef<AuthShellHandle>(null);
   const emailInputRef = useRef<any>(null);
 
   async function handleSubmit() {
@@ -37,7 +36,6 @@ export default function ForgotPasswordScreen() {
   if (isSuccess) {
     return (
       <AuthShell
-        ref={authShellRef}
         eyebrow="Strength"
         title="Check your inbox"
         subtitle="If this email exists in our system, you will receive a reset link."
@@ -72,7 +70,6 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthShell
-      ref={authShellRef}
       eyebrow="Strength"
       title="Reset password"
       subtitle="Enter your email and we'll send you a link to reset your password."
