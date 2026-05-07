@@ -269,16 +269,18 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
+    lineHeight: textRoles.metricLabel.lineHeight,
   },
   summaryValue: {
     fontSize: typography.fontSizes.xxxl,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    lineHeight: 38,
+    lineHeight: textRoles.display.lineHeight,
   },
   summaryDelta: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
+    lineHeight: textRoles.body.lineHeight,
   },
   summaryDeltaOver: {
     color: colors.error,
@@ -301,7 +303,7 @@ const styles = StyleSheet.create({
   summaryExplanation: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
-    lineHeight: 20,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   macroRow: {
     flexDirection: 'row',
@@ -320,11 +322,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
+    lineHeight: textRoles.caption.lineHeight,
   },
   contextValue: {
     fontSize: typography.fontSizes.base,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   contextWhoopRow: {
     flexDirection: 'row',
@@ -350,11 +353,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   emptyStateText: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   mealList: {
     gap: spacing.md,

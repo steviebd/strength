@@ -216,6 +216,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.md,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   programsList: {
     gap: spacing.md,
@@ -238,10 +239,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
     flex: 1,
+    lineHeight: textRoles.cardTitle.lineHeight,
   },
   cardDescription: {
     color: colors.textMuted,
-    fontSize: typography.fontSizes.xs,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginTop: spacing.xs,
   },
   badgeRow: {
@@ -259,14 +262,17 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.medium,
     textTransform: 'capitalize',
+    lineHeight: textRoles.caption.lineHeight,
   },
   separator: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
   },
   metaText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
   },
   modalScroll: {
     flex: 1,
@@ -289,6 +295,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   modalContent: {
     paddingHorizontal: layout.screenPadding,
@@ -304,6 +311,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
+    lineHeight: textRoles.button.lineHeight,
   },
   secondaryButton: {
     borderRadius: radius.lg,
@@ -315,6 +323,8 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.button.lineHeight,
   },
   infoBox: {
     borderRadius: radius.lg,
@@ -329,27 +339,30 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.xs,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   infoBoxText: {
     color: colors.textMuted,
-    fontSize: typography.fontSizes.xs,
-    lineHeight: 18,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   programNameTitle: {
     color: colors.text,
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.sm,
+    lineHeight: textRoles.metricValue.lineHeight,
   },
   programDescriptionText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
-    lineHeight: 20,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginBottom: spacing.lg,
   },
   instructionsText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginBottom: spacing.xl,
   },
   inputGroup: {
@@ -379,11 +392,13 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     color: colors.text,
+    fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
   },
   inputUnit: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
   },
   input: {
     minHeight: layout.controlHeight,
@@ -420,6 +435,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
     textAlign: 'center',
+    lineHeight: textRoles.button.lineHeight,
   },
   dayChip: {
     borderRadius: radius.md,
@@ -444,11 +460,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   dayChipTextSelected: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   timeChip: {
     flex: 1,
@@ -473,11 +491,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   timeChipTextSelected: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   scheduleCard: {
     borderRadius: radius.lg,
@@ -492,10 +512,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
     marginBottom: spacing.xs,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   scheduleHint: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
     marginBottom: spacing.md,
   },
   dayChipsRow: {
@@ -516,6 +538,8 @@ const styles = StyleSheet.create({
   dateButtonText: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   startModeSection: {
     marginTop: spacing.md,
@@ -552,10 +576,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   startModeDescription: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
     marginTop: spacing.xs,
   },
   firstSessionRow: {
@@ -572,10 +598,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.xs,
+    lineHeight: textRoles.metricValue.lineHeight,
   },
   reviewMeta: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginBottom: spacing.lg,
   },
   reviewSection: {
@@ -584,16 +612,18 @@ const styles = StyleSheet.create({
   reviewLabel: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
     marginBottom: spacing.xs,
+  },
+  reviewValue: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   reviewDaysRow: {
     flexDirection: 'row',
     gap: spacing.xs,
     flexWrap: 'wrap',
-  },
-  reviewValue: {
-    color: colors.text,
-    fontSize: typography.fontSizes.sm,
   },
   activeSection: {
     marginBottom: spacing.xl,
@@ -615,10 +645,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   activeCardMeta: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginTop: spacing.xs,
   },
   activeCardButtons: {
@@ -649,6 +681,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
     color: colors.error,
+    lineHeight: textRoles.button.lineHeight,
   },
   offlineBanner: {
     borderRadius: radius.md,
@@ -661,6 +694,7 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   editInput: {
     flex: 1,

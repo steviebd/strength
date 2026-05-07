@@ -1066,6 +1066,7 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.base,
+    lineHeight: textRoles.body.lineHeight,
   },
   avatarSection: {
     alignItems: 'center',
@@ -1096,6 +1097,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
     marginTop: spacing.xs,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   card: {
     backgroundColor: colors.surface,
@@ -1159,6 +1161,7 @@ const styles = StyleSheet.create({
   rowChevron: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   statusDot: {
     width: 8,
@@ -1239,7 +1242,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
     marginBottom: spacing.md,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   errorBox: {
     marginTop: spacing.sm + spacing.xs,
@@ -1272,6 +1275,7 @@ const styles = StyleSheet.create({
   unitButtonText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   unitButtonTextActive: {
     color: colors.text,
@@ -1285,10 +1289,11 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   buttonSignOutText: {
-    fontSize: typography.fontSizes.base,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     textAlign: 'center',
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   versionRow: {
     alignItems: 'center',
@@ -1297,6 +1302,7 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+    lineHeight: textRoles.caption.lineHeight,
   },
   bodyweightRow: {
     flexDirection: 'row',
@@ -1333,6 +1339,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   offlineBanner: {
     marginTop: spacing.sm,
@@ -1345,6 +1352,7 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   nutritionGoalsSection: {
     marginTop: spacing.md,
@@ -1368,12 +1376,12 @@ const styles = StyleSheet.create({
   autoTargetsText: {
     fontSize: typography.fontSizes.base,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   autoTargetsSubtext: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
-    lineHeight: 20,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   customTargetsBox: {
     gap: spacing.md,
@@ -1392,6 +1400,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
+    lineHeight: textRoles.caption.lineHeight,
   },
   targetInputContainer: {
     flex: 1,
@@ -1405,6 +1414,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.error,
     textAlign: 'center',
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   targetButtonRow: {
     flexDirection: 'row',
@@ -1423,6 +1433,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     textAlign: 'center',
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   targetSaveButton: {
     flex: 1,
@@ -1436,6 +1447,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   targetButtonDisabled: {
     opacity: 0.5,
