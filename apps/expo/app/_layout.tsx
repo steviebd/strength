@@ -4,7 +4,7 @@ import { QueryProvider } from '@/providers/QueryProvider';
 import { colors } from '@/theme';
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { authClient } from '@/lib/auth-client';
 import { useEffect, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
@@ -19,7 +19,7 @@ TaskManager.defineTask(SYNC_TASK, async () => {
     const userId = session?.data?.user?.id;
     if (!userId) return BackgroundTask.BackgroundTaskResult.Failed;
 
-    await runTrainingSync(userId);
+    await syncOfflineQueueAndCache(userId);
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;

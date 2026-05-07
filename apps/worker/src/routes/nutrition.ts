@@ -12,7 +12,10 @@ import {
   upsertBodyStatsHandler,
   getBodyweightHistoryHandler,
 } from '../api/nutrition/body-stats';
-import { upsertTrainingContextHandler } from '../api/nutrition/training-context';
+import {
+  getTrainingContextHandler,
+  upsertTrainingContextHandler,
+} from '../api/nutrition/training-context';
 
 const router = createRouter();
 
@@ -28,6 +31,7 @@ router.get('/chat/history', getChatHistoryHandler);
 router.get('/body-stats', getBodyStatsHandler);
 router.post('/body-stats', upsertBodyStatsHandler);
 router.get('/bodyweight-history', getBodyweightHistoryHandler);
+router.get('/training-context', getTrainingContextHandler);
 router.post('/training-context', upsertTrainingContextHandler);
 
 export default router;

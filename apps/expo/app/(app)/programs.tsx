@@ -28,7 +28,7 @@ import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { generateId } from '@strength/db/client';
 import { enqueueSyncItem } from '@/db/sync-queue';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { useScrollToInput } from '@/context/ScrollContext';
 import { PageLayout } from '@/components/ui/PageLayout';
@@ -902,7 +902,7 @@ export default function ProgramsScreen() {
           sessionNumber: workout.sessionNumber,
         })),
       });
-      void runTrainingSync(userId);
+      void syncOfflineQueueAndCache(userId);
 
       setShowStartModal(false);
       setShowDetailModal(false);

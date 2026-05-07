@@ -314,6 +314,40 @@ export const localPendingWorkouts = sqliteTable('local_pending_workouts', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const localNutritionChatMessages = sqliteTable('local_nutrition_chat_messages', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  date: text('date').notNull(),
+  role: text('role').notNull(),
+  content: text('content').notNull(),
+  hasImage: integer('has_image', { mode: 'boolean' }).notNull().default(false),
+  imageUri: text('image_uri'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  syncedAt: integer('synced_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localNutritionEntries = sqliteTable('local_nutrition_entries', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  date: text('date').notNull(),
+  mealType: text('meal_type'),
+  name: text('name'),
+  calories: real('calories'),
+  proteinG: real('protein_g'),
+  carbsG: real('carbs_g'),
+  fatG: real('fat_g'),
+  loggedAt: integer('logged_at', { mode: 'timestamp_ms' }).notNull(),
+  syncedAt: integer('synced_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localNutritionTrainingContext = sqliteTable('local_nutrition_training_context', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().unique(),
+  trainingType: text('training_type').notNull(),
+  customLabel: text('custom_label'),
+  syncedAt: integer('synced_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export type LocalUserPreferences = typeof localUserPreferences.$inferSelect;
 export type LocalWorkout = typeof localWorkouts.$inferSelect;
 export type LocalWorkoutExercise = typeof localWorkoutExercises.$inferSelect;
@@ -323,3 +357,6 @@ export type LocalLastWorkout = typeof localLastWorkouts.$inferSelect;
 export type LocalNutritionDailySummary = typeof localNutritionDailySummaries.$inferSelect;
 export type LocalBodyStat = typeof localBodyStats.$inferSelect;
 export type LocalWhoopDatum = typeof localWhoopData.$inferSelect;
+export type LocalNutritionChatMessage = typeof localNutritionChatMessages.$inferSelect;
+export type LocalNutritionEntry = typeof localNutritionEntries.$inferSelect;
+export type LocalNutritionTrainingContext = typeof localNutritionTrainingContext.$inferSelect;

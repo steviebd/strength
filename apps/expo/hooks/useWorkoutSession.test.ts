@@ -68,7 +68,7 @@ vi.mock('@/db/write-queue', () => ({
 }));
 
 vi.mock('@/lib/workout-sync', () => ({
-  runTrainingSync: vi.fn(),
+  syncOfflineQueueAndCache: vi.fn(),
 }));
 
 vi.mock('@/lib/storage', () => ({
@@ -183,7 +183,7 @@ describe('useWorkoutSession', () => {
     const { enqueueWorkoutCompletion } = await import('@/db/sync-queue');
     const { advanceLocalProgramCycleAfterWorkout } = await import('@/db/training-cache');
     const { flushLocalWrites } = await import('@/db/write-queue');
-    const { runTrainingSync } = await import('@/lib/workout-sync');
+    const { syncOfflineQueueAndCache } = await import('@/lib/workout-sync');
     vi.mocked(saveLocalWorkoutDraft).mockResolvedValue(null as any);
     vi.mocked(completeLocalWorkout).mockResolvedValue({
       workout: {
@@ -198,7 +198,7 @@ describe('useWorkoutSession', () => {
     } as any);
     vi.mocked(enqueueWorkoutCompletion).mockResolvedValue('queue-1');
     vi.mocked(advanceLocalProgramCycleAfterWorkout).mockResolvedValue({} as any);
-    vi.mocked(runTrainingSync).mockReturnValue(never as any);
+    vi.mocked(syncOfflineQueueAndCache).mockReturnValue(never as any);
 
     const { useWorkoutSession } = await import('./useWorkoutSession');
     const result = useWorkoutSession();
@@ -217,6 +217,6 @@ describe('useWorkoutSession', () => {
       completedCycleWorkoutId: 'cycle-workout-1',
       workoutId: 'workout-1',
     });
-    expect(runTrainingSync).toHaveBeenCalledWith('user-1');
+    expect(syncOfflineQueueAndCache).toHaveBeenCalledWith('user-1');
   });
 });

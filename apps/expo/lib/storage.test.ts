@@ -27,30 +27,6 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-describe('setNutritionChatMessages', () => {
-  test('caps messages at 20 items', async () => {
-    const { setNutritionChatMessages, getNutritionChatMessages } = await import('./storage');
-    const messages = Array.from({ length: 25 }, (_, i) => ({ id: `msg-${i}` }));
-
-    await setNutritionChatMessages('2024-01-01', messages);
-    const cached = await getNutritionChatMessages<{ id: string }>('2024-01-01');
-
-    expect(cached).toHaveLength(20);
-    expect(cached[0].id).toBe('msg-5');
-    expect(cached[19].id).toBe('msg-24');
-  });
-
-  test('stores fewer than 20 messages as-is', async () => {
-    const { setNutritionChatMessages, getNutritionChatMessages } = await import('./storage');
-    const messages = [{ id: 'msg-1' }, { id: 'msg-2' }];
-
-    await setNutritionChatMessages('2024-01-01', messages);
-    const cached = await getNutritionChatMessages<{ id: string }>('2024-01-01');
-
-    expect(cached).toHaveLength(2);
-  });
-});
-
 describe('nutrition pending image storage', () => {
   test('stores and retrieves an image via platformStorage', async () => {
     const { setNutritionPendingImage, getNutritionPendingImage } = await import('./storage');

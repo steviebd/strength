@@ -57,6 +57,14 @@ vi.mock('@/db/body-stats', () => ({
   hydrateBodyweightHistory: vi.fn(),
 }));
 
+vi.mock('@/db/nutrition-cache', () => ({
+  hydrateNutritionCache: vi.fn(),
+}));
+
+vi.mock('@/lib/timezone', () => ({
+  getTodayLocalDate: vi.fn(() => '2024-01-01'),
+}));
+
 function createMockDb(row: { hydratedAt: Date } | undefined) {
   return {
     select: vi.fn(() => ({
@@ -69,7 +77,7 @@ function createMockDb(row: { hydratedAt: Date } | undefined) {
   };
 }
 
-describe('hydrateTrainingCache', () => {
+describe('hydrateLocalCache', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
     hydrateOfflineTrainingSnapshotMock.mockReset();
@@ -83,8 +91,8 @@ describe('hydrateTrainingCache', () => {
     const recent = new Date(Date.now() - 5_000);
     getLocalDbMock.mockReturnValue(createMockDb({ hydratedAt: recent }));
 
-    const { hydrateTrainingCache } = await import('./workout-sync');
-    await hydrateTrainingCache(userId);
+    const { hydrateLocalCache } = await import('./workout-sync');
+    await hydrateLocalCache(userId);
 
     expect(apiFetchMock).not.toHaveBeenCalled();
     expect(hydrateOfflineTrainingSnapshotMock).not.toHaveBeenCalled();
@@ -102,8 +110,8 @@ describe('hydrateTrainingCache', () => {
       recentWorkouts: [],
     });
 
-    const { hydrateTrainingCache } = await import('./workout-sync');
-    await hydrateTrainingCache(userId);
+    const { hydrateLocalCache } = await import('./workout-sync');
+    await hydrateLocalCache(userId);
 
     expect(apiFetchMock).toHaveBeenCalledWith('/api/training/offline-snapshot');
     expect(hydrateOfflineTrainingSnapshotMock).toHaveBeenCalledWith(userId, expect.any(Object));
@@ -121,8 +129,8 @@ describe('hydrateTrainingCache', () => {
       recentWorkouts: [],
     });
 
-    const { hydrateTrainingCache } = await import('./workout-sync');
-    await hydrateTrainingCache(userId, { force: true });
+    const { hydrateLocalCache } = await import('./workout-sync');
+    await hydrateLocalCache(userId, { force: true });
 
     expect(apiFetchMock).toHaveBeenCalledWith('/api/training/offline-snapshot');
     expect(hydrateOfflineTrainingSnapshotMock).toHaveBeenCalledWith(userId, expect.any(Object));

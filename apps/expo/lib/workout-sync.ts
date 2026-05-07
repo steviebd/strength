@@ -14,6 +14,8 @@ import {
   type OfflineTrainingSnapshot,
 } from '@/db/training-cache';
 import { hydrateBodyweightHistory, type BodyweightHistoryEntry } from '@/db/body-stats';
+import { hydrateNutritionCache } from '@/db/nutrition-cache';
+import { getTodayLocalDate } from '@/lib/timezone';
 import {
   buildWorkoutCompletionPayload,
   markWorkoutConflict,
@@ -347,12 +349,12 @@ export async function retryWorkoutSync(userId: string, workoutId: string) {
   await runSyncQueue(userId);
 }
 
-let lastTrainingHydrationAt = 0;
-let isTrainingSyncRunning = false;
+let lastHydrationAt = 0;
+let isDataSyncRunning = false;
 
-export async function hydrateTrainingCache(userId: string, options?: { force?: boolean }) {
+export async function hydrateLocalCache(userId: string, options?: { force?: boolean }) {
   const now = Date.now();
-  if (!options?.force && now - lastTrainingHydrationAt < 10_000) {
+  if (!options?.force && now - lastHydrationAt < 10_000) {
     return;
   }
 
@@ -369,23 +371,26 @@ export async function hydrateTrainingCache(userId: string, options?: { force?: b
       )
       .get();
     if (row && now - row.hydratedAt.getTime() < 10_000 && !options?.force) {
-      lastTrainingHydrationAt = row.hydratedAt.getTime();
+      lastHydrationAt = row.hydratedAt.getTime();
       return;
     }
   }
 
   const snapshot = await apiFetch<OfflineTrainingSnapshot>('/api/training/offline-snapshot');
   await hydrateOfflineTrainingSnapshot(userId, snapshot);
-  lastTrainingHydrationAt = now;
+  lastHydrationAt = now;
 }
 
-export async function runTrainingSync(userId: string, options?: { forceHydrate?: boolean }) {
-  if (isTrainingSyncRunning) return;
-  isTrainingSyncRunning = true;
+export async function syncOfflineQueueAndCache(
+  userId: string,
+  options?: { forceHydrate?: boolean },
+) {
+  if (isDataSyncRunning) return;
+  isDataSyncRunning = true;
   try {
     await runSyncQueue(userId);
     try {
-      await hydrateTrainingCache(userId, { force: options?.forceHydrate });
+      await hydrateLocalCache(userId, { force: options?.forceHydrate });
     } catch {
       // Offline is expected; keep serving local cache.
     }
@@ -396,11 +401,17 @@ export async function runTrainingSync(userId: string, options?: { forceHydrate?:
       // Offline is expected; keep serving local cache.
     }
     try {
+      const today = getTodayLocalDate();
+      await hydrateNutritionCache(userId, today, 'UTC');
+    } catch {
+      // Offline is expected; keep serving local cache.
+    }
+    try {
       await cleanupStaleLocalData(userId);
     } catch {
       // Cleanup failures should not break the sync/hydration flow.
     }
   } finally {
-    isTrainingSyncRunning = false;
+    isDataSyncRunning = false;
   }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { authClient } from '@/lib/auth-client';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { hasCompletedFirstSync, markFirstSyncComplete } from '@/lib/first-sync';
 import { colors, spacing, typography } from '@/theme';
 
@@ -37,7 +37,7 @@ export function FirstSyncGate({ children }: { children: React.ReactNode }) {
       }, 10_000);
 
       try {
-        await runTrainingSync(uid, { forceHydrate: true });
+        await syncOfflineQueueAndCache(uid, { forceHydrate: true });
       } catch {
         // Allow timeout to handle UI unblock
       } finally {

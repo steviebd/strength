@@ -23,7 +23,7 @@ import {
   flushLocalWrites,
 } from '@/db/write-queue';
 import { enqueueWorkoutCompletion } from '@/db/sync-queue';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { hasProgressionHistoryData } from '@/lib/workout-progression';
 import type {
   Workout,
@@ -446,7 +446,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         } else if ((workout as any).cycleWorkoutId) {
           await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
         }
-        void runTrainingSync(session.data.user.id);
+        void syncOfflineQueueAndCache(session.data.user.id);
       } else {
         const payload = buildDirectCompletionPayload(workout, latestExercises);
         await apiFetch(`/api/workouts/${workout.id}/sync-complete`, {

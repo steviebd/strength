@@ -451,43 +451,7 @@ export default function Profile() {
       const returnTo = Linking.createURL('/whoop-callback');
       const result = await connectWhoop(returnTo);
       if (result.authUrl) {
-        // Open browser for WHOOP auth. The deep link handler (whoop-callback.tsx)
-        // will handle the redirect result and route back to this screen with
-        // whoop=connected or error params. openBrowserAsync does NOT block on
-        // the redirect, so the deep link is the single source of truth.
         await WebBrowser.openBrowserAsync(result.authUrl);
-        // Poll whoop status as a fallback in case the deep link does not fire
-        // (e.g. if the user dismisses the browser and the system intent is lost).
-        // Stop once connected or after 60 seconds.
-        let attempts = 0;
-        const maxAttempts = 30;
-        const poll = () => {
-          fetchWhoopStatus()
-            .then((status) => {
-              attempts++;
-              if (status.connected) {
-                setWhoopStatus(status);
-                setSyncResult('WHOOP connected successfully!');
-                setHighlightWhoopCard(true);
-                setShouldFocusWhoopCard(true);
-                setWhoopLoading(false);
-                return;
-              }
-              if (attempts < maxAttempts) {
-                setTimeout(poll, 2000);
-              } else {
-                setWhoopLoading(false);
-              }
-            })
-            .catch(() => {
-              if (attempts < maxAttempts) {
-                setTimeout(poll, 2000);
-              } else {
-                setWhoopLoading(false);
-              }
-            });
-        };
-        setTimeout(poll, 2000);
       } else if (result.error) {
         setError(result.error);
         setWhoopLoading(false);
@@ -549,15 +513,13 @@ export default function Profile() {
         setHighlightWhoopCard(true);
         setShouldFocusWhoopCard(true);
       }
-      void loadWhoopStatus();
-      router.replace('/(app)/profile');
+      router.setParams({ whoop: undefined, focus: undefined });
       return;
     }
 
     if (typeof searchParams.error === 'string' && searchParams.error.length > 0) {
       setError(decodeURIComponent(searchParams.error).replace(/_/g, ' '));
-      void loadWhoopStatus();
-      router.replace('/(app)/profile');
+      router.setParams({ error: undefined });
     }
   }, [router, searchParams.error, searchParams.focus, searchParams.whoop, session?.user]);
 

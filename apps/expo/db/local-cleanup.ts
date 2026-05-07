@@ -1,7 +1,9 @@
 import { and, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import { getLocalDb } from './client';
 import {
+  localNutritionChatMessages,
   localNutritionDailySummaries,
+  localNutritionEntries,
   localWhoopData,
   localWorkoutExercises,
   localWorkouts,
@@ -21,6 +23,26 @@ export async function cleanupStaleLocalData(userId: string) {
       and(
         eq(localNutritionDailySummaries.userId, userId),
         lt(localNutritionDailySummaries.hydratedAt, sevenDaysAgo),
+      ),
+    )
+    .run();
+
+  // Delete cached nutrition chat messages older than 7 days
+  db.delete(localNutritionChatMessages)
+    .where(
+      and(
+        eq(localNutritionChatMessages.userId, userId),
+        lt(localNutritionChatMessages.syncedAt, sevenDaysAgo),
+      ),
+    )
+    .run();
+
+  // Delete cached nutrition entries older than 7 days
+  db.delete(localNutritionEntries)
+    .where(
+      and(
+        eq(localNutritionEntries.userId, userId),
+        lt(localNutritionEntries.syncedAt, sevenDaysAgo),
       ),
     )
     .run();

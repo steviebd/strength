@@ -21,14 +21,13 @@ import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import {
   getNutritionChatDraft,
-  getNutritionChatMessages,
   getNutritionPendingImage,
   removeNutritionPendingImage,
   setNutritionChatDraft,
-  setNutritionChatMessages,
   setNutritionPendingImage,
 } from '@/lib/storage';
 import { getCachedDailySummary, cacheDailySummary } from '@/db/nutrition';
+import { getLocalChatMessages } from '@/db/nutrition-cache';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ChatInput } from '@/components/nutrition/ChatInput';
@@ -49,7 +48,7 @@ import { getLocalDb } from '@/db/client';
 import { localChatMessageQueue } from '@/db/local-schema';
 import { eq, and } from 'drizzle-orm';
 import { generateId } from '@strength/db/client';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { hasPendingTrainingWrites } from '@/db/training-read-model';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
@@ -424,14 +423,21 @@ export default function NutritionScreen() {
 
     async function restoreLocalState() {
       const [cachedMessages, cachedDraft, cachedPendingImage] = await Promise.all([
-        getNutritionChatMessages<ChatMessageData>(localStateKey),
+        userId ? getLocalChatMessages(userId, date) : Promise.resolve([]),
         getNutritionChatDraft(localStateKey),
         getNutritionPendingImage(localStateKey),
       ]);
 
       if (isCancelled) return;
 
-      setMessages(cachedMessages.map(normalizeMessage));
+      setMessages(
+        cachedMessages.map(
+          (m): ChatMessageData => ({
+            ...m,
+            imageUri: undefined,
+          }),
+        ),
+      );
       setDraftText(cachedDraft);
       setPendingImage(cachedPendingImage);
       setHistoryCursor(null);
@@ -448,11 +454,6 @@ export default function NutritionScreen() {
       isCancelled = true;
     };
   }, [localStateKey]);
-
-  useEffect(() => {
-    if (!hasRestoredLocalState) return;
-    void setNutritionChatMessages(localStateKey, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
-  }, [hasRestoredLocalState, localStateKey, messages]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
@@ -797,7 +798,7 @@ export default function NutritionScreen() {
         .set({ status: 'pending', attemptCount: 0, updatedAt: new Date() })
         .where(eq(localChatMessageQueue.id, queueId))
         .run();
-      await runTrainingSync(userId);
+      await syncOfflineQueueAndCache(userId);
     },
     [userId],
   );

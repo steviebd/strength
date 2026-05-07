@@ -12,7 +12,7 @@ import { apiFetch } from '@/lib/api';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { getLocalDb } from '@/db/client';
 import { localBodyStats } from '@/db/local-schema';
-import { useTrainingSync } from '@/hooks/useTrainingSync';
+import { useDataSync } from '@/hooks/useDataSync';
 import { TabIconWithBadge } from '@/components/TabIconWithBadge';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
 import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
@@ -101,7 +101,7 @@ function AppTabs() {
       });
     },
   });
-  useTrainingSync();
+  useDataSync();
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;

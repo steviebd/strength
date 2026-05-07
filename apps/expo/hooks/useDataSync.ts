@@ -1,27 +1,38 @@
 import { useCallback, useEffect } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 
-export function useTrainingSync() {
+export function useDataSync() {
+  const queryClient = useQueryClient();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
   const sync = useCallback(
-    (forceHydrate = false) => {
+    async (forceHydrate = false) => {
       if (userId) {
-        void runTrainingSync(userId, { forceHydrate });
+        try {
+          await syncOfflineQueueAndCache(userId, { forceHydrate });
+        } catch {
+          // Errors handled internally by syncOfflineQueueAndCache
+        }
       }
+      queryClient.invalidateQueries();
     },
-    [userId],
+    [userId, queryClient],
   );
 
   useEffect(() => {
     sync();
   }, [sync]);
 
-  useFocusEffect(sync);
+  useFocusEffect(
+    useCallback(() => {
+      void sync();
+    }, [sync]),
+  );
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
