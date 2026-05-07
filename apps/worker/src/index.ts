@@ -52,6 +52,7 @@ type Variables = {
   user: ReturnType<typeof createAuth>['$Infer']['Session']['user'] | null;
   session: ReturnType<typeof createAuth>['$Infer']['Session']['session'] | null;
   auth: ReturnType<typeof createAuth> | null;
+  authLoaded: boolean;
 };
 
 const app = new Hono<{ Bindings: WorkerEnv; Variables: Variables }>();
@@ -242,7 +243,16 @@ app.options('/api/*', async (c) => {
   return c.text('', 200);
 });
 
-app.use('*', async (c, next) => {
+app.use('/api/*', async (c, next) => {
+  if (
+    c.req.path.startsWith('/api/auth/') ||
+    c.req.path.startsWith('/api/webhooks/') ||
+    (c.req.method === 'GET' && c.req.path === '/api/programs')
+  ) {
+    await next();
+    return;
+  }
+
   await populateAuthContext(c);
   await next();
 });

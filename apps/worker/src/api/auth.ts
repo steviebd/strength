@@ -12,9 +12,12 @@ export type AppVariables = {
   user: AuthUser | null;
   session: AuthSession | null;
   auth: AuthInstance | null;
+  authLoaded: boolean;
 };
 
 type AppContext = Context<{ Bindings: WorkerEnv; Variables: AppVariables }>;
+
+const authByEnv = new WeakMap<WorkerEnv, AuthInstance>();
 
 export function createDb(env: WorkerEnv) {
   return drizzle(env.DB, { schema });
@@ -40,16 +43,28 @@ export function getAuth(c: any) {
     return cached;
   }
 
+  const env = c.env as WorkerEnv;
+  if (env.APP_ENV !== 'development') {
+    const cachedForEnv = authByEnv.get(env);
+    if (cachedForEnv) {
+      c.set('auth', cachedForEnv);
+      return cachedForEnv;
+    }
+  }
+
   const headers = getAuthHeaders(c);
   const clientOrigin = headers.get('origin');
   // For native clients without standard Origin header, use the worker's configured base URL
-  const origin = clientOrigin || resolveBaseURL(c.env as WorkerEnv) || undefined;
-  const auth = createAuth(c.env as WorkerEnv, headers, origin);
+  const origin = clientOrigin || resolveBaseURL(env) || undefined;
+  const auth = createAuth(env, headers, origin);
+  if (env.APP_ENV !== 'development') {
+    authByEnv.set(env, auth);
+  }
   c.set('auth', auth);
   return auth;
 }
 
-async function loadAuthSession(c: any) {
+export async function loadAuthSession(c: any) {
   const auth = getAuth(c);
   const headers = getAuthHeaders(c);
   const session = await auth.api.getSession({ headers });
@@ -63,6 +78,7 @@ export async function populateAuthContext(c: any) {
 
   c.set('user', user);
   c.set('session', session);
+  c.set('authLoaded', true);
 
   return { user, session };
 }
@@ -73,11 +89,28 @@ export async function populateAuthContext(c: any) {
  * requests.
  */
 export async function requireAuth(c: any) {
+  const user = c.get('user') ?? null;
+  const session = c.get('session') ?? null;
+  if (user && session) {
+    return { user, session };
+  }
+
+  if (c.get('authLoaded')) {
+    return { user: null, session: null };
+  }
+
   const resolvedSession = await loadAuthSession(c);
 
   if (!resolvedSession) {
+    c.set('user', null);
+    c.set('session', null);
+    c.set('authLoaded', true);
     return { user: null, session: null };
   }
+
+  c.set('user', resolvedSession.user);
+  c.set('session', resolvedSession.session);
+  c.set('authLoaded', true);
 
   return resolvedSession;
 }
