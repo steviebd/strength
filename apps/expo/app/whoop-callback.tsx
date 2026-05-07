@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { View, Text, Platform, ActivityIndicator, StyleSheet } from 'react-native';
-import { colors, typography } from '@/theme';
+import { colors, textRoles, typography } from '@/theme';
 import { apiFetch } from '@/lib/api';
 
 interface WhoopStatus {
@@ -109,12 +109,15 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.medium,
     textAlign: 'center',
+    lineHeight: textRoles.screenSubtitle.lineHeight,
   },
   subtitle: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
     textAlign: 'center',
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   errorIcon: {
     color: colors.error,
@@ -125,5 +128,6 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: typography.fontSizes.base,
     textAlign: 'center',
+    lineHeight: textRoles.body.lineHeight,
   },
 });

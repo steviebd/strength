@@ -1118,6 +1118,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     marginBottom: spacing.md,
+    lineHeight: textRoles.cardTitle.lineHeight,
   },
   row: {
     flexDirection: 'row',
@@ -1133,10 +1134,12 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   rowValue: {
     fontSize: typography.fontSizes.base,
     color: colors.text,
+    lineHeight: textRoles.body.lineHeight,
   },
   rowValueFlex: {
     flex: 1,
@@ -1166,6 +1169,7 @@ const styles = StyleSheet.create({
   statusConnectedText: {
     fontSize: typography.fontSizes.sm,
     color: colors.success,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   loadingRow: {
     alignItems: 'center',
@@ -1189,14 +1193,16 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonSecondary: {
     backgroundColor: colors.border,
   },
   buttonSecondaryText: {
-    fontSize: typography.fontSizes.base,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonDanger: {
     borderWidth: 1,
@@ -1204,9 +1210,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   buttonDangerText: {
-    fontSize: typography.fontSizes.base,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.accent,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonWhoop: {
     backgroundColor: '#E41E3F',
@@ -1226,6 +1233,7 @@ const styles = StyleSheet.create({
   syncResultText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+    lineHeight: textRoles.caption.lineHeight,
   },
   connectDescription: {
     fontSize: typography.fontSizes.base,
@@ -1244,6 +1252,7 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   unitToggle: {
     flexDirection: 'row',

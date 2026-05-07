@@ -8,7 +8,7 @@ import {
   Surface,
 } from '@/components/ui/app-primitives';
 import { MealCard } from './MealCard';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, radius, spacing, textRoles, typography } from '@/theme';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -336,6 +336,7 @@ const styles = StyleSheet.create({
   contextMeta: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   emptyState: {
     borderRadius: radius.md,
