@@ -43,6 +43,7 @@ export interface LocalWorkoutHistoryItem {
   exerciseCount: number;
   syncStatus: WorkoutSyncStatus;
   lastSyncError: string | null;
+  programName: string | null;
 }
 
 export interface LocalActiveWorkoutDraftItem {
@@ -1259,6 +1260,21 @@ export async function listLocalWorkoutHistory(userId: string, limit = 50) {
     counts.set(row.workoutId, (counts.get(row.workoutId) ?? 0) + 1);
   }
 
+  const programCycleIds = [
+    ...new Set(rows.map((row) => row.programCycleId).filter(Boolean)),
+  ] as string[];
+  const programNameMap = new Map<string, string>();
+  if (programCycleIds.length > 0) {
+    const cycles = db
+      .select({ id: localProgramCycles.id, name: localProgramCycles.name })
+      .from(localProgramCycles)
+      .where(inArray(localProgramCycles.id, programCycleIds))
+      .all();
+    for (const cycle of cycles) {
+      programNameMap.set(cycle.id, cycle.name);
+    }
+  }
+
   return rows.map(
     (row): LocalWorkoutHistoryItem => ({
       id: row.id,
@@ -1271,6 +1287,7 @@ export async function listLocalWorkoutHistory(userId: string, limit = 50) {
       exerciseCount: counts.get(row.id) ?? 0,
       syncStatus: row.syncStatus as WorkoutSyncStatus,
       lastSyncError: row.lastSyncError ?? null,
+      programName: row.programCycleId ? (programNameMap.get(row.programCycleId) ?? null) : null,
     }),
   );
 }

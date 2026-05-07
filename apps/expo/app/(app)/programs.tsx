@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   inputIcon: {
-    fontSize: 20,
+    fontSize: typography.fontSizes.xl,
   },
   inputLabel: {
     color: colors.text,

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { View, Text, Platform, ActivityIndicator, StyleSheet } from 'react-native';
-import { colors, textRoles, typography } from '@/theme';
+import { colors, spacing, textRoles, typography } from '@/theme';
 import { apiFetch } from '@/lib/api';
 
 interface WhoopStatus {
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
-    gap: 16,
+    gap: spacing.md,
     paddingHorizontal: 32,
   },
   title: {

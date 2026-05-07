@@ -363,7 +363,7 @@ export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
-  const { activeTimezone } = useUserPreferences();
+  const { activeTimezone, weightUnit } = useUserPreferences();
   const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
@@ -1095,6 +1095,7 @@ export default function NutritionScreen() {
               targets={summary.targets}
               targetMeta={summary.targetMeta}
               bodyweightKg={summary.bodyweightKg}
+              weightUnit={weightUnit}
               trainingType={trainingType}
               onTrainingTypeChange={handleTrainingTypeChange}
               whoopData={

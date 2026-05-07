@@ -7,7 +7,7 @@ import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { OfflineError } from '@/lib/offline-mutation';
 import { convertToDisplayWeight } from '@strength/db/client';
-import { colors, radius, spacing, typography, textRoles } from '@/theme';
+import { colors, overlay, radius, spacing, typography, textRoles } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import {
   Badge,
@@ -482,8 +482,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: overlay.medium,
+    backgroundColor: overlay.subtle,
   },
   avatarText: {
     fontSize: 18,
@@ -500,14 +500,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: spacing.md,
   },
   workoutHeaderLeft: {
     flex: 1,
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
   },
   workoutTitleGroup: {
-    gap: 8,
+    gap: spacing.sm,
   },
   workoutTitle: {
     fontSize: textRoles.screenTitle.fontSize,
@@ -527,22 +527,22 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   workoutIcon: {
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: radius.lg,
+    padding: spacing.sm + spacing.xs,
     backgroundColor: 'rgba(251,146,60,0.1)',
   },
   exerciseList: {
-    gap: 12,
-    borderRadius: 16,
+    gap: spacing.sm + spacing.xs,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    padding: 16,
+    borderColor: overlay.muted,
+    backgroundColor: overlay.inverseSubtle,
+    padding: spacing.md,
   },
   exerciseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
   },
   exerciseNumber: {
     height: 32,
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: overlay.subtle,
   },
   exerciseNumberText: {
     fontSize: 14,
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   },
   workoutActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
   },
   offlineBanner: {
     backgroundColor: 'rgba(251,146,60,0.15)',
@@ -574,15 +574,15 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     color: '#fdba74',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: typography.fontWeights.medium,
   },
   metricsRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
     marginBottom: spacing.lg - 4,
   },
   quickAccessSection: {
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
     marginBottom: spacing.lg - 4,
   },
   quickAccessCard: {},
@@ -593,7 +593,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: spacing.md,
   },
   quickAccessContent: {
     flex: 1,
@@ -625,7 +625,7 @@ const styles = StyleSheet.create({
   },
   recoveryMetrics: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
   },
   oneRmCard: {
     marginBottom: spacing.lg - 4,
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
   oneRmGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: spacing.sm + spacing.xs,
   },
   legalFooter: {
     flexDirection: 'row',

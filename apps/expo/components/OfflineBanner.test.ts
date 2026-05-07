@@ -35,6 +35,7 @@ const mockGetPendingSyncItemCount = vi.hoisted(() => vi.fn(() => Promise.resolve
 vi.mock('react-native', () => ({
   View: 'View',
   Text: 'Text',
+  StyleSheet: { create: (styles: Record<string, unknown>) => styles },
 }));
 
 vi.mock('@/theme', () => ({
@@ -49,6 +50,14 @@ vi.mock('@/theme', () => ({
   },
   spacing: {
     sm: 8,
+  },
+  typography: {
+    fontSizes: {
+      sm: 13,
+    },
+    fontWeights: {
+      medium: '500',
+    },
   },
 }));
 
@@ -97,7 +106,7 @@ describe('OfflineBanner', () => {
     const text = result.props.children;
     expect(text.type).toBe('Text');
     expect(text.props.children).toBe("Offline — data will sync when you're back online");
-    expect(text.props.style.color).toBe('#ef4444');
+    expect(text.props.style[1].color).toBe('#ef4444');
   });
 
   test('shows orange pending-sync banner when online with pending items', async () => {
@@ -114,7 +123,7 @@ describe('OfflineBanner', () => {
     const text = result.props.children;
     expect(text.type).toBe('Text');
     expect(text.props.children).toEqual([3, ' change(s) pending sync']);
-    expect(text.props.style.color).toBe('#f59e0b');
+    expect(text.props.style[1].color).toBe('#f59e0b');
   });
 
   test('fetches pending count every 5 seconds when userId exists', async () => {

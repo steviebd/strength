@@ -199,7 +199,12 @@ export default function WorkoutSessionScreen() {
   const [, setShowFloatingPill] = useState(false);
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<any>(null);
-  const { activeTimezone, weightUnit: userWeightUnit, distanceUnit } = useUserPreferences();
+  const {
+    activeTimezone,
+    weightUnit: userWeightUnit,
+    distanceUnit,
+    heightUnit,
+  } = useUserPreferences();
 
   const scrollYRef = useRef(0);
   const setRefsRef = useRef(new Map<string, React.RefObject<View | null>>());
@@ -1002,6 +1007,8 @@ export default function WorkoutSessionScreen() {
               : undefined
           }
           weightUnit={weightUnit}
+          distanceUnit={distanceUnit}
+          heightUnit={heightUnit}
           defaultIncrement={getDefaultProgressionIncrement(weightUnit)}
           exercises={pendingExerciseProgressionPreviews}
           allowPerExerciseEdit={false}

@@ -1,4 +1,5 @@
 import type { ExerciseHistorySnapshot } from '@/db/workouts';
+import type { DistanceUnit } from '@/lib/units';
 
 export type WeightUnit = 'kg' | 'lbs';
 export type ProgressionMode = 'progress' | 'use_last' | 'empty' | 'custom' | null;
@@ -104,8 +105,12 @@ function formatDurationIncrement(seconds: number): string {
   return formatted.includes(':') ? `${formatted} min` : formatted;
 }
 
-function formatDistance(meters: number): string {
-  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+function formatDistance(meters: number, unit: DistanceUnit): string {
+  if (unit === 'km') {
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${meters} m`;
+  }
+  if (meters >= 1609.344) return `${(meters / 1609.344).toFixed(1)} mi`;
   return `${meters} m`;
 }
 
@@ -113,6 +118,7 @@ export function getLastWorkoutSummary(
   sets: Array<ProgressionHistorySet>,
   exerciseType: string | null | undefined,
   weightUnit: WeightUnit,
+  distanceUnit: DistanceUnit,
 ): string {
   const type = exerciseType ?? 'weights';
   const hasWeight = hasWeightInSets(sets);
@@ -150,7 +156,8 @@ export function getLastWorkoutSummary(
     if (!best) return 'No data';
     const parts: string[] = [];
     if (best.duration !== null && best.duration > 0) parts.push(formatDuration(best.duration));
-    if (best.distance !== null && best.distance > 0) parts.push(formatDistance(best.distance));
+    if (best.distance !== null && best.distance > 0)
+      parts.push(formatDistance(best.distance, distanceUnit));
     return parts.length > 0 ? parts.join(' • ') : 'No data';
   }
 
@@ -171,6 +178,7 @@ export function getSuggestedSummary(
   exerciseType: string | null | undefined,
   increment: number,
   weightUnit: WeightUnit,
+  distanceUnit: DistanceUnit,
 ): { summary: string; delta: string } {
   const type = exerciseType ?? 'weights';
   const hasWeight = hasWeightInSets(sets);
@@ -212,7 +220,8 @@ export function getSuggestedSummary(
     const parts: string[] = [];
     if (best.duration !== null && best.duration > 0)
       parts.push(formatDuration(best.duration + increment));
-    if (best.distance !== null && best.distance > 0) parts.push(formatDistance(best.distance));
+    if (best.distance !== null && best.distance > 0)
+      parts.push(formatDistance(best.distance, distanceUnit));
     const summary = parts.length > 0 ? parts.join(' • ') : 'No data';
     return { summary, delta: `+${formatDurationIncrement(increment)}` };
   }

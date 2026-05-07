@@ -482,7 +482,7 @@ export function ExerciseSearch({
             />
             {loading && (
               <View style={styles.loadingIndicator}>
-                <ActivityIndicator size="small" color="#f97316" />
+                <ActivityIndicator size="small" color={colors.accentSecondary} />
               </View>
             )}
           </View>
@@ -716,7 +716,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   closeButtonText: {
-    fontSize: 20,
+    fontSize: typography.fontSizes.xl,
     color: colors.textMuted,
   },
   searchContainer: {

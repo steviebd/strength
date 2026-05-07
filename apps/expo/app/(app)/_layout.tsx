@@ -3,7 +3,7 @@ import { ActivityIndicator, View, AppState } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '@/theme';
+import { colors, typography } from '@/theme';
 import { UserPreferencesProvider, useUserPreferences } from '@/context/UserPreferencesContext';
 import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
 import { FirstSyncGate } from '@/components/FirstSyncGate';
@@ -119,7 +119,7 @@ function AppTabs() {
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabelStyle: {
             fontSize: 12,
-            fontWeight: '600',
+            fontWeight: typography.fontWeights.semibold,
             marginTop: 2,
           },
           tabBarItemStyle: {

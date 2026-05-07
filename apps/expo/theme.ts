@@ -65,8 +65,8 @@ export const statusBg = {
   warningBorder: 'rgba(245,158,11,0.3)',
   error: 'rgba(239,68,68,0.12)',
   errorBorder: 'rgba(239,68,68,0.3)',
-  dangerStrong: 'rgba(244,63,94,0.2)',
-  dangerSubtle: 'rgba(244,63,94,0.1)',
+  dangerStrong: 'rgba(239,68,68,0.2)',
+  dangerSubtle: 'rgba(239,68,68,0.1)',
 };
 
 export const spacing = {
@@ -88,6 +88,7 @@ export const radius = {
 
 export const typography = {
   fontSizes: {
+    xxs: 10,
     xs: 11,
     sm: 13,
     base: 15,
@@ -101,6 +102,7 @@ export const typography = {
     medium: '500' as const,
     semibold: '600' as const,
     bold: '700' as const,
+    heavy: '800' as const,
   },
 };
 

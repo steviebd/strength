@@ -164,7 +164,7 @@ function buildResetPasswordBridgeHTML(nativeURL: string) {
         display: grid;
         place-items: center;
         background: #0a0a0a;
-        color: #f8fafc;
+        color: #fafafa;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       main {
@@ -182,7 +182,7 @@ function buildResetPasswordBridgeHTML(nativeURL: string) {
         text-decoration: none;
       }
       p {
-        color: #94a3b8;
+        color: #a1a1aa;
         line-height: 1.5;
       }
     </style>
@@ -502,16 +502,16 @@ app.get('/connect-whoop', (c) => {
         min-height: 100vh;
         display: grid;
         place-items: center;
-        background: #0b1110;
-        color: #f5f5f5;
+        background: #0a0a0a;
+        color: #fafafa;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       main {
         width: min(560px, calc(100vw - 32px));
         padding: 32px;
         border-radius: 24px;
-        background: #121918;
-        border: 1px solid #26302d;
+        background: #18181b;
+        border: 1px solid #27272a;
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.24);
       }
       h1 {
@@ -521,7 +521,7 @@ app.get('/connect-whoop', (c) => {
       }
       p {
         margin: 0;
-        color: #b7c0bd;
+        color: #a1a1aa;
         line-height: 1.5;
       }
     </style>

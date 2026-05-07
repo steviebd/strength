@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/app-primitives';
 import { MealCard } from './MealCard';
 import { colors, radius, spacing, textRoles, typography } from '@/theme';
+import { convertToDisplayWeight } from '@strength/db/client';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -43,6 +44,7 @@ interface NutritionDashboardProps {
   targets: { calories: number; proteinG: number; carbsG: number; fatG: number };
   targetMeta: TargetMeta;
   bodyweightKg: number | null;
+  weightUnit: 'kg' | 'lbs';
   trainingType: TrainingType;
   onTrainingTypeChange: (type: TrainingType) => void;
   whoopData?: WhoopData | null;
@@ -81,6 +83,7 @@ export function NutritionDashboard({
   targets,
   targetMeta,
   bodyweightKg,
+  weightUnit,
   trainingType,
   onTrainingTypeChange,
   whoopData,
@@ -180,7 +183,7 @@ export function NutritionDashboard({
             <View style={styles.contextRow}>
               <Text style={styles.contextLabel}>Target basis</Text>
               <Text style={styles.contextValue}>
-                {bodyweightKg} kg bodyweight
+                {convertToDisplayWeight(bodyweightKg, weightUnit)} {weightUnit} bodyweight
                 {targetMeta.strategy === 'manual' ? ' with manual profile overrides' : ''}
               </Text>
             </View>

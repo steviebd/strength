@@ -5,7 +5,7 @@ import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { apiFetch } from '@/lib/api';
 import { transformWhoopData, WhoopData, WhoopRecovery, WhoopSleep } from '@/lib/whoop';
-import { colors, radius, textRoles, typography } from '@/theme';
+import { colors, radius, spacing, textRoles, typography } from '@/theme';
 
 async function fetchWhoopData(): Promise<WhoopData> {
   const raw = await apiFetch<WhoopData>('/api/whoop/data?days=30');
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
   },
   recoveryScoreBox: {
     borderRadius: radius.md,
-    padding: 16,
+    padding: spacing.md,
     marginBottom: 12,
   },
   recoveryScoreValue: {

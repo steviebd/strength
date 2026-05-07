@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FormScrollView } from '@/components/ui/FormScrollView';
-import { colors, spacing, textRoles, radius, layout } from '@/theme';
+import { colors, spacing, textRoles, radius, typography, layout } from '@/theme';
 
 interface AuthShellProps {
   eyebrow: string;
@@ -15,62 +15,27 @@ export function AuthShell({ eyebrow, title, subtitle, children }: AuthShellProps
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={styles.root}>
       <FormScrollView horizontalPadding={0} bottomInset={spacing.xl}>
         <View
-          style={{
-            paddingHorizontal: layout.screenPadding,
-            paddingTop: Math.max(insets.top, spacing.xl),
-            paddingBottom: spacing.xl,
-          }}
+          style={[
+            styles.inner,
+            {
+              paddingTop: Math.max(insets.top, spacing.xl),
+            },
+          ]}
         >
-          <View style={{ alignItems: 'center', marginBottom: spacing.xl }}>
-            <View
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: radius.lg,
-                backgroundColor: colors.accent,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: spacing.lg,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 8,
-              }}
-            >
-              <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>S</Text>
+          <View style={styles.headerGroup}>
+            <View style={styles.logoCircle}>
+              <Text style={styles.logoText}>S</Text>
             </View>
-            <Text style={{ ...textRoles.eyebrow, color: colors.textMuted }}>{eyebrow}</Text>
+            <Text style={styles.eyebrow}>{eyebrow}</Text>
           </View>
 
-          <View
-            style={{
-              borderRadius: radius.xl,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.surface,
-              padding: spacing.lg,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.25,
-              shadowRadius: 16,
-              elevation: 12,
-            }}
-          >
-            <View style={{ marginBottom: spacing.lg }}>
-              <Text style={{ ...textRoles.screenTitle, color: colors.text }}>{title}</Text>
-              <Text
-                style={{
-                  ...textRoles.screenSubtitle,
-                  color: colors.textMuted,
-                  marginTop: spacing.sm,
-                }}
-              >
-                {subtitle}
-              </Text>
+          <View style={styles.card}>
+            <View style={styles.titleGroup}>
+              <Text style={styles.title}>{title}</Text>
+              <Text style={styles.subtitle}>{subtitle}</Text>
             </View>
             {children}
           </View>
@@ -79,3 +44,65 @@ export function AuthShell({ eyebrow, title, subtitle, children }: AuthShellProps
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  inner: {
+    paddingHorizontal: layout.screenPadding,
+    paddingBottom: spacing.xl,
+  },
+  headerGroup: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  logoCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  logoText: {
+    fontSize: textRoles.screenTitle.fontSize,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+  },
+  eyebrow: {
+    ...textRoles.eyebrow,
+    color: colors.textMuted,
+  },
+  card: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  titleGroup: {
+    marginBottom: spacing.lg,
+  },
+  title: {
+    ...textRoles.screenTitle,
+    color: colors.text,
+  },
+  subtitle: {
+    ...textRoles.screenSubtitle,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
+});

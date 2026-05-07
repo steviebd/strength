@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, typography } from '@/theme';
+import { colors, spacing, statusBg, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -1285,19 +1285,8 @@ export function TemplateEditor({
       </ScreenScrollView>
 
       {offlineMessage && (
-        <View
-          style={{
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: 'rgba(239, 68, 68, 0.2)',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            marginHorizontal: 16,
-            marginBottom: 8,
-          }}
-        >
-          <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
         </View>
       )}
 
@@ -1316,7 +1305,7 @@ export function TemplateEditor({
             fullWidth
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+              <ActivityIndicator size="small" color={colors.text} />
             ) : (
               <Text style={styles.saveButtonText}>Save Template</Text>
             )}
@@ -1605,6 +1594,20 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     textAlign: 'center',
+  },
+  offlineBanner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  offlineBannerText: {
+    fontSize: 14,
+    color: colors.error,
   },
 });
 

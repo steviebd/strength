@@ -625,7 +625,7 @@ export default function Profile() {
               ]}
             >
               {saveBodyweightMutation.isPending ? (
-                <ActivityIndicator color="#ffffff" size="small" />
+                <ActivityIndicator color={colors.text} size="small" />
               ) : (
                 <Text style={styles.saveButtonText}>Save</Text>
               )}
@@ -662,8 +662,8 @@ export default function Profile() {
                       {auto.calories} cal | {auto.proteinG}g P | {auto.carbsG}g C | {auto.fatG}g F
                       {'\n'}
                       <Text style={styles.autoTargetsSubtext}>
-                        Based on {bodyStats?.bodyweightKg}kg bodyweight. Adjusted daily by training
-                        type.
+                        Based on {convertToDisplayWeight(bodyStats?.bodyweightKg ?? 0, weightUnit)}
+                        {weightUnit} bodyweight. Adjusted daily by training type.
                       </Text>
                     </Text>
                   );
@@ -754,7 +754,7 @@ export default function Profile() {
                   ]}
                 >
                   {saveTargetsMutation.isPending ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    <ActivityIndicator color={colors.text} size="small" />
                   ) : (
                     <Text style={styles.targetSaveButtonText}>Save targets</Text>
                   )}
@@ -813,7 +813,7 @@ export default function Profile() {
               >
                 {syncing ? (
                   <View style={styles.buttonSpinner}>
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    <ActivityIndicator color={colors.text} size="small" />
                   </View>
                 ) : (
                   <Text style={styles.buttonPrimaryText}>Sync Data</Text>
@@ -856,7 +856,7 @@ export default function Profile() {
             >
               {whoopLoading ? (
                 <View style={styles.buttonSpinner}>
-                  <ActivityIndicator color="#ffffff" size="small" />
+                  <ActivityIndicator color={colors.text} size="small" />
                 </View>
               ) : (
                 <Text style={styles.buttonPrimaryText}>Connect WHOOP</Text>
@@ -1150,7 +1150,7 @@ const styles = StyleSheet.create({
   rowValueRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
     flexShrink: 1,
     marginLeft: spacing.md,
   },
@@ -1164,9 +1164,9 @@ const styles = StyleSheet.create({
     lineHeight: textRoles.bodySmall.lineHeight,
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: spacing.sm,
+    height: spacing.sm,
+    borderRadius: spacing.xs,
     backgroundColor: colors.success,
   },
   statusConnectedText: {
@@ -1219,7 +1219,7 @@ const styles = StyleSheet.create({
     lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonWhoop: {
-    backgroundColor: '#E41E3F',
+    backgroundColor: colors.error,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -1259,7 +1259,7 @@ const styles = StyleSheet.create({
   },
   unitToggle: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   unitButton: {
     borderRadius: radius.sm,
@@ -1286,7 +1286,7 @@ const styles = StyleSheet.create({
   buttonSignOut: {
     marginTop: spacing.xl,
     backgroundColor: colors.accent,
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
   },
   buttonSignOutText: {
     fontSize: typography.fontSizes.sm,
@@ -1315,7 +1315,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 8,
+    gap: spacing.sm,
   },
   bodyweightInputContainer: {
     flex: 1,

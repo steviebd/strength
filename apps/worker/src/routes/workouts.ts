@@ -137,8 +137,14 @@ router.get(
         totalVolume: schema.workouts.totalVolume,
         totalSets: schema.workouts.totalSets,
         durationMinutes: schema.workouts.durationMinutes,
+        programCycleId: schema.workouts.programCycleId,
+        programName: schema.userProgramCycles.name,
       })
       .from(schema.workouts)
+      .leftJoin(
+        schema.userProgramCycles,
+        eq(schema.workouts.programCycleId, schema.userProgramCycles.id),
+      )
       .where(
         and(
           eq(schema.workouts.userId, userId),

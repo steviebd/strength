@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   },
   brand: {
     fontSize: 48,
-    fontWeight: '800',
+    fontWeight: typography.fontWeights.heavy,
     color: colors.text,
     letterSpacing: -1,
     textAlign: 'center',
