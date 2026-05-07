@@ -409,6 +409,7 @@ export default function NutritionScreen() {
     writeCacheFn: (data) => cacheDailySummary(userId!, date, activeTimezone ?? 'UTC', data),
     isDirtyFn: () => hasPendingTrainingWrites(userId!, ['nutrition']),
     fallbackToCacheOnError: true,
+    staleTime: Infinity,
   });
 
   useEffect(() => {
@@ -512,9 +513,8 @@ export default function NutritionScreen() {
           limit: CHAT_HISTORY_PAGE_SIZE,
         }),
       ),
-    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
-    staleTime: 0,
+    staleTime: Infinity,
   });
 
   useEffect(() => {

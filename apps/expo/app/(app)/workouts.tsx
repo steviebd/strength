@@ -209,9 +209,8 @@ export default function WorkoutsIndex() {
   useEffect(() => {
     if (view === 'history') {
       void loadLocalHistory();
-      void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     }
-  }, [loadLocalHistory, view, queryClient]);
+  }, [loadLocalHistory, view]);
 
   useEffect(() => {
     if (params.focusProgramId && activePrograms.length > 0) {

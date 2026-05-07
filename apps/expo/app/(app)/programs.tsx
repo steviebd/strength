@@ -16,7 +16,6 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
@@ -749,12 +748,8 @@ export default function ProgramsScreen() {
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
     useProgramsCatalog(PROGRAM_INFO);
-  const {
-    activePrograms,
-    isLoading: isLoadingActivePrograms,
-    refetch: refetchActivePrograms,
-  } = useActivePrograms();
-  const { latestOneRMs, refetch: refetchLatestOneRms } = useLatestOneRms();
+  const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
+  const { latestOneRMs } = useLatestOneRms();
   const loading = isLoadingPrograms || isLoadingActivePrograms;
 
   const scrollToScheduleSection = useCallback(() => {
@@ -826,13 +821,6 @@ export default function ProgramsScreen() {
     setReviewConfirmed(false);
     setScheduleStep('schedule');
   };
-
-  useFocusEffect(
-    useCallback(() => {
-      void refetchActivePrograms();
-      void refetchLatestOneRms();
-    }, [refetchActivePrograms, refetchLatestOneRms]),
-  );
 
   const onRefresh = useCallback(async () => {
     setOfflineMessage(null);

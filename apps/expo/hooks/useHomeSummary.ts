@@ -74,6 +74,6 @@ export function useHomeSummary() {
     isDirtyFn: () =>
       hasPendingTrainingWrites(userId!, ['program', 'program_cycle', 'workout', 'one_rms']),
     fallbackToCacheOnError: true,
-    refetchInterval: 60 * 1000,
+    staleTime: Infinity,
   });
 }

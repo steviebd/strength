@@ -113,6 +113,7 @@ export default function Profile() {
     writeCacheFn: (fresh) => cacheBodyStats(session!.user.id, fresh, true),
     isDirtyFn: () => hasPendingTrainingWrites(session!.user.id, ['body_stats']),
     fallbackToCacheOnError: true,
+    staleTime: Infinity,
   });
 
   const saveBodyweightMutation = useMutation({

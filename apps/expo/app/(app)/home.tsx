@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { OfflineError } from '@/lib/offline-mutation';
@@ -39,15 +38,13 @@ export default function HomeScreen() {
   const user = session.data?.user;
   const displayName = user?.name || user?.email || 'Athlete';
   const avatarLetter = user?.name?.[0] || user?.email?.[0] || '?';
-  const { activeTimezone, weightUnit } = useUserPreferences();
+  const { weightUnit } = useUserPreferences();
   const { data: homeData } = useHomeSummary();
-  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ focusProgramId?: string; scrollToTop?: string }>();
   const { isRefreshing, handleRefresh } = usePullToRefresh(user?.id);
 
   useFocusEffect(
     useCallback(() => {
-      void queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] });
       if (user?.id) {
         void cleanupStaleLocalData(user.id).then(() =>
           listLocalActiveWorkoutDrafts(user.id, 20).then(setActiveDrafts),
@@ -55,7 +52,7 @@ export default function HomeScreen() {
       } else {
         setActiveDrafts([]);
       }
-    }, [activeTimezone, queryClient, user?.id]),
+    }, [user?.id]),
   );
 
   useEffect(() => {

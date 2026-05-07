@@ -52,6 +52,7 @@ export function useProgramSchedule(cycleId: string) {
       userId
         ? hasPendingTrainingWrites(userId, ['program', 'program_cycle', 'workout'])
         : Promise.resolve(false),
+    staleTime: Infinity,
   });
 }
 
