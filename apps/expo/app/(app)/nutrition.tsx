@@ -388,6 +388,7 @@ export default function NutritionScreen() {
   const [exchangeExpansion, setExchangeExpansion] = useState<Record<string, boolean>>({});
   const [savingAnalysisMessageId, setSavingAnalysisMessageId] = useState<string | null>(null);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const hasAppliedServerHistory = useRef(false);
   const messagesScrollRef = useRef<ScrollView | null>(null);
   const chatInputRef = useRef<TextInput | null>(null);
@@ -1046,12 +1047,18 @@ export default function NutritionScreen() {
   }, [params.focusChat, scrollToChatInput]);
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
       scrollToChatInput(false, 0);
+    });
+
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
     });
 
     return () => {
       showSubscription.remove();
+      hideSubscription.remove();
     };
   }, [scrollToChatInput]);
 
@@ -1067,7 +1074,7 @@ export default function NutritionScreen() {
             />
           }
           screenScrollViewProps={{
-            bottomInset: NUTRITION_BOTTOM_INSET,
+            bottomInset: NUTRITION_BOTTOM_INSET + keyboardHeight,
             keyboardDismissMode: 'interactive',
             keyboardShouldPersistTaps: 'handled',
             refreshControl: (
