@@ -663,6 +663,26 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.error,
   },
+  editInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
+    padding: 0,
+  },
+  inputText: {
+    color: colors.text,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
+  },
+  inputPlaceholder: {
+    color: colors.textMuted,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
+  },
 });
 
 function getDifficultyColor(difficulty: string) {
@@ -710,11 +730,11 @@ export default function ProgramsScreen() {
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<ScrollView>(null);
   const detailScrollRef = useRef<ScrollView>(null);
-  const squatWrapperRef = useRef<View>(null);
-  const benchWrapperRef = useRef<View>(null);
-  const deadliftWrapperRef = useRef<View>(null);
-  const ohpWrapperRef = useRef<View>(null);
-  const wrapperRefs: Record<keyof OneRmValues, React.RefObject<View>> = {
+  const squatWrapperRef = useRef<View | null>(null);
+  const benchWrapperRef = useRef<View | null>(null);
+  const deadliftWrapperRef = useRef<View | null>(null);
+  const ohpWrapperRef = useRef<View | null>(null);
+  const wrapperRefs: Record<keyof OneRmValues, React.RefObject<View | null>> = {
     squat: squatWrapperRef,
     bench: benchWrapperRef,
     deadlift: deadliftWrapperRef,
@@ -796,11 +816,6 @@ export default function ProgramsScreen() {
   const setOneRmValues = (nextValues: OneRmValues) => {
     valuesRef.current = nextValues;
     setValues(nextValues);
-  };
-
-  const updateOneRmValue = (key: keyof OneRmValues, value: string) => {
-    const nextValue = value.replace(/[^0-9.]/g, '');
-    setOneRmValues({ ...valuesRef.current, [key]: nextValue });
   };
 
   const continueToSchedule = () => {
@@ -1326,10 +1341,7 @@ export default function ProgramsScreen() {
                           testID={`program-1rm-${key}`}
                           accessibilityLabel={`program-1rm-${key}`}
                           onPress={() => handleEditStart(key)}
-                          style={[
-                            styles.input,
-                            editingKey === key && styles.inputFocused,
-                          ]}
+                          style={[styles.input, editingKey === key && styles.inputFocused]}
                         >
                           {editingKey === key ? (
                             <TextInput
@@ -1346,13 +1358,7 @@ export default function ProgramsScreen() {
                               }
                             />
                           ) : (
-                            <Text
-                              style={
-                                values[key]
-                                  ? styles.inputText
-                                  : styles.inputPlaceholder
-                              }
-                            >
+                            <Text style={values[key] ? styles.inputText : styles.inputPlaceholder}>
                               {values[key] || '0'}
                             </Text>
                           )}

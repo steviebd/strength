@@ -1,9 +1,11 @@
+/* oxlint-disable no-unused-vars */
 import { eq, and, inArray, desc, sql, isNotNull } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import {
   chunkedQuery,
   chunkedQueryMany,
   chunkedInsert,
+  computePlannedSetValues,
   getOrCreateExerciseForUser,
 } from '@strength/db';
 import { createRouter } from '../lib/router';
@@ -56,23 +58,16 @@ function buildTemplateSetValues(templateExercise: {
   targetDistance?: number | null;
   targetHeight?: number | null;
 }) {
-  const type = templateExercise.exerciseType ?? 'weights';
-  return {
-    weight:
-      type === 'weights'
-        ? (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0)
-        : type === 'bodyweight' &&
-            ((templateExercise.targetWeight ?? 0) > 0 || (templateExercise.addedWeight ?? 0) > 0)
-          ? (templateExercise.targetWeight ?? 0) + (templateExercise.addedWeight ?? 0)
-          : null,
-    reps:
-      templateExercise.isAmrap || type === 'timed' || type === 'cardio'
-        ? null
-        : (templateExercise.reps ?? 0),
-    duration: type === 'timed' || type === 'cardio' ? (templateExercise.targetDuration ?? 0) : null,
-    distance: type === 'cardio' ? (templateExercise.targetDistance ?? null) : null,
-    height: type === 'plyo' ? (templateExercise.targetHeight ?? 0) : null,
-  };
+  return computePlannedSetValues({
+    exerciseType: templateExercise.exerciseType,
+    targetWeight: templateExercise.targetWeight,
+    addedWeight: templateExercise.addedWeight,
+    reps: templateExercise.reps ?? 0,
+    isAmrap: templateExercise.isAmrap,
+    targetDuration: templateExercise.targetDuration,
+    targetDistance: templateExercise.targetDistance,
+    targetHeight: templateExercise.targetHeight,
+  });
 }
 
 async function fetchWorkoutSyncSnapshot(db: any, workoutId: string) {

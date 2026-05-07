@@ -42,7 +42,7 @@ export default function HomeScreen() {
   const { activeTimezone, weightUnit } = useUserPreferences();
   const { data: homeData } = useHomeSummary();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ focusProgramId?: string }>();
+  const params = useLocalSearchParams<{ focusProgramId?: string; scrollToTop?: string }>();
   const { isRefreshing, handleRefresh } = usePullToRefresh(user?.id);
 
   useFocusEffect(
@@ -63,6 +63,12 @@ export default function HomeScreen() {
       scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
   }, [params.focusProgramId]);
+
+  useEffect(() => {
+    if (params.scrollToTop && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: false });
+    }
+  }, [params.scrollToTop]);
 
   const formattedDate =
     homeData?.date.formatted ??

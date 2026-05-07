@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Keyboard, Platform, ScrollView, type ScrollViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollProvider } from '@/context/ScrollContext';
@@ -27,26 +27,27 @@ export const FormScrollView = React.forwardRef<ScrollView, FormScrollViewProps>(
   ) => {
     const insets = useSafeAreaInsets();
     const scrollViewRef = React.useRef<ScrollView>(null);
-    const [keyboardHeight, setKeyboardHeight] = React.useState(0);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-    React.useImperativeHandle(ref, () => scrollViewRef.current as ScrollView);
+    useEffect(() => {
+      const isIOS = Platform.OS === 'ios';
+      const showEvent = isIOS ? 'keyboardWillShow' : 'keyboardDidShow';
+      const hideEvent = isIOS ? 'keyboardWillHide' : 'keyboardDidHide';
 
-    React.useEffect(() => {
-      const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-      const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-      const showSubscription = Keyboard.addListener(showEvent, (e) => {
+      const showSub = Keyboard.addListener(showEvent, (e) => {
         setKeyboardHeight(e.endCoordinates.height);
       });
-      const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      const hideSub = Keyboard.addListener(hideEvent, () => {
         setKeyboardHeight(0);
       });
 
       return () => {
-        showSubscription.remove();
-        hideSubscription.remove();
+        showSub.remove();
+        hideSub.remove();
       };
     }, []);
+
+    React.useImperativeHandle(ref, () => scrollViewRef.current as ScrollView);
 
     return (
       <ScrollProvider scrollViewRef={scrollViewRef} topInset={topPadding}>

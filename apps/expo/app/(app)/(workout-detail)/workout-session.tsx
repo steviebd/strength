@@ -695,7 +695,7 @@ export default function WorkoutSessionScreen() {
       router.push(`/program-1rm-test?${params.toString()}`);
       return;
     }
-    router.push('/(app)/home');
+    router.push('/(app)/home?scrollToTop=1');
   }, [
     completeWorkout,
     cycleId,

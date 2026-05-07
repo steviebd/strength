@@ -1,7 +1,9 @@
+/* oxlint-disable no-unused-vars */
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   WORKOUT_TYPE_ONE_RM_TEST,
   WORKOUT_TYPE_TRAINING,
+  computePlannedSetValues,
   consolidateProgramTargetLiftsForWorkoutSections,
   exerciseLibrary,
   getCurrentCycleWorkout,
@@ -202,19 +204,16 @@ function buildPlannedSetValues(input: {
   targetDistance?: number | null;
   targetHeight?: number | null;
 }) {
-  const type = input.exerciseType ?? 'weights';
-  return {
-    weight:
-      type === 'weights'
-        ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
-        : type === 'bodyweight' && ((input.targetWeight ?? 0) > 0 || (input.addedWeight ?? 0) > 0)
-          ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
-          : null,
-    reps: input.isAmrap || type === 'timed' || type === 'cardio' ? null : (input.reps ?? 10),
-    duration: type === 'timed' || type === 'cardio' ? (input.targetDuration ?? 0) : null,
-    distance: type === 'cardio' ? (input.targetDistance ?? null) : null,
-    height: type === 'plyo' ? (input.targetHeight ?? 0) : null,
-  };
+  return computePlannedSetValues({
+    exerciseType: input.exerciseType,
+    targetWeight: input.targetWeight,
+    addedWeight: input.addedWeight,
+    reps: input.reps ?? 10,
+    isAmrap: input.isAmrap,
+    targetDuration: input.targetDuration,
+    targetDistance: input.targetDistance,
+    targetHeight: input.targetHeight,
+  });
 }
 
 function getLibraryExerciseType(libraryId: string | null | undefined) {

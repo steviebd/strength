@@ -214,7 +214,14 @@ eas.stderr.on('data', (chunk: Buffer) => {
 });
 
 eas.on('exit', async (code) => {
+  const workdirMatch = output.match(/\[SETUP_WORKINGDIR\]\s+Preparing workingdir\s+(\S+)/);
+  const workdir = workdirMatch?.[1] ?? process.env.EAS_LOCAL_BUILD_WORKINGDIR;
+
   if (code !== 0) {
+    if (workdir) {
+      console.log(`Cleaning up failed build workingdir: ${workdir}`);
+      rmSync(workdir, { recursive: true, force: true });
+    }
     process.exit(code ?? 1);
   }
 
@@ -229,6 +236,11 @@ eas.on('exit', async (code) => {
   console.log(`Copying ${apkPath} -> ${destPath}`);
   cpSync(apkPath, destPath);
   rmSync(apkPath);
+
+  if (workdir && existsSync(workdir)) {
+    console.log(`Cleaning up build workingdir: ${workdir}`);
+    rmSync(workdir, { recursive: true, force: true });
+  }
 
   console.log('');
   console.log(`Build saved: ${destPath}`);
