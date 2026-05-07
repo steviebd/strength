@@ -32,6 +32,8 @@ export interface WorkerEnv {
   SKIP_RATE_LIMIT?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
+  POSTHOG_API_KEY: string;
+  POSTHOG_PROJECT_URL: string;
 }
 
 export interface NutritionChatQueueMessage {

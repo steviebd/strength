@@ -5,64 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1777176526978,
-      "tag": "0000_swift_machine_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1777770873275,
-      "tag": "0001_needy_natasha_romanoff",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1777770873276,
-      "tag": "0007_add_sync_operation_id",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1777981434210,
-      "tag": "0003_hard_edwin_jarvis",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1777981961053,
-      "tag": "0004_awesome_vivisector",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1777983656023,
-      "tag": "0005_flimsy_morlocks",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1777985917207,
-      "tag": "0006_aromatic_preak",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1777987200000,
-      "tag": "0009_workout_type",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1778025301213,
-      "tag": "0008_damp_eternity",
+      "when": 1778109868379,
+      "tag": "0000_daily_toad_men",
       "breakpoints": true
     }
   ]

@@ -24,9 +24,12 @@ import {
   createLocalWorkoutFromCurrentProgramCycle,
   createLocalWorkoutFromProgramCycleWorkoutDefinition,
 } from '@/db/workouts';
+import { createLocalProgramCycleFromStartPayload } from '@/db/training-cache';
 import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { generateId } from '@strength/db/client';
+import { enqueueSyncItem } from '@/db/sync-queue';
+import { runTrainingSync } from '@/lib/workout-sync';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { FormScrollView } from '@/components/ui/FormScrollView';
@@ -40,6 +43,7 @@ import {
   type ActiveProgram,
   type ProgramListItem,
 } from '@/hooks/usePrograms';
+import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, spacing, radius, typography, layout, statusBg } from '@/theme';
 
@@ -658,8 +662,8 @@ export default function ProgramsScreen() {
   const [startingProgram, setStartingProgram] = useState(false);
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const [values, setValues] = useState<OneRmValues>({
     squat: '',
     bench: '',
@@ -749,32 +753,21 @@ export default function ProgramsScreen() {
     setScheduleStep('schedule');
   };
 
-  const refreshProgramsScreen = useCallback(
-    async (showRefreshIndicator = false) => {
-      if (showRefreshIndicator) {
-        setIsRefreshing(true);
-      }
-
-      try {
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ['programs'] }),
-          refetchActivePrograms(),
-          refetchLatestOneRms(),
-        ]);
-      } finally {
-        if (showRefreshIndicator) {
-          setIsRefreshing(false);
-        }
-      }
-    },
-    [queryClient, refetchActivePrograms, refetchLatestOneRms],
-  );
-
   useFocusEffect(
     useCallback(() => {
-      void refreshProgramsScreen();
-    }, [refreshProgramsScreen]),
+      void refetchActivePrograms();
+      void refetchLatestOneRms();
+    }, [refetchActivePrograms, refetchLatestOneRms]),
   );
+
+  const onRefresh = useCallback(async () => {
+    setOfflineMessage(null);
+    try {
+      await handleRefresh();
+    } catch (err) {
+      setOfflineMessage(getPullToRefreshErrorMessage(err));
+    }
+  }, [handleRefresh]);
 
   const _getTotalSessions = (slug: string): number => {
     switch (slug) {
@@ -829,19 +822,25 @@ export default function ProgramsScreen() {
         programStartDate: programStartDate.toISOString().split('T')[0],
         firstSessionDate: firstSessionDate.toISOString().split('T')[0],
       };
+      const cycleId = generateId();
 
-      const cycle = await tryOnlineOrEnqueue({
-        apiCall: () =>
-          apiFetch<{ id: string }>('/api/programs', {
-            method: 'POST',
-            body: payload,
-          }),
-        userId,
-        entityType: 'program',
-        operation: 'start_program',
-        entityId: generateId(),
-        payload,
+      const plan = await createLocalProgramCycleFromStartPayload(userId, {
+        id: cycleId,
+        ...payload,
       });
+      if (!plan) {
+        throw new Error('Failed to create program locally. Please try again.');
+      }
+      await enqueueSyncItem(userId, 'program', cycleId, 'start_program', {
+        id: cycleId,
+        ...payload,
+        cycleWorkouts: plan.cycleWorkouts.map((workout) => ({
+          id: workout.id,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+        })),
+      });
+      void runTrainingSync(userId);
 
       setShowStartModal(false);
       setShowDetailModal(false);
@@ -854,14 +853,13 @@ export default function ProgramsScreen() {
         queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] }),
       ]);
 
-      if (cycle.id) {
-        router.push(`/(app)/home?focusProgramId=${cycle.id}`);
-      }
+      router.push(`/(app)/home?focusProgramId=${cycleId}`);
     } catch (e) {
       if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
         setOfflineMessage(
           "Unable to start program. Saved locally — will sync when you're back online.",
         );
+        await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
       } else {
         Alert.alert('Error', e instanceof Error ? e.message : 'Failed to start program');
       }
@@ -1002,9 +1000,7 @@ export default function ProgramsScreen() {
         refreshControl: (
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => {
-              void refreshProgramsScreen(true);
-            }}
+            onRefresh={onRefresh}
             tintColor={colors.accent}
           />
         ),

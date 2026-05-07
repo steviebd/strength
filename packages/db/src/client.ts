@@ -14,6 +14,7 @@ export {
   parseProgramTargetLifts,
   getProgramTargetLiftKey,
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
   type NormalizedProgramTargetLift,
   type SerializedProgramTargetLift,
@@ -29,3 +30,24 @@ export {
   zonedDateTimeToUtc,
   getUtcRangeForLocalDate,
 } from './timezones';
+export {
+  createProgramAdvancePlan,
+  type ProgramAdvanceCycleInput,
+  type ProgramAdvancePlan,
+  type ProgramAdvanceWorkoutInput,
+} from './training/program-advance';
+export {
+  PROGRAMS,
+  getProgram,
+  getProgramBySlug,
+  generateWorkoutSchedule,
+  type ProgramConfig,
+  type ProgramSlug,
+  type ProgramWorkout,
+  type OneRMValues,
+} from './programs';
+export {
+  createProgramStartPlan,
+  type ProgramStartPayload,
+  type ProgramStartPlan,
+} from './training/program-start';

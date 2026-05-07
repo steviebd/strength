@@ -37,7 +37,7 @@ router.get(
   }),
 );
 
-const VALID_EXERCISE_TYPES = ['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const;
+const VALID_EXERCISE_TYPES = ['weights', 'bodyweight', 'timed', 'cardio', 'plyo'] as const;
 
 router.post(
   '/',
@@ -54,7 +54,7 @@ router.post(
       typeof body.exerciseType === 'string' &&
       (VALID_EXERCISE_TYPES as unknown as string[]).includes(body.exerciseType)
         ? body.exerciseType
-        : 'weighted';
+        : 'weights';
     const isAmrap = body.isAmrap === true;
 
     if (libraryId) {

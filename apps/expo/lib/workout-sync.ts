@@ -13,12 +13,14 @@ import {
   markLocalProgramAdvance,
   type OfflineTrainingSnapshot,
 } from '@/db/training-cache';
+import { hydrateBodyweightHistory, type BodyweightHistoryEntry } from '@/db/body-stats';
 import {
   buildWorkoutCompletionPayload,
   markWorkoutConflict,
   markWorkoutFailed,
   markWorkoutSynced,
   markWorkoutSyncing,
+  upsertLocalTemplateSnapshot,
   upsertServerWorkoutSnapshot,
 } from '@/db/workouts';
 import {
@@ -130,6 +132,83 @@ async function handleGenericSync(item: LocalSyncQueueItem) {
   await apiFetch(url, { method, body });
 }
 
+function templateBodyFromPayload(payload: any) {
+  return {
+    ...(typeof payload.id === 'string' ? { id: payload.id } : {}),
+    name: payload.name,
+    description: payload.description,
+    notes: payload.notes,
+    defaultWeightIncrement: payload.defaultWeightIncrement,
+    defaultBodyweightIncrement: payload.defaultBodyweightIncrement,
+    defaultCardioIncrement: payload.defaultCardioIncrement,
+    defaultTimedIncrement: payload.defaultTimedIncrement,
+    defaultPlyoIncrement: payload.defaultPlyoIncrement,
+  };
+}
+
+async function syncTemplateExercises(templateId: string, exercises: any[]) {
+  const existingExercises = await apiFetch<Array<{ id: string }>>(
+    `/api/templates/${templateId}/exercises`,
+  );
+  const existingIds = new Set(existingExercises.map((exercise) => exercise.id));
+  const selectedIds = new Set(exercises.map((exercise) => exercise.id).filter(Boolean));
+
+  await Promise.all(
+    existingExercises
+      .filter((existing) => !selectedIds.has(existing.id))
+      .map((existing) =>
+        apiFetch(`/api/templates/${templateId}/exercise-rows/${existing.id}`, {
+          method: 'DELETE',
+        }),
+      ),
+  );
+
+  await Promise.all(
+    exercises.map((exercise, index) => {
+      const body = { ...exercise, orderIndex: exercise.orderIndex ?? index };
+      return existingIds.has(exercise.id)
+        ? apiFetch(`/api/templates/${templateId}/exercise-rows/${exercise.id}`, {
+            method: 'PUT',
+            body,
+          })
+        : apiFetch(`/api/templates/${templateId}/exercises`, {
+            method: 'POST',
+            body,
+          });
+    }),
+  );
+}
+
+async function handleTemplateSync(item: LocalSyncQueueItem) {
+  const payload = JSON.parse(item.payloadJson);
+  const templateId = payload.id ?? item.entityId;
+  const method = item.operation === 'create_template' ? 'POST' : 'PUT';
+  const url =
+    item.operation === 'create_template' ? '/api/templates' : `/api/templates/${item.entityId}`;
+  const savedTemplate = await apiFetch<any>(url, {
+    method,
+    body: templateBodyFromPayload({ ...payload, id: templateId }),
+  });
+
+  if (Array.isArray(payload.exercises)) {
+    await syncTemplateExercises(savedTemplate.id ?? templateId, payload.exercises);
+  }
+
+  await upsertLocalTemplateSnapshot(
+    item.userId,
+    {
+      ...payload,
+      ...savedTemplate,
+      id: savedTemplate.id ?? templateId,
+      exercises: Array.isArray(payload.exercises) ? payload.exercises : undefined,
+    },
+    {
+      createdLocally: false,
+      replaceExercises: Array.isArray(payload.exercises),
+    },
+  );
+}
+
 export async function runSyncQueue(userId: string) {
   if (isSyncRunning) return;
   isSyncRunning = true;
@@ -231,7 +310,14 @@ export async function runSyncQueue(userId: string) {
       } else {
         await markSyncItemStatus(item.id, 'syncing');
         try {
-          await handleGenericSync(item);
+          if (
+            item.entityType === 'template' &&
+            (item.operation === 'create_template' || item.operation === 'save_template')
+          ) {
+            await handleTemplateSync(item);
+          } else {
+            await handleGenericSync(item);
+          }
           await markSyncItemStatus(item.id, 'done');
           await deleteSyncItem(item.id);
         } catch (error) {
@@ -262,6 +348,7 @@ export async function retryWorkoutSync(userId: string, workoutId: string) {
 }
 
 let lastTrainingHydrationAt = 0;
+let isTrainingSyncRunning = false;
 
 export async function hydrateTrainingCache(userId: string, options?: { force?: boolean }) {
   const now = Date.now();
@@ -287,23 +374,33 @@ export async function hydrateTrainingCache(userId: string, options?: { force?: b
     }
   }
 
-  const snapshot = await apiFetch<OfflineTrainingSnapshot>(
-    '/api/training/offline-snapshot?recentWorkoutLimit=50',
-  );
+  const snapshot = await apiFetch<OfflineTrainingSnapshot>('/api/training/offline-snapshot');
   await hydrateOfflineTrainingSnapshot(userId, snapshot);
   lastTrainingHydrationAt = now;
 }
 
 export async function runTrainingSync(userId: string, options?: { forceHydrate?: boolean }) {
-  await runSyncQueue(userId);
+  if (isTrainingSyncRunning) return;
+  isTrainingSyncRunning = true;
   try {
-    await hydrateTrainingCache(userId, { force: options?.forceHydrate });
-  } catch {
-    // Offline is expected; keep serving local cache.
-  }
-  try {
-    await cleanupStaleLocalData(userId);
-  } catch {
-    // Cleanup failures should not break the sync/hydration flow.
+    await runSyncQueue(userId);
+    try {
+      await hydrateTrainingCache(userId, { force: options?.forceHydrate });
+    } catch {
+      // Offline is expected; keep serving local cache.
+    }
+    try {
+      const history = await apiFetch<BodyweightHistoryEntry[]>('/api/nutrition/bodyweight-history');
+      await hydrateBodyweightHistory(userId, history);
+    } catch {
+      // Offline is expected; keep serving local cache.
+    }
+    try {
+      await cleanupStaleLocalData(userId);
+    } catch {
+      // Cleanup failures should not break the sync/hydration flow.
+    }
+  } finally {
+    isTrainingSyncRunning = false;
   }
 }

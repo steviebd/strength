@@ -98,6 +98,11 @@ function addLocalTemplateCacheColumns(sqlite: SQLiteDatabase) {
     ['name', "name TEXT NOT NULL DEFAULT 'Template'"],
     ['description', 'description TEXT'],
     ['notes', 'notes TEXT'],
+    ['default_weight_increment', 'default_weight_increment REAL'],
+    ['default_bodyweight_increment', 'default_bodyweight_increment REAL'],
+    ['default_cardio_increment', 'default_cardio_increment REAL'],
+    ['default_timed_increment', 'default_timed_increment REAL'],
+    ['default_plyo_increment', 'default_plyo_increment REAL'],
     ['is_deleted', 'is_deleted INTEGER NOT NULL DEFAULT 0'],
     ['created_locally', 'created_locally INTEGER NOT NULL DEFAULT 0'],
     ['created_at', 'created_at INTEGER'],
@@ -268,6 +273,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       user_id TEXT PRIMARY KEY NOT NULL,
       weight_unit TEXT NOT NULL DEFAULT 'kg',
       distance_unit TEXT NOT NULL DEFAULT 'km',
+      height_unit TEXT NOT NULL DEFAULT 'cm',
       timezone TEXT,
       bodyweight_kg REAL,
       weight_prompted_at INTEGER,
@@ -361,7 +367,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       exercise_id TEXT NOT NULL,
       name TEXT NOT NULL,
       muscle_group TEXT,
-      exercise_type TEXT NOT NULL DEFAULT 'weighted',
+      exercise_type TEXT NOT NULL DEFAULT 'weights',
       order_index INTEGER NOT NULL,
       target_weight REAL,
       added_weight REAL,
@@ -728,7 +734,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       sqlite,
       'local_template_exercises',
       'exercise_type',
-      "exercise_type TEXT NOT NULL DEFAULT 'weighted'",
+      "exercise_type TEXT NOT NULL DEFAULT 'weights'",
     );
     addColumnIfMissing(
       sqlite,
@@ -750,10 +756,63 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     );
   });
 
+  applyVersionedMigration(sqlite, '20260506_height_unit_preference', () => {
+    addColumnIfMissing(
+      sqlite,
+      'local_user_preferences',
+      'height_unit',
+      "height_unit TEXT NOT NULL DEFAULT 'cm'",
+    );
+  });
+
   applyVersionedMigration(sqlite, '20260506_last_workout_types', () => {
     addColumnIfMissing(sqlite, 'local_last_workouts', 'duration', 'duration INTEGER');
     addColumnIfMissing(sqlite, 'local_last_workouts', 'distance', 'distance INTEGER');
     addColumnIfMissing(sqlite, 'local_last_workouts', 'height', 'height INTEGER');
+  });
+
+  applyVersionedMigration(sqlite, '20260506_bodyweight_history', () => {
+    sqlite.execSync(`CREATE TABLE IF NOT EXISTS local_bodyweight_history (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      bodyweight_kg REAL NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      hydrated_at INTEGER NOT NULL
+    )`);
+  });
+
+  applyVersionedMigration(sqlite, '20260507_template_progression_columns', () => {
+    addColumnIfMissing(
+      sqlite,
+      'local_templates',
+      'default_weight_increment',
+      'default_weight_increment REAL',
+    );
+    addColumnIfMissing(
+      sqlite,
+      'local_templates',
+      'default_bodyweight_increment',
+      'default_bodyweight_increment REAL',
+    );
+    addColumnIfMissing(
+      sqlite,
+      'local_templates',
+      'default_cardio_increment',
+      'default_cardio_increment REAL',
+    );
+    addColumnIfMissing(
+      sqlite,
+      'local_templates',
+      'default_timed_increment',
+      'default_timed_increment REAL',
+    );
+    addColumnIfMissing(
+      sqlite,
+      'local_templates',
+      'default_plyo_increment',
+      'default_plyo_increment REAL',
+    );
   });
 
   createLocalIndexes(sqlite);

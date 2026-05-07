@@ -183,38 +183,36 @@ router.put(
       }
     }
 
-    await db.transaction(async (tx) => {
-      if (hasOneRMUpdate) {
-        updated = await updateProgramCycleOneRMs(tx, userId, cycleId, {
-          squat1rm,
-          bench1rm,
-          deadlift1rm,
-          ohp1rm,
-        });
-      }
+    if (hasOneRMUpdate) {
+      updated = await updateProgramCycleOneRMs(db, userId, cycleId, {
+        squat1rm,
+        bench1rm,
+        deadlift1rm,
+        ohp1rm,
+      });
+    }
 
-      if (currentWeek !== undefined || currentSession !== undefined) {
-        updated = await tx
-          .update(schema.userProgramCycles)
-          .set({
-            ...(currentWeek !== undefined && { currentWeek }),
-            ...(currentSession !== undefined && { currentSession }),
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(schema.userProgramCycles.id, cycleId),
-              eq(schema.userProgramCycles.userId, userId),
-            ),
-          )
-          .returning()
-          .get();
-      }
+    if (currentWeek !== undefined || currentSession !== undefined) {
+      updated = await db
+        .update(schema.userProgramCycles)
+        .set({
+          ...(currentWeek !== undefined && { currentWeek }),
+          ...(currentSession !== undefined && { currentSession }),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.userProgramCycles.id, cycleId),
+            eq(schema.userProgramCycles.userId, userId),
+          ),
+        )
+        .returning()
+        .get();
+    }
 
-      if (isComplete === true) {
-        updated = await completeProgramCycle(tx, cycleId, userId);
-      }
-    });
+    if (isComplete === true) {
+      updated = await completeProgramCycle(db, cycleId, userId);
+    }
 
     if (!updated) {
       return c.json({ message: 'Program cycle not found' }, 404);

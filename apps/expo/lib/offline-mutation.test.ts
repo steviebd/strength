@@ -21,6 +21,10 @@ vi.mock('@/db/sync-queue', () => ({
   enqueueSyncItem: vi.fn(),
 }));
 
+vi.mock('@/db/write-queue', () => ({
+  enqueueLocalWrite: vi.fn((task) => task()),
+}));
+
 import { enqueueSyncItem } from '@/db/sync-queue';
 import { OfflineError, isNetworkError, tryOnlineOrEnqueue } from './offline-mutation';
 
@@ -46,9 +50,9 @@ describe('isNetworkError', () => {
     expect(isNetworkError(new Error('Network request failed'))).toBe(true);
   });
 
-  test('returns true for ApiError with status >= 500', () => {
-    expect(isNetworkError(new MockApiError('fail', 500, 'err'))).toBe(true);
-    expect(isNetworkError(new MockApiError('fail', 503, 'err'))).toBe(true);
+  test('returns false for ApiError with status >= 500', () => {
+    expect(isNetworkError(new MockApiError('fail', 500, 'err'))).toBe(false);
+    expect(isNetworkError(new MockApiError('fail', 503, 'err'))).toBe(false);
   });
 
   test('returns false for ApiError with status < 500', () => {

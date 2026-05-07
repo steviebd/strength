@@ -1,5 +1,5 @@
-import { ApiError } from './api';
 import { enqueueSyncItem } from '@/db/sync-queue';
+import { enqueueLocalWrite } from '@/db/write-queue';
 
 export class OfflineError extends Error {
   constructor(message = 'Saved locally. Will sync when online.') {
@@ -10,9 +10,6 @@ export class OfflineError extends Error {
 
 export function isNetworkError(error: unknown): boolean {
   if (error instanceof Error && error.message === 'Network request failed') {
-    return true;
-  }
-  if (error instanceof ApiError && error.status >= 500) {
     return true;
   }
   return false;
@@ -38,7 +35,9 @@ export async function tryOnlineOrEnqueue<T>(options: {
         options.operation,
         options.payload,
       );
-      await options.onEnqueue?.();
+      if (options.onEnqueue) {
+        await enqueueLocalWrite(options.onEnqueue);
+      }
       throw new OfflineError();
     }
     throw error;

@@ -51,7 +51,7 @@ export const wendler531 = createLinearProgramGenerator({
     return [
       {
         name: lift.name,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: lift.lift,
         libraryId: lift.libraryId,
         sets: 3,
@@ -60,7 +60,7 @@ export const wendler531 = createLinearProgramGenerator({
       },
       {
         name: `${lift.name} 2`,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: lift.lift,
         libraryId: lift.libraryId,
         sets: 1,
@@ -69,7 +69,7 @@ export const wendler531 = createLinearProgramGenerator({
       },
       {
         name: `${lift.name} 3+`,
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: lift.lift,
         libraryId: lift.libraryId,
         sets: 1,

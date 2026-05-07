@@ -21,6 +21,11 @@ async function listTemplatesForSnapshot(db: any, userId: string) {
       name: schema.templates.name,
       description: schema.templates.description,
       notes: schema.templates.notes,
+      defaultWeightIncrement: schema.templates.defaultWeightIncrement,
+      defaultBodyweightIncrement: schema.templates.defaultBodyweightIncrement,
+      defaultCardioIncrement: schema.templates.defaultCardioIncrement,
+      defaultTimedIncrement: schema.templates.defaultTimedIncrement,
+      defaultPlyoIncrement: schema.templates.defaultPlyoIncrement,
       createdAt: schema.templates.createdAt,
       updatedAt: schema.templates.updatedAt,
     })
@@ -105,13 +110,9 @@ async function listUserExercisesForSnapshot(db: any, userId: string) {
 }
 
 async function listActiveProgramCyclesForSnapshot(db: any, userId: string) {
-  const rows = await db
+  const cycles = await db
     .select()
     .from(schema.userProgramCycles)
-    .leftJoin(
-      schema.programCycleWorkouts,
-      eq(schema.programCycleWorkouts.cycleId, schema.userProgramCycles.id),
-    )
     .where(
       and(
         eq(schema.userProgramCycles.userId, userId),
@@ -121,23 +122,35 @@ async function listActiveProgramCyclesForSnapshot(db: any, userId: string) {
     .orderBy(desc(schema.userProgramCycles.startedAt))
     .all();
 
-  const cyclesMap = new Map<string, { cycle: any; workouts: any[] }>();
-  for (const row of rows) {
-    const cycle = row.userProgramCycles;
-    const workout = row.programCycleWorkouts;
-    if (!cyclesMap.has(cycle.id)) {
-      cyclesMap.set(cycle.id, { cycle, workouts: [] });
-    }
-    if (workout) {
-      cyclesMap.get(cycle.id)!.workouts.push(workout);
-    }
+  const cycleIds = cycles.map((cycle: any) => cycle.id);
+  const workouts =
+    cycleIds.length > 0
+      ? await chunkedQueryMany(db, {
+          ids: cycleIds,
+          builder: (chunk) =>
+            db
+              .select()
+              .from(schema.programCycleWorkouts)
+              .where(inArray(schema.programCycleWorkouts.cycleId, chunk))
+              .orderBy(
+                schema.programCycleWorkouts.weekNumber,
+                schema.programCycleWorkouts.sessionNumber,
+              )
+              .all(),
+        })
+      : [];
+
+  const workoutsByCycle = new Map<string, any[]>();
+  for (const workout of workouts as any[]) {
+    const list = workoutsByCycle.get(workout.cycleId) ?? [];
+    list.push(workout);
+    workoutsByCycle.set(workout.cycleId, list);
   }
 
-  for (const entry of cyclesMap.values()) {
-    entry.workouts.sort((a, b) => a.weekNumber - b.weekNumber || a.sessionNumber - b.sessionNumber);
-  }
-
-  return Array.from(cyclesMap.values());
+  return cycles.map((cycle: any) => ({
+    cycle,
+    workouts: workoutsByCycle.get(cycle.id) ?? [],
+  }));
 }
 
 async function listRecentWorkoutsForSnapshot(db: any, userId: string, limit: number) {
@@ -220,7 +233,7 @@ async function listRecentWorkoutsForSnapshot(db: any, userId: string, limit: num
 router.get(
   '/offline-snapshot',
   createHandler(async (c, { userId, db }) => {
-    const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 50);
+    const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 20);
     const [templates, userExercises, activeProgramCycles, recentWorkouts] = await Promise.all([
       listTemplatesForSnapshot(db, userId),
       listUserExercisesForSnapshot(db, userId),

@@ -21,7 +21,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.5,
     muscleGroup: 'Chest',
     libraryId: 'weighted-dips',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   pushups: {
     id: 'pushups',
@@ -41,7 +41,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.35,
     muscleGroup: 'Triceps',
     libraryId: 'skull-crushers',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'tricep-pushdowns': {
     id: 'tricep-pushdowns',
@@ -51,7 +51,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.25,
     muscleGroup: 'Triceps',
     libraryId: 'tricep-pushdown',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'tricep-extensions': {
     id: 'tricep-extensions',
@@ -61,7 +61,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.3,
     muscleGroup: 'Triceps',
     libraryId: 'overhead-tricep-extension',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'lateral-raises': {
     id: 'lateral-raises',
@@ -71,7 +71,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.15,
     muscleGroup: 'Shoulders',
     libraryId: 'lateral-raises',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
 
   pullups: {
@@ -92,7 +92,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: null,
     muscleGroup: 'Back',
     libraryId: 'weighted-pullups',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'barbell-curl': {
     id: 'barbell-curl',
@@ -102,7 +102,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.3,
     muscleGroup: 'Biceps',
     libraryId: 'barbell-curl',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'dumbbell-curl': {
     id: 'dumbbell-curl',
@@ -112,7 +112,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.25,
     muscleGroup: 'Biceps',
     libraryId: 'dumbbell-curl',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'hammer-curl': {
     id: 'hammer-curl',
@@ -122,7 +122,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.25,
     muscleGroup: 'Biceps',
     libraryId: 'hammer-curl',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   rows: {
     id: 'rows',
@@ -132,7 +132,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.5,
     muscleGroup: 'Back',
     libraryId: 'barbell-row',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'dumbbell-row': {
     id: 'dumbbell-row',
@@ -142,7 +142,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.4,
     muscleGroup: 'Back',
     libraryId: 'dumbbell-row',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'dumbbell-ohp': {
     id: 'dumbbell-ohp',
@@ -152,7 +152,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.5,
     muscleGroup: 'Shoulders',
     libraryId: 'dumbbell-shoulder-press',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'face-pulls': {
     id: 'face-pulls',
@@ -162,7 +162,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.2,
     muscleGroup: 'Shoulders',
     libraryId: 'face-pulls',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'lat-pulldowns': {
     id: 'lat-pulldowns',
@@ -172,7 +172,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.5,
     muscleGroup: 'Back',
     libraryId: 'lat-pulldown',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'cable-rows': {
     id: 'cable-rows',
@@ -182,7 +182,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.45,
     muscleGroup: 'Back',
     libraryId: 'seated-cable-row',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'inverted-rows': {
     id: 'inverted-rows',
@@ -203,7 +203,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.35,
     muscleGroup: 'Quads',
     libraryId: 'lunges',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'romanian-dl': {
     id: 'romanian-dl',
@@ -213,7 +213,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.65,
     muscleGroup: 'Hamstrings',
     libraryId: 'romanian-deadlift',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'leg-extensions': {
     id: 'leg-extensions',
@@ -223,7 +223,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.35,
     muscleGroup: 'Quads',
     libraryId: 'leg-extension',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'leg-press': {
     id: 'leg-press',
@@ -233,7 +233,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.8,
     muscleGroup: 'Quads',
     libraryId: 'leg-press',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'leg-curls': {
     id: 'leg-curls',
@@ -243,7 +243,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.3,
     muscleGroup: 'Hamstrings',
     libraryId: 'leg-curl',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'good-mornings': {
     id: 'good-mornings',
@@ -253,7 +253,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.45,
     muscleGroup: 'Hamstrings',
     libraryId: 'good-mornings',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'box-jumps': {
     id: 'box-jumps',
@@ -284,7 +284,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: null,
     muscleGroup: 'Core',
     libraryId: 'hanging-leg-raise',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'back-raises': {
     id: 'back-raises',
@@ -294,7 +294,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: null,
     muscleGroup: 'Back',
     libraryId: 'back-raises',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   hyperextensions: {
     id: 'hyperextensions',
@@ -304,7 +304,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: null,
     muscleGroup: 'Back',
     libraryId: 'hyperextensions',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   cableCrunch: {
     id: 'cable-crunch',
@@ -314,7 +314,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: null,
     muscleGroup: 'Core',
     libraryId: 'cable-crunch',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
   'hip-thrust': {
     id: 'hip-thrust',
@@ -324,7 +324,7 @@ const ACCESSORIES: Record<string, AccessoryDefinition> = {
     defaultPercentage: 0.6,
     muscleGroup: 'Glutes',
     libraryId: 'hip-thrust',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
   },
 };
 

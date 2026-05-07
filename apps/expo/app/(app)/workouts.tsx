@@ -23,14 +23,24 @@ import {
 } from '@/components/ui/app-primitives';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { useFocusEffect } from '@react-navigation/native';
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { TemplateList } from '@/components/template/TemplateList';
 import { TemplateEditor } from '@/components/template/TemplateEditor';
 import { WorkoutCard } from '@/components/workout/WorkoutCard';
+import {
+  ProgressionPromptModal,
+  type ProgressionExercisePreview,
+} from '@/components/workout/ProgressionPromptModal';
 import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import {
+  buildHistorySnapshotFromSelection,
+  getDefaultProgressionIncrement,
+  hasProgressionHistoryData,
+  type ProgressionSelection,
+} from '@/lib/workout-progression';
 import {
   cacheTemplates,
   createLocalOneRMTestDraft,
@@ -50,7 +60,10 @@ import {
   type WorkoutSyncStatus,
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
+import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
+import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { getLocalDb } from '@/db/client';
 import { cleanupStaleLocalData } from '@/db/local-cleanup';
 import { eq } from 'drizzle-orm';
@@ -79,20 +92,34 @@ async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
 async function fetchExerciseHistorySnapshot(
   exerciseId: string,
   exerciseName?: string | null,
+  isAmrap?: boolean | null,
 ): Promise<ExerciseHistorySnapshot | null> {
   try {
-    const params = exerciseName?.trim() ? `?name=${encodeURIComponent(exerciseName.trim())}` : '';
+    const params = new URLSearchParams();
+    if (exerciseName?.trim()) {
+      params.set('name', exerciseName.trim());
+    }
+    if (isAmrap !== undefined && isAmrap !== null) {
+      params.set('isAmrap', String(isAmrap));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
     return await apiFetch<ExerciseHistorySnapshot | null>(
-      `/api/workouts/last/${encodeURIComponent(exerciseId)}${params}`,
+      `/api/workouts/last/${encodeURIComponent(exerciseId)}${query}`,
     );
   } catch {
     return null;
   }
 }
 
-function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) {
-  return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
-}
+const MAX_PROGRESSION_PREVIEWS = 5;
+
+type TemplateWorkoutExerciseForStart = ReturnType<typeof normalizeTemplateExerciseForWorkoutStart>;
+
+type PendingTemplateStart = {
+  template: Template;
+  templateExercises: TemplateWorkoutExerciseForStart[];
+  historySnapshots: ExerciseHistorySnapshot[];
+};
 
 export default function WorkoutsIndex() {
   const insets = useSafeAreaInsets();
@@ -116,9 +143,25 @@ export default function WorkoutsIndex() {
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
   const [localHistory, setLocalHistory] = useState<WorkoutHistoryItem[]>([]);
   const [activeDrafts, setActiveDrafts] = useState<LocalActiveWorkoutDraftItem[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [pendingTemplateStart, setPendingTemplateStart] = useState<PendingTemplateStart | null>(
+    null,
+  );
+  const templateDefaults = useMemo(
+    () =>
+      pendingTemplateStart
+        ? {
+            defaultWeightIncrement: pendingTemplateStart.template.defaultWeightIncrement,
+            defaultBodyweightIncrement: pendingTemplateStart.template.defaultBodyweightIncrement,
+            defaultCardioIncrement: pendingTemplateStart.template.defaultCardioIncrement,
+            defaultTimedIncrement: pendingTemplateStart.template.defaultTimedIncrement,
+            defaultPlyoIncrement: pendingTemplateStart.template.defaultPlyoIncrement,
+          }
+        : undefined,
+    [pendingTemplateStart],
+  );
   const queryClient = useQueryClient();
+  const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
   const { width } = useWindowDimensions();
   const isNarrow = width < 400;
@@ -142,29 +185,6 @@ export default function WorkoutsIndex() {
     setActiveDrafts(drafts);
   }, [userId]);
 
-  const refreshWorkoutsScreen = useCallback(
-    async (showRefreshIndicator = false) => {
-      if (showRefreshIndicator) {
-        setIsRefreshing(true);
-      }
-
-      try {
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ['templates'] }),
-          queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
-          queryClient.refetchQueries({ queryKey: ['workoutHistory'] }),
-          loadLocalHistory(),
-          loadActiveDrafts(),
-        ]);
-      } finally {
-        if (showRefreshIndicator) {
-          setIsRefreshing(false);
-        }
-      }
-    },
-    [loadActiveDrafts, loadLocalHistory, queryClient],
-  );
-
   useEffect(() => {
     void loadLocalHistory();
     void loadActiveDrafts();
@@ -172,9 +192,19 @@ export default function WorkoutsIndex() {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshWorkoutsScreen();
-    }, [refreshWorkoutsScreen]),
+      void loadLocalHistory();
+      void loadActiveDrafts();
+    }, [loadLocalHistory, loadActiveDrafts]),
   );
+
+  const onRefresh = useCallback(async () => {
+    setOfflineMessage(null);
+    try {
+      await handleRefresh();
+    } catch (err) {
+      setOfflineMessage(getPullToRefreshErrorMessage(err));
+    }
+  }, [handleRefresh]);
 
   useEffect(() => {
     if (view === 'history') {
@@ -203,30 +233,33 @@ export default function WorkoutsIndex() {
     data: workoutHistory = [],
     isLoading: isLoadingHistory,
     error: workoutHistoryError,
-  } = useQuery({
+  } = useOfflineQuery({
     queryKey: ['workoutHistory'],
-    queryFn: fetchWorkoutHistory,
-    enabled: view === 'history',
+    enabled: view === 'history' && !!userId,
+    apiFn: fetchWorkoutHistory,
+    cacheFn: () => listLocalWorkoutHistory(userId!, 50),
+    writeCacheFn: async (history) => {
+      if (!userId) return;
+      await Promise.all(
+        history.map((item) =>
+          upsertServerWorkoutSnapshot(userId, {
+            ...item,
+            notes: null,
+            exercises: [],
+            totalVolume: item.totalVolume ?? undefined,
+            totalSets: item.totalSets ?? undefined,
+            durationMinutes: item.durationMinutes ?? undefined,
+            exerciseCount: item.exerciseCount ?? undefined,
+          }),
+        ),
+      );
+      await loadLocalHistory();
+    },
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['history']),
+    fallbackToCacheOnError: true,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
-
-  useEffect(() => {
-    if (!userId || workoutHistory.length === 0) return;
-    void Promise.all(
-      workoutHistory.map((item) =>
-        upsertServerWorkoutSnapshot(userId, {
-          ...item,
-          notes: null,
-          exercises: [],
-          totalVolume: item.totalVolume ?? undefined,
-          totalSets: item.totalSets ?? undefined,
-          durationMinutes: item.durationMinutes ?? undefined,
-          exerciseCount: item.exerciseCount ?? undefined,
-        }),
-      ),
-    ).then(loadLocalHistory);
-  }, [loadLocalHistory, userId, workoutHistory]);
 
   const mergedHistory = useMemo(() => {
     const byId = new Map<string, WorkoutHistoryItem>();
@@ -262,6 +295,75 @@ export default function WorkoutsIndex() {
 
     Alert.alert('Unable to start workout', workoutSessionError ?? 'Please try again.');
   };
+
+  const createTemplateWorkout = useCallback(
+    async (
+      template: Template,
+      templateExercises: TemplateWorkoutExerciseForStart[],
+      options: { historySnapshots?: ExerciseHistorySnapshot[]; ignoreHistory?: boolean } = {},
+    ) => {
+      if (!userId || !template.id) {
+        Alert.alert('Error', 'Unable to start workout. Please try again.');
+        return;
+      }
+
+      const local = await createLocalWorkoutFromTemplate(
+        userId,
+        template.id,
+        options,
+        templateExercises,
+      );
+
+      if (local?.id) {
+        setPendingTemplateStart(null);
+        router.push(`/workout-session?workoutId=${local.id}`);
+        return;
+      }
+
+      Alert.alert('Error', 'Failed to create workout. Please try again.');
+    },
+    [router, userId],
+  );
+
+  const handleConfirmTemplateProgression = useCallback(
+    (selections: ProgressionSelection[]) => {
+      if (!pendingTemplateStart) return;
+      const selectionsByExerciseId = new Map(
+        selections.map((selection) => [selection.exerciseId, selection]),
+      );
+      const exerciseById = new Map(
+        pendingTemplateStart.templateExercises.map((exercise) => [exercise.exerciseId, exercise]),
+      );
+      const selectedSnapshots = pendingTemplateStart.historySnapshots
+        .map((snapshot) => {
+          const exercise = exerciseById.get(snapshot.exerciseId);
+          return buildHistorySnapshotFromSelection(
+            snapshot,
+            selectionsByExerciseId.get(snapshot.exerciseId),
+            exercise?.exerciseType,
+          );
+        })
+        .filter((snapshot): snapshot is ExerciseHistorySnapshot => snapshot !== null);
+
+      void createTemplateWorkout(
+        pendingTemplateStart.template,
+        pendingTemplateStart.templateExercises,
+        { historySnapshots: selectedSnapshots, ignoreHistory: true },
+      );
+    },
+    [createTemplateWorkout, pendingTemplateStart],
+  );
+
+  const handleSkipTemplateHistory = useCallback(() => {
+    if (!pendingTemplateStart) return;
+    void createTemplateWorkout(
+      pendingTemplateStart.template,
+      pendingTemplateStart.templateExercises,
+      {
+        ignoreHistory: true,
+      },
+    );
+  }, [createTemplateWorkout, pendingTemplateStart]);
 
   const handleStartFromTemplate = async (template: Template, skipDraftId?: string) => {
     setOfflineMessage(null);
@@ -325,34 +427,31 @@ export default function WorkoutsIndex() {
         exerciseIds,
         templateExercises.map((exercise) => exercise.name),
       );
-      const usableLocalHistory = localHistory.filter(hasUsableHistory);
+      const usableLocalHistory = localHistory.filter(hasProgressionHistoryData);
       const localHistoryIds = new Set(usableLocalHistory.map((snapshot) => snapshot.exerciseId));
       const d1History = await Promise.all(
         templateExercises
           .filter((exercise) => !localHistoryIds.has(exercise.exerciseId))
-          .map((exercise) => fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name)),
+          .map((exercise) =>
+            fetchExerciseHistorySnapshot(exercise.exerciseId, exercise.name, exercise.isAmrap),
+          ),
       );
       const historySnapshots = [
         ...usableLocalHistory,
         ...d1History.filter(
           (snapshot): snapshot is ExerciseHistorySnapshot =>
-            snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
+            snapshot !== null && snapshot !== undefined && hasProgressionHistoryData(snapshot),
         ),
-      ];
+      ]
+        .sort((a, b) => exerciseIds.indexOf(a.exerciseId) - exerciseIds.indexOf(b.exerciseId))
+        .slice(0, MAX_PROGRESSION_PREVIEWS);
 
-      const local = await createLocalWorkoutFromTemplate(
-        userId,
-        template.id,
-        historySnapshots,
-        templateExercises,
-      );
-
-      if (local?.id) {
-        router.push(`/workout-session?workoutId=${local.id}`);
+      if (historySnapshots.length > 0) {
+        setPendingTemplateStart({ template, templateExercises, historySnapshots });
         return;
       }
 
-      Alert.alert('Error', 'Failed to create workout. Please try again.');
+      await createTemplateWorkout(template, templateExercises, { ignoreHistory: true });
     } catch (e) {
       Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
@@ -749,6 +848,32 @@ export default function WorkoutsIndex() {
     );
   };
 
+  const templateProgressionPreviews = useMemo<ProgressionExercisePreview[]>(() => {
+    if (!pendingTemplateStart) return [];
+    const exerciseById = new Map(
+      pendingTemplateStart.templateExercises.map((exercise) => [exercise.exerciseId, exercise]),
+    );
+    return pendingTemplateStart.historySnapshots.map((snapshot) => {
+      const exercise = exerciseById.get(snapshot.exerciseId);
+      return {
+        exerciseId: snapshot.exerciseId,
+        name: exercise?.name ?? snapshot.exerciseId,
+        exerciseType: exercise?.exerciseType ?? 'weights',
+        isAmrap: Boolean(exercise?.isAmrap ?? snapshot.isAmrap),
+        lastWorkoutDate: snapshot.workoutDate,
+        sets: snapshot.sets.map((set, index) => ({
+          setNumber: set.setNumber ?? index + 1,
+          weight: set.weight,
+          reps: set.reps,
+          rpe: set.rpe,
+          duration: set.duration,
+          distance: set.distance,
+          height: set.height,
+        })),
+      };
+    });
+  }, [pendingTemplateStart]);
+
   return (
     <>
       <PageLayout
@@ -764,9 +889,7 @@ export default function WorkoutsIndex() {
           refreshControl: (
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => {
-                void refreshWorkoutsScreen(true);
-              }}
+              onRefresh={onRefresh}
               tintColor={colors.accentSecondary}
             />
           ),
@@ -996,6 +1119,24 @@ export default function WorkoutsIndex() {
           </Surface>
         </View>
       </Modal>
+
+      <ProgressionPromptModal
+        visible={pendingTemplateStart !== null}
+        title="Progress from last workout"
+        subtitle={
+          pendingTemplateStart
+            ? `${pendingTemplateStart.template.name} has history for ${templateProgressionPreviews.length} exercise${templateProgressionPreviews.length === 1 ? '' : 's'}. Review the suggested weights before starting.`
+            : undefined
+        }
+        weightUnit={weightUnit}
+        defaultIncrement={getDefaultProgressionIncrement(weightUnit)}
+        templateDefaults={templateDefaults}
+        exercises={templateProgressionPreviews}
+        allowPerExerciseEdit
+        onConfirm={handleConfirmTemplateProgression}
+        onSkipHistory={handleSkipTemplateHistory}
+        onClose={() => setPendingTemplateStart(null)}
+      />
 
       <Modal
         visible={showTemplateEditor}

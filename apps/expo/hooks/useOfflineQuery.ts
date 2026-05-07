@@ -1,4 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { enqueueLocalRead } from '../db/read-queue';
+import { enqueueLocalWrite } from '../db/write-queue';
 
 export function useOfflineQuery<TData>(options: {
   queryKey: unknown[];
@@ -10,10 +12,13 @@ export function useOfflineQuery<TData>(options: {
   refetchOnMount?: boolean | 'always';
   refetchOnWindowFocus?: boolean;
   fallbackToCacheOnError?: boolean;
+  networkFirst?: boolean;
   refetchInterval?: number;
   isDirtyFn?: () => Promise<boolean>;
 }) {
   const queryClient = useQueryClient();
+  const readCache = () => enqueueLocalRead(options.cacheFn);
+  const writeCache = (data: TData) => enqueueLocalWrite(() => options.writeCacheFn(data));
   return useQuery<TData, Error, TData>({
     queryKey: options.queryKey,
     enabled: options.enabled,
@@ -22,7 +27,27 @@ export function useOfflineQuery<TData>(options: {
     refetchOnWindowFocus: options.refetchOnWindowFocus ?? true,
     refetchInterval: options.refetchInterval,
     queryFn: async () => {
-      const cached = await options.cacheFn();
+      if (options.networkFirst) {
+        try {
+          const data = await options.apiFn();
+          if (options.isDirtyFn) {
+            const isDirty = await options.isDirtyFn();
+            if (isDirty) {
+              const cached = await readCache();
+              if (cached != null) return cached;
+              return data;
+            }
+          }
+          await writeCache(data);
+          return data;
+        } catch (error) {
+          const cached = await readCache();
+          if (cached != null) return cached;
+          throw error;
+        }
+      }
+
+      const cached = await readCache();
       if (cached != null) {
         void options
           .apiFn()
@@ -31,7 +56,7 @@ export function useOfflineQuery<TData>(options: {
               const isDirty = await options.isDirtyFn();
               if (isDirty) return;
             }
-            await options.writeCacheFn(data);
+            await writeCache(data);
             queryClient.setQueryData(options.queryKey, data);
           })
           .catch(() => {});
@@ -39,11 +64,11 @@ export function useOfflineQuery<TData>(options: {
       }
       try {
         const data = await options.apiFn();
-        await options.writeCacheFn(data);
+        await writeCache(data);
         return data;
       } catch (error) {
         if (options.fallbackToCacheOnError) {
-          const fallback = await options.cacheFn();
+          const fallback = await readCache();
           if (fallback != null) return fallback;
         }
         throw error;

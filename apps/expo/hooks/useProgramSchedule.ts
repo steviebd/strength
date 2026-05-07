@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { eq, and, or, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { getCachedProgramSchedule } from '@/db/training-cache';
 import { getLocalDb } from '@/db/client';
-import { localProgramCycleWorkouts, localSyncQueue } from '@/db/local-schema';
+import { localProgramCycleWorkouts } from '@/db/local-schema';
 import { createLocalWorkoutFromProgramCycleWorkoutDefinition } from '@/db/workouts';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
 import { tryOnlineOrEnqueue, OfflineError } from '@/lib/offline-mutation';
 
@@ -47,23 +48,10 @@ export function useProgramSchedule(cycleId: string) {
     apiFn: () => apiFetch<ProgramScheduleResponse>(`/api/programs/cycles/${cycleId}/schedule`),
     cacheFn: () => getCachedProgramSchedule(userId!, cycleId, activeTimezone ?? 'UTC'),
     writeCacheFn: async () => {},
-    isDirtyFn: async () => {
-      if (!userId) return false;
-      const db = getLocalDb();
-      if (!db) return false;
-      const result = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localSyncQueue)
-        .where(
-          and(
-            eq(localSyncQueue.userId, userId),
-            eq(localSyncQueue.operation, 'reschedule_workout'),
-            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
-          ),
-        )
-        .get();
-      return (result?.count ?? 0) > 0;
-    },
+    isDirtyFn: () =>
+      userId
+        ? hasPendingTrainingWrites(userId, ['program', 'program_cycle', 'workout'])
+        : Promise.resolve(false),
   });
 }
 

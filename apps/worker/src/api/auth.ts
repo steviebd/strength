@@ -106,7 +106,8 @@ export function createHandler<R = Response>(
     }
     try {
       return await handler(c, { userId: auth.userId, db: auth.db });
-    } catch {
+    } catch (err) {
+      console.error('Handler error:', err);
       return c.json({ message: 'Internal server error' }, 500);
     }
   };

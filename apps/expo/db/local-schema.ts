@@ -10,6 +10,7 @@ export const localUserPreferences = sqliteTable('local_user_preferences', {
   userId: text('user_id').primaryKey(),
   weightUnit: text('weight_unit').notNull().default('kg'),
   distanceUnit: text('distance_unit').notNull().default('km'),
+  heightUnit: text('height_unit').notNull().default('cm'),
   timezone: text('timezone'),
   bodyweightKg: real('bodyweight_kg'),
   weightPromptedAt: integer('weight_prompted_at', { mode: 'timestamp_ms' }),
@@ -93,6 +94,11 @@ export const localTemplates = sqliteTable('local_templates', {
   name: text('name').notNull(),
   description: text('description'),
   notes: text('notes'),
+  defaultWeightIncrement: real('default_weight_increment'),
+  defaultBodyweightIncrement: real('default_bodyweight_increment'),
+  defaultCardioIncrement: real('default_cardio_increment'),
+  defaultTimedIncrement: real('default_timed_increment'),
+  defaultPlyoIncrement: real('default_plyo_increment'),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
   createdLocally: integer('created_locally', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }),
@@ -107,7 +113,7 @@ export const localTemplateExercises = sqliteTable('local_template_exercises', {
   exerciseId: text('exercise_id').notNull(),
   name: text('name').notNull(),
   muscleGroup: text('muscle_group'),
-  exerciseType: text('exercise_type').notNull().default('weighted'),
+  exerciseType: text('exercise_type').notNull().default('weights'),
   orderIndex: integer('order_index').notNull(),
   targetWeight: real('target_weight'),
   addedWeight: real('added_weight'),
@@ -249,6 +255,15 @@ export const localBodyStats = sqliteTable('local_body_stats', {
   targetFatG: integer('target_fat_g'),
   recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }),
   serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
+  hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localBodyweightHistory = sqliteTable('local_bodyweight_history', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  bodyweightKg: real('bodyweight_kg').notNull(),
+  recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

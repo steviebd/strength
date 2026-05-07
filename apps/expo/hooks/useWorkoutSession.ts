@@ -16,8 +16,15 @@ import {
   saveLocalWorkoutDraft,
   type ExerciseHistorySnapshot,
 } from '@/db/workouts';
+import { advanceLocalProgramCycleAfterWorkout } from '@/db/training-cache';
+import {
+  cancelCoalescedLocalWrite,
+  enqueueCoalescedLocalWrite,
+  flushLocalWrites,
+} from '@/db/write-queue';
 import { enqueueWorkoutCompletion } from '@/db/sync-queue';
-import { runWorkoutSync } from '@/lib/workout-sync';
+import { runTrainingSync } from '@/lib/workout-sync';
+import { hasProgressionHistoryData } from '@/lib/workout-progression';
 import type {
   Workout,
   WorkoutExercise,
@@ -42,11 +49,19 @@ function generateLocalId(): string {
 async function fetchExerciseHistorySnapshot(
   exerciseId: string,
   exerciseName?: string | null,
+  isAmrap?: boolean | null,
 ): Promise<ExerciseHistorySnapshot | null> {
   try {
-    const params = exerciseName?.trim() ? `?name=${encodeURIComponent(exerciseName.trim())}` : '';
+    const params = new URLSearchParams();
+    if (exerciseName?.trim()) {
+      params.set('name', exerciseName.trim());
+    }
+    if (isAmrap !== undefined && isAmrap !== null) {
+      params.set('isAmrap', String(isAmrap));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
     return await apiFetch<ExerciseHistorySnapshot | null>(
-      `/api/workouts/last/${encodeURIComponent(exerciseId)}${params}`,
+      `/api/workouts/last/${encodeURIComponent(exerciseId)}${query}`,
     );
   } catch {
     return null;
@@ -57,14 +72,14 @@ function getExerciseHistoryIds(exercise: Exercise) {
   return Array.from(new Set([exercise.id, exercise.libraryId].filter(Boolean) as string[]));
 }
 
-function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) {
-  return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
-}
-
-async function fetchFirstExerciseHistorySnapshot(exerciseIds: string[], exerciseName: string) {
+async function fetchFirstExerciseHistorySnapshot(
+  exerciseIds: string[],
+  exerciseName: string,
+  isAmrap?: boolean | null,
+) {
   for (const exerciseId of exerciseIds) {
-    const snapshot = await fetchExerciseHistorySnapshot(exerciseId, exerciseName);
-    if (hasUsableHistory(snapshot)) {
+    const snapshot = await fetchExerciseHistorySnapshot(exerciseId, exerciseName, isAmrap);
+    if (hasProgressionHistoryData(snapshot)) {
       return snapshot;
     }
   }
@@ -74,7 +89,14 @@ async function fetchFirstExerciseHistorySnapshot(exerciseIds: string[], exercise
 async function getCachedLastWorkoutData(userId: string, exerciseIds: string[]) {
   for (const exerciseId of exerciseIds) {
     const cached = await getLastWorkout(userId, exerciseId);
-    if (cached && (cached.weight !== null || cached.reps !== null)) {
+    if (
+      cached &&
+      (cached.weight !== null ||
+        cached.reps !== null ||
+        cached.duration !== null ||
+        cached.distance !== null ||
+        cached.height !== null)
+    ) {
       return cached;
     }
   }
@@ -170,14 +192,14 @@ function buildCachedSet(cached: {
 }
 
 function buildEmptySet(exerciseType?: string) {
-  const type = exerciseType ?? 'weighted';
+  const type = exerciseType ?? 'weights';
   return [
     {
       id: generateLocalId(),
       workoutExerciseId: '',
       setNumber: 1,
-      weight: type === 'weighted' ? 0 : type === 'bodyweight' ? null : null,
-      reps: type === 'weighted' || type === 'bodyweight' || type === 'plyo' ? 0 : null,
+      weight: type === 'weights' ? 0 : type === 'bodyweight' ? null : null,
+      reps: type === 'weights' || type === 'bodyweight' || type === 'plyo' ? 0 : null,
       rpe: null,
       duration: type === 'timed' || type === 'cardio' ? 0 : null,
       distance: type === 'cardio' ? null : null,
@@ -209,7 +231,10 @@ interface UseWorkoutSessionReturn {
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => Promise<void>;
-  addExercise: (exercise: Exercise) => Promise<void>;
+  addExercise: (
+    exercise: Exercise,
+    options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },
+  ) => Promise<void>;
   updateExercise: (workoutExerciseId: string, updates: Partial<WorkoutExercise>) => void;
   removeExercise: (workoutExerciseId: string) => void;
   addSet: (workoutExerciseId: string) => void;
@@ -280,7 +305,6 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       }[]
     >
   >(new Map());
-  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setExercisesAndRef = useCallback(
     (value: WorkoutExercise[] | ((current: WorkoutExercise[]) => WorkoutExercise[])) => {
@@ -318,18 +342,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
 
   useEffect(() => {
     if (!workout || workout.completedAt || !session.data?.user) return;
-    if (draftSaveTimerRef.current) {
-      clearTimeout(draftSaveTimerRef.current);
-    }
     const userId = session.data.user.id;
-    draftSaveTimerRef.current = setTimeout(() => {
-      void saveLocalWorkoutDraft(userId, workout, exercises);
-    }, 400);
-    return () => {
-      if (draftSaveTimerRef.current) {
-        clearTimeout(draftSaveTimerRef.current);
+    void enqueueCoalescedLocalWrite(
+      `workout-draft:${workout.id}`,
+      () => saveLocalWorkoutDraft(userId, workout, exercises),
+      1500,
+    ).catch((error) => {
+      if (__DEV__) {
+        console.warn('Failed to save workout draft', error);
       }
-    };
+    });
   }, [workout, exercises, session.data?.user]);
 
   const startWorkout = useCallback(
@@ -405,25 +427,32 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     if (!workout || !session.data?.user) return;
     setIsLoading(true);
     try {
-      if (draftSaveTimerRef.current) {
-        clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
+      await flushLocalWrites();
       const latestExercises = exercisesRef.current;
       await saveLocalWorkoutDraft(session.data.user.id, workout, latestExercises);
       const completed = await completeLocalWorkout(session.data.user.id, workout, latestExercises);
       if (completed?.workout) {
         await enqueueWorkoutCompletion(session.data.user.id, workout.id, completed.workout);
-        await runWorkoutSync(session.data.user.id);
+        if (workout.programCycleId && workout.cycleWorkoutId) {
+          const advancePlan = await advanceLocalProgramCycleAfterWorkout({
+            userId: session.data.user.id,
+            programCycleId: workout.programCycleId,
+            completedCycleWorkoutId: workout.cycleWorkoutId,
+            workoutId: workout.id,
+          });
+          if (!advancePlan) {
+            await markLocalCycleWorkoutComplete(workout.cycleWorkoutId, workout.id);
+          }
+        } else if ((workout as any).cycleWorkoutId) {
+          await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
+        }
+        void runTrainingSync(session.data.user.id);
       } else {
         const payload = buildDirectCompletionPayload(workout, latestExercises);
         await apiFetch(`/api/workouts/${workout.id}/sync-complete`, {
           method: 'POST',
           body: payload,
         });
-      }
-      if ((workout as any).cycleWorkoutId) {
-        await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
       }
       if (session.data?.user && workout.workoutType !== WORKOUT_TYPE_ONE_RM_TEST) {
         const userId = session.data.user.id;
@@ -492,10 +521,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       try {
         const userId = session.data?.user?.id;
         if (!userId) return;
-        if (draftSaveTimerRef.current) {
-          clearTimeout(draftSaveTimerRef.current);
-          draftSaveTimerRef.current = null;
-        }
+        cancelCoalescedLocalWrite(`workout-draft:${workout.id}`);
         await discardLocalWorkout(workout.id, workout.cycleWorkoutId);
         await removePendingWorkout(workout.id);
 
@@ -523,38 +549,48 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
   }, [setExercisesAndRef, workout]);
 
   const addExercise = useCallback(
-    async (exercise: Exercise) => {
+    async (
+      exercise: Exercise,
+      options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },
+    ) => {
       const historyIds = getExerciseHistoryIds(exercise);
-      let historySnapshot: ExerciseHistorySnapshot | null = null;
+      const hasExplicitHistory = options !== undefined;
+      let historySnapshot: ExerciseHistorySnapshot | null = options?.historySnapshot ?? null;
       let cached: Awaited<ReturnType<typeof getCachedLastWorkoutData>> = null;
 
-      if (session.data?.user?.id) {
+      if (!hasExplicitHistory && session.data?.user?.id) {
         try {
           const localHistory = await getLocalLastCompletedExerciseSnapshots(
             session.data.user.id,
             historyIds,
             [exercise.name],
+            { isAmrap: Boolean(exercise.isAmrap) },
           );
-          historySnapshot = localHistory.find(hasUsableHistory) ?? null;
+          historySnapshot = localHistory.find(hasProgressionHistoryData) ?? null;
         } catch {
           // History lookup is best-effort. The exercise should still be added.
         }
       }
 
-      if (historySnapshot === null && cached === null) {
-        historySnapshot = await fetchFirstExerciseHistorySnapshot(historyIds, exercise.name);
+      if (!hasExplicitHistory && historySnapshot === null && cached === null) {
+        historySnapshot = await fetchFirstExerciseHistorySnapshot(
+          historyIds,
+          exercise.name,
+          exercise.isAmrap,
+        );
       }
 
-      if (historySnapshot === null && session.data?.user?.id) {
+      if (!hasExplicitHistory && historySnapshot === null && session.data?.user?.id) {
         cached = await getCachedLastWorkoutData(session.data.user.id, historyIds);
       }
 
       const newSets: WorkoutSet[] =
-        historySnapshot !== null
+        !options?.ignoreHistory && historySnapshot !== null
           ? buildHistorySets(historySnapshot)
-          : cached
+          : !options?.ignoreHistory && cached
             ? buildCachedSet(cached)
-            : buildEmptySet(exercise.exerciseType ?? 'weighted');
+            : buildEmptySet(exercise.exerciseType ?? 'weights');
+      const sets = exercise.isAmrap ? newSets.slice(0, 1) : newSets;
 
       const newWorkoutExercise: WorkoutExercise = {
         id: generateLocalId(),
@@ -562,9 +598,9 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
         libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: exercisesRef.current.length,
-        sets: newSets,
+        sets,
         notes: null,
         isAmrap: exercise.isAmrap ?? false,
       };
@@ -599,16 +635,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
           if (ex.id !== workoutExerciseId) return ex;
           const sets = ex.sets ?? [];
           const lastSet = sets[sets.length - 1];
-          const type = ex.exerciseType ?? 'weighted';
+          const type = ex.exerciseType ?? 'weights';
           const newSet: WorkoutSet = {
             id: generateLocalId(),
             workoutExerciseId,
             setNumber: sets.length + 1,
             weight:
-              lastSet?.weight ?? (type === 'weighted' ? 0 : type === 'bodyweight' ? null : null),
+              lastSet?.weight ?? (type === 'weights' ? 0 : type === 'bodyweight' ? null : null),
             reps:
               lastSet?.reps ??
-              (type === 'weighted' || type === 'bodyweight' || type === 'plyo' ? 0 : null),
+              (type === 'weights' || type === 'bodyweight' || type === 'plyo' ? 0 : null),
             rpe: null,
             duration: lastSet?.duration ?? (type === 'timed' || type === 'cardio' ? 0 : null),
             distance: lastSet?.distance ?? (type === 'cardio' ? null : null),

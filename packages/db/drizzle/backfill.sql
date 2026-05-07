@@ -7,7 +7,7 @@
 -- 1. Set default exercise_type for all existing exercises that don't have one.
 --    Exercises with a libraryId will be updated below.
 UPDATE exercises
-SET exercise_type = 'weighted'
+SET exercise_type = 'weights'
 WHERE exercise_type IS NULL;
 
 -- 2. Set is_amrap = false for all existing exercises (column was added with default false,

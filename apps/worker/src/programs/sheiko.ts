@@ -42,7 +42,7 @@ export const sheiko = createLinearProgramGenerator({
       return [
         {
           name: 'Squat',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'squat' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: isDeload ? 3 : weekConfig.squat.sets,
@@ -51,7 +51,7 @@ export const sheiko = createLinearProgramGenerator({
         },
         {
           name: 'Bench Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'bench' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           sets: isDeload ? 2 : weekConfig.bench.sets,
@@ -65,7 +65,7 @@ export const sheiko = createLinearProgramGenerator({
       return [
         {
           name: 'Deadlift',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'deadlift' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           sets: isDeload ? 2 : weekConfig.deadlift.sets,
@@ -74,7 +74,7 @@ export const sheiko = createLinearProgramGenerator({
         },
         {
           name: 'Overhead Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'ohp' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           sets: isDeload ? 2 : weekConfig.ohp.sets,
@@ -88,7 +88,7 @@ export const sheiko = createLinearProgramGenerator({
       return [
         {
           name: 'Squat',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'squat' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
           sets: isDeload ? 3 : weekConfig.squat.sets - 1,
@@ -97,7 +97,7 @@ export const sheiko = createLinearProgramGenerator({
         },
         {
           name: 'Bench Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'bench' as const,
           libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           sets: isDeload ? 2 : weekConfig.bench.sets - 1,
@@ -110,7 +110,7 @@ export const sheiko = createLinearProgramGenerator({
     return [
       {
         name: 'Deadlift',
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: 'deadlift' as const,
         libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
         sets: isDeload ? 2 : weekConfig.deadlift.sets - 1,
@@ -119,7 +119,7 @@ export const sheiko = createLinearProgramGenerator({
       },
       {
         name: 'Overhead Press',
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: 'ohp' as const,
         libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
         sets: isDeload ? 2 : weekConfig.ohp.sets - 1,

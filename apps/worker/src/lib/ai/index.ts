@@ -31,12 +31,20 @@ function getAiGatewayApiKey(env: WorkerEnv): string {
 
 const unified = createUnified();
 
-export function getModel(env: WorkerEnv) {
+export function getModel(
+  env: WorkerEnv,
+  options?: { eventId?: string; metadata?: Record<string, string | number | boolean | null> },
+) {
   const resolvedEnv = resolveWorkerEnv(env);
   const aigateway = createAiGateway({
     accountId: getRequiredEnv(resolvedEnv, 'CLOUDFLARE_ACCOUNT_ID'),
     gateway: getRequiredEnv(resolvedEnv, 'AI_GATEWAY_NAME'),
     apiKey: getAiGatewayApiKey(resolvedEnv),
+    options: {
+      collectLog: true,
+      eventId: options?.eventId,
+      metadata: options?.metadata,
+    },
   });
 
   const modelName = resolvedEnv.AI_MODEL_NAME;

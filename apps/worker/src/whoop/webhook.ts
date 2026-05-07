@@ -159,28 +159,15 @@ async function handleWhoopRecoveryUpdate(
   userId: string,
   sleepId: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    const sleep = await fetchSleepById(
-      tx as unknown as DrizzleD1Database<typeof schema>,
-      env,
-      userId,
-      sleepId,
-    );
+  const sleep = await fetchSleepById(db, env, userId, sleepId);
 
-    await upsertWhoopSleep(tx as unknown as DrizzleD1Database<typeof schema>, userId, sleep);
+  if (sleep.cycle_id == null) {
+    throw new Error(`WHOOP sleep ${sleepId} did not include a cycle_id`);
+  }
 
-    if (sleep.cycle_id == null) {
-      throw new Error(`WHOOP sleep ${sleepId} did not include a cycle_id`);
-    }
-
-    const recovery = await fetchRecoveryByCycleId(
-      tx as unknown as DrizzleD1Database<typeof schema>,
-      env,
-      userId,
-      sleep.cycle_id,
-    );
-    await upsertWhoopRecovery(tx as unknown as DrizzleD1Database<typeof schema>, userId, recovery);
-  });
+  const recovery = await fetchRecoveryByCycleId(db, env, userId, sleep.cycle_id);
+  await upsertWhoopSleep(db, userId, sleep);
+  await upsertWhoopRecovery(db, userId, recovery);
 }
 
 export async function handleWebhookEvent(

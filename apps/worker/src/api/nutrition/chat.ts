@@ -42,6 +42,7 @@ interface ChatHistoryQuery {
 }
 
 type ChatJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
+const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 interface ChatJobResponse {
   id: string;
@@ -129,11 +130,13 @@ async function generateNutritionChatAssistantContent({
   env,
   userId,
   body,
+  jobId,
 }: {
   db: any;
   env: WorkerEnv;
   userId: string;
   body: ChatRequest;
+  jobId?: string;
 }): Promise<{ content: string; assistantMessageId: string }> {
   const {
     messages,
@@ -281,11 +284,23 @@ async function generateNutritionChatAssistantContent({
   let assistantContent: string;
   let assistantMessageId: string;
 
-  const model = getModel(env);
+  const model = getModel(env, {
+    eventId: jobId,
+    metadata: {
+      feature: 'nutrition-chat',
+      jobId: jobId ?? null,
+    },
+  });
   const abortController = new AbortController();
-  const timeoutId = setTimeout(() => abortController.abort(), 30000);
+  const timeoutId = setTimeout(() => abortController.abort(), AI_REQUEST_TIMEOUT_MS);
 
   try {
+    console.info('[nutrition-chat] dispatching AI request', {
+      jobId,
+      model: env.AI_MODEL_NAME,
+      hasImage,
+      timeoutMs: AI_REQUEST_TIMEOUT_MS,
+    });
     const result = await generateText({
       model,
       system: combinedSystemPrompt,
@@ -293,6 +308,10 @@ async function generateNutritionChatAssistantContent({
       abortSignal: abortController.signal,
     });
     assistantContent = result.text;
+    console.info('[nutrition-chat] AI request completed', {
+      jobId,
+      contentLength: assistantContent.length,
+    });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -539,6 +558,7 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
       db,
       env,
       userId: job.userId,
+      jobId: job.id,
       body: {
         messages,
         date: job.date,
@@ -572,6 +592,10 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
       .where(eq(schema.nutritionChatJobs.id, job.id));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Nutrition chat job failed.';
+    console.error('[nutrition-chat] job failed', {
+      jobId: job.id,
+      error: message,
+    });
     await db
       .update(schema.nutritionChatJobs)
       .set({

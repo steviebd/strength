@@ -2,6 +2,7 @@ import { apiFetch } from '@/lib/api';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { authClient } from '@/lib/auth-client';
 import { buildLocalHomeSummary } from '@/db/training-cache';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
 
 type HomeScheduledWorkout = {
@@ -70,6 +71,8 @@ export function useHomeSummary() {
     cacheFn: () =>
       buildLocalHomeSummary(userId!, activeTimezone ?? 'UTC') as Promise<HomeSummaryResponse>,
     writeCacheFn: async () => {},
+    isDirtyFn: () =>
+      hasPendingTrainingWrites(userId!, ['program', 'program_cycle', 'workout', 'one_rms']),
     fallbackToCacheOnError: true,
     refetchInterval: 60 * 1000,
   });

@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { useWorkoutSession } from '@/hooks/useWorkoutSession';
+import type { ExerciseHistorySnapshot } from '@/db/workouts';
 
 export interface WorkoutSet {
   id: string;
@@ -79,7 +80,10 @@ interface WorkoutSessionContextValue {
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => void;
-  addExercise: (exercise: Exercise) => Promise<void>;
+  addExercise: (
+    exercise: Exercise,
+    options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },
+  ) => Promise<void>;
   updateExercise: (workoutExerciseId: string, updates: Partial<WorkoutExercise>) => void;
   removeExercise: (workoutExerciseId: string) => void;
   addSet: (workoutExerciseId: string) => void;

@@ -138,4 +138,45 @@ describe('useOfflineQuery', () => {
     expect(writeCacheFn).not.toHaveBeenCalled();
     expect(setQueryDataMock).not.toHaveBeenCalled();
   });
+
+  test('network-first: returns API data and refreshes cache even when cached data exists', async () => {
+    const cached = { id: 'cached' };
+    const apiData = { id: 'api' };
+    const cacheFn = vi.fn().mockResolvedValue(cached);
+    const apiFn = vi.fn().mockResolvedValue(apiData);
+    const writeCacheFn = vi.fn().mockResolvedValue(undefined);
+
+    useOfflineQuery({
+      queryKey: ['network-first-test'],
+      apiFn,
+      cacheFn,
+      writeCacheFn,
+      networkFirst: true,
+    });
+
+    const data = await lastQueryOptions!.queryFn();
+    expect(data).toEqual(apiData);
+    expect(apiFn).toHaveBeenCalledTimes(1);
+    expect(cacheFn).not.toHaveBeenCalled();
+    expect(writeCacheFn).toHaveBeenCalledWith(apiData);
+  });
+
+  test('network-first: falls back to cached data when API fails', async () => {
+    const cached = { id: 'cached' };
+    const cacheFn = vi.fn().mockResolvedValue(cached);
+    const apiFn = vi.fn().mockRejectedValue(new Error('network error'));
+    const writeCacheFn = vi.fn().mockResolvedValue(undefined);
+
+    useOfflineQuery({
+      queryKey: ['network-first-fallback-test'],
+      apiFn,
+      cacheFn,
+      writeCacheFn,
+      networkFirst: true,
+    });
+
+    const data = await lastQueryOptions!.queryFn();
+    expect(data).toEqual(cached);
+    expect(writeCacheFn).not.toHaveBeenCalled();
+  });
 });

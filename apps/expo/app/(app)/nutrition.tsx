@@ -4,6 +4,7 @@ import {
   Alert,
   AppState,
   Keyboard,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +30,7 @@ import {
 } from '@/lib/storage';
 import { getCachedDailySummary, cacheDailySummary } from '@/db/nutrition';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ChatInput } from '@/components/nutrition/ChatInput';
 import { ChatMessage } from '@/components/nutrition/ChatMessage';
 import { NutritionDashboard } from '@/components/nutrition/NutritionDashboard';
@@ -48,6 +50,7 @@ import { localChatMessageQueue } from '@/db/local-schema';
 import { eq, and } from 'drizzle-orm';
 import { generateId } from '@strength/db/client';
 import { runTrainingSync } from '@/lib/workout-sync';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -61,6 +64,7 @@ interface ChatMessageData {
   createdAt?: string | null;
   isPlaceholder?: boolean;
   queueId?: string;
+  jobId?: string;
   status?: 'pending' | 'failed';
 }
 
@@ -237,6 +241,62 @@ function mergeSavedEntryIds(
   });
 }
 
+function mergeServerHistoryWithLocalState(
+  serverMessages: ChatMessageData[],
+  localMessages: ChatMessageData[],
+): ChatMessageData[] {
+  const merged = mergeSavedEntryIds(serverMessages, localMessages);
+  const localInFlightMessages = localMessages.filter(
+    (message) =>
+      message.isPlaceholder || message.status === 'pending' || message.status === 'failed',
+  );
+
+  if (localInFlightMessages.length === 0) {
+    return merged;
+  }
+
+  const serverFingerprints = new Set(merged.map(getMessageSavedKey));
+  const mergedIds = new Set(merged.map((message) => message.id));
+  const mergedQueueIds = new Set(
+    merged.map((message) => message.queueId).filter((queueId): queueId is string => !!queueId),
+  );
+  const preserved = localInFlightMessages.filter((message) => {
+    const localIndex = localMessages.findIndex((localMessage) => localMessage.id === message.id);
+    const localUserMessage =
+      localIndex > 0 && localMessages[localIndex - 1].role === 'user'
+        ? localMessages[localIndex - 1]
+        : null;
+    const matchingServerUserIndex = localUserMessage
+      ? merged.findIndex(
+          (serverMessage) =>
+            serverMessage.role === 'user' && serverMessage.content === localUserMessage.content,
+        )
+      : -1;
+    const hasServerAssistantForLocalUser =
+      matchingServerUserIndex !== -1 && merged[matchingServerUserIndex + 1]?.role === 'assistant';
+
+    if (hasServerAssistantForLocalUser) {
+      return false;
+    }
+
+    if (mergedIds.has(message.id)) {
+      return false;
+    }
+
+    if (message.queueId && mergedQueueIds.has(message.queueId)) {
+      return false;
+    }
+
+    if (!message.isPlaceholder && serverFingerprints.has(getMessageSavedKey(message))) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return [...merged, ...preserved];
+}
+
 function dedupeMessages(messages: ChatMessageData[]): ChatMessageData[] {
   const seen = new Set<string>();
 
@@ -306,6 +366,7 @@ export default function NutritionScreen() {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
   const { activeTimezone } = useUserPreferences();
+  const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
     () => getNutritionLocalStateKey(date, activeTimezone),
@@ -332,6 +393,7 @@ export default function NutritionScreen() {
   const messagesScrollRef = useRef<ScrollView | null>(null);
   const chatInputRef = useRef<TextInput | null>(null);
   const hasFocusedChatRoute = useRef(false);
+  const activeChatPolls = useRef(new Set<string>());
   const [assistantSectionY, setAssistantSectionY] = useState<number | null>(null);
   const [chatInputY, setChatInputY] = useState<number | null>(null);
   const savingAnalysisMessageIds = useRef(new Set<string>());
@@ -348,6 +410,7 @@ export default function NutritionScreen() {
     cacheFn: () =>
       getCachedDailySummary(userId!, date, activeTimezone ?? 'UTC') as Promise<DailySummary | null>,
     writeCacheFn: (data) => cacheDailySummary(userId!, date, activeTimezone ?? 'UTC', data),
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['nutrition']),
     fallbackToCacheOnError: true,
   });
 
@@ -472,7 +535,7 @@ export default function NutritionScreen() {
       }),
     );
 
-    setMessages((current) => mergeSavedEntryIds(serverMessages, current));
+    setMessages((current) => mergeServerHistoryWithLocalState(serverMessages, current));
     setHistoryCursor(historyQuery.data.nextCursor);
     setHasMoreHistory(historyQuery.data.hasMore);
     if (isInitialHistoryLoad) {
@@ -525,6 +588,88 @@ export default function NutritionScreen() {
     [deleteMealMutation],
   );
 
+  const pollChatJob = useCallback(async (jobId: string, assistantMsgId: string) => {
+    if (activeChatPolls.current.has(jobId)) {
+      return;
+    }
+
+    activeChatPolls.current.add(jobId);
+
+    try {
+      const jobStartedAt = Date.now();
+      let pollInterval = 1000;
+      let assistantContent = '';
+
+      while (Date.now() - jobStartedAt < CHAT_JOB_TIMEOUT_MS) {
+        const job = await apiFetch<ChatJobResponse>(`/api/nutrition/chat/jobs/${jobId}`);
+
+        if (job.status === 'completed') {
+          assistantContent = job.content ?? '';
+          break;
+        }
+
+        if (job.status === 'failed') {
+          throw new Error(job.error ?? 'The assistant could not complete that request.');
+        }
+
+        await delay(pollInterval);
+        pollInterval = Math.min(pollInterval * 2, 16000);
+      }
+
+      if (!assistantContent.trim()) {
+        throw new Error('The assistant took too long to respond.');
+      }
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantMsgId
+            ? {
+                ...message,
+                content: assistantContent,
+                isPlaceholder: false,
+                queueId: undefined,
+                jobId: undefined,
+                status: undefined,
+                analysis: parseMealAnalysisFromContent(assistantContent) ?? message.analysis,
+              }
+            : message,
+        ),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to reach the nutrition assistant.';
+      setMessages((prev) =>
+        prev.map((entry) =>
+          entry.id === assistantMsgId && entry.isPlaceholder
+            ? {
+                ...entry,
+                content: `I couldn't complete that request. ${message}`,
+                isPlaceholder: false,
+                queueId: undefined,
+                jobId: undefined,
+                status: undefined,
+              }
+            : entry,
+        ),
+      );
+    } finally {
+      activeChatPolls.current.delete(jobId);
+      setIsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const pendingMessages = messages.filter(
+        (message) => message.role === 'assistant' && message.isPlaceholder && message.jobId,
+      );
+
+      for (const message of pendingMessages) {
+        void pollChatJob(message.jobId!, message.id);
+      }
+    }, [messages, pollChatJob]),
+  );
+
   const sendMessage = useCallback(
     async (text: string, imageOverride?: { base64: string; uri: string } | null) => {
       if (!userId) return;
@@ -542,7 +687,6 @@ export default function NutritionScreen() {
       setIsLoading(true);
 
       const assistantMsgId = (Date.now() + 1).toString();
-      let assistantContent = '';
 
       const messagesToSend = [...messages, userMsg].map((message) => ({
         role: message.role,
@@ -603,35 +747,14 @@ export default function NutritionScreen() {
           },
         });
 
-        const jobStartedAt = Date.now();
-        let pollInterval = 1000;
-        while (Date.now() - jobStartedAt < CHAT_JOB_TIMEOUT_MS) {
-          const job = await apiFetch<ChatJobResponse>(`/api/nutrition/chat/jobs/${response.jobId}`);
-
-          if (job.status === 'completed') {
-            assistantContent = job.content ?? '';
-            break;
-          }
-
-          if (job.status === 'failed') {
-            throw new Error(job.error ?? 'The assistant could not complete that request.');
-          }
-
-          await delay(pollInterval);
-          pollInterval = Math.min(pollInterval * 2, 16000);
-        }
-
-        if (!assistantContent.trim()) {
-          throw new Error('The assistant took too long to respond.');
-        }
-
         setMessages((prev) =>
           prev.map((message) =>
             message.id === assistantMsgId
-              ? { ...message, content: assistantContent, isPlaceholder: false, queueId: undefined }
+              ? { ...message, jobId: response.jobId, status: undefined }
               : message,
           ),
         );
+        await pollChatJob(response.jobId, assistantMsgId);
       } catch (error) {
         if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
           setMessages((prev) =>
@@ -641,10 +764,6 @@ export default function NutritionScreen() {
                 : message,
             ),
           );
-          return;
-        }
-
-        if (assistantContent.trim()) {
           return;
         }
 
@@ -663,19 +782,12 @@ export default function NutritionScreen() {
           ),
         );
       } finally {
-        setIsLoading(false);
-
-        const analysis = parseMealAnalysisFromContent(assistantContent);
-        if (analysis) {
-          setMessages((prev) =>
-            prev.map((message) =>
-              message.id === assistantMsgId ? { ...message, analysis } : message,
-            ),
-          );
+        if (!activeChatPolls.current.size) {
+          setIsLoading(false);
         }
       }
     },
-    [activeTimezone, date, localStateKey, messages, pendingImage, userId],
+    [activeTimezone, date, localStateKey, messages, pendingImage, pollChatJob, userId],
   );
 
   const handleRetryChatMessage = useCallback(
@@ -691,6 +803,15 @@ export default function NutritionScreen() {
     },
     [userId],
   );
+
+  const onRefresh = useCallback(async () => {
+    setOfflineMessage(null);
+    try {
+      await handleRefresh();
+    } catch (err) {
+      setOfflineMessage(getPullToRefreshErrorMessage(err));
+    }
+  }, [handleRefresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -966,6 +1087,13 @@ export default function NutritionScreen() {
             bottomInset: NUTRITION_BOTTOM_INSET,
             keyboardDismissMode: 'interactive',
             keyboardShouldPersistTaps: 'handled',
+            refreshControl: (
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.accentSecondary}
+              />
+            ),
           }}
           scrollViewRef={messagesScrollRef}
         >

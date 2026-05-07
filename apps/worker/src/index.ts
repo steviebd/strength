@@ -33,6 +33,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { hashPassword } from './auth/password';
 import { escapeHtml } from './utils/html';
+import { captureEvent } from './lib/posthog';
 
 import healthRouter from './routes/health';
 import profileRouter from './routes/profile';
@@ -246,6 +247,30 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// PostHog analytics capture for authenticated API requests
+app.use('/api/*', async (c, next) => {
+  await next();
+
+  const user = c.get('user');
+  if (!user) return;
+
+  const path = c.req.path;
+  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) return;
+
+  const eventName = c.req.method === 'GET' ? '$pageview' : 'api_request';
+  const properties = {
+    path,
+    method: c.req.method,
+    status: c.res.status,
+  };
+
+  try {
+    c.executionCtx.waitUntil(captureEvent(c.env, user.id, eventName, properties));
+  } catch {
+    // Silently fail — analytics should not break the API
+  }
+});
+
 // CSRF protection for state-changing API requests
 app.use('/api/*', async (c, next) => {
   if (!isMutatingMethod(c.req.method)) {
@@ -425,7 +450,7 @@ app.use('/api/*', async (c, next) => {
   await next();
   if (c.req.method === 'GET') {
     const path = c.req.path;
-    const cacheablePrefixes = ['/api/exercises', '/api/programs', '/api/templates'];
+    const cacheablePrefixes = ['/api/exercises', '/api/programs'];
     const isCacheable =
       cacheablePrefixes.some((prefix) => path.startsWith(prefix)) || path === '/api/home/summary';
     if (isCacheable) {

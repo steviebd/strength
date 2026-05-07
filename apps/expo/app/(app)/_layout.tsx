@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
 import { UserPreferencesProvider, useUserPreferences } from '@/context/UserPreferencesContext';
 import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
+import { FirstSyncGate } from '@/components/FirstSyncGate';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
@@ -322,7 +323,9 @@ export default function AppLayout() {
   return (
     <UserPreferencesProvider>
       <WorkoutSessionProvider>
-        <AppTabs />
+        <FirstSyncGate>
+          <AppTabs />
+        </FirstSyncGate>
       </WorkoutSessionProvider>
     </UserPreferencesProvider>
   );

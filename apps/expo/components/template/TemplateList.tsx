@@ -2,6 +2,8 @@ import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'rea
 import { useTemplates, type Template } from '@/hooks/useTemplates';
 import { Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import { colors, spacing } from '@/theme';
+import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { formatHeight } from '@/lib/units';
 
 interface TemplateListProps {
   onEditTemplate?: (template: Template) => void;
@@ -10,6 +12,7 @@ interface TemplateListProps {
 
 export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListProps) {
   const { templates, isLoading, isError: _isError, deleteTemplate } = useTemplates();
+  const { heightUnit } = useUserPreferences();
 
   const handleDelete = (template: Template) => {
     Alert.alert('Delete Template', `Are you sure you want to delete "${template.name}"?`, [
@@ -76,9 +79,9 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
               <SectionTitle title="Exercises" />
               <View style={styles.exerciseList}>
                 {template.exercises.slice(0, 3).map((ex) => {
-                  const type = ex.exerciseType ?? 'weighted';
+                  const type = ex.exerciseType ?? 'weights';
                   let detailText = '';
-                  if (type === 'weighted') {
+                  if (type === 'weights') {
                     detailText = `${ex.sets} × ${ex.reps} @ ${ex.targetWeight}`;
                   } else if (type === 'bodyweight') {
                     detailText = `${ex.sets} × ${ex.reps}`;
@@ -87,7 +90,7 @@ export function TemplateList({ onEditTemplate, onStartWorkout }: TemplateListPro
                   } else if (type === 'cardio') {
                     detailText = `${ex.sets} × ${ex.targetDuration}s`;
                   } else if (type === 'plyo') {
-                    detailText = `${ex.sets} × ${ex.reps} × ${ex.targetHeight}cm`;
+                    detailText = `${ex.sets} × ${ex.reps} × ${formatHeight(ex.targetHeight ?? 0, heightUnit)}`;
                   }
                   return (
                     <View key={`template-exercise:${ex.id}`}>

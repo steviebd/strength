@@ -30,7 +30,7 @@ export function useExerciseSearch({
     name: '',
     muscleGroup: '',
     description: '',
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
     isAmrap: false,
   });
   const [creating, setCreating] = useState(false);
@@ -146,7 +146,7 @@ export function useExerciseSearch({
         name: '',
         muscleGroup: '',
         description: '',
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         isAmrap: false,
       });
     } catch (e) {

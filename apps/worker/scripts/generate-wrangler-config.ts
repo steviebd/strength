@@ -41,6 +41,8 @@ const INFISICAL_KEYS = [
   'RATE_LIMIT_REQUEST_PER_HOUR',
   'RESEND_API_KEY',
   'RESEND_FROM_EMAIL',
+  'POSTHOG_API_KEY',
+  'POSTHOG_PROJECT_URL',
 ] as const;
 
 function parseArgs(): Args {

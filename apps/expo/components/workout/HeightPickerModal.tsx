@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, View, Text, TextInput, StyleSheet } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { colors, spacing, radius, typography } from '@/theme';
-import { formatHeight, parseHeightInput, type DistanceUnit } from '@/lib/units';
+import { formatHeight, parseHeightInput, toDisplayHeight, type HeightUnit } from '@/lib/units';
 
 interface HeightPickerModalProps {
   visible: boolean;
   initialCm: number | null;
-  unit: DistanceUnit;
+  unit: HeightUnit;
   onSave: (cm: number) => void;
   onCancel: () => void;
 }
@@ -23,11 +23,7 @@ export function HeightPickerModal({
 
   useEffect(() => {
     if (initialCm != null && initialCm > 0) {
-      if (unit === 'km') {
-        setValue(String(Math.round(initialCm)));
-      } else {
-        setValue(String(Math.round(initialCm / 2.54)));
-      }
+      setValue(String(Math.round(toDisplayHeight(initialCm, unit))));
     } else {
       setValue('');
     }
@@ -68,7 +64,7 @@ export function HeightPickerModal({
             placeholder="0"
             placeholderTextColor={colors.placeholderText}
           />
-          <Text style={styles.unitLabel}>{unit === 'km' ? 'cm' : 'in'}</Text>
+          <Text style={styles.unitLabel}>{unit}</Text>
         </View>
 
         <View style={styles.footer}>

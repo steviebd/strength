@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import {
   WORKOUT_TYPE_ONE_RM_TEST,
   WORKOUT_TYPE_TRAINING,
-  consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   exerciseLibrary,
   getCurrentCycleWorkout,
   generateId,
@@ -112,6 +112,21 @@ type TemplateExerciseCacheInput = {
   isRequired?: boolean | null;
 };
 
+type TemplateCacheInput = {
+  id?: string | null;
+  name: string;
+  description?: string | null;
+  notes?: string | null;
+  defaultWeightIncrement?: number | null;
+  defaultBodyweightIncrement?: number | null;
+  defaultCardioIncrement?: number | null;
+  defaultTimedIncrement?: number | null;
+  defaultPlyoIncrement?: number | null;
+  createdAt?: Date | string | number | null;
+  updatedAt?: Date | string | number | null;
+  exercises?: TemplateExerciseCacheInput[] | null;
+};
+
 type ProgramCycleWorkoutDefinition = {
   id: string;
   cycleId: string;
@@ -128,6 +143,7 @@ type ProgramCycleWorkoutDefinition = {
 export type ExerciseHistorySnapshot = {
   exerciseId: string;
   workoutDate: string | null;
+  isAmrap?: boolean | null;
   sets: Array<{
     weight: number | null;
     reps: number | null;
@@ -137,6 +153,11 @@ export type ExerciseHistorySnapshot = {
     height: number | null;
     setNumber?: number | null;
   }>;
+};
+
+type CreateLocalWorkoutFromTemplateOptions = {
+  historySnapshots?: ExerciseHistorySnapshot[];
+  ignoreHistory?: boolean;
 };
 
 function uniqueIds(ids: string[]) {
@@ -181,10 +202,10 @@ function buildPlannedSetValues(input: {
   targetDistance?: number | null;
   targetHeight?: number | null;
 }) {
-  const type = input.exerciseType ?? 'weighted';
+  const type = input.exerciseType ?? 'weights';
   return {
     weight:
-      type === 'weighted'
+      type === 'weights'
         ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
         : type === 'bodyweight' && ((input.targetWeight ?? 0) > 0 || (input.addedWeight ?? 0) > 0)
           ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
@@ -211,7 +232,7 @@ export function normalizeTemplateExerciseForLocalCache(
     exerciseId: exercise.exerciseId,
     name: exercise.name,
     muscleGroup: exercise.muscleGroup ?? null,
-    exerciseType: exercise.exerciseType ?? 'weighted',
+    exerciseType: exercise.exerciseType ?? 'weights',
     orderIndex: exercise.orderIndex ?? 0,
     targetWeight: exercise.targetWeight ?? null,
     addedWeight: exercise.addedWeight ?? 0,
@@ -227,6 +248,76 @@ export function normalizeTemplateExerciseForLocalCache(
   };
 }
 
+export async function upsertLocalTemplateSnapshot(
+  userId: string,
+  template: TemplateCacheInput,
+  options: { createdLocally?: boolean; replaceExercises?: boolean } = {},
+) {
+  const db = getLocalDb();
+  if (!db || !template.id) return;
+
+  const hydratedAt = new Date();
+  const createdAt = toDate(template.createdAt) ?? hydratedAt;
+  const updatedAt = toDate(template.updatedAt) ?? hydratedAt;
+  const createdLocally = options.createdLocally ?? false;
+
+  withLocalTransaction(() => {
+    db.insert(localTemplates)
+      .values({
+        id: template.id!,
+        userId,
+        name: template.name,
+        description: template.description ?? null,
+        notes: template.notes ?? null,
+        defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+        defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+        defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+        defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+        defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
+        isDeleted: false,
+        createdLocally,
+        createdAt,
+        updatedAt,
+        serverUpdatedAt: createdLocally ? null : updatedAt,
+        hydratedAt,
+      })
+      .onConflictDoUpdate({
+        target: localTemplates.id,
+        set: {
+          name: template.name,
+          description: template.description ?? null,
+          notes: template.notes ?? null,
+          defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+          defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+          defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+          defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+          defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
+          isDeleted: false,
+          createdLocally,
+          updatedAt,
+          serverUpdatedAt: createdLocally ? null : updatedAt,
+          hydratedAt,
+        },
+      })
+      .run();
+
+    if (options.replaceExercises !== false && template.exercises) {
+      db.delete(localTemplateExercises)
+        .where(eq(localTemplateExercises.templateId, template.id!))
+        .run();
+      const exercises = template.exercises.map((exercise, index) =>
+        normalizeTemplateExerciseForLocalCache(template.id!, {
+          ...exercise,
+          orderIndex: exercise.orderIndex ?? index,
+        }),
+      );
+      if (exercises.length > 0) {
+        db.insert(localTemplateExercises).values(exercises).run();
+      }
+    }
+  });
+}
+
 export function normalizeTemplateExerciseForWorkoutStart(
   exercise: TemplateExerciseCacheInput,
   orderIndex: number,
@@ -235,8 +326,11 @@ export function normalizeTemplateExerciseForWorkoutStart(
     exerciseId: exercise.exerciseId,
     name: exercise.name,
     muscleGroup: exercise.muscleGroup ?? null,
-    exerciseType: exercise.exerciseType ?? 'weighted',
-    sets: exercise.sets ?? 3,
+    exerciseType: exercise.exerciseType ?? 'weights',
+    sets: exercise.isAmrap
+      ? 1
+      : (exercise.sets ??
+        (exercise.exerciseType === 'cardio' || exercise.exerciseType === 'timed' ? 1 : 3)),
     reps: exercise.reps ?? 10,
     isAmrap: exercise.isAmrap ?? false,
     targetWeight: exercise.targetWeight ?? 0,
@@ -260,6 +354,20 @@ function generateUniqueId(usedIds: Set<string>, requestedId?: string | null) {
   }
   usedIds.add(id);
   return id;
+}
+
+function valuesChanged<T extends Record<string, unknown>>(
+  existing: Record<string, unknown> | undefined,
+  next: T,
+) {
+  if (!existing) return true;
+  return Object.entries(next).some(([key, value]) => {
+    const existingValue = existing[key];
+    if (existingValue instanceof Date || value instanceof Date) {
+      return toDate(existingValue as any)?.getTime() !== toDate(value as any)?.getTime();
+    }
+    return existingValue !== value;
+  });
 }
 
 function asWorkoutSet(row: LocalWorkoutSet): WorkoutSet {
@@ -311,8 +419,8 @@ function computeWorkoutTotals(exercises: WorkoutExercise[], startedAt: string) {
     for (const set of exercise.sets ?? []) {
       if (!set.isComplete) continue;
       totalSets++;
-      const type = exercise.exerciseType ?? 'weighted';
-      if (type === 'weighted') {
+      const type = exercise.exerciseType ?? 'weights';
+      if (type === 'weights') {
         if (set.weight && set.reps) {
           totalVolume += set.weight * set.reps;
         }
@@ -373,7 +481,7 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
           libraryId: exercise.libraryId ?? null,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup ?? null,
-          exerciseType: exercise.exerciseType ?? 'weighted',
+          exerciseType: exercise.exerciseType ?? 'weights',
           orderIndex: exercise.orderIndex,
           notes: exercise.notes ?? null,
           isAmrap: exercise.isAmrap ?? false,
@@ -404,6 +512,123 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
           })
           .run();
       }
+    }
+  });
+}
+
+function upsertLocalExercises(workoutId: string, exercises: LocalExerciseInput[]) {
+  const db = getLocalDb();
+  if (!db) return;
+
+  withLocalTransaction(() => {
+    const now = new Date();
+    const existingExercises = db
+      .select()
+      .from(localWorkoutExercises)
+      .where(eq(localWorkoutExercises.workoutId, workoutId))
+      .all();
+    const existingExerciseById = new Map(existingExercises.map((row) => [row.id, row]));
+    const existingExerciseIds = existingExercises.map((row) => row.id);
+    const existingSets =
+      existingExerciseIds.length > 0
+        ? db
+            .select()
+            .from(localWorkoutSets)
+            .where(inArray(localWorkoutSets.workoutExerciseId, existingExerciseIds))
+            .all()
+        : [];
+    const existingSetById = new Map(existingSets.map((row) => [row.id, row]));
+
+    const usedExerciseIds = new Set<string>();
+    const usedSetIds = new Set<string>();
+
+    for (const exercise of exercises) {
+      const workoutExerciseId = generateUniqueId(usedExerciseIds, exercise.id);
+      const exerciseValues = {
+        workoutId,
+        exerciseId: exercise.exerciseId,
+        libraryId: exercise.libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup ?? null,
+        exerciseType: exercise.exerciseType ?? 'weights',
+        orderIndex: exercise.orderIndex,
+        notes: exercise.notes ?? null,
+        isAmrap: exercise.isAmrap ?? false,
+        isDeleted: false,
+        updatedAt: now,
+      };
+
+      const existingExercise = existingExerciseById.get(workoutExerciseId);
+      if (existingExercise) {
+        if (valuesChanged(existingExercise, exerciseValues)) {
+          db.update(localWorkoutExercises)
+            .set(exerciseValues)
+            .where(eq(localWorkoutExercises.id, workoutExerciseId))
+            .run();
+        }
+      } else {
+        db.insert(localWorkoutExercises)
+          .values({
+            id: workoutExerciseId,
+            ...exerciseValues,
+            createdAt: now,
+          })
+          .run();
+      }
+
+      for (const set of exercise.sets ?? []) {
+        const setId = generateUniqueId(usedSetIds, set.id);
+        const setValues = {
+          workoutExerciseId,
+          setNumber: set.setNumber,
+          weight: set.weight ?? null,
+          reps: set.reps ?? null,
+          rpe: set.rpe ?? null,
+          duration: set.duration ?? null,
+          distance: set.distance ?? null,
+          height: set.height ?? null,
+          isComplete: set.isComplete ?? false,
+          completedAt: toDate(set.completedAt),
+          isDeleted: false,
+          updatedAt: now,
+        };
+
+        const existingSet = existingSetById.get(setId);
+        if (existingSet) {
+          if (valuesChanged(existingSet, setValues)) {
+            db.update(localWorkoutSets).set(setValues).where(eq(localWorkoutSets.id, setId)).run();
+          }
+        } else {
+          db.insert(localWorkoutSets)
+            .values({
+              id: setId,
+              ...setValues,
+              createdAt: now,
+            })
+            .run();
+        }
+      }
+    }
+
+    const removedExerciseIds = existingExerciseIds.filter((id) => !usedExerciseIds.has(id));
+    if (removedExerciseIds.length > 0) {
+      db.delete(localWorkoutSets)
+        .where(inArray(localWorkoutSets.workoutExerciseId, removedExerciseIds))
+        .run();
+      db.delete(localWorkoutExercises)
+        .where(inArray(localWorkoutExercises.id, removedExerciseIds))
+        .run();
+    }
+
+    const removedSetIds = existingSets
+      .map((row) => row.id)
+      .filter(
+        (id) =>
+          !usedSetIds.has(id) &&
+          !removedExerciseIds.includes(existingSetById.get(id)!.workoutExerciseId),
+      );
+    if (removedSetIds.length > 0) {
+      db.delete(localWorkoutSets).where(inArray(localWorkoutSets.id, removedSetIds)).run();
     }
   });
 }
@@ -477,7 +702,7 @@ export async function createLocalWorkout(
 export async function createLocalWorkoutFromTemplate(
   userId: string,
   templateId: string,
-  fallbackHistorySnapshots: ExerciseHistorySnapshot[] = [],
+  options: CreateLocalWorkoutFromTemplateOptions | ExerciseHistorySnapshot[] = {},
   providedExercises?: {
     exerciseId: string;
     libraryId?: string | null;
@@ -500,6 +725,9 @@ export async function createLocalWorkoutFromTemplate(
 
   const template = db.select().from(localTemplates).where(eq(localTemplates.id, templateId)).get();
   if (!template && !providedExercises) return null;
+  const normalizedOptions = Array.isArray(options) ? { historySnapshots: options } : options;
+  const fallbackHistorySnapshots = normalizedOptions.historySnapshots ?? [];
+  const ignoreHistory = normalizedOptions.ignoreHistory ?? false;
 
   const exercises =
     providedExercises ??
@@ -519,27 +747,43 @@ export async function createLocalWorkoutFromTemplate(
     .where(eq(localUserExercises.userId, userId))
     .all();
   const exerciseMetaById = new Map(localExerciseRows.map((row) => [row.id, row]));
-  const historySnapshots = await getLocalLastCompletedExerciseSnapshots(
-    userId,
-    exercises.map((exercise) => exercise.exerciseId),
-    exercises.map((exercise) => exercise.name),
-  );
+  const historySnapshots = ignoreHistory
+    ? []
+    : await getLocalLastCompletedExerciseSnapshots(
+        userId,
+        exercises.map((exercise) => exercise.exerciseId),
+        exercises.map((exercise) => exercise.name),
+      );
   const historyByExerciseId = new Map<string, ExerciseHistorySnapshot>(
     fallbackHistorySnapshots.map((snapshot) => [snapshot.exerciseId, snapshot]),
   );
   for (const snapshot of historySnapshots) {
     historyByExerciseId.set(snapshot.exerciseId, snapshot);
   }
+  const historyByTemplateIndex = new Map<number, ExerciseHistorySnapshot>();
+  if (!ignoreHistory) {
+    await Promise.all(
+      exercises.map(async (exercise, index) => {
+        if (exercise.isAmrap === undefined || exercise.isAmrap === null) return;
+        const matchingHistory = await getLocalLastCompletedExerciseSnapshots(
+          userId,
+          [exercise.exerciseId],
+          [exercise.name],
+          { isAmrap: Boolean(exercise.isAmrap) },
+        );
+        const snapshot = matchingHistory[0];
+        if (snapshot?.sets?.length) {
+          historyByTemplateIndex.set(index, snapshot);
+        }
+      }),
+    );
+  }
 
   return createLocalWorkout(userId, {
     name: template?.name ?? 'Workout',
     templateId,
-    exercises: exercises.map((exercise) => {
-      const historySnapshot = historyByExerciseId.get(exercise.exerciseId);
-      const plannedSetCount = Math.max(1, exercise.sets ?? 3);
-      // Use planned set count from template, but if history has more sets, use the larger value
-      const historySetCount = historySnapshot?.sets.length ?? 0;
-      const setCount = Math.max(plannedSetCount, historySetCount);
+    exercises: exercises.map((exercise, exerciseIndex) => {
+      const isAmrap = Boolean(exercise.isAmrap);
       const localExerciseMeta = exerciseMetaById.get(exercise.exerciseId);
       const exerciseLibraryId = 'libraryId' in exercise ? exercise.libraryId : null;
       const libraryId = exerciseLibraryId ?? localExerciseMeta?.libraryId ?? null;
@@ -547,7 +791,20 @@ export async function createLocalWorkoutFromTemplate(
         getLibraryExerciseType(libraryId) ??
         exercise.exerciseType ??
         localExerciseMeta?.exerciseType ??
-        'weighted';
+        'weights';
+      const historySnapshot =
+        historyByTemplateIndex.get(exerciseIndex) ?? historyByExerciseId.get(exercise.exerciseId);
+      const historySets = isAmrap
+        ? (historySnapshot?.sets ?? []).slice(0, 1)
+        : historySnapshot?.sets;
+      const plannedSetCount = isAmrap
+        ? 1
+        : Math.max(
+            1,
+            exercise.sets ?? (exerciseType === 'cardio' || exerciseType === 'timed' ? 1 : 3),
+          );
+      const historySetCount = historySets?.length ?? 0;
+      const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
       const plannedExercise = { ...exercise, exerciseType };
 
       return {
@@ -557,33 +814,29 @@ export async function createLocalWorkoutFromTemplate(
         muscleGroup: exercise.muscleGroup,
         exerciseType,
         orderIndex: exercise.orderIndex,
-        isAmrap: Boolean(exercise.isAmrap),
+        isAmrap,
         sets: Array.from({ length: setCount }, (_, index) => ({
           setNumber: index + 1,
           weight:
             index < historySetCount
-              ? (historySnapshot!.sets[index].weight ??
-                buildPlannedSetValues(plannedExercise).weight)
+              ? (historySets![index].weight ?? buildPlannedSetValues(plannedExercise).weight)
               : buildPlannedSetValues(plannedExercise).weight,
           reps:
             index < historySetCount
-              ? (historySnapshot!.sets[index].reps ?? buildPlannedSetValues(plannedExercise).reps)
+              ? (historySets![index].reps ?? buildPlannedSetValues(plannedExercise).reps)
               : buildPlannedSetValues(plannedExercise).reps,
-          rpe: index < historySetCount ? (historySnapshot!.sets[index].rpe ?? null) : null,
+          rpe: index < historySetCount ? (historySets![index].rpe ?? null) : null,
           duration:
             index < historySetCount
-              ? (historySnapshot!.sets[index].duration ??
-                buildPlannedSetValues(plannedExercise).duration)
+              ? (historySets![index].duration ?? buildPlannedSetValues(plannedExercise).duration)
               : buildPlannedSetValues(plannedExercise).duration,
           distance:
             index < historySetCount
-              ? (historySnapshot!.sets[index].distance ??
-                buildPlannedSetValues(plannedExercise).distance)
+              ? (historySets![index].distance ?? buildPlannedSetValues(plannedExercise).distance)
               : buildPlannedSetValues(plannedExercise).distance,
           height:
             index < historySetCount
-              ? (historySnapshot!.sets[index].height ??
-                buildPlannedSetValues(plannedExercise).height)
+              ? (historySets![index].height ?? buildPlannedSetValues(plannedExercise).height)
               : buildPlannedSetValues(plannedExercise).height,
           isComplete: false,
         })),
@@ -596,6 +849,7 @@ export async function getLocalLastCompletedExerciseSnapshots(
   userId: string,
   exerciseIds: string[],
   exerciseNames: string[] = [],
+  options: { isAmrap?: boolean } = {},
 ) {
   const db = getLocalDb();
   if (!db || (exerciseIds.length === 0 && exerciseNames.length === 0)) return [];
@@ -664,6 +918,9 @@ export async function getLocalLastCompletedExerciseSnapshots(
         eq(localWorkouts.isDeleted, false),
         eq(localWorkouts.workoutType, WORKOUT_TYPE_TRAINING),
         eq(localWorkoutExercises.isDeleted, false),
+        ...(options.isAmrap === undefined
+          ? []
+          : [eq(localWorkoutExercises.isAmrap, options.isAmrap)]),
         isNotNull(localWorkouts.completedAt),
         or(...historyIdentityConditions),
       ),
@@ -726,6 +983,7 @@ export async function getLocalLastCompletedExerciseSnapshots(
 
   return Array.from(latestByOriginalId.entries()).map(([exerciseId, latest]) => ({
     exerciseId,
+    isAmrap: options.isAmrap ?? null,
     workoutDate: latest.workoutCompletedAt
       ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
       : null,
@@ -758,29 +1016,31 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
   const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
   if (targetLifts.all.length === 0) return null;
 
-  const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
-    const sets = exercise.segments.flatMap((segment) =>
-      Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
-        ...buildPlannedSetValues({
-          ...segment,
-          reps: normalizeProgramReps(segment.reps),
-        }),
-        rpe: null,
-        isComplete: false,
-      })),
-    );
-    return {
-      exerciseId:
-        exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
-      libraryId: exercise.libraryId ?? null,
-      name: exercise.name,
-      muscleGroup: null,
-      exerciseType: exercise.exerciseType ?? 'weighted',
-      orderIndex: index,
-      isAmrap: exercise.isAmrap,
-      sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
-    };
-  });
+  const exercises = consolidateProgramTargetLiftsForWorkoutSections(targetLifts.all).map(
+    (exercise, index) => {
+      const sets = exercise.segments.flatMap((segment) =>
+        Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
+          ...buildPlannedSetValues({
+            ...segment,
+            reps: normalizeProgramReps(segment.reps),
+          }),
+          rpe: null,
+          isComplete: false,
+        })),
+      );
+      return {
+        exerciseId:
+          exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
+        libraryId: exercise.libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: null,
+        exerciseType: exercise.exerciseType ?? 'weights',
+        orderIndex: index,
+        isAmrap: exercise.isAmrap,
+        sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
+      };
+    },
+  );
 
   const workout = await createLocalWorkout(userId, {
     name: cycleWorkout.sessionName,
@@ -835,29 +1095,31 @@ export async function createLocalWorkoutFromProgramCycleWorkoutDefinition(
       .run();
   }
 
-  const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
-    const sets = exercise.segments.flatMap((segment) =>
-      Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
-        ...buildPlannedSetValues({
-          ...segment,
-          reps: normalizeProgramReps(segment.reps),
-        }),
-        rpe: null,
-        isComplete: false,
-      })),
-    );
-    return {
-      exerciseId:
-        exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
-      libraryId: exercise.libraryId ?? null,
-      name: exercise.name,
-      muscleGroup: null,
-      exerciseType: exercise.exerciseType ?? 'weighted',
-      orderIndex: index,
-      isAmrap: exercise.isAmrap,
-      sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
-    };
-  });
+  const exercises = consolidateProgramTargetLiftsForWorkoutSections(targetLifts.all).map(
+    (exercise, index) => {
+      const sets = exercise.segments.flatMap((segment) =>
+        Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
+          ...buildPlannedSetValues({
+            ...segment,
+            reps: normalizeProgramReps(segment.reps),
+          }),
+          rpe: null,
+          isComplete: false,
+        })),
+      );
+      return {
+        exerciseId:
+          exercise.exerciseId ?? exercise.libraryId ?? exercise.accessoryId ?? exercise.name,
+        libraryId: exercise.libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: null,
+        exerciseType: exercise.exerciseType ?? 'weights',
+        orderIndex: index,
+        isAmrap: exercise.isAmrap,
+        sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
+      };
+    },
+  );
 
   const workout = await createLocalWorkout(userId, {
     name: cycleWorkout.sessionName,
@@ -952,7 +1214,7 @@ export async function getLocalWorkout(workoutId: string): Promise<Workout | null
       libraryId: exercise.libraryId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup ?? null,
-      exerciseType: exercise.exerciseType ?? 'weighted',
+      exerciseType: exercise.exerciseType ?? 'weights',
       orderIndex: exercise.orderIndex,
       notes: exercise.notes ?? null,
       isAmrap: Boolean(exercise.isAmrap),
@@ -1138,7 +1400,7 @@ export async function createLocalOneRMTestDraft(
     libraryId: exercise.libraryId ?? null,
     name: exercise.name,
     muscleGroup: null,
-    exerciseType: 'weighted',
+    exerciseType: 'weights',
     orderIndex: index,
     isAmrap: false,
     sets: [
@@ -1223,7 +1485,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
           libraryId: (exercise as any).libraryId ?? null,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
-          exerciseType: exercise.exerciseType ?? 'weighted',
+          exerciseType: exercise.exerciseType ?? 'weights',
           orderIndex: exercise.orderIndex,
           notes: exercise.notes,
           isAmrap: exercise.isAmrap,
@@ -1287,7 +1549,7 @@ export async function completeLocalWorkout(
       .where(eq(localWorkouts.id, workout.id))
       .run();
 
-    replaceLocalExercises(
+    upsertLocalExercises(
       workout.id,
       exercises.map((exercise, exerciseIndex) => ({
         id: exercise.id,
@@ -1295,7 +1557,7 @@ export async function completeLocalWorkout(
         libraryId: (exercise as any).libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: exerciseIndex,
         notes: exercise.notes,
         isAmrap: exercise.isAmrap,
@@ -1356,7 +1618,7 @@ export async function saveLocalWorkoutDraft(
       .where(eq(localWorkouts.id, workout.id))
       .run();
 
-    replaceLocalExercises(
+    upsertLocalExercises(
       workout.id,
       exercises.map((exercise, exerciseIndex) => ({
         id: exercise.id,
@@ -1364,7 +1626,7 @@ export async function saveLocalWorkoutDraft(
         libraryId: (exercise as any).libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        exerciseType: exercise.exerciseType ?? 'weighted',
+        exerciseType: exercise.exerciseType ?? 'weights',
         orderIndex: exerciseIndex,
         notes: exercise.notes,
         isAmrap: exercise.isAmrap,
@@ -1461,7 +1723,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
       orderIndex: exercise.orderIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
-      exerciseType: exercise.exerciseType ?? 'weighted',
+      exerciseType: exercise.exerciseType ?? 'weights',
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
     })),
@@ -1532,41 +1794,8 @@ export async function markWorkoutConflict(workoutId: string, error: string) {
 export async function cacheTemplates(userId: string, templates: any[]) {
   const db = getLocalDb();
   if (!db) return;
-  const hydratedAt = new Date();
-  const allExercises: any[] = [];
   for (const template of templates) {
-    db.insert(localTemplates)
-      .values({
-        id: template.id,
-        userId,
-        name: template.name,
-        description: template.description ?? null,
-        notes: template.notes ?? null,
-        createdAt: toDate(template.createdAt),
-        updatedAt: toDate(template.updatedAt),
-        hydratedAt,
-      })
-      .onConflictDoUpdate({
-        target: localTemplates.id,
-        set: {
-          name: template.name,
-          description: template.description ?? null,
-          notes: template.notes ?? null,
-          updatedAt: toDate(template.updatedAt),
-          hydratedAt,
-        },
-      })
-      .run();
-
-    db.delete(localTemplateExercises)
-      .where(eq(localTemplateExercises.templateId, template.id))
-      .run();
-    for (const exercise of template.exercises ?? []) {
-      allExercises.push(normalizeTemplateExerciseForLocalCache(template.id, exercise));
-    }
-  }
-  if (allExercises.length > 0) {
-    db.insert(localTemplateExercises).values(allExercises).run();
+    await upsertLocalTemplateSnapshot(userId, template, { createdLocally: false });
   }
 }
 

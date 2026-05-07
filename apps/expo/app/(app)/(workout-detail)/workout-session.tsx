@@ -21,9 +21,24 @@ import { FormScrollView } from '@/components/ui/FormScrollView';
 import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { ExerciseLogger } from '@/components/workout/ExerciseLogger';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
+import {
+  ProgressionPromptModal,
+  type ProgressionExercisePreview,
+} from '@/components/workout/ProgressionPromptModal';
 import { apiFetch } from '@/lib/api';
+import { authClient } from '@/lib/auth-client';
 import { removePendingWorkout } from '@/lib/storage';
-import { getLocalWorkout } from '@/db/workouts';
+import {
+  getLocalLastCompletedExerciseSnapshots,
+  getLocalWorkout,
+  type ExerciseHistorySnapshot,
+} from '@/db/workouts';
+import {
+  buildHistorySnapshotFromSelection,
+  getDefaultProgressionIncrement,
+  hasProgressionHistoryData,
+  type ProgressionSelection,
+} from '@/lib/workout-progression';
 import { resolveSetCompletionNavigation } from '@/lib/workoutSetNavigation';
 import type { Workout, ExerciseLibraryItem } from '@/context/WorkoutSessionContext';
 import {
@@ -74,8 +89,76 @@ async function fetchWorkout(workoutId: string): Promise<Workout> {
   }
 }
 
+function getExerciseHistoryIds(exercise: ExerciseLibraryItem) {
+  return Array.from(new Set([exercise.id, exercise.libraryId].filter(Boolean) as string[]));
+}
+
+async function fetchExerciseHistorySnapshot(
+  exerciseId: string,
+  exerciseName?: string | null,
+  isAmrap?: boolean | null,
+): Promise<ExerciseHistorySnapshot | null> {
+  try {
+    const params = new URLSearchParams();
+    if (exerciseName?.trim()) {
+      params.set('name', exerciseName.trim());
+    }
+    if (isAmrap !== undefined && isAmrap !== null) {
+      params.set('isAmrap', String(isAmrap));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return await apiFetch<ExerciseHistorySnapshot | null>(
+      `/api/workouts/last/${encodeURIComponent(exerciseId)}${query}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function resolveExerciseHistorySnapshot(
+  userId: string | null,
+  exercise: ExerciseLibraryItem,
+) {
+  const historyIds = getExerciseHistoryIds(exercise);
+  if (userId) {
+    try {
+      const localHistory = await getLocalLastCompletedExerciseSnapshots(
+        userId,
+        historyIds,
+        [exercise.name],
+        { isAmrap: Boolean(exercise.isAmrap) },
+      );
+      const snapshot = localHistory.find(hasProgressionHistoryData);
+      if (snapshot) return snapshot;
+    } catch {
+      // History lookup is best-effort.
+    }
+  }
+
+  for (const exerciseId of historyIds) {
+    const snapshot = await fetchExerciseHistorySnapshot(
+      exerciseId,
+      exercise.name,
+      exercise.isAmrap,
+    );
+    if (hasProgressionHistoryData(snapshot)) return snapshot;
+  }
+  return null;
+}
+
+type PendingExerciseAdd = {
+  items: Array<{
+    exercise: ExerciseLibraryItem;
+    historySnapshot: ExerciseHistorySnapshot;
+  }>;
+  remaining: ExerciseLibraryItem[];
+};
+
+const MAX_PROGRESSION_PREVIEWS = 5;
+
 export default function WorkoutSessionScreen() {
   const router = useRouter();
+  const session = authClient.useSession();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const isNarrowHeader = windowWidth < 400;
@@ -105,6 +188,7 @@ export default function WorkoutSessionScreen() {
   } = useWorkoutSessionContext();
 
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [pendingExerciseAdd, setPendingExerciseAdd] = useState<PendingExerciseAdd | null>(null);
   const [workoutName, setWorkoutName] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -228,8 +312,8 @@ export default function WorkoutSessionScreen() {
   const hasLoadedRequestedWorkout = !!workoutId && workout?.id === workoutId;
 
   const computedVolume = exercises.reduce((total, ex) => {
-    const type = ex.exerciseType ?? 'weighted';
-    if (type !== 'weighted' && type !== 'bodyweight' && type !== 'plyo') {
+    const type = ex.exerciseType ?? 'weights';
+    if (type !== 'weights' && type !== 'bodyweight' && type !== 'plyo') {
       return total;
     }
     return (
@@ -260,11 +344,11 @@ export default function WorkoutSessionScreen() {
       let sets = 0;
       let weighted = false;
       for (const ex of exercises) {
-        const type = ex.exerciseType ?? 'weighted';
+        const type = ex.exerciseType ?? 'weights';
         for (const set of ex.sets ?? []) {
           if (!set.isComplete) continue;
           sets++;
-          if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+          if (type === 'weights' || type === 'bodyweight' || type === 'plyo') {
             weighted = true;
           }
           if (type === 'timed' || type === 'cardio') {
@@ -283,6 +367,27 @@ export default function WorkoutSessionScreen() {
       };
     }, [exercises]);
 
+  const pendingExerciseProgressionPreviews = useMemo<ProgressionExercisePreview[]>(() => {
+    if (!pendingExerciseAdd) return [];
+    return pendingExerciseAdd.items.map(({ exercise, historySnapshot }) => ({
+      exerciseId: historySnapshot.exerciseId,
+      libraryId: exercise.libraryId ?? null,
+      name: exercise.name,
+      exerciseType: exercise.exerciseType ?? 'weights',
+      isAmrap: Boolean(exercise.isAmrap),
+      lastWorkoutDate: historySnapshot.workoutDate,
+      sets: historySnapshot.sets.map((set, index) => ({
+        setNumber: set.setNumber ?? index + 1,
+        weight: set.weight,
+        reps: set.reps,
+        rpe: set.rpe,
+        duration: set.duration,
+        distance: set.distance,
+        height: set.height,
+      })),
+    }));
+  }, [pendingExerciseAdd]);
+
   const handleStartWorkout = useCallback(async () => {
     const name = workoutName.trim() || 'Workout';
     const workout = await startWorkout(name);
@@ -291,13 +396,106 @@ export default function WorkoutSessionScreen() {
     }
   }, [router, startWorkout, workoutName]);
 
-  const handleAddExercise = useCallback(
-    async (exercisesList: ExerciseLibraryItem[]) => {
-      for (const exercise of exercisesList) {
-        await addExercise(exercise);
+  const processExerciseAddQueue = useCallback(
+    async (queue: ExerciseLibraryItem[]) => {
+      if (queue.length === 0) {
+        setShowAddExercise(false);
+        return;
+      }
+
+      const pendingItems: PendingExerciseAdd['items'] = [];
+      let remainingQueue: ExerciseLibraryItem[] = [];
+      for (let index = 0; index < queue.length; index++) {
+        const queuedExercise = queue[index];
+        const historySnapshot = await resolveExerciseHistorySnapshot(
+          session.data?.user?.id ?? null,
+          queuedExercise,
+        );
+        if (historySnapshot) {
+          pendingItems.push({ exercise: queuedExercise, historySnapshot });
+          if (pendingItems.length >= MAX_PROGRESSION_PREVIEWS) {
+            remainingQueue = queue.slice(index + 1);
+            break;
+          }
+        } else {
+          await addExercise(queuedExercise);
+        }
+      }
+
+      if (pendingItems.length > 0) {
+        setPendingExerciseAdd({ items: pendingItems, remaining: remainingQueue });
+        setShowAddExercise(false);
+        return;
       }
     },
-    [addExercise],
+    [addExercise, session.data?.user?.id],
+  );
+
+  const handleConfirmExerciseProgression = useCallback(
+    async (selections: ProgressionSelection[]) => {
+      if (!pendingExerciseAdd) return;
+      const selectionByExerciseId = new Map(
+        selections.map((selection) => [selection.exerciseId, selection]),
+      );
+      for (const item of pendingExerciseAdd.items) {
+        const selection = selectionByExerciseId.get(item.historySnapshot.exerciseId);
+        const historySnapshot = buildHistorySnapshotFromSelection(
+          item.historySnapshot,
+          selection,
+          item.exercise.exerciseType,
+        );
+        await addExercise(item.exercise, {
+          historySnapshot,
+          ignoreHistory: historySnapshot === null,
+        });
+      }
+      const remaining = pendingExerciseAdd.remaining;
+      setPendingExerciseAdd(null);
+      await processExerciseAddQueue(remaining);
+    },
+    [addExercise, pendingExerciseAdd, processExerciseAddQueue],
+  );
+
+  const handleSkipExerciseHistory = useCallback(async () => {
+    if (!pendingExerciseAdd) return;
+    for (const item of pendingExerciseAdd.items) {
+      await addExercise(item.exercise, { ignoreHistory: true });
+    }
+    const remaining = pendingExerciseAdd.remaining;
+    setPendingExerciseAdd(null);
+    await processExerciseAddQueue(remaining);
+  }, [addExercise, pendingExerciseAdd, processExerciseAddQueue]);
+
+  const handleAddExercise = useCallback(
+    async (exercisesList: ExerciseLibraryItem[]) => {
+      const exercise = exercisesList[0];
+      if (exercisesList.length === 1 && exercise?.isAmrap) {
+        const hasNormalRow = exercises.some(
+          (candidate) => candidate.exerciseId === exercise.id && !candidate.isAmrap,
+        );
+        if (!hasNormalRow) {
+          Alert.alert(exercise.name, 'How do you want to add AMRAP?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: `Make this ${exercise.name} AMRAP only`,
+              onPress: () => {
+                void processExerciseAddQueue([exercise]);
+              },
+            },
+            {
+              text: `Add ${exercise.name} + ${exercise.name} AMRAP`,
+              onPress: () => {
+                void processExerciseAddQueue([{ ...exercise, isAmrap: false }, exercise]);
+              },
+            },
+          ]);
+          return;
+        }
+      }
+
+      await processExerciseAddQueue(exercisesList);
+    },
+    [exercises, processExerciseAddQueue],
   );
 
   const handleExerciseSetsUpdate = useCallback(
@@ -419,11 +617,11 @@ export default function WorkoutSessionScreen() {
 
   const findFirstIncompleteSet = useCallback(() => {
     for (let i = 0; i < exercises.length; i++) {
-      const type = exercises[i].exerciseType ?? 'weighted';
+      const type = exercises[i].exerciseType ?? 'weights';
       for (let j = 0; j < exercises[i].sets.length; j++) {
         const set = exercises[i].sets[j];
         if (set.isComplete) continue;
-        if (type === 'weighted' || type === 'bodyweight' || type === 'plyo') {
+        if (type === 'weights' || type === 'bodyweight' || type === 'plyo') {
           if (set.weight !== null || set.reps !== null) {
             return { exerciseIndex: i, setIndex: j };
           }
@@ -772,6 +970,7 @@ export default function WorkoutSessionScreen() {
               <View style={styles.exerciseProgressInfo}>
                 <Text style={styles.exerciseProgressText}>
                   {exercises[currentExerciseIndex]?.name}
+                  {exercises[currentExerciseIndex]?.isAmrap ? ' (AMRAP)' : ''}
                 </Text>
                 <Text style={styles.exerciseProgressSubtext}>
                   {currentExerciseIndex + 1} of {exercises.length} exercises
@@ -791,9 +990,29 @@ export default function WorkoutSessionScreen() {
             visible={showAddExercise}
             onSelect={handleAddExercise}
             onClose={() => setShowAddExercise(false)}
-            excludeIds={exercises.map((e) => e.exerciseId)}
           />
         </Modal>
+
+        <ProgressionPromptModal
+          visible={pendingExerciseAdd !== null}
+          title="Progress from last workout"
+          subtitle={
+            pendingExerciseAdd
+              ? `${pendingExerciseAdd.items.length} exercise${pendingExerciseAdd.items.length === 1 ? '' : 's'} have previous set data. Choose how to add them.`
+              : undefined
+          }
+          weightUnit={weightUnit}
+          defaultIncrement={getDefaultProgressionIncrement(weightUnit)}
+          exercises={pendingExerciseProgressionPreviews}
+          allowPerExerciseEdit={false}
+          onConfirm={(selections) => {
+            void handleConfirmExerciseProgression(selections);
+          }}
+          onSkipHistory={() => {
+            void handleSkipExerciseHistory();
+          }}
+          onClose={() => setPendingExerciseAdd(null)}
+        />
       </FormScrollView>
     </KeyboardFormLayout>
   );

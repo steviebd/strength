@@ -49,6 +49,7 @@ vi.mock('@/db/client', () => ({
 
 vi.mock('@/db/local-schema', () => ({
   localTemplates: {},
+  localSyncQueue: {},
 }));
 
 vi.mock('@strength/db/client', () => ({
@@ -63,6 +64,10 @@ vi.mock('@/db/workouts', () => ({
 
 vi.mock('@/db/training-cache', () => ({
   getCachedTemplates: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock('@/db/training-read-model', () => ({
+  hasPendingTrainingWrites: vi.fn(() => Promise.resolve(false)),
 }));
 
 vi.mock('./useOfflineQuery', () => ({
@@ -94,7 +99,7 @@ describe('useTemplates', () => {
         entityType: 'template',
         operation: 'create_template',
         entityId: 'generated-id',
-        payload: { name: 'Test' },
+        payload: { id: 'generated-id', name: 'Test' },
       }),
     );
   });

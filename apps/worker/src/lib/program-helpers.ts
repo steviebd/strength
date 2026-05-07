@@ -5,6 +5,7 @@ import { getProgramCycleById, getOrCreateExerciseForUser } from '@strength/db';
 import { chunkArray, getSafeInsertChunkSize, chunkedQueryMany } from '@strength/db';
 import {
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
   isProgramAmrap,
   normalizeProgramReps,
@@ -17,6 +18,7 @@ import {
 
 export {
   consolidateProgramTargetLifts,
+  consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
   isProgramAmrap,
   normalizeProgramReps,
@@ -28,10 +30,10 @@ export {
 };
 
 function buildProgramSetValues(segment: NormalizedProgramTargetLift) {
-  const type = segment.exerciseType ?? 'weighted';
+  const type = segment.exerciseType ?? 'weights';
   const reps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
   const weight =
-    type === 'weighted'
+    type === 'weights'
       ? (segment.targetWeight ?? 0) + segment.addedWeight
       : type === 'bodyweight' && ((segment.targetWeight ?? 0) > 0 || segment.addedWeight > 0)
         ? (segment.targetWeight ?? 0) + segment.addedWeight
@@ -377,7 +379,7 @@ export async function createWorkoutFromProgramCycleWorkout(
     throw new Error(`Program cycle workout ${cycleWorkout.id} has no target lifts`);
   }
 
-  const consolidatedTargetLifts = consolidateProgramTargetLifts(targetLifts.all);
+  const consolidatedTargetLifts = consolidateProgramTargetLiftsForWorkoutSections(targetLifts.all);
 
   const exerciseIdList: {
     workoutExerciseId: string;
@@ -790,8 +792,9 @@ export async function getLastCompletedExerciseSnapshot(
   db: any,
   userId: string,
   exerciseId: string,
+  options: { isAmrap?: boolean } = {},
 ) {
-  const snapshots = await getLastCompletedExerciseSnapshots(db, userId, [exerciseId]);
+  const snapshots = await getLastCompletedExerciseSnapshots(db, userId, [exerciseId], options);
   return snapshots[0] ?? null;
 }
 
@@ -799,6 +802,7 @@ export async function getLastCompletedExerciseSnapshots(
   db: any,
   userId: string,
   exerciseIds: string[],
+  options: { isAmrap?: boolean } = {},
 ) {
   if (exerciseIds.length === 0) return [];
 
@@ -866,6 +870,9 @@ export async function getLastCompletedExerciseSnapshots(
             eq(schema.workouts.isDeleted, false),
             eq(schema.workouts.workoutType, schema.WORKOUT_TYPE_TRAINING),
             eq(schema.workoutExercises.isDeleted, false),
+            ...(options.isAmrap === undefined
+              ? []
+              : [eq(schema.workoutExercises.isAmrap, options.isAmrap)]),
             sql`${schema.workouts.completedAt} IS NOT NULL`,
             gte(schema.workouts.startedAt, ninetyDaysAgo),
           ),
@@ -939,6 +946,7 @@ export async function getLastCompletedExerciseSnapshots(
 
   const results: {
     exerciseId: string;
+    isAmrap?: boolean | null;
     workoutDate: string | null;
     sets: {
       weight: number | null;
@@ -964,6 +972,7 @@ export async function getLastCompletedExerciseSnapshots(
       }));
       results.push({
         exerciseId: originalId,
+        isAmrap: options.isAmrap ?? null,
         workoutDate: latest.workoutCompletedAt
           ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
           : null,

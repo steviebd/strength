@@ -23,8 +23,8 @@ function generateBackfillSql(): string {
   lines.push('-- Backfill exercise types, is_amrap, and distance_unit');
   lines.push('');
 
-  // 1. Default all null exercise_type to 'weighted'
-  lines.push("UPDATE exercises SET exercise_type = 'weighted' WHERE exercise_type IS NULL;");
+  // 1. Default all null exercise_type to 'weights'
+  lines.push("UPDATE exercises SET exercise_type = 'weights' WHERE exercise_type IS NULL;");
   lines.push('');
 
   // 2. Map known library exercises to their correct types

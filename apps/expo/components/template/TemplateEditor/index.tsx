@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TextInput,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -21,9 +22,9 @@ import { useUndo } from '@/hooks/useUndo';
 import { apiFetch } from '@/lib/api';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { authClient } from '@/lib/auth-client';
-import { getLocalDb } from '@/db/client';
-import { localTemplates } from '@/db/local-schema';
-import { eq } from 'drizzle-orm';
+import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { toDisplayHeight, toStorageHeight } from '@/lib/units';
+import { upsertLocalTemplateSnapshot } from '@/db/workouts';
 import { exerciseLibrary } from '@strength/db/client';
 import type { SelectedExercise, Template, TemplateEditorProps } from './types';
 
@@ -40,7 +41,29 @@ function resolveSelectedExerciseType(exercise: {
   libraryId?: string | null;
   exerciseType?: string | null;
 }) {
-  return getLibraryExerciseType(exercise.libraryId) ?? exercise.exerciseType ?? 'weighted';
+  return getLibraryExerciseType(exercise.libraryId) ?? exercise.exerciseType ?? 'weights';
+}
+
+function buildTemplateExercisePayload(exercise: SelectedExercise, orderIndex: number) {
+  return {
+    id: exercise.id,
+    exerciseId: exercise.exerciseId,
+    name: exercise.name,
+    muscleGroup: exercise.muscleGroup,
+    orderIndex,
+    isAccessory: exercise.isAccessory ?? false,
+    isRequired: exercise.isRequired ?? true,
+    sets: exercise.sets ?? 3,
+    reps: exercise.reps ?? 10,
+    repsRaw: exercise.repsRaw ?? (exercise.reps ?? 10).toString(),
+    targetWeight: exercise.targetWeight ?? 0,
+    addedWeight: exercise.addedWeight ?? 0,
+    isAmrap: exercise.isAmrap ?? false,
+    exerciseType: resolveSelectedExerciseType(exercise),
+    targetDuration: exercise.targetDuration ?? null,
+    targetDistance: exercise.targetDistance ?? null,
+    targetHeight: exercise.targetHeight ?? null,
+  };
 }
 
 interface FormData {
@@ -49,14 +72,25 @@ interface FormData {
   notes: string;
 }
 
+type ProgressionValues = {
+  defaultWeightIncrement: number;
+  defaultBodyweightIncrement: number;
+  defaultCardioIncrement: number;
+  defaultTimedIncrement: number;
+  defaultPlyoIncrement: number;
+};
+
 interface UseTemplateEditorStateReturn {
   formData: FormData;
   selectedExercises: SelectedExercise[];
+  progressionValues: ProgressionValues;
   accessoryAddedWeights: Record<string, number>;
   errors: { name?: string };
   validateForm: () => boolean;
   setFormData: (data: Partial<FormData>) => void;
+  setProgressionValues: (data: Partial<ProgressionValues>) => void;
   addExercise: (exercise: SelectedExercise) => void;
+  insertExerciseAfter: (afterId: string, exercise: SelectedExercise) => void;
   removeExercise: (id: string) => void;
   updateExercise: (id: string, updates: Partial<SelectedExercise>) => void;
   reorderExercises: (fromIndex: number, toIndex: number) => void;
@@ -70,6 +104,8 @@ interface UseTemplateEditorStateReturn {
 function useTemplateEditorState(
   initialFormData?: FormData,
   initialExercises?: SelectedExercise[],
+  initialProgression?: Partial<Record<keyof ProgressionValues, number | null | undefined>>,
+  weightUnit?: 'kg' | 'lbs',
 ): UseTemplateEditorStateReturn {
   const [formData, setFormDataState] = useState<FormData>({
     name: initialFormData?.name ?? '',
@@ -79,21 +115,35 @@ function useTemplateEditorState(
   const [selectedExercises, setSelectedExercises] = useState<SelectedExercise[]>(
     initialExercises ?? [],
   );
+  const [progressionValues, setProgressionValuesState] = useState<ProgressionValues>({
+    defaultWeightIncrement:
+      initialProgression?.defaultWeightIncrement ?? (weightUnit === 'lbs' ? 5 : 2.5),
+    defaultBodyweightIncrement: initialProgression?.defaultBodyweightIncrement ?? 2,
+    defaultCardioIncrement: initialProgression?.defaultCardioIncrement ?? 60,
+    defaultTimedIncrement: initialProgression?.defaultTimedIncrement ?? 5,
+    defaultPlyoIncrement: initialProgression?.defaultPlyoIncrement ?? 1,
+  });
   const [accessoryAddedWeights, setAccessoryAddedWeights] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<{ name?: string }>({});
 
   const undoState = useUndo<{
     exercises: SelectedExercise[];
     formData: FormData;
+    progressionValues: ProgressionValues;
     accessoryWeights: Record<string, number>;
   }>({
     exercises: selectedExercises,
     formData,
+    progressionValues,
     accessoryWeights: accessoryAddedWeights,
   });
 
   const setFormData = useCallback((data: Partial<FormData>) => {
     setFormDataState((prev) => ({ ...prev, ...data }));
+  }, []);
+
+  const setProgressionValues = useCallback((data: Partial<ProgressionValues>) => {
+    setProgressionValuesState((prev) => ({ ...prev, ...data }));
   }, []);
 
   const validateForm = useCallback((): boolean => {
@@ -107,6 +157,18 @@ function useTemplateEditorState(
 
   const addExercise = useCallback((exercise: SelectedExercise) => {
     setSelectedExercises((prev) => [...prev, exercise]);
+  }, []);
+
+  const insertExerciseAfter = useCallback((afterId: string, exercise: SelectedExercise) => {
+    setSelectedExercises((prev) => {
+      const index = prev.findIndex((e) => e.id === afterId);
+      if (index === -1) {
+        return [...prev, exercise];
+      }
+      const next = [...prev];
+      next.splice(index + 1, 0, exercise);
+      return next;
+    });
   }, []);
 
   const removeExercise = useCallback((id: string) => {
@@ -135,9 +197,10 @@ function useTemplateEditorState(
     undoState.push({
       exercises: selectedExercises,
       formData,
+      progressionValues,
       accessoryWeights: accessoryAddedWeights,
     });
-  }, [undoState.push, selectedExercises, formData, accessoryAddedWeights]);
+  }, [undoState.push, selectedExercises, formData, progressionValues, accessoryAddedWeights]);
 
   const handleUndo = useCallback(() => {
     undoState.undo();
@@ -146,6 +209,7 @@ function useTemplateEditorState(
       const lastState = past[past.length - 1];
       setSelectedExercises(lastState.exercises);
       setFormDataState(lastState.formData);
+      setProgressionValuesState(lastState.progressionValues);
       setAccessoryAddedWeights(lastState.accessoryWeights);
     }
   }, [undoState]);
@@ -157,6 +221,7 @@ function useTemplateEditorState(
       const nextState = future[0];
       setSelectedExercises(nextState.exercises);
       setFormDataState(nextState.formData);
+      setProgressionValuesState(nextState.progressionValues);
       setAccessoryAddedWeights(nextState.accessoryWeights);
     }
   }, [undoState]);
@@ -164,11 +229,14 @@ function useTemplateEditorState(
   return {
     formData,
     selectedExercises,
+    progressionValues,
     accessoryAddedWeights,
     errors,
     validateForm,
     setFormData,
+    setProgressionValues,
     addExercise,
+    insertExerciseAfter,
     removeExercise,
     updateExercise,
     reorderExercises,
@@ -185,18 +253,20 @@ function useTemplateEditorApi({
   templateId,
   formData,
   selectedExercises,
-  onSaved,
+  progressionValues,
 }: {
   mode: 'create' | 'edit';
   templateId?: string;
   formData: FormData;
   selectedExercises: SelectedExercise[];
+  progressionValues: ProgressionValues;
   onSaved?: (template: Template) => void;
 }) {
   const [isLoading, _setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const createTemplateIdRef = useRef<string | null>(null);
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
@@ -211,88 +281,77 @@ function useTemplateEditorApi({
       const isNew = mode === 'create';
       const url = isNew ? '/api/templates' : `/api/templates/${templateId}`;
       const method = isNew ? 'POST' : 'PUT';
-      const entityId = isNew ? generateId() : templateId!;
+      if (isNew && !createTemplateIdRef.current) {
+        createTemplateIdRef.current = generateId();
+      }
+      const entityId = isNew ? createTemplateIdRef.current! : templateId!;
+      const templatePayload = {
+        ...(isNew ? { id: entityId } : {}),
+        name: formData.name,
+        description: formData.description || undefined,
+        notes: formData.notes || undefined,
+        defaultWeightIncrement: progressionValues.defaultWeightIncrement,
+        defaultBodyweightIncrement: progressionValues.defaultBodyweightIncrement,
+        defaultCardioIncrement: progressionValues.defaultCardioIncrement,
+        defaultTimedIncrement: progressionValues.defaultTimedIncrement,
+        defaultPlyoIncrement: progressionValues.defaultPlyoIncrement,
+      };
+      const exercisePayloads = selectedExercises.map((exercise, index) =>
+        buildTemplateExercisePayload(exercise, index),
+      );
 
       const savedTemplate = await tryOnlineOrEnqueue({
         apiCall: () =>
           apiFetch<Template>(url, {
             method,
-            body: {
-              name: formData.name,
-              description: formData.description || undefined,
-              notes: formData.notes || undefined,
-            },
+            body: templatePayload,
           }),
         userId,
         entityType: 'template',
         operation: isNew ? 'create_template' : 'save_template',
         entityId,
-        payload: {
-          name: formData.name,
-          description: formData.description || undefined,
-          notes: formData.notes || undefined,
-        },
+        payload: { ...templatePayload, id: entityId, exercises: exercisePayloads },
         onEnqueue: async () => {
-          const db = getLocalDb();
-          if (!db) return;
           const now = new Date();
-          if (isNew) {
-            db.insert(localTemplates)
-              .values({
-                id: entityId,
-                userId,
-                name: formData.name,
-                description: formData.description ?? null,
-                notes: formData.notes ?? null,
-                isDeleted: false,
-                createdLocally: true,
-                createdAt: now,
-                updatedAt: now,
-                hydratedAt: now,
-              })
-              .run();
-          } else {
-            db.update(localTemplates)
-              .set({
-                name: formData.name,
-                description: formData.description ?? null,
-                notes: formData.notes ?? null,
-                updatedAt: now,
-              })
-              .where(eq(localTemplates.id, templateId!))
-              .run();
-          }
+          await upsertLocalTemplateSnapshot(
+            userId,
+            {
+              ...templatePayload,
+              id: entityId,
+              description: formData.description || null,
+              notes: formData.notes || null,
+              createdAt: now,
+              updatedAt: now,
+              exercises: exercisePayloads,
+            },
+            { createdLocally: true },
+          );
         },
       });
 
       if (!isNew && templateId && savedTemplate.id) {
         await syncExercises(templateId, savedTemplate.id);
       } else if (isNew) {
-        for (let i = 0; i < selectedExercises.length; i++) {
-          const ex = selectedExercises[i];
+        for (const ex of exercisePayloads) {
           await apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
             method: 'POST',
-            body: {
-              exerciseId: ex.exerciseId,
-              orderIndex: i,
-              isAccessory: ex.isAccessory ?? false,
-              isRequired: ex.isRequired ?? true,
-              sets: ex.sets ?? 3,
-              reps: ex.reps ?? 10,
-              targetWeight: ex.targetWeight ?? 0,
-              isAmrap: ex.isAmrap ?? false,
-              exerciseType: resolveSelectedExerciseType(ex),
-              targetDuration: ex.targetDuration ?? null,
-              targetDistance: ex.targetDistance ?? null,
-              targetHeight: ex.targetHeight ?? null,
-            },
+            body: ex,
           });
         }
       }
 
+      await upsertLocalTemplateSnapshot(
+        userId,
+        {
+          ...savedTemplate,
+          id: savedTemplate.id ?? entityId,
+          exercises: exercisePayloads,
+        },
+        { createdLocally: false },
+      );
+
       setAutoSaveStatus('saved');
       setTimeout(() => setAutoSaveStatus('idle'), 2000);
-      onSaved?.(savedTemplate);
       return savedTemplate;
     } catch (error) {
       if (error instanceof OfflineError || (error as any)?.name === 'OfflineError') {
@@ -308,53 +367,53 @@ function useTemplateEditorApi({
     } finally {
       setIsSaving(false);
     }
-  }, [mode, templateId, formData, selectedExercises, onSaved, userId]);
+  }, [mode, templateId, formData, selectedExercises, progressionValues, userId]);
 
   const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
-    const newExerciseIds = new Set(selectedExercises.map((e) => e.exerciseId));
-
-    const existingExercises = await apiFetch<Array<{ exerciseId: string; orderIndex: number }>>(
+    const existingExercises = await apiFetch<Array<{ id: string; exerciseId: string }>>(
       `/api/templates/${currentTemplateId}/exercises`,
+    );
+    const existingIds = new Set(existingExercises.map((exercise) => exercise.id));
+    const selectedPersistedIds = new Set(
+      selectedExercises
+        .filter((exercise) => existingIds.has(exercise.id))
+        .map((exercise) => exercise.id),
     );
 
     const deletePromises = existingExercises
-      .filter((existing) => !newExerciseIds.has(existing.exerciseId))
+      .filter((existing) => !selectedPersistedIds.has(existing.id))
       .map((existing) =>
-        apiFetch(`/api/templates/${currentTemplateId}/exercises/${existing.exerciseId}`, {
+        apiFetch(`/api/templates/${currentTemplateId}/exercise-rows/${existing.id}`, {
           method: 'DELETE',
         }),
       );
 
     await Promise.all(deletePromises);
 
-    const addPromises: Array<Promise<unknown>> = [];
+    const savePromises: Array<Promise<unknown>> = [];
     for (let i = 0; i < selectedExercises.length; i++) {
       const ex = selectedExercises[i];
-      const existing = existingExercises.find((ee) => ee.exerciseId === ex.exerciseId);
-      if (!existing) {
-        addPromises.push(
-          apiFetch(`/api/templates/${newTemplateId}/exercises`, {
-            method: 'POST',
-            body: {
-              exerciseId: ex.exerciseId,
-              orderIndex: i,
-              isAccessory: ex.isAccessory ?? false,
-              isRequired: ex.isRequired ?? true,
-              sets: ex.sets ?? 3,
-              reps: ex.reps ?? 10,
-              targetWeight: ex.targetWeight ?? 0,
-              isAmrap: ex.isAmrap ?? false,
-              exerciseType: resolveSelectedExerciseType(ex),
-              targetDuration: ex.targetDuration ?? null,
-              targetDistance: ex.targetDistance ?? null,
-              targetHeight: ex.targetHeight ?? null,
-            },
-          }),
-        );
-      }
+      const {
+        id: _id,
+        name: _name,
+        muscleGroup: _muscleGroup,
+        ...body
+      } = buildTemplateExercisePayload(ex, i);
+      const existing = existingIds.has(ex.id);
+      savePromises.push(
+        existing
+          ? apiFetch(`/api/templates/${newTemplateId}/exercise-rows/${ex.id}`, {
+              method: 'PUT',
+              body,
+            })
+          : apiFetch(`/api/templates/${newTemplateId}/exercises`, {
+              method: 'POST',
+              body: { id: ex.id, ...body },
+            }),
+      );
     }
 
-    await Promise.all(addPromises);
+    await Promise.all(savePromises);
   };
 
   return {
@@ -367,6 +426,122 @@ function useTemplateEditorApi({
   };
 }
 
+type ProgressionConfig = {
+  key: keyof ProgressionValues;
+  label: string;
+  step: number;
+  showIf: (types: Set<string>) => boolean;
+  format: (value: number, weightUnit: string) => string;
+};
+
+const PROGRESSION_CONFIGS: ProgressionConfig[] = [
+  {
+    key: 'defaultWeightIncrement',
+    label: 'Weight',
+    step: 0.5,
+    showIf: (types) => types.has('weights') || types.has('bodyweight'),
+    format: (value, wu) => `+${value} ${wu}`,
+  },
+  {
+    key: 'defaultBodyweightIncrement',
+    label: 'Bodyweight',
+    step: 1,
+    showIf: (types) => types.has('bodyweight'),
+    format: (value) => `+${value} reps`,
+  },
+  {
+    key: 'defaultCardioIncrement',
+    label: 'Cardio',
+    step: 5,
+    showIf: (types) => types.has('cardio'),
+    format: (value) => {
+      const mins = Math.floor(value / 60);
+      const secs = value % 60;
+      if (mins > 0 && secs > 0) return `+${mins}:${secs.toString().padStart(2, '0')}`;
+      if (mins > 0) return `+${mins}:00`;
+      return `+${secs} sec`;
+    },
+  },
+  {
+    key: 'defaultTimedIncrement',
+    label: 'Timed',
+    step: 1,
+    showIf: (types) => types.has('timed'),
+    format: (value) => `+${value} sec`,
+  },
+  {
+    key: 'defaultPlyoIncrement',
+    label: 'Plyo',
+    step: 1,
+    showIf: (types) => types.has('plyo'),
+    format: (value) => `+${value} rep${value === 1 ? '' : 's'}`,
+  },
+];
+
+function adjustProgression(
+  key: keyof ProgressionValues,
+  current: ProgressionValues,
+  delta: number,
+): Partial<ProgressionValues> {
+  const next = Number((current[key] + delta).toFixed(2));
+  return { [key]: Math.max(0, next) } as Partial<ProgressionValues>;
+}
+
+function TemplateProgressionControls({
+  exercises,
+  progressionValues,
+  weightUnit,
+  onChange,
+}: {
+  exercises: SelectedExercise[];
+  progressionValues: ProgressionValues;
+  weightUnit: string;
+  onChange: (data: Partial<ProgressionValues>) => void;
+}) {
+  const presentTypes = useMemo(
+    () => new Set(exercises.map((e) => e.exerciseType ?? 'weights')),
+    [exercises],
+  );
+
+  const visibleConfigs = useMemo(
+    () => PROGRESSION_CONFIGS.filter((c) => c.showIf(presentTypes)),
+    [presentTypes],
+  );
+
+  if (visibleConfigs.length === 0) return null;
+
+  return (
+    <View style={progressionStyles.container}>
+      {visibleConfigs.map((config) => (
+        <View key={`progression-control:${config.key}`} style={progressionStyles.item}>
+          <Text style={progressionStyles.itemLabel}>{config.label}</Text>
+          <View style={progressionStyles.itemRow}>
+            <Pressable
+              style={progressionStyles.stepperButton}
+              onPress={() =>
+                onChange(adjustProgression(config.key, progressionValues, -config.step))
+              }
+            >
+              <Ionicons name="remove" size={16} color={colors.text} />
+            </Pressable>
+            <Text style={progressionStyles.itemValue}>
+              {config.format(progressionValues[config.key], weightUnit)}
+            </Text>
+            <Pressable
+              style={progressionStyles.stepperButton}
+              onPress={() =>
+                onChange(adjustProgression(config.key, progressionValues, config.step))
+              }
+            >
+              <Ionicons name="add" size={16} color={colors.text} />
+            </Pressable>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function TemplateEditor({
   mode,
   templateId,
@@ -375,6 +550,7 @@ export function TemplateEditor({
   onClose,
 }: TemplateEditorProps) {
   const insets = useSafeAreaInsets();
+  const { heightUnit, weightUnit } = useUserPreferences();
   const [showExerciseSearch, setShowExerciseSearch] = useState(false);
 
   const initialFormData = {
@@ -393,21 +569,25 @@ export function TemplateEditor({
   const {
     formData,
     selectedExercises,
+    progressionValues,
     errors,
     validateForm,
     setFormData,
+    setProgressionValues,
     addExercise,
+    insertExerciseAfter,
     removeExercise,
     updateExercise,
     reorderExercises,
     pushUndo,
-  } = useTemplateEditorState(initialFormData, initialExercises);
+  } = useTemplateEditorState(initialFormData, initialExercises, initialData, weightUnit);
 
   const { saveTemplate, isSaving, offlineMessage, clearOfflineMessage } = useTemplateEditorApi({
     mode,
     templateId,
     formData,
     selectedExercises,
+    progressionValues,
     onSaved,
   });
 
@@ -423,26 +603,106 @@ export function TemplateEditor({
       }>,
     ) => {
       pushUndo();
-      for (const exercise of exercises) {
-        const newExercise: SelectedExercise = {
+      const buildSelectedExercise = (
+        exercise: {
+          id: string;
+          libraryId?: string | null;
+          name: string;
+          muscleGroup: string | null;
+          exerciseType?: string;
+          isAmrap?: boolean;
+        },
+        isAmrap: boolean,
+      ): SelectedExercise => {
+        const exerciseType = resolveSelectedExerciseType(exercise);
+        return {
           id: generateId(),
           exerciseId: exercise.id,
           libraryId: exercise.libraryId ?? undefined,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
-          exerciseType: resolveSelectedExerciseType(exercise),
-          isAmrap: exercise.isAmrap ?? false,
+          exerciseType,
+          isAmrap,
           isAccessory: false,
           isRequired: true,
-          sets: 3,
+          sets: isAmrap ? 1 : exerciseType === 'cardio' || exerciseType === 'timed' ? 1 : 3,
           reps: 10,
           repsRaw: '10',
           targetWeight: 0,
         };
-        addExercise(newExercise);
+      };
+
+      for (const exercise of exercises) {
+        if (exercise.isAmrap) {
+          Alert.alert(exercise.name, 'How do you want to add AMRAP?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: `Make this ${exercise.name} AMRAP only`,
+              onPress: () => addExercise(buildSelectedExercise(exercise, true)),
+            },
+            {
+              text: `Add ${exercise.name} + ${exercise.name} AMRAP`,
+              onPress: () => {
+                addExercise(buildSelectedExercise(exercise, false));
+                addExercise(buildSelectedExercise(exercise, true));
+              },
+            },
+          ]);
+          continue;
+        }
+
+        addExercise(buildSelectedExercise(exercise, false));
       }
     },
     [pushUndo, addExercise],
+  );
+
+  const handleUpdateExercise = useCallback(
+    (id: string, updates: Partial<SelectedExercise>) => {
+      pushUndo();
+      updateExercise(id, updates);
+    },
+    [pushUndo, updateExercise],
+  );
+
+  const promptForAmrapSplit = useCallback(
+    (exercise: SelectedExercise) => {
+      const hasNormalRow = selectedExercises.some(
+        (candidate) =>
+          candidate.id !== exercise.id &&
+          candidate.exerciseId === exercise.exerciseId &&
+          !candidate.isAmrap,
+      );
+
+      if (hasNormalRow) {
+        handleUpdateExercise(exercise.id, { isAmrap: true, sets: 1 });
+        return;
+      }
+
+      Alert.alert(exercise.name, 'How do you want to add AMRAP?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Make this ${exercise.name} AMRAP only`,
+          onPress: () => handleUpdateExercise(exercise.id, { isAmrap: true, sets: 1 }),
+        },
+        {
+          text: `Add ${exercise.name} + ${exercise.name} AMRAP`,
+          onPress: () => {
+            pushUndo();
+            updateExercise(exercise.id, { isAmrap: false });
+            insertExerciseAfter(exercise.id, {
+              ...exercise,
+              id: generateId(),
+              isAmrap: true,
+              sets: 1,
+              reps: exercise.reps ?? 10,
+              repsRaw: exercise.repsRaw ?? (exercise.reps ?? 10).toString(),
+            });
+          },
+        },
+      ]);
+    },
+    [handleUpdateExercise, insertExerciseAfter, pushUndo, selectedExercises, updateExercise],
   );
 
   const handleRemoveExercise = useCallback(
@@ -471,14 +731,6 @@ export function TemplateEditor({
       }
     },
     [pushUndo, reorderExercises, selectedExercises.length],
-  );
-
-  const handleUpdateExercise = useCallback(
-    (id: string, updates: Partial<SelectedExercise>) => {
-      pushUndo();
-      updateExercise(id, updates);
-    },
-    [pushUndo, updateExercise],
   );
 
   const handleSave = useCallback(async () => {
@@ -545,6 +797,18 @@ export function TemplateEditor({
           />
         </Collapsible>
 
+        {selectedExercises.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Default Progression</Text>
+            <TemplateProgressionControls
+              exercises={selectedExercises}
+              progressionValues={progressionValues}
+              weightUnit={weightUnit}
+              onChange={setProgressionValues}
+            />
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.label}>Exercises ({currentExercises.length})</Text>
@@ -609,34 +873,28 @@ export function TemplateEditor({
                   </View>
 
                   <View style={styles.typeRow}>
-                    {(['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map(
-                      (type) => {
-                        const isSelected = (exercise.exerciseType ?? 'weighted') === type;
-                        return (
-                          <Pressable
-                            key={`ex-type:${exercise.id}:${type}`}
-                            onPress={() =>
-                              handleUpdateExercise(exercise.id, { exerciseType: type })
-                            }
+                    {(['weights', 'bodyweight', 'timed', 'cardio', 'plyo'] as const).map((type) => {
+                      const isSelected = (exercise.exerciseType ?? 'weights') === type;
+                      return (
+                        <Pressable
+                          key={`ex-type:${exercise.id}:${type}`}
+                          onPress={() => handleUpdateExercise(exercise.id, { exerciseType: type })}
+                          style={[
+                            styles.typeChip,
+                            isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                          ]}
+                        >
+                          <Text
                             style={[
-                              styles.typeChip,
-                              isSelected ? styles.typeChipSelected : styles.typeChipDefault,
+                              styles.typeChipText,
+                              isSelected ? styles.typeChipTextSelected : styles.typeChipTextDefault,
                             ]}
                           >
-                            <Text
-                              style={[
-                                styles.typeChipText,
-                                isSelected
-                                  ? styles.typeChipTextSelected
-                                  : styles.typeChipTextDefault,
-                              ]}
-                            >
-                              {type.charAt(0).toUpperCase() + type.slice(1)}
-                            </Text>
-                          </Pressable>
-                        );
-                      },
-                    )}
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
 
                   <View style={styles.exerciseRow}>
@@ -680,7 +938,7 @@ export function TemplateEditor({
                       </View>
                     </View>
 
-                    {(exercise.exerciseType === 'weighted' ||
+                    {(exercise.exerciseType === 'weights' ||
                       exercise.exerciseType === 'bodyweight' ||
                       exercise.exerciseType === 'plyo' ||
                       !exercise.exerciseType) && (
@@ -738,7 +996,7 @@ export function TemplateEditor({
                       </View>
                     )}
 
-                    {(exercise.exerciseType === 'weighted' ||
+                    {(exercise.exerciseType === 'weights' ||
                       exercise.exerciseType === 'bodyweight' ||
                       !exercise.exerciseType) && (
                       <View style={styles.exerciseField}>
@@ -880,12 +1138,13 @@ export function TemplateEditor({
 
                     {exercise.exerciseType === 'plyo' && (
                       <View style={styles.exerciseField}>
-                        <Text style={styles.fieldLabel}>Height (cm)</Text>
+                        <Text style={styles.fieldLabel}>Height ({heightUnit})</Text>
                         <View style={styles.counterContainer}>
                           <Pressable
                             onPress={() => {
                               const current = exercise.targetHeight ?? 0;
-                              const newValue = Math.max(0, current - 5);
+                              const increment = heightUnit === 'cm' ? 5 : 2 * 2.54;
+                              const newValue = Math.max(0, current - increment);
                               handleUpdateExercise(exercise.id, { targetHeight: newValue });
                             }}
                             style={[styles.counterButton, { left: 0 }]}
@@ -896,11 +1155,15 @@ export function TemplateEditor({
                             style={styles.counterInput}
                             keyboardType="numeric"
                             selectTextOnFocus
-                            value={exercise.targetHeight?.toString() ?? '0'}
+                            value={String(
+                              Math.round(toDisplayHeight(exercise.targetHeight ?? 0, heightUnit)),
+                            )}
                             onChangeText={(text) => {
                               const num = parseInt(text, 10);
                               updateExercise(exercise.id, {
-                                targetHeight: isNaN(num) ? undefined : num,
+                                targetHeight: isNaN(num)
+                                  ? undefined
+                                  : toStorageHeight(num, heightUnit),
                               });
                             }}
                             onBlur={() => {
@@ -913,7 +1176,8 @@ export function TemplateEditor({
                           <Pressable
                             onPress={() => {
                               const current = exercise.targetHeight ?? 0;
-                              const newValue = current + 5;
+                              const increment = heightUnit === 'cm' ? 5 : 2 * 2.54;
+                              const newValue = current + increment;
                               handleUpdateExercise(exercise.id, { targetHeight: newValue });
                             }}
                             style={[styles.counterButton, { right: 0 }]}
@@ -927,9 +1191,13 @@ export function TemplateEditor({
 
                   <View style={styles.toggleRow}>
                     <Pressable
-                      onPress={() =>
-                        handleUpdateExercise(exercise.id, { isAmrap: !exercise.isAmrap })
-                      }
+                      onPress={() => {
+                        if (exercise.isAmrap) {
+                          handleUpdateExercise(exercise.id, { isAmrap: false });
+                        } else {
+                          promptForAmrapSplit(exercise);
+                        }
+                      }}
                       style={[
                         styles.toggleButton,
                         exercise.isAmrap ? styles.toggleButtonActive : styles.toggleButtonDefault,
@@ -1066,7 +1334,6 @@ export function TemplateEditor({
           visible={showExerciseSearch}
           onSelect={handleAddExercise}
           onClose={() => setShowExerciseSearch(false)}
-          excludeIds={currentExercises.map((e) => e.exerciseId)}
         />
       </Modal>
     </View>
@@ -1338,5 +1605,51 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     textAlign: 'center',
+  },
+});
+
+const progressionStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  item: {
+    flex: 1,
+    minWidth: '30%',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceAlt,
+  },
+  itemLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    width: '100%',
+  },
+  stepperButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+  },
+  itemValue: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
   },
 });

@@ -54,6 +54,7 @@ export const userPreferences = sqliteTable('user_preferences', {
     .references(() => user.id, { onDelete: 'cascade' }),
   weightUnit: text('weight_unit').default('kg'),
   distanceUnit: text('distance_unit').default('km'),
+  heightUnit: text('height_unit').default('cm'),
   timezone: text('timezone'),
   weightPromptedAt: integer('weight_prompted_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
@@ -155,6 +156,11 @@ export const templates = sqliteTable(
     description: text('description'),
     notes: text('notes'),
     programCycleId: text('program_cycle_id'),
+    defaultWeightIncrement: real('default_weight_increment').default(2.5),
+    defaultBodyweightIncrement: real('default_bodyweight_increment').default(2),
+    defaultCardioIncrement: real('default_cardio_increment').default(60),
+    defaultTimedIncrement: real('default_timed_increment').default(5),
+    defaultPlyoIncrement: real('default_plyo_increment').default(1),
     isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -691,6 +697,23 @@ export const userBodyStats = sqliteTable('user_body_stats', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
+
+export const userBodyweightHistory = sqliteTable(
+  'user_bodyweight_history',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    bodyweightKg: real('bodyweight_kg').notNull(),
+    recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_bodyweight_history_user_recorded').on(t.userId, t.recordedAt)],
+);
 
 export const nutritionTrainingContext = sqliteTable(
   'nutrition_training_context',

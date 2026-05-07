@@ -37,7 +37,7 @@ export const madcow = createLinearProgramGenerator({
     const exercises: ProgramExercise[] = [
       {
         name: 'Squat',
-        exerciseType: 'weighted',
+        exerciseType: 'weights',
         lift: 'squat',
         libraryId: LIFT_TYPE_LIBRARY_ID['squat'],
         sets: 5,
@@ -50,7 +50,7 @@ export const madcow = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Bench Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'bench',
           libraryId: LIFT_TYPE_LIBRARY_ID['bench'],
           sets: 5,
@@ -59,7 +59,7 @@ export const madcow = createLinearProgramGenerator({
         },
         {
           name: 'Barbell Row',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'row',
           libraryId: LIFT_TYPE_LIBRARY_ID['row'],
           sets: 5,
@@ -71,7 +71,7 @@ export const madcow = createLinearProgramGenerator({
       exercises.push(
         {
           name: 'Overhead Press',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'ohp',
           libraryId: LIFT_TYPE_LIBRARY_ID['ohp'],
           sets: 5,
@@ -80,7 +80,7 @@ export const madcow = createLinearProgramGenerator({
         },
         {
           name: 'Deadlift',
-          exerciseType: 'weighted',
+          exerciseType: 'weights',
           lift: 'deadlift',
           libraryId: LIFT_TYPE_LIBRARY_ID['deadlift'],
           sets: 5,

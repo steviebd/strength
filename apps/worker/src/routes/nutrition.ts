@@ -7,7 +7,11 @@ import {
 } from '../api/nutrition/entries.$id';
 import { dailySummaryHandler } from '../api/nutrition/daily-summary';
 import { chatHandler, getChatHistoryHandler, getChatJobHandler } from '../api/nutrition/chat';
-import { getBodyStatsHandler, upsertBodyStatsHandler } from '../api/nutrition/body-stats';
+import {
+  getBodyStatsHandler,
+  upsertBodyStatsHandler,
+  getBodyweightHistoryHandler,
+} from '../api/nutrition/body-stats';
 import { upsertTrainingContextHandler } from '../api/nutrition/training-context';
 
 const router = createRouter();
@@ -23,6 +27,7 @@ router.get('/chat/jobs/:id', getChatJobHandler);
 router.get('/chat/history', getChatHistoryHandler);
 router.get('/body-stats', getBodyStatsHandler);
 router.post('/body-stats', upsertBodyStatsHandler);
+router.get('/bodyweight-history', getBodyweightHistoryHandler);
 router.post('/training-context', upsertTrainingContextHandler);
 
 export default router;

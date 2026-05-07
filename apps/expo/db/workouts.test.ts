@@ -25,6 +25,11 @@ vi.mock('@strength/db/client', () => ({
   WORKOUT_TYPE_ONE_RM_TEST: 'one_rm_test',
   exerciseLibrary: [],
   generateId: vi.fn(() => 'test-id-123'),
+  consolidateProgramTargetLifts: vi.fn((targetLifts) => targetLifts),
+  consolidateProgramTargetLiftsForWorkoutSections: vi.fn((targetLifts) => targetLifts),
+  getCurrentCycleWorkout: vi.fn(),
+  normalizeProgramReps: vi.fn((value) => (typeof value === 'number' ? value : null)),
+  parseProgramTargetLifts: vi.fn(() => ({ exercises: [], accessories: [], all: [] })),
 }));
 
 vi.mock('../lib/storage', () => ({
@@ -191,6 +196,91 @@ describe('createLocalWorkout', () => {
     const setRows = insertedValues.filter((row: any) => row.workoutExerciseId);
 
     expect(setRows.map((row: any) => row.id)).toEqual(['test-id-123', 'test-id-123-11']);
+  });
+});
+
+describe('createLocalWorkoutFromTemplate', () => {
+  const providedExercises = [
+    {
+      exerciseId: 'bench',
+      name: 'Bench Press',
+      muscleGroup: 'Chest',
+      exerciseType: 'weights',
+      sets: 3,
+      reps: 5,
+      isAmrap: false,
+      targetWeight: 70,
+      addedWeight: 0,
+      orderIndex: 0,
+    },
+  ];
+
+  function getInsertedRows() {
+    return mockDb.insert.mock.results.map((result: any) => {
+      const values = result.value.values as ReturnType<typeof vi.fn>;
+      return values.mock.calls[0][0];
+    });
+  }
+
+  test('can ignore history and use planned template values only', async () => {
+    const { createLocalWorkoutFromTemplate } = await import('./workouts');
+
+    await createLocalWorkoutFromTemplate(
+      'user-1',
+      'template-1',
+      { ignoreHistory: true },
+      providedExercises,
+    );
+
+    const setRows = getInsertedRows().filter((row: any) => row.workoutExerciseId);
+    expect(setRows).toHaveLength(3);
+    expect(setRows.map((row: any) => row.weight)).toEqual([70, 70, 70]);
+    expect(setRows.map((row: any) => row.reps)).toEqual([5, 5, 5]);
+  });
+
+  test('uses provided progressed history and planned values for extra sets', async () => {
+    const { createLocalWorkoutFromTemplate } = await import('./workouts');
+
+    await createLocalWorkoutFromTemplate(
+      'user-1',
+      'template-1',
+      {
+        ignoreHistory: true,
+        historySnapshots: [
+          {
+            exerciseId: 'bench',
+            workoutDate: '2026-05-01',
+            isAmrap: false,
+            sets: [
+              {
+                setNumber: 1,
+                weight: 82.5,
+                reps: 5,
+                rpe: null,
+                duration: null,
+                distance: null,
+                height: null,
+              },
+              {
+                setNumber: 2,
+                weight: 82.5,
+                reps: 5,
+                rpe: null,
+                duration: null,
+                distance: null,
+                height: null,
+              },
+            ],
+          },
+        ],
+      },
+      providedExercises,
+    );
+
+    const setRows = getInsertedRows().filter((row: any) => row.workoutExerciseId);
+    expect(setRows).toHaveLength(3);
+    expect(setRows.map((row: any) => row.weight)).toEqual([82.5, 82.5, 70]);
+    expect(setRows.map((row: any) => row.reps)).toEqual([5, 5, 5]);
   });
 });
 

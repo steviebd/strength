@@ -1,4 +1,4 @@
-import { sql, and, or, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { generateId } from '@strength/db/client';
 import { authClient } from '@/lib/auth-client';
@@ -9,6 +9,7 @@ import { cacheTemplates } from '@/db/workouts';
 import { getCachedTemplates } from '@/db/training-cache';
 import { getLocalDb } from '@/db/client';
 import { localTemplates, localSyncQueue } from '@/db/local-schema';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
 
 export type { Template };
@@ -21,31 +22,15 @@ export function useTemplates() {
   const templatesQuery = useOfflineQuery({
     queryKey: ['templates', userId],
     enabled: !!userId,
-    apiFn: () => apiFetch<Template[]>('/api/templates'),
-    cacheFn: () => getCachedTemplates(userId!),
-    writeCacheFn: (data) => cacheTemplates(userId!, data),
-    isDirtyFn: async () => {
-      const db = getLocalDb();
-      if (!db) return false;
-      const locallyCreated = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localTemplates)
-        .where(and(eq(localTemplates.userId, userId!), eq(localTemplates.createdLocally, true)))
-        .get();
-      if ((locallyCreated?.count ?? 0) > 0) return true;
-      const pending = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localSyncQueue)
-        .where(
-          and(
-            eq(localSyncQueue.userId, userId!),
-            eq(localSyncQueue.entityType, 'template'),
-            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
-          ),
-        )
-        .get();
-      return (pending?.count ?? 0) > 0;
+    apiFn: () => apiFetch<Template[]>('/api/templates', { cache: 'no-store' }),
+    cacheFn: async () => {
+      const cached = await getCachedTemplates(userId!);
+      return cached.length > 0 ? cached : null;
     },
+    writeCacheFn: (data) => cacheTemplates(userId!, data),
+    networkFirst: true,
+    fallbackToCacheOnError: true,
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['template']),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -58,13 +43,13 @@ export function useTemplates() {
         apiCall: () =>
           apiFetch<Template>('/api/templates', {
             method: 'POST',
-            body: data,
+            body: { id: entityId, ...data },
           }),
         userId: userId!,
         entityType: 'template',
         operation: 'create_template',
         entityId,
-        payload: data,
+        payload: { id: entityId, ...data },
         onEnqueue: async () => {
           const db = getLocalDb();
           if (!db) return;
@@ -81,6 +66,17 @@ export function useTemplates() {
               createdAt: now,
               updatedAt: now,
               hydratedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: localTemplates.id,
+              set: {
+                name: data.name,
+                description: data.description ?? null,
+                notes: data.notes ?? null,
+                isDeleted: false,
+                updatedAt: now,
+                hydratedAt: now,
+              },
             })
             .run();
         },
@@ -135,6 +131,34 @@ export function useTemplates() {
 
   const deleteTemplate = useMutation({
     mutationFn: async (id: string) => {
+      const db = getLocalDb();
+      const localTemplate =
+        db && typeof (db as any).select === 'function'
+          ? db
+              .select({ createdLocally: localTemplates.createdLocally })
+              .from(localTemplates)
+              .where(eq(localTemplates.id, id))
+              .get()
+          : null;
+
+      if (db && localTemplate?.createdLocally) {
+        const now = new Date();
+        db.update(localTemplates)
+          .set({ isDeleted: true, updatedAt: now })
+          .where(eq(localTemplates.id, id))
+          .run();
+        db.delete(localSyncQueue)
+          .where(
+            and(
+              eq(localSyncQueue.entityType, 'template'),
+              eq(localSyncQueue.entityId, id),
+              eq(localSyncQueue.operation, 'create_template'),
+            ),
+          )
+          .run();
+        return { success: true };
+      }
+
       return tryOnlineOrEnqueue({
         apiCall: () =>
           apiFetch(`/api/templates/${id}`, {

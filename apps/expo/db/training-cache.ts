@@ -1,15 +1,17 @@
-import { and, desc, eq, inArray, isNotNull, isNull, like, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, like } from 'drizzle-orm';
 import {
+  createProgramAdvancePlan,
+  createProgramStartPlan,
   formatLocalDate,
   getCurrentCycleWorkout,
   getUtcRangeForLocalDate,
   parseProgramTargetLifts,
+  type ProgramStartPayload,
 } from '@strength/db/client';
 import { getLocalDb, withLocalTransaction } from './client';
 import {
   localProgramCycleWorkouts,
   localProgramCycles,
-  localSyncQueue,
   localTemplateExercises,
   localTemplates,
   localTrainingCacheMeta,
@@ -18,6 +20,13 @@ import {
   type LocalWorkout,
 } from './local-schema';
 import { normalizeTemplateExerciseForLocalCache, upsertServerWorkoutSnapshot } from './workouts';
+import {
+  getFreshLatestOneRMs,
+  getLatestOneRMsFromLocalCycles,
+  getLocallyDirtyProgramCycleIds,
+  getPendingSyncedEntityIds,
+  hasPendingEntity,
+} from './training-read-model';
 import type { Workout } from '@/context/WorkoutSessionContext';
 import type { Template } from '@/components/template/TemplateEditor/types';
 import { platformStorage } from '@/lib/platform-storage';
@@ -41,22 +50,6 @@ function isDirtyWorkout(row: LocalWorkout | undefined) {
   return Boolean(row && DIRTY_WORKOUT_STATUSES.includes(row.syncStatus));
 }
 
-async function getEntitiesWithPendingSync(userId: string): Promise<Set<string>> {
-  const db = getLocalDb();
-  if (!db) return new Set();
-  const items = db
-    .select({ entityId: localSyncQueue.entityId })
-    .from(localSyncQueue)
-    .where(
-      and(
-        eq(localSyncQueue.userId, userId),
-        or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
-      ),
-    )
-    .all();
-  return new Set(items.map((i) => i.entityId));
-}
-
 export type OfflineTrainingSnapshot = {
   generatedAt: string;
   templates: any[];
@@ -72,7 +65,8 @@ export async function hydrateOfflineTrainingSnapshot(
   const db = getLocalDb();
   if (!db) return;
 
-  const pendingSyncIds = await getEntitiesWithPendingSync(userId);
+  const pendingSyncIds = getPendingSyncedEntityIds(userId);
+  const locallyDirtyProgramCycleIds = getLocallyDirtyProgramCycleIds(userId);
   const hydratedAt = new Date();
   const generatedAt = toDate(snapshot.generatedAt);
   const serverTemplateIds = new Set(snapshot.templates.map((template) => template.id));
@@ -124,7 +118,13 @@ export async function hydrateOfflineTrainingSnapshot(
           name: template.name,
           description: template.description ?? null,
           notes: template.notes ?? null,
+          defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+          defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+          defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+          defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+          defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
           isDeleted: false,
+          createdLocally: false,
           createdAt: toDate(template.createdAt),
           updatedAt: toDate(template.updatedAt),
           serverUpdatedAt: toDate(template.updatedAt),
@@ -136,7 +136,13 @@ export async function hydrateOfflineTrainingSnapshot(
             name: template.name,
             description: template.description ?? null,
             notes: template.notes ?? null,
+            defaultWeightIncrement: template.defaultWeightIncrement ?? null,
+            defaultBodyweightIncrement: template.defaultBodyweightIncrement ?? null,
+            defaultCardioIncrement: template.defaultCardioIncrement ?? null,
+            defaultTimedIncrement: template.defaultTimedIncrement ?? null,
+            defaultPlyoIncrement: template.defaultPlyoIncrement ?? null,
             isDeleted: false,
+            createdLocally: false,
             updatedAt: toDate(template.updatedAt),
             serverUpdatedAt: toDate(template.updatedAt),
             hydratedAt,
@@ -155,7 +161,7 @@ export async function hydrateOfflineTrainingSnapshot(
     }
 
     const orphanedTemplateIds = existingLocalTemplates
-      .filter((template) => !serverTemplateIds.has(template.id) && !template.createdLocally)
+      .filter((template) => !serverTemplateIds.has(template.id) && !pendingSyncIds.has(template.id))
       .map((template) => template.id);
     if (orphanedTemplateIds.length > 0) {
       db.update(localTemplates)
@@ -175,7 +181,7 @@ export async function hydrateOfflineTrainingSnapshot(
           muscleGroup: exercise.muscleGroup ?? null,
           description: exercise.description ?? null,
           libraryId: exercise.libraryId ?? null,
-          exerciseType: exercise.exerciseType ?? 'weighted',
+          exerciseType: exercise.exerciseType ?? 'weights',
           isAmrap: exercise.isAmrap ?? false,
           createdLocally: false,
           createdAt: toDate(exercise.createdAt),
@@ -190,7 +196,7 @@ export async function hydrateOfflineTrainingSnapshot(
             muscleGroup: exercise.muscleGroup ?? null,
             description: exercise.description ?? null,
             libraryId: exercise.libraryId ?? null,
-            exerciseType: exercise.exerciseType ?? 'weighted',
+            exerciseType: exercise.exerciseType ?? 'weights',
             isAmrap: exercise.isAmrap ?? false,
             createdLocally: false,
             updatedAt: toDate(exercise.updatedAt),
@@ -206,7 +212,7 @@ export async function hydrateOfflineTrainingSnapshot(
     for (const entry of snapshot.activeProgramCycles) {
       const cycle = entry.cycle;
       const hasPendingSyncWorkout = (entry.workouts ?? []).some((w) => pendingSyncIds.has(w.id));
-      if (hasPendingSyncWorkout) {
+      if (hasPendingSyncWorkout || locallyDirtyProgramCycleIds.has(cycle.id)) {
         continue;
       }
 
@@ -299,7 +305,12 @@ export async function hydrateOfflineTrainingSnapshot(
       .where(and(eq(localProgramCycles.userId, userId), eq(localProgramCycles.status, 'active')))
       .all();
     const orphanedCycleIds = existingCycles
-      .filter((cycle) => !activeCycleIds.has(cycle.id))
+      .filter(
+        (cycle) =>
+          !activeCycleIds.has(cycle.id) &&
+          !hasPendingEntity(pendingSyncIds, cycle.id) &&
+          !locallyDirtyProgramCycleIds.has(cycle.id),
+      )
       .map((cycle) => cycle.id);
     if (orphanedCycleIds.length > 0) {
       db.update(localProgramCycles)
@@ -357,6 +368,11 @@ async function getCachedTemplate(templateId: string): Promise<Template | null> {
     name: template.name,
     description: template.description,
     notes: template.notes,
+    defaultWeightIncrement: template.defaultWeightIncrement,
+    defaultBodyweightIncrement: template.defaultBodyweightIncrement,
+    defaultCardioIncrement: template.defaultCardioIncrement,
+    defaultTimedIncrement: template.defaultTimedIncrement,
+    defaultPlyoIncrement: template.defaultPlyoIncrement,
     createdAt: toIso(template.createdAt) ?? new Date().toISOString(),
     updatedAt: toIso(template.updatedAt) ?? new Date().toISOString(),
     exercises: exercises.map((exercise) => ({
@@ -366,8 +382,10 @@ async function getCachedTemplate(templateId: string): Promise<Template | null> {
       muscleGroup: exercise.muscleGroup,
       sets: exercise.sets ?? 3,
       reps: exercise.reps ?? 10,
+      repsRaw: exercise.repsRaw ?? null,
       targetWeight: exercise.targetWeight ?? 0,
-      exerciseType: exercise.exerciseType ?? 'weighted',
+      addedWeight: exercise.addedWeight ?? 0,
+      exerciseType: exercise.exerciseType ?? 'weights',
       targetDuration: exercise.targetDuration ?? null,
       targetDistance: exercise.targetDistance ?? null,
       targetHeight: exercise.targetHeight ?? null,
@@ -595,6 +613,165 @@ export async function markLocalProgramAdvance(input: {
     .run();
 }
 
+export async function createLocalProgramCycleFromStartPayload(
+  userId: string,
+  payload: ProgramStartPayload,
+) {
+  const db = getLocalDb();
+  if (!db) return null;
+
+  const plan = createProgramStartPlan(payload);
+  const now = new Date();
+
+  withLocalTransaction(() => {
+    db.insert(localProgramCycles)
+      .values({
+        id: plan.cycle.id,
+        userId,
+        programSlug: plan.cycle.programSlug,
+        name: plan.cycle.name,
+        squat1rm: plan.cycle.squat1rm,
+        bench1rm: plan.cycle.bench1rm,
+        deadlift1rm: plan.cycle.deadlift1rm,
+        ohp1rm: plan.cycle.ohp1rm,
+        startingSquat1rm: plan.cycle.startingSquat1rm,
+        startingBench1rm: plan.cycle.startingBench1rm,
+        startingDeadlift1rm: plan.cycle.startingDeadlift1rm,
+        startingOhp1rm: plan.cycle.startingOhp1rm,
+        currentWeek: plan.cycle.currentWeek,
+        currentSession: plan.cycle.currentSession,
+        totalSessionsCompleted: plan.cycle.totalSessionsCompleted,
+        totalSessionsPlanned: plan.cycle.totalSessionsPlanned,
+        status: plan.cycle.status,
+        isComplete: plan.cycle.isComplete,
+        startedAt: now,
+        completedAt: null,
+        updatedAt: now,
+        preferredGymDays: JSON.stringify(plan.cycle.preferredGymDays),
+        preferredTimeOfDay: plan.cycle.preferredTimeOfDay,
+        programStartAt: plan.cycle.programStartAt,
+        firstSessionAt: plan.cycle.firstSessionAt,
+        hydratedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: localProgramCycles.id,
+        set: {
+          name: plan.cycle.name,
+          currentWeek: plan.cycle.currentWeek,
+          currentSession: plan.cycle.currentSession,
+          totalSessionsCompleted: plan.cycle.totalSessionsCompleted,
+          totalSessionsPlanned: plan.cycle.totalSessionsPlanned,
+          status: plan.cycle.status,
+          isComplete: plan.cycle.isComplete,
+          updatedAt: now,
+          hydratedAt: now,
+        },
+      })
+      .run();
+
+    for (const workout of plan.cycleWorkouts) {
+      db.insert(localProgramCycleWorkouts)
+        .values({
+          id: workout.id,
+          cycleId: workout.cycleId,
+          templateId: workout.templateId,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+          sessionName: workout.sessionName,
+          targetLifts: workout.targetLifts,
+          isComplete: workout.isComplete,
+          workoutId: workout.workoutId,
+          createdAt: now,
+          updatedAt: now,
+          scheduledAt: workout.scheduledAt,
+          serverUpdatedAt: null,
+          hydratedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: localProgramCycleWorkouts.id,
+          set: {
+            sessionName: workout.sessionName,
+            targetLifts: workout.targetLifts,
+            isComplete: workout.isComplete,
+            workoutId: workout.workoutId,
+            updatedAt: now,
+            scheduledAt: workout.scheduledAt,
+            hydratedAt: now,
+          },
+        })
+        .run();
+    }
+  });
+
+  return plan;
+}
+
+export async function advanceLocalProgramCycleAfterWorkout(input: {
+  userId: string;
+  programCycleId: string;
+  completedCycleWorkoutId: string;
+  workoutId: string;
+}) {
+  const db = getLocalDb();
+  if (!db) return null;
+
+  const cycle = db
+    .select()
+    .from(localProgramCycles)
+    .where(
+      and(
+        eq(localProgramCycles.id, input.programCycleId),
+        eq(localProgramCycles.userId, input.userId),
+      ),
+    )
+    .get();
+  if (!cycle) return null;
+
+  const workouts = db
+    .select()
+    .from(localProgramCycleWorkouts)
+    .where(eq(localProgramCycleWorkouts.cycleId, input.programCycleId))
+    .orderBy(localProgramCycleWorkouts.weekNumber, localProgramCycleWorkouts.sessionNumber)
+    .all();
+  if (workouts.length === 0) return null;
+
+  let plan: ReturnType<typeof createProgramAdvancePlan>;
+  try {
+    plan = createProgramAdvancePlan({
+      cycle,
+      workouts,
+      completedCycleWorkoutId: input.completedCycleWorkoutId,
+      workoutId: input.workoutId,
+    });
+  } catch {
+    return null;
+  }
+  const now = new Date();
+
+  withLocalTransaction(() => {
+    db.update(localProgramCycleWorkouts)
+      .set({ isComplete: true, workoutId: input.workoutId, hydratedAt: now, updatedAt: now })
+      .where(eq(localProgramCycleWorkouts.id, input.completedCycleWorkoutId))
+      .run();
+
+    db.update(localProgramCycles)
+      .set({
+        currentWeek: plan.currentWeek,
+        currentSession: plan.currentSession,
+        totalSessionsCompleted: plan.totalSessionsCompleted,
+        status: plan.status,
+        isComplete: plan.isComplete,
+        completedAt: plan.isComplete ? now : null,
+        updatedAt: now,
+        hydratedAt: now,
+      })
+      .where(eq(localProgramCycles.id, input.programCycleId))
+      .run();
+  });
+
+  return plan;
+}
+
 export async function updateLocalProgramCycleOneRMs(
   programCycleId: string,
   input: {
@@ -666,25 +843,7 @@ export async function cacheLatestOneRMs(userId: string, oneRMs: any | null) {
 }
 
 export async function getFallbackLatestOneRMsFromCycles(userId: string) {
-  const db = getLocalDb();
-  if (!db) return null;
-  const cycle = db
-    .select({
-      squat1rm: localProgramCycles.squat1rm,
-      bench1rm: localProgramCycles.bench1rm,
-      deadlift1rm: localProgramCycles.deadlift1rm,
-      ohp1rm: localProgramCycles.ohp1rm,
-    })
-    .from(localProgramCycles)
-    .where(eq(localProgramCycles.userId, userId))
-    .orderBy(desc(localProgramCycles.startedAt))
-    .limit(1)
-    .get();
-  if (!cycle) return null;
-  return {
-    squat1rm: cycle.squat1rm ?? null,
-    bench1rm: cycle.bench1rm ?? null,
-    deadlift1rm: cycle.deadlift1rm ?? null,
-    ohp1rm: cycle.ohp1rm ?? null,
-  };
+  return getLatestOneRMsFromLocalCycles(userId);
 }
+
+export { getFreshLatestOneRMs };

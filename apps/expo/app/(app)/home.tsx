@@ -20,6 +20,7 @@ import {
 import { PageLayout } from '@/components/ui/PageLayout';
 import { useHomeSummary } from '@/hooks/useHomeSummary';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
+import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import {
   createLocalWorkoutFromProgramCycleWorkout,
   createLocalWorkoutFromProgramCycleWorkoutDefinition,
@@ -32,7 +33,6 @@ import { cleanupStaleLocalData } from '@/db/local-cleanup';
 export default function HomeScreen() {
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const [activeDrafts, setActiveDrafts] = useState<LocalActiveWorkoutDraftItem[]>([]);
   const session = authClient.useSession();
@@ -43,6 +43,7 @@ export default function HomeScreen() {
   const { data: homeData } = useHomeSummary();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ focusProgramId?: string }>();
+  const { isRefreshing, handleRefresh } = usePullToRefresh(user?.id);
 
   useFocusEffect(
     useCallback(() => {
@@ -185,11 +186,14 @@ export default function HomeScreen() {
     }
   };
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['homeSummary', activeTimezone] });
-    setIsRefreshing(false);
-  }, [activeTimezone]);
+  const onRefresh = useCallback(async () => {
+    setOfflineMessage(null);
+    try {
+      await handleRefresh();
+    } catch (err) {
+      setOfflineMessage(getPullToRefreshErrorMessage(err));
+    }
+  }, [handleRefresh]);
 
   function format1rm(value: number | null): string {
     if (value === null || value === undefined) return `-- ${weightUnit}`;
@@ -216,7 +220,7 @@ export default function HomeScreen() {
         refreshControl: (
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={handleRefresh}
+            onRefresh={onRefresh}
             tintColor={colors.accentSecondary}
           />
         ),
