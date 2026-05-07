@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { deleteSyncItem, getRunnableSyncItems, markSyncItemStatus } from '@/db/sync-queue';
+import {
+  deleteSyncItem,
+  getRecoverableWorkoutSyncItems,
+  getRunnableSyncItems,
+  markSyncItemStatus,
+} from '@/db/sync-queue';
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 const hydrateOfflineTrainingSnapshotMock = vi.hoisted(() => vi.fn());
@@ -40,6 +45,7 @@ vi.mock('@/db/workouts', () => ({
 
 vi.mock('@/db/sync-queue', () => ({
   deleteSyncItem: vi.fn(),
+  getRecoverableWorkoutSyncItems: vi.fn(() => Promise.resolve([])),
   getRunnableSyncItems: vi.fn(() => Promise.resolve([])),
   markSyncItemStatus: vi.fn(),
   resetWorkoutSyncItems: vi.fn(),
@@ -139,12 +145,48 @@ describe('hydrateLocalCache', () => {
 
 describe('runSyncQueue', () => {
   const mockedGetRunnableSyncItems = vi.mocked(getRunnableSyncItems);
+  const mockedGetRecoverableWorkoutSyncItems = vi.mocked(getRecoverableWorkoutSyncItems);
 
   beforeEach(() => {
     apiFetchMock.mockReset();
     vi.clearAllMocks();
     vi.resetModules();
+    mockedGetRecoverableWorkoutSyncItems.mockResolvedValue([]);
     mockedGetRunnableSyncItems.mockResolvedValue([]);
+  });
+
+  test('clears completed workout sync items that already exist on the server', async () => {
+    mockedGetRecoverableWorkoutSyncItems.mockResolvedValue([
+      {
+        id: 'item-complete',
+        userId: 'user-1',
+        entityType: 'workout',
+        entityId: 'workout-1',
+        operation: 'complete_workout',
+        payloadJson: '{}',
+        status: 'failed',
+        attemptCount: 1,
+        lastError: 'Local cleanup failed',
+        availableAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    apiFetchMock.mockResolvedValue({
+      id: 'workout-1',
+      name: 'Workout',
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      exercises: [],
+    });
+
+    const { runSyncQueue } = await import('./workout-sync');
+    await runSyncQueue('user-1');
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/workouts/workout-1');
+    expect(markSyncItemStatus).toHaveBeenCalledWith('item-complete', 'done');
+    expect(deleteSyncItem).toHaveBeenCalledWith('item-complete');
+    expect(mockedGetRunnableSyncItems).toHaveBeenCalledWith('user-1');
   });
 
   test('processes delete_workout via generic handler', async () => {

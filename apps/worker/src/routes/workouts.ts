@@ -527,6 +527,15 @@ router.post(
       .onConflictDoNothing()
       .run();
 
+    console.info('[workout-sync] sync operation write attempted', {
+      userId,
+      workoutId: id,
+      syncOperationId,
+      changes: syncInsertResult.meta?.changes ?? null,
+      exerciseCount: exerciseInputs.length,
+      setCount: setInputs.length,
+    });
+
     if ((syncInsertResult.meta?.changes ?? 0) === 0) {
       const existingOperation = await db
         .select()
@@ -540,6 +549,14 @@ router.post(
         .get();
       if (existingOperation) {
         const snapshot = await fetchWorkoutSyncSnapshot(db, existingOperation.workoutId);
+        console.info('[workout-sync] duplicate sync operation returned existing D1 snapshot', {
+          userId,
+          workoutId: existingOperation.workoutId,
+          syncOperationId,
+          completedAt: snapshot.workout?.completedAt ?? null,
+          exerciseCount: snapshot.exercises.length,
+          setCount: snapshot.sets.length,
+        });
         return c.json(buildWorkoutSyncResponse(snapshot));
       }
     }
@@ -616,6 +633,13 @@ router.post(
 
     if (!existingWorkout) {
       await db.insert(schema.workouts).values(workoutValues).run();
+      console.info('[workout-sync] workout row inserted', {
+        userId,
+        workoutId: id,
+        syncOperationId,
+        workoutType: workoutValues.workoutType,
+        startedAt: startedAt.toISOString(),
+      });
     } else {
       await db
         .update(schema.workouts)
@@ -630,6 +654,13 @@ router.post(
         })
         .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
         .run();
+      console.info('[workout-sync] workout row updated', {
+        userId,
+        workoutId: id,
+        syncOperationId,
+        workoutType: workoutValues.workoutType,
+        startedAt: startedAt.toISOString(),
+      });
     }
 
     const existingExercises = await db
@@ -647,6 +678,12 @@ router.post(
         .delete(schema.workoutExercises)
         .where(eq(schema.workoutExercises.workoutId, id))
         .run();
+      console.info('[workout-sync] replaced existing workout child rows', {
+        userId,
+        workoutId: id,
+        syncOperationId,
+        deletedExerciseCount: existingExerciseIds.length,
+      });
     }
 
     // Validate exercise input shape first
@@ -719,6 +756,12 @@ router.post(
     }
 
     await chunkedInsert(db, { table: schema.workoutExercises, rows: resolvedExerciseRows });
+    console.info('[workout-sync] workout exercise rows written', {
+      userId,
+      workoutId: id,
+      syncOperationId,
+      exerciseCount: resolvedExerciseRows.length,
+    });
 
     const exerciseIdSet = new Set(resolvedExerciseRows.map((exercise) => exercise.id));
     const setRows: (typeof schema.workoutSets.$inferInsert)[] = [];
@@ -756,6 +799,14 @@ router.post(
     }
 
     await chunkedInsert(db, { table: schema.workoutSets, rows: setRows });
+    console.info('[workout-sync] workout set rows written', {
+      userId,
+      workoutId: id,
+      syncOperationId,
+      setCount: setRows.length,
+      completedSetCount: totalSets,
+      totalVolume,
+    });
 
     const elapsedMs = completedAt.getTime() - startedAt.getTime();
     const rawMinutes = Math.round(elapsedMs / 60000);
@@ -772,6 +823,15 @@ router.post(
       })
       .where(and(eq(schema.workouts.id, id), eq(schema.workouts.userId, userId)))
       .run();
+    console.info('[workout-sync] workout completion written to D1', {
+      userId,
+      workoutId: id,
+      syncOperationId,
+      completedAt: completedAt.toISOString(),
+      totalSets,
+      totalVolume,
+      durationMinutes,
+    });
 
     if (workoutInput.cycleWorkoutId) {
       const ownedCycleWorkout = await db
@@ -795,12 +855,26 @@ router.post(
           .set({ workoutId: id, updatedAt: now })
           .where(eq(schema.programCycleWorkouts.id, workoutInput.cycleWorkoutId))
           .run();
+        console.info('[workout-sync] program cycle workout linked', {
+          userId,
+          workoutId: id,
+          syncOperationId,
+          cycleWorkoutId: workoutInput.cycleWorkoutId,
+        });
       }
     }
 
     await advanceProgramCycleForWorkout(db, userId, id);
 
     const snapshot = await fetchWorkoutSyncSnapshot(db, id);
+    console.info('[workout-sync] sync-complete response snapshot loaded from D1', {
+      userId,
+      workoutId: id,
+      syncOperationId,
+      completedAt: snapshot.workout?.completedAt ?? null,
+      exerciseCount: snapshot.exercises.length,
+      setCount: snapshot.sets.length,
+    });
     let programAdvance: Record<string, unknown> | undefined;
     if (workoutInput.programCycleId) {
       const cycle = await db

@@ -27,6 +27,7 @@ import {
 } from '@/db/workouts';
 import {
   deleteSyncItem,
+  getRecoverableWorkoutSyncItems,
   getRunnableSyncItems,
   markSyncItemStatus,
   resetWorkoutSyncItems,
@@ -211,11 +212,30 @@ async function handleTemplateSync(item: LocalSyncQueueItem) {
   );
 }
 
+async function reconcileCompletedWorkoutSyncs(userId: string) {
+  const items = await getRecoverableWorkoutSyncItems(userId);
+  for (const item of items) {
+    try {
+      const serverWorkout = await apiFetch<Workout>(`/api/workouts/${item.entityId}`);
+      if (!serverWorkout?.completedAt) continue;
+
+      await upsertServerWorkoutSnapshot(userId, serverWorkout);
+      await markWorkoutSynced(item.entityId);
+      await markSyncItemStatus(item.id, 'done');
+      await deleteSyncItem(item.id);
+      await removePendingWorkout(item.entityId);
+    } catch {
+      // Normal sync below will handle runnable pending/failed items.
+    }
+  }
+}
+
 export async function runSyncQueue(userId: string) {
   if (isSyncRunning) return;
   isSyncRunning = true;
 
   try {
+    await reconcileCompletedWorkoutSyncs(userId);
     const items = await getRunnableSyncItems(userId);
     for (const item of items) {
       if (item.operation === 'complete_workout' && item.entityType === 'workout') {
