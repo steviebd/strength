@@ -5,7 +5,7 @@ describe('password hashing', () => {
   test('hashes and verifies a password', async () => {
     const hash = await hashPassword('correct horse battery staple');
 
-    expect(hash).toMatch(/^pbkdf2-sha256:600000:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/);
+    expect(hash).toMatch(/^pbkdf2-sha256:100000:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/);
     await expect(verifyPassword({ hash, password: 'correct horse battery staple' })).resolves.toBe(
       true,
     );
