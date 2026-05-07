@@ -5,6 +5,7 @@ import {
   formatLocalDate,
   getCurrentCycleWorkout,
   getUtcRangeForLocalDate,
+  groupConsecutiveExercises,
   parseProgramTargetLifts,
   type ProgramStartPayload,
 } from '@strength/db/client';
@@ -501,7 +502,7 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
     const current = data ? getCurrentCycleWorkout(activeCycle, data.workouts) : null;
     if (current) {
       const parsed = parseProgramTargetLifts(current.targetLifts);
-      const exercises = parsed.all.map((lift) => ({ name: lift.name, count: 1 }));
+      const exercises = groupConsecutiveExercises(parsed.all);
       const row = {
         cycleWorkoutId: current.id,
         workoutId: current.workoutId ?? null,

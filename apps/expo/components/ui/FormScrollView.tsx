@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, ScrollView, type ScrollViewProps } from 'react-native';
+import { Keyboard, Platform, ScrollView, type ScrollViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollProvider } from '@/context/ScrollContext';
 import { colors, layout, spacing } from '@/theme';
@@ -27,8 +27,26 @@ export const FormScrollView = React.forwardRef<ScrollView, FormScrollViewProps>(
   ) => {
     const insets = useSafeAreaInsets();
     const scrollViewRef = React.useRef<ScrollView>(null);
+    const [keyboardHeight, setKeyboardHeight] = React.useState(0);
 
     React.useImperativeHandle(ref, () => scrollViewRef.current as ScrollView);
+
+    React.useEffect(() => {
+      const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+      const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+      const showSubscription = Keyboard.addListener(showEvent, (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      });
+      const hideSubscription = Keyboard.addListener(hideEvent, () => {
+        setKeyboardHeight(0);
+      });
+
+      return () => {
+        showSubscription.remove();
+        hideSubscription.remove();
+      };
+    }, []);
 
     return (
       <ScrollProvider scrollViewRef={scrollViewRef} topInset={topPadding}>
@@ -39,7 +57,7 @@ export const FormScrollView = React.forwardRef<ScrollView, FormScrollViewProps>(
             {
               paddingTop: topPadding,
               paddingHorizontal: horizontalPadding,
-              paddingBottom: insets.bottom + bottomInset + spacing.md,
+              paddingBottom: insets.bottom + bottomInset + spacing.md + keyboardHeight,
             },
             contentContainerStyle,
           ]}

@@ -162,7 +162,6 @@ function getSuggestedPrompts(trainingType: TrainingType) {
 }
 
 const CHAT_HISTORY_PAGE_SIZE = 5;
-const CHAT_FOCUS_HISTORY_OFFSET = 260;
 const NUTRITION_BOTTOM_INSET = 120;
 const CHAT_JOB_TIMEOUT_MS = 3 * 60 * 1000;
 
@@ -394,8 +393,6 @@ export default function NutritionScreen() {
   const chatInputRef = useRef<TextInput | null>(null);
   const hasFocusedChatRoute = useRef(false);
   const activeChatPolls = useRef(new Set<string>());
-  const [assistantSectionY, setAssistantSectionY] = useState<number | null>(null);
-  const [chatInputY, setChatInputY] = useState<number | null>(null);
   const savingAnalysisMessageIds = useRef(new Set<string>());
 
   const { data: whoopData } = useWhoopData(date, activeTimezone ?? 'UTC');
@@ -1013,26 +1010,17 @@ export default function NutritionScreen() {
 
   const quickPrompts = getSuggestedPrompts(trainingType);
 
-  const scrollToChatInput = useCallback(
-    (focusInput = false, delayMs = 80) => {
-      if (assistantSectionY === null || chatInputY === null) {
-        return;
+  const scrollToChatInput = useCallback((focusInput = false, delayMs = 80) => {
+    setTimeout(() => {
+      messagesScrollRef.current?.scrollToEnd({ animated: true });
+
+      if (focusInput) {
+        setTimeout(() => {
+          chatInputRef.current?.focus();
+        }, 250);
       }
-
-      const targetY = Math.max(assistantSectionY + chatInputY - CHAT_FOCUS_HISTORY_OFFSET, 0);
-
-      setTimeout(() => {
-        messagesScrollRef.current?.scrollTo({ y: targetY, animated: true });
-
-        if (focusInput) {
-          setTimeout(() => {
-            chatInputRef.current?.focus();
-          }, 250);
-        }
-      }, delayMs);
-    },
-    [assistantSectionY, chatInputY],
-  );
+    }, delayMs);
+  }, []);
 
   const handleInputFocus = useCallback(() => {
     scrollToChatInput(false);
@@ -1049,18 +1037,13 @@ export default function NutritionScreen() {
   );
 
   useEffect(() => {
-    if (
-      params.focusChat !== '1' ||
-      hasFocusedChatRoute.current ||
-      assistantSectionY === null ||
-      chatInputY === null
-    ) {
+    if (params.focusChat !== '1' || hasFocusedChatRoute.current) {
       return;
     }
 
     hasFocusedChatRoute.current = true;
     scrollToChatInput(true);
-  }, [assistantSectionY, chatInputY, params.focusChat, scrollToChatInput]);
+  }, [params.focusChat, scrollToChatInput]);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
@@ -1129,11 +1112,7 @@ export default function NutritionScreen() {
             />
           ) : null}
 
-          <View
-            onLayout={(event) => {
-              setAssistantSectionY(event.nativeEvent.layout.y);
-            }}
-          >
+          <View>
             <Surface style={styles.assistantSection}>
               <SectionTitle title="Nutrition Assistant" />
               <Text style={styles.assistantDescription}>
@@ -1215,11 +1194,7 @@ export default function NutritionScreen() {
                 )}
               </View>
 
-              <View
-                onLayout={(event) => {
-                  setChatInputY(event.nativeEvent.layout.y);
-                }}
-              >
+              <View>
                 <ChatInput
                   onSend={handleSend}
                   onImageCapture={handleImageCapture}

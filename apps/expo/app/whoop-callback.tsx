@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { colors, typography } from '@/theme';
 
 export default function WhoopCallback() {
@@ -12,9 +12,11 @@ export default function WhoopCallback() {
   }>();
 
   useEffect(() => {
-    const dismissResult = WebBrowser.dismissBrowser();
-    if (dismissResult && typeof dismissResult.then === 'function') {
-      dismissResult.catch(() => {});
+    if (Platform.OS !== 'web') {
+      const dismissResult = WebBrowser.dismissBrowser();
+      if (dismissResult && typeof dismissResult.then === 'function') {
+        dismissResult.catch(() => {});
+      }
     }
 
     if (success === 'true') {

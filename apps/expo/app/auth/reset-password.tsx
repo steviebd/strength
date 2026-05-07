@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Platform, Text, View } from 'react-native';
-import { AuthShell, AuthShellHandle } from '@/components/auth-shell';
+import { AuthShell } from '@/components/auth-shell';
 import { authClient } from '@/lib/auth-client';
 import { env } from '@/lib/env';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +16,6 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const authShellRef = useRef<AuthShellHandle>(null);
   const newPasswordInputRef = useRef<any>(null);
   const confirmPasswordInputRef = useRef<any>(null);
 
@@ -67,7 +66,6 @@ export default function ResetPasswordScreen() {
   if (isSuccess) {
     return (
       <AuthShell
-        ref={authShellRef}
         eyebrow="Strength"
         title="Password updated"
         subtitle="Your password has been reset successfully."
@@ -112,7 +110,6 @@ export default function ResetPasswordScreen() {
 
   return (
     <AuthShell
-      ref={authShellRef}
       eyebrow="Strength"
       title="Set new password"
       subtitle="Enter a new password for your account."
