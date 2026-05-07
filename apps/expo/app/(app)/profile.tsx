@@ -14,12 +14,14 @@ import { PageLayout } from '@/components/ui/PageLayout';
 import { PageHeader } from '@/components/ui/app-primitives';
 import { authClient } from '@/lib/auth-client';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { getLocalDb } from '@/db/client';
 import { localBodyStats } from '@/db/local-schema';
-import { getCachedBodyStats, cacheBodyStats } from '@/db/body-stats';
+import { getCachedBodyStats, cacheBodyStats, type BodyStatsData } from '@/db/body-stats';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
+import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { clearFirstSyncFlag } from '@/lib/first-sync';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -115,62 +117,14 @@ export default function Profile() {
   const [targetsDirty, setTargetsDirty] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
 
-  const latestServerUpdatedAtRef = useRef(0);
-
-  const { data: bodyStats } = useQuery({
+  const { data: bodyStats } = useOfflineQuery<BodyStatsData>({
     queryKey: ['body-stats'],
-    queryFn: async () => {
-      const userId = session?.user?.id;
-      if (userId) {
-        const cached = await getCachedBodyStats(userId);
-        if (cached) {
-          // Kick off background refresh without awaiting
-          apiFetch<{
-            bodyweightKg: number | null;
-            targetCalories: number | null;
-            targetProteinG: number | null;
-            targetCarbsG: number | null;
-            targetFatG: number | null;
-            updatedAt?: string | Date | null;
-          }>('/api/nutrition/body-stats')
-            .then((fresh) => {
-              const incomingUpdatedAt = fresh.updatedAt
-                ? typeof fresh.updatedAt === 'string'
-                  ? new Date(fresh.updatedAt).getTime()
-                  : fresh.updatedAt.getTime()
-                : 0;
-              if (!incomingUpdatedAt || incomingUpdatedAt >= latestServerUpdatedAtRef.current) {
-                latestServerUpdatedAtRef.current = incomingUpdatedAt;
-                void cacheBodyStats(userId, fresh);
-              }
-            })
-            .catch(() => {
-              // Offline is fine, serve cached
-            });
-          return cached;
-        }
-      }
-      const fresh = await apiFetch<{
-        bodyweightKg: number | null;
-        targetCalories: number | null;
-        targetProteinG: number | null;
-        targetCarbsG: number | null;
-        targetFatG: number | null;
-        updatedAt?: string | Date | null;
-      }>('/api/nutrition/body-stats');
-      const incomingUpdatedAt = fresh.updatedAt
-        ? typeof fresh.updatedAt === 'string'
-          ? new Date(fresh.updatedAt).getTime()
-          : fresh.updatedAt.getTime()
-        : 0;
-      if (incomingUpdatedAt) {
-        latestServerUpdatedAtRef.current = incomingUpdatedAt;
-      }
-      if (userId) {
-        await cacheBodyStats(userId, fresh, true);
-      }
-      return fresh;
-    },
+    enabled: !!session?.user?.id,
+    apiFn: () => apiFetch<BodyStatsData>('/api/nutrition/body-stats'),
+    cacheFn: () => getCachedBodyStats(session!.user.id),
+    writeCacheFn: (fresh) => cacheBodyStats(session!.user.id, fresh, true),
+    isDirtyFn: () => hasPendingTrainingWrites(session!.user.id, ['body_stats']),
+    fallbackToCacheOnError: true,
   });
 
   const saveBodyweightMutation = useMutation({

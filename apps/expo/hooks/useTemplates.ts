@@ -1,4 +1,4 @@
-import { sql, and, or, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { generateId } from '@strength/db/client';
 import { authClient } from '@/lib/auth-client';
@@ -9,6 +9,7 @@ import { cacheTemplates } from '@/db/workouts';
 import { getCachedTemplates } from '@/db/training-cache';
 import { getLocalDb } from '@/db/client';
 import { localTemplates, localSyncQueue } from '@/db/local-schema';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
 
 export type { Template };
@@ -29,27 +30,7 @@ export function useTemplates() {
     writeCacheFn: (data) => cacheTemplates(userId!, data),
     networkFirst: true,
     fallbackToCacheOnError: true,
-    isDirtyFn: async () => {
-      const db = getLocalDb();
-      if (!db) return false;
-      const pending = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localSyncQueue)
-        .where(
-          and(
-            eq(localSyncQueue.userId, userId!),
-            eq(localSyncQueue.entityType, 'template'),
-            or(
-              eq(localSyncQueue.status, 'pending'),
-              eq(localSyncQueue.status, 'syncing'),
-              eq(localSyncQueue.status, 'failed'),
-              eq(localSyncQueue.status, 'conflict'),
-            ),
-          ),
-        )
-        .get();
-      return (pending?.count ?? 0) > 0;
-    },
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['template']),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

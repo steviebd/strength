@@ -94,7 +94,7 @@ export async function createProgramCycle(
 
   if (data.workouts && data.workouts.length > 0) {
     const workoutRows = data.workouts.map((w) => ({
-      id: generateId(),
+      id: w.id ?? generateId(),
       cycleId: cycle.id,
       templateId: null,
       weekNumber: w.weekNumber,

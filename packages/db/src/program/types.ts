@@ -13,6 +13,7 @@ export interface CreateProgramCycleData {
   programStartAt: number;
   firstSessionAt?: number;
   workouts: Array<{
+    id?: string;
     weekNumber: number;
     sessionNumber: number;
     sessionName: string;

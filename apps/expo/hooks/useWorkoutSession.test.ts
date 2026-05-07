@@ -57,8 +57,18 @@ vi.mock('@/db/sync-queue', () => ({
   enqueueWorkoutCompletion: vi.fn(),
 }));
 
+vi.mock('@/db/training-cache', () => ({
+  advanceLocalProgramCycleAfterWorkout: vi.fn(),
+}));
+
+vi.mock('@/db/write-queue', () => ({
+  cancelCoalescedLocalWrite: vi.fn(),
+  enqueueCoalescedLocalWrite: vi.fn(() => Promise.resolve()),
+  flushLocalWrites: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('@/lib/workout-sync', () => ({
-  runWorkoutSync: vi.fn(),
+  runTrainingSync: vi.fn(),
 }));
 
 vi.mock('@/lib/storage', () => ({
@@ -154,5 +164,59 @@ describe('useWorkoutSession', () => {
 
     const { apiFetch } = await import('@/lib/api');
     expect(apiFetch).toHaveBeenCalledWith('/api/workouts/workout-1', { method: 'DELETE' });
+  });
+
+  test('completeWorkout enqueues sync and starts background training sync without awaiting it', async () => {
+    stateValues[0] = {
+      id: 'workout-1',
+      name: 'Program Workout',
+      startedAt: '2024-01-01T00:00:00Z',
+      completedAt: null,
+      notes: null,
+      exercises: [],
+      programCycleId: 'cycle-1',
+      cycleWorkoutId: 'cycle-workout-1',
+    };
+
+    const never = new Promise(() => {});
+    const { completeLocalWorkout, saveLocalWorkoutDraft } = await import('@/db/workouts');
+    const { enqueueWorkoutCompletion } = await import('@/db/sync-queue');
+    const { advanceLocalProgramCycleAfterWorkout } = await import('@/db/training-cache');
+    const { flushLocalWrites } = await import('@/db/write-queue');
+    const { runTrainingSync } = await import('@/lib/workout-sync');
+    vi.mocked(saveLocalWorkoutDraft).mockResolvedValue(null as any);
+    vi.mocked(completeLocalWorkout).mockResolvedValue({
+      workout: {
+        id: 'workout-1',
+        name: 'Program Workout',
+        startedAt: '2024-01-01T00:00:00Z',
+        completedAt: '2024-01-01T01:00:00Z',
+        notes: null,
+        exercises: [],
+      },
+      syncOperationId: 'sync-1',
+    } as any);
+    vi.mocked(enqueueWorkoutCompletion).mockResolvedValue('queue-1');
+    vi.mocked(advanceLocalProgramCycleAfterWorkout).mockResolvedValue({} as any);
+    vi.mocked(runTrainingSync).mockReturnValue(never as any);
+
+    const { useWorkoutSession } = await import('./useWorkoutSession');
+    const result = useWorkoutSession();
+
+    await expect(result.completeWorkout()).resolves.toBeUndefined();
+
+    expect(enqueueWorkoutCompletion).toHaveBeenCalledWith(
+      'user-1',
+      'workout-1',
+      expect.objectContaining({ id: 'workout-1' }),
+    );
+    expect(flushLocalWrites).toHaveBeenCalled();
+    expect(advanceLocalProgramCycleAfterWorkout).toHaveBeenCalledWith({
+      userId: 'user-1',
+      programCycleId: 'cycle-1',
+      completedCycleWorkoutId: 'cycle-workout-1',
+      workoutId: 'workout-1',
+    });
+    expect(runTrainingSync).toHaveBeenCalledWith('user-1');
   });
 });

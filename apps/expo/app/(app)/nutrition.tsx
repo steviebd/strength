@@ -50,6 +50,7 @@ import { localChatMessageQueue } from '@/db/local-schema';
 import { eq, and } from 'drizzle-orm';
 import { generateId } from '@strength/db/client';
 import { runTrainingSync } from '@/lib/workout-sync';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -409,6 +410,7 @@ export default function NutritionScreen() {
     cacheFn: () =>
       getCachedDailySummary(userId!, date, activeTimezone ?? 'UTC') as Promise<DailySummary | null>,
     writeCacheFn: (data) => cacheDailySummary(userId!, date, activeTimezone ?? 'UTC', data),
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['nutrition']),
     fallbackToCacheOnError: true,
   });
 

@@ -1,4 +1,5 @@
 import { enqueueSyncItem } from '@/db/sync-queue';
+import { enqueueLocalWrite } from '@/db/write-queue';
 
 export class OfflineError extends Error {
   constructor(message = 'Saved locally. Will sync when online.') {
@@ -34,7 +35,9 @@ export async function tryOnlineOrEnqueue<T>(options: {
         options.operation,
         options.payload,
       );
-      await options.onEnqueue?.();
+      if (options.onEnqueue) {
+        await enqueueLocalWrite(options.onEnqueue);
+      }
       throw new OfflineError();
     }
     throw error;

@@ -35,6 +35,7 @@ const config: ExpoConfig = {
   android: {
     package: `com.strength.app${bundleSuffix}`,
     jsEngine: 'hermes',
+    softwareKeyboardLayoutMode: 'resize',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0a0a0a',

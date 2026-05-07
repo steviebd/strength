@@ -238,6 +238,7 @@ export default function ProgramOneRMTestScreen() {
 
       await queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
       await queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
+      await queryClient.invalidateQueries({ queryKey: ['latestOneRms'] });
 
       Alert.alert(
         'Saved',

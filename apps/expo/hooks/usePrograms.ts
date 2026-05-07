@@ -1,8 +1,5 @@
-import { sql, and, or, eq, inArray } from 'drizzle-orm';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
-import { getLocalDb } from '@/db/client';
-import { localSyncQueue } from '@/db/local-schema';
 import { cacheActivePrograms } from '@/db/workouts';
 import {
   getCachedActivePrograms,
@@ -10,8 +7,13 @@ import {
   cacheProgramsCatalog,
   getCachedLatestOneRMs,
   cacheLatestOneRMs,
-  getFallbackLatestOneRMsFromCycles,
 } from '@/db/training-cache';
+import {
+  getFreshLatestOneRMs,
+  hasPendingTrainingWrites,
+  shouldUseLocalLatestOneRMs,
+  type LatestOneRMs,
+} from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
 
 export interface ProgramListItem {
@@ -34,13 +36,6 @@ export interface ActiveProgram {
   totalSessionsPlanned: number;
 }
 
-interface LatestOneRMs {
-  squat1rm: number | null;
-  bench1rm: number | null;
-  deadlift1rm: number | null;
-  ohp1rm: number | null;
-}
-
 export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
@@ -51,22 +46,7 @@ export function useProgramsCatalog(fallbackPrograms: ProgramListItem[] = []) {
     apiFn: () => apiFetch<ProgramListItem[]>('/api/programs'),
     cacheFn: () => getCachedProgramsCatalog(userId!),
     writeCacheFn: (data) => cacheProgramsCatalog(userId!, data),
-    isDirtyFn: async () => {
-      const db = getLocalDb();
-      if (!db) return false;
-      const result = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localSyncQueue)
-        .where(
-          and(
-            eq(localSyncQueue.userId, userId!),
-            inArray(localSyncQueue.operation, ['start_program', 'delete_program']),
-            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
-          ),
-        )
-        .get();
-      return (result?.count ?? 0) > 0;
-    },
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['program']),
     staleTime: 5 * 60 * 1000,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -107,23 +87,7 @@ export function useActivePrograms() {
           : null,
       ),
     writeCacheFn: (data) => cacheActivePrograms(userId!, data),
-    isDirtyFn: async () => {
-      const db = getLocalDb();
-      if (!db) return false;
-      const result = db
-        .select({ count: sql<number>`count(*)` })
-        .from(localSyncQueue)
-        .where(
-          and(
-            eq(localSyncQueue.userId, userId!),
-            eq(localSyncQueue.entityType, 'program'),
-            eq(localSyncQueue.operation, 'reschedule_workout'),
-            or(eq(localSyncQueue.status, 'pending'), eq(localSyncQueue.status, 'syncing')),
-          ),
-        )
-        .get();
-      return (result?.count ?? 0) > 0;
-    },
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['program', 'program_cycle', 'workout']),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -148,22 +112,11 @@ export function useLatestOneRms() {
     apiFn: () => apiFetch<LatestOneRMs | null>('/api/programs/latest-1rms'),
     cacheFn: async () => {
       const cached = await getCachedLatestOneRMs(userId!);
-      if (cached) return cached;
-      return getFallbackLatestOneRMsFromCycles(userId!);
+      return getFreshLatestOneRMs(userId!, cached);
     },
     writeCacheFn: (data) => cacheLatestOneRMs(userId!, data),
-    isDirtyFn: async () => {
-      const cached = await getCachedLatestOneRMs(userId!);
-      if (!cached) return false;
-      const fromCycles = await getFallbackLatestOneRMsFromCycles(userId!);
-      if (!fromCycles) return false;
-      return (
-        cached.squat1rm !== fromCycles.squat1rm ||
-        cached.bench1rm !== fromCycles.bench1rm ||
-        cached.deadlift1rm !== fromCycles.deadlift1rm ||
-        cached.ohp1rm !== fromCycles.ohp1rm
-      );
-    },
+    isDirtyFn: async () =>
+      shouldUseLocalLatestOneRMs(userId!, await getCachedLatestOneRMs(userId!)),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

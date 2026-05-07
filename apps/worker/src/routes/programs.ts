@@ -2,9 +2,10 @@ import { eq, and, desc } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
-import { getProgram, generateWorkoutSchedule } from '../programs';
 import {
   createProgramCycle,
+  generateWorkoutSchedule,
+  getProgram,
   getProgramCycleWithWorkouts,
   softDeleteProgramCycle,
   zonedDateTimeToUtc,
@@ -61,6 +62,7 @@ router.post(
       preferredTimeOfDay,
       programStartDate,
       firstSessionDate,
+      cycleWorkouts: clientCycleWorkouts,
     } = body;
     if (!programSlug || !name) {
       return c.json({ message: 'programSlug and name are required' }, 400);
@@ -176,6 +178,13 @@ router.post(
 
     const workouts = generatedWorkouts.map((workout, workoutIndex) => {
       const scheduleEntry = schedule[workoutIndex];
+      const clientCycleWorkout = Array.isArray(clientCycleWorkouts)
+        ? clientCycleWorkouts.find(
+            (row) =>
+              row?.weekNumber === workout.weekNumber &&
+              row?.sessionNumber === workout.sessionNumber,
+          )
+        : null;
       const exercises = (workout.exercises ?? []).map((e, exerciseIndex) => {
         const key = `${workoutIndex}_${exerciseIndex}`;
         const exerciseType = e.libraryId
@@ -217,6 +226,7 @@ router.post(
         };
       });
       return {
+        id: typeof clientCycleWorkout?.id === 'string' ? clientCycleWorkout.id : undefined,
         weekNumber: workout.weekNumber,
         sessionNumber: workout.sessionNumber,
         sessionName: workout.sessionName,

@@ -16,8 +16,14 @@ import {
   saveLocalWorkoutDraft,
   type ExerciseHistorySnapshot,
 } from '@/db/workouts';
+import { advanceLocalProgramCycleAfterWorkout } from '@/db/training-cache';
+import {
+  cancelCoalescedLocalWrite,
+  enqueueCoalescedLocalWrite,
+  flushLocalWrites,
+} from '@/db/write-queue';
 import { enqueueWorkoutCompletion } from '@/db/sync-queue';
-import { runWorkoutSync } from '@/lib/workout-sync';
+import { runTrainingSync } from '@/lib/workout-sync';
 import { hasProgressionHistoryData } from '@/lib/workout-progression';
 import type {
   Workout,
@@ -299,7 +305,6 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       }[]
     >
   >(new Map());
-  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setExercisesAndRef = useCallback(
     (value: WorkoutExercise[] | ((current: WorkoutExercise[]) => WorkoutExercise[])) => {
@@ -337,18 +342,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
 
   useEffect(() => {
     if (!workout || workout.completedAt || !session.data?.user) return;
-    if (draftSaveTimerRef.current) {
-      clearTimeout(draftSaveTimerRef.current);
-    }
     const userId = session.data.user.id;
-    draftSaveTimerRef.current = setTimeout(() => {
-      void saveLocalWorkoutDraft(userId, workout, exercises);
-    }, 400);
-    return () => {
-      if (draftSaveTimerRef.current) {
-        clearTimeout(draftSaveTimerRef.current);
+    void enqueueCoalescedLocalWrite(
+      `workout-draft:${workout.id}`,
+      () => saveLocalWorkoutDraft(userId, workout, exercises),
+      1500,
+    ).catch((error) => {
+      if (__DEV__) {
+        console.warn('Failed to save workout draft', error);
       }
-    };
+    });
   }, [workout, exercises, session.data?.user]);
 
   const startWorkout = useCallback(
@@ -424,25 +427,32 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     if (!workout || !session.data?.user) return;
     setIsLoading(true);
     try {
-      if (draftSaveTimerRef.current) {
-        clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
+      await flushLocalWrites();
       const latestExercises = exercisesRef.current;
       await saveLocalWorkoutDraft(session.data.user.id, workout, latestExercises);
       const completed = await completeLocalWorkout(session.data.user.id, workout, latestExercises);
       if (completed?.workout) {
         await enqueueWorkoutCompletion(session.data.user.id, workout.id, completed.workout);
-        await runWorkoutSync(session.data.user.id);
+        if (workout.programCycleId && workout.cycleWorkoutId) {
+          const advancePlan = await advanceLocalProgramCycleAfterWorkout({
+            userId: session.data.user.id,
+            programCycleId: workout.programCycleId,
+            completedCycleWorkoutId: workout.cycleWorkoutId,
+            workoutId: workout.id,
+          });
+          if (!advancePlan) {
+            await markLocalCycleWorkoutComplete(workout.cycleWorkoutId, workout.id);
+          }
+        } else if ((workout as any).cycleWorkoutId) {
+          await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
+        }
+        void runTrainingSync(session.data.user.id);
       } else {
         const payload = buildDirectCompletionPayload(workout, latestExercises);
         await apiFetch(`/api/workouts/${workout.id}/sync-complete`, {
           method: 'POST',
           body: payload,
         });
-      }
-      if ((workout as any).cycleWorkoutId) {
-        await markLocalCycleWorkoutComplete((workout as any).cycleWorkoutId, workout.id);
       }
       if (session.data?.user && workout.workoutType !== WORKOUT_TYPE_ONE_RM_TEST) {
         const userId = session.data.user.id;
@@ -511,10 +521,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       try {
         const userId = session.data?.user?.id;
         if (!userId) return;
-        if (draftSaveTimerRef.current) {
-          clearTimeout(draftSaveTimerRef.current);
-          draftSaveTimerRef.current = null;
-        }
+        cancelCoalescedLocalWrite(`workout-draft:${workout.id}`);
         await discardLocalWorkout(workout.id, workout.cycleWorkoutId);
         await removePendingWorkout(workout.id);
 

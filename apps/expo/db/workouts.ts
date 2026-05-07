@@ -356,6 +356,20 @@ function generateUniqueId(usedIds: Set<string>, requestedId?: string | null) {
   return id;
 }
 
+function valuesChanged<T extends Record<string, unknown>>(
+  existing: Record<string, unknown> | undefined,
+  next: T,
+) {
+  if (!existing) return true;
+  return Object.entries(next).some(([key, value]) => {
+    const existingValue = existing[key];
+    if (existingValue instanceof Date || value instanceof Date) {
+      return toDate(existingValue as any)?.getTime() !== toDate(value as any)?.getTime();
+    }
+    return existingValue !== value;
+  });
+}
+
 function asWorkoutSet(row: LocalWorkoutSet): WorkoutSet {
   return {
     id: row.id,
@@ -498,6 +512,123 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
           })
           .run();
       }
+    }
+  });
+}
+
+function upsertLocalExercises(workoutId: string, exercises: LocalExerciseInput[]) {
+  const db = getLocalDb();
+  if (!db) return;
+
+  withLocalTransaction(() => {
+    const now = new Date();
+    const existingExercises = db
+      .select()
+      .from(localWorkoutExercises)
+      .where(eq(localWorkoutExercises.workoutId, workoutId))
+      .all();
+    const existingExerciseById = new Map(existingExercises.map((row) => [row.id, row]));
+    const existingExerciseIds = existingExercises.map((row) => row.id);
+    const existingSets =
+      existingExerciseIds.length > 0
+        ? db
+            .select()
+            .from(localWorkoutSets)
+            .where(inArray(localWorkoutSets.workoutExerciseId, existingExerciseIds))
+            .all()
+        : [];
+    const existingSetById = new Map(existingSets.map((row) => [row.id, row]));
+
+    const usedExerciseIds = new Set<string>();
+    const usedSetIds = new Set<string>();
+
+    for (const exercise of exercises) {
+      const workoutExerciseId = generateUniqueId(usedExerciseIds, exercise.id);
+      const exerciseValues = {
+        workoutId,
+        exerciseId: exercise.exerciseId,
+        libraryId: exercise.libraryId ?? null,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup ?? null,
+        exerciseType: exercise.exerciseType ?? 'weights',
+        orderIndex: exercise.orderIndex,
+        notes: exercise.notes ?? null,
+        isAmrap: exercise.isAmrap ?? false,
+        isDeleted: false,
+        updatedAt: now,
+      };
+
+      const existingExercise = existingExerciseById.get(workoutExerciseId);
+      if (existingExercise) {
+        if (valuesChanged(existingExercise, exerciseValues)) {
+          db.update(localWorkoutExercises)
+            .set(exerciseValues)
+            .where(eq(localWorkoutExercises.id, workoutExerciseId))
+            .run();
+        }
+      } else {
+        db.insert(localWorkoutExercises)
+          .values({
+            id: workoutExerciseId,
+            ...exerciseValues,
+            createdAt: now,
+          })
+          .run();
+      }
+
+      for (const set of exercise.sets ?? []) {
+        const setId = generateUniqueId(usedSetIds, set.id);
+        const setValues = {
+          workoutExerciseId,
+          setNumber: set.setNumber,
+          weight: set.weight ?? null,
+          reps: set.reps ?? null,
+          rpe: set.rpe ?? null,
+          duration: set.duration ?? null,
+          distance: set.distance ?? null,
+          height: set.height ?? null,
+          isComplete: set.isComplete ?? false,
+          completedAt: toDate(set.completedAt),
+          isDeleted: false,
+          updatedAt: now,
+        };
+
+        const existingSet = existingSetById.get(setId);
+        if (existingSet) {
+          if (valuesChanged(existingSet, setValues)) {
+            db.update(localWorkoutSets).set(setValues).where(eq(localWorkoutSets.id, setId)).run();
+          }
+        } else {
+          db.insert(localWorkoutSets)
+            .values({
+              id: setId,
+              ...setValues,
+              createdAt: now,
+            })
+            .run();
+        }
+      }
+    }
+
+    const removedExerciseIds = existingExerciseIds.filter((id) => !usedExerciseIds.has(id));
+    if (removedExerciseIds.length > 0) {
+      db.delete(localWorkoutSets)
+        .where(inArray(localWorkoutSets.workoutExerciseId, removedExerciseIds))
+        .run();
+      db.delete(localWorkoutExercises)
+        .where(inArray(localWorkoutExercises.id, removedExerciseIds))
+        .run();
+    }
+
+    const removedSetIds = existingSets
+      .map((row) => row.id)
+      .filter(
+        (id) =>
+          !usedSetIds.has(id) &&
+          !removedExerciseIds.includes(existingSetById.get(id)!.workoutExerciseId),
+      );
+    if (removedSetIds.length > 0) {
+      db.delete(localWorkoutSets).where(inArray(localWorkoutSets.id, removedSetIds)).run();
     }
   });
 }
@@ -1418,7 +1549,7 @@ export async function completeLocalWorkout(
       .where(eq(localWorkouts.id, workout.id))
       .run();
 
-    replaceLocalExercises(
+    upsertLocalExercises(
       workout.id,
       exercises.map((exercise, exerciseIndex) => ({
         id: exercise.id,
@@ -1487,7 +1618,7 @@ export async function saveLocalWorkoutDraft(
       .where(eq(localWorkouts.id, workout.id))
       .run();
 
-    replaceLocalExercises(
+    upsertLocalExercises(
       workout.id,
       exercises.map((exercise, exerciseIndex) => ({
         id: exercise.id,

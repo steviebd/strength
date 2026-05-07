@@ -21,7 +21,6 @@ import {
 } from '../lib/program-helpers';
 import { pickAllowedKeys } from '../lib/validation';
 import { getWorkoutAggregates } from '../lib/workout-helpers';
-import { recomputeHomeSummary } from '../api/home/summary';
 
 const MAX_SYNC_COMPLETE_EXERCISES = 40;
 const MAX_SYNC_COMPLETE_SETS = 400;
@@ -805,11 +804,6 @@ router.post(
     }
 
     await advanceProgramCycleForWorkout(db, userId, id);
-    try {
-      await recomputeHomeSummary(db, userId);
-    } catch {
-      // ignore cache recompute failures
-    }
 
     const snapshot = await fetchWorkoutSyncSnapshot(db, id);
     let programAdvance: Record<string, unknown> | undefined;
@@ -878,11 +872,6 @@ router.put(
       .get();
 
     await advanceProgramCycleForWorkout(db, userId, id);
-    try {
-      await recomputeHomeSummary(db, userId);
-    } catch {
-      // ignore cache recompute failures
-    }
 
     return c.json({ ...result, exerciseCount: aggregates?.exerciseCount ?? 0 });
   }),

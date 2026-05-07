@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/app-primitives';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { useFocusEffect } from '@react-navigation/native';
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { TemplateList } from '@/components/template/TemplateList';
 import { TemplateEditor } from '@/components/template/TemplateEditor';
 import { WorkoutCard } from '@/components/workout/WorkoutCard';
@@ -62,6 +62,8 @@ import {
 import { retryWorkoutSync } from '@/lib/workout-sync';
 import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
+import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { getLocalDb } from '@/db/client';
 import { cleanupStaleLocalData } from '@/db/local-cleanup';
 import { eq } from 'drizzle-orm';
@@ -231,30 +233,33 @@ export default function WorkoutsIndex() {
     data: workoutHistory = [],
     isLoading: isLoadingHistory,
     error: workoutHistoryError,
-  } = useQuery({
+  } = useOfflineQuery({
     queryKey: ['workoutHistory'],
-    queryFn: fetchWorkoutHistory,
-    enabled: view === 'history',
+    enabled: view === 'history' && !!userId,
+    apiFn: fetchWorkoutHistory,
+    cacheFn: () => listLocalWorkoutHistory(userId!, 50),
+    writeCacheFn: async (history) => {
+      if (!userId) return;
+      await Promise.all(
+        history.map((item) =>
+          upsertServerWorkoutSnapshot(userId, {
+            ...item,
+            notes: null,
+            exercises: [],
+            totalVolume: item.totalVolume ?? undefined,
+            totalSets: item.totalSets ?? undefined,
+            durationMinutes: item.durationMinutes ?? undefined,
+            exerciseCount: item.exerciseCount ?? undefined,
+          }),
+        ),
+      );
+      await loadLocalHistory();
+    },
+    isDirtyFn: () => hasPendingTrainingWrites(userId!, ['history']),
+    fallbackToCacheOnError: true,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
-
-  useEffect(() => {
-    if (!userId || workoutHistory.length === 0) return;
-    void Promise.all(
-      workoutHistory.map((item) =>
-        upsertServerWorkoutSnapshot(userId, {
-          ...item,
-          notes: null,
-          exercises: [],
-          totalVolume: item.totalVolume ?? undefined,
-          totalSets: item.totalSets ?? undefined,
-          durationMinutes: item.durationMinutes ?? undefined,
-          exerciseCount: item.exerciseCount ?? undefined,
-        }),
-      ),
-    ).then(loadLocalHistory);
-  }, [loadLocalHistory, userId, workoutHistory]);
 
   const mergedHistory = useMemo(() => {
     const byId = new Map<string, WorkoutHistoryItem>();

@@ -61,7 +61,14 @@ vi.mock('@/db/training-cache', () => ({
   getFallbackLatestOneRMsFromCycles: vi.fn(),
 }));
 
-import { getCachedLatestOneRMs, getFallbackLatestOneRMsFromCycles } from '@/db/training-cache';
+vi.mock('@/db/training-read-model', () => ({
+  getFreshLatestOneRMs: vi.fn((_userId, cached) => Promise.resolve(cached)),
+  hasPendingTrainingWrites: vi.fn(() => Promise.resolve(false)),
+  shouldUseLocalLatestOneRMs: vi.fn(() => Promise.resolve(false)),
+}));
+
+import { getCachedLatestOneRMs } from '@/db/training-cache';
+import { getFreshLatestOneRMs, shouldUseLocalLatestOneRMs } from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
 import { useProgramsCatalog, useLatestOneRms } from './usePrograms';
 
@@ -128,10 +135,10 @@ describe('useLatestOneRms', () => {
     expect(result.latestOneRMs).toEqual(cached);
   });
 
-  test('falls back to local program cycles when no cached API response exists', async () => {
+  test('falls back to local fresh 1RMs when no cached API response exists', async () => {
     const fromCycles = { squat1rm: 90, bench1rm: 70, deadlift1rm: 140, ohp1rm: 45 };
     vi.mocked(getCachedLatestOneRMs).mockResolvedValue(null);
-    vi.mocked(getFallbackLatestOneRMsFromCycles).mockResolvedValue(fromCycles);
+    vi.mocked(getFreshLatestOneRMs).mockResolvedValue(fromCycles);
 
     useLatestOneRms();
     const options = vi.mocked(useOfflineQuery).mock.calls[0][0];
@@ -139,15 +146,15 @@ describe('useLatestOneRms', () => {
     expect(result).toEqual(fromCycles);
   });
 
-  test('isDirtyFn prevents overwrite when local cycles differ from cached API response', async () => {
+  test('isDirtyFn delegates local freshness policy to the read model', async () => {
     const cached = { squat1rm: 100, bench1rm: 80, deadlift1rm: 150, ohp1rm: 50 };
-    const fromCycles = { squat1rm: 90, bench1rm: 80, deadlift1rm: 150, ohp1rm: 50 };
     vi.mocked(getCachedLatestOneRMs).mockResolvedValue(cached);
-    vi.mocked(getFallbackLatestOneRMsFromCycles).mockResolvedValue(fromCycles);
+    vi.mocked(shouldUseLocalLatestOneRMs).mockResolvedValue(true);
 
     useLatestOneRms();
     const options = vi.mocked(useOfflineQuery).mock.calls[0][0];
     const isDirty = await options.isDirtyFn!();
     expect(isDirty).toBe(true);
+    expect(shouldUseLocalLatestOneRMs).toHaveBeenCalledWith('user-1', cached);
   });
 });

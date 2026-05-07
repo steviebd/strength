@@ -21,6 +21,10 @@ vi.mock('@/db/sync-queue', () => ({
   enqueueSyncItem: vi.fn(),
 }));
 
+vi.mock('@/db/write-queue', () => ({
+  enqueueLocalWrite: vi.fn((task) => task()),
+}));
+
 import { enqueueSyncItem } from '@/db/sync-queue';
 import { OfflineError, isNetworkError, tryOnlineOrEnqueue } from './offline-mutation';
 

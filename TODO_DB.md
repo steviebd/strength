@@ -3,6 +3,21 @@
 > Date: 2026-05-07
 > Goal: keep D1 as the source of truth while making the Expo SQLite database the user's immediate read/write surface for program start, active workout logging, and workout completion.
 
+## Progress
+
+- Implemented the core local-first training write path:
+  - Added Drizzle compatibility guard tests that lock in the current D1-vs-Expo driver mismatch: D1 is async and has `db.batch`, Expo SQLite Drizzle is sync and has no matching `db.batch`.
+  - Moved the program generator surface into `@strength/db` under `packages/db/src/programs`.
+  - Added shared `createProgramStartPlan` and `createProgramAdvancePlan` under `packages/db/src/training`.
+  - Exported shared planners and program generation from `@strength/db` and `@strength/db/client`.
+  - Added Expo local `createLocalProgramCycleFromStartPayload` and `advanceLocalProgramCycleAfterWorkout`.
+  - Made program start local-first: it creates a complete local cycle/schedule, enqueues `start_program`, navigates immediately, and starts background sync.
+  - Preserved client-generated program cycle workout IDs through D1 sync so local cycle workout references reconcile cleanly.
+  - Made workout completion local-first: it enqueues sync, advances local program state, and starts `runTrainingSync` without awaiting D1.
+  - Removed server-side `recomputeHomeSummary` from workout completion response paths; home summary still recomputes lazily on read.
+  - Added a serialized/coalesced local write queue and moved active draft saves to 1500 ms coalesced writes.
+  - Changed active draft persistence to upsert/delete changed local exercise/set rows instead of full graph replacement. Full replacement remains for initial local creation and server snapshot hydration.
+
 ## Current Finding
 
 SQLite is not unused. The app already has a substantial local training cache:

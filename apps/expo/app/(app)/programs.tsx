@@ -21,13 +21,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
 import {
-  cacheActivePrograms,
   createLocalWorkoutFromCurrentProgramCycle,
   createLocalWorkoutFromProgramCycleWorkoutDefinition,
 } from '@/db/workouts';
+import { createLocalProgramCycleFromStartPayload } from '@/db/training-cache';
 import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { generateId } from '@strength/db/client';
+import { enqueueSyncItem } from '@/db/sync-queue';
+import { runTrainingSync } from '@/lib/workout-sync';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { FormScrollView } from '@/components/ui/FormScrollView';
@@ -822,31 +824,23 @@ export default function ProgramsScreen() {
       };
       const cycleId = generateId();
 
-      const cycle = await tryOnlineOrEnqueue({
-        apiCall: () =>
-          apiFetch<{ id: string }>('/api/programs', {
-            method: 'POST',
-            body: { id: cycleId, ...payload },
-          }),
-        userId,
-        entityType: 'program',
-        operation: 'start_program',
-        entityId: cycleId,
-        payload: { id: cycleId, ...payload },
-        onEnqueue: async () => {
-          await cacheActivePrograms(userId, [
-            {
-              id: cycleId,
-              programSlug: selectedProgram.slug,
-              name: selectedProgram.name,
-              currentWeek: 1,
-              currentSession: 1,
-              totalSessionsCompleted: 0,
-              totalSessionsPlanned: _getTotalSessions(selectedProgram.slug),
-            },
-          ]);
-        },
+      const plan = await createLocalProgramCycleFromStartPayload(userId, {
+        id: cycleId,
+        ...payload,
       });
+      if (!plan) {
+        throw new Error('Failed to create program locally. Please try again.');
+      }
+      await enqueueSyncItem(userId, 'program', cycleId, 'start_program', {
+        id: cycleId,
+        ...payload,
+        cycleWorkouts: plan.cycleWorkouts.map((workout) => ({
+          id: workout.id,
+          weekNumber: workout.weekNumber,
+          sessionNumber: workout.sessionNumber,
+        })),
+      });
+      void runTrainingSync(userId);
 
       setShowStartModal(false);
       setShowDetailModal(false);
@@ -859,9 +853,7 @@ export default function ProgramsScreen() {
         queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] }),
       ]);
 
-      if (cycle.id) {
-        router.push(`/(app)/home?focusProgramId=${cycle.id}`);
-      }
+      router.push(`/(app)/home?focusProgramId=${cycleId}`);
     } catch (e) {
       if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
         setOfflineMessage(

@@ -66,6 +66,10 @@ vi.mock('@/db/training-cache', () => ({
   getCachedTemplates: vi.fn(() => Promise.resolve([])),
 }));
 
+vi.mock('@/db/training-read-model', () => ({
+  hasPendingTrainingWrites: vi.fn(() => Promise.resolve(false)),
+}));
+
 vi.mock('./useOfflineQuery', () => ({
   useOfflineQuery: vi.fn(() => ({
     data: [],
