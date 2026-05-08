@@ -67,13 +67,16 @@ export function useHomeSummary() {
   return useOfflineQuery({
     queryKey: ['homeSummary', activeTimezone],
     enabled: !!userId,
-    apiFn: () => apiFetch<HomeSummaryResponse>(`/api/home/summary`),
+    apiFn: () =>
+      apiFetch<HomeSummaryResponse>(
+        `/api/home/summary${activeTimezone ? `?timezone=${encodeURIComponent(activeTimezone)}` : ''}`,
+      ),
     cacheFn: () =>
       buildLocalHomeSummary(userId!, activeTimezone ?? 'UTC') as Promise<HomeSummaryResponse>,
     writeCacheFn: async () => {},
     isDirtyFn: () =>
       hasPendingTrainingWrites(userId!, ['program', 'program_cycle', 'workout', 'one_rms']),
     fallbackToCacheOnError: true,
-    refetchInterval: 60 * 1000,
+    staleTime: Infinity,
   });
 }

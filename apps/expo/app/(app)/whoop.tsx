@@ -5,7 +5,7 @@ import { CustomPageHeader } from '@/components/ui/CustomPageHeader';
 import { PageLayout } from '@/components/ui/PageLayout';
 import { apiFetch } from '@/lib/api';
 import { transformWhoopData, WhoopData, WhoopRecovery, WhoopSleep } from '@/lib/whoop';
-import { colors, radius, typography } from '@/theme';
+import { colors, radius, spacing, textRoles, typography } from '@/theme';
 
 async function fetchWhoopData(): Promise<WhoopData> {
   const raw = await apiFetch<WhoopData>('/api/whoop/data?days=30');
@@ -185,7 +185,7 @@ export default function WhoopDataPage() {
                     { backgroundColor: getRecoveryBg(latestRecovery.recoveryScore) },
                   ]}
                 >
-                  <Text style={styles.recoveryScoreLabel}>Recovery Score</Text>
+                  <Text style={styles.metricLabel}>Recovery Score</Text>
                   <Text
                     style={[
                       styles.recoveryScoreValue,
@@ -441,10 +441,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   mutedText: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   card: {
     marginBottom: 16,
@@ -454,16 +456,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     marginBottom: 12,
+    lineHeight: textRoles.cardTitle.lineHeight,
   },
   recoveryScoreBox: {
     borderRadius: radius.md,
-    padding: 16,
+    padding: spacing.md,
     marginBottom: 12,
-  },
-  recoveryScoreLabel: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textMuted,
-    marginBottom: 4,
   },
   recoveryScoreValue: {
     fontSize: 48,
@@ -477,14 +475,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metricLabel: {
-    fontSize: typography.fontSizes.xs,
+    fontSize: textRoles.metricLabel.fontSize,
+    fontWeight: typography.fontWeights.medium,
+    letterSpacing: textRoles.metricLabel.letterSpacing,
     color: colors.textMuted,
+    textTransform: 'uppercase',
     marginBottom: 4,
   },
   metricValue: {
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
     color: colors.text,
+    lineHeight: 20,
   },
   dayRow: {
     flexDirection: 'row',
@@ -497,6 +499,7 @@ const styles = StyleSheet.create({
     width: 56,
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+    lineHeight: textRoles.caption.lineHeight,
   },
   dayRowBars: {
     flex: 1,
@@ -514,6 +517,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
     marginBottom: 4,
+    lineHeight: textRoles.caption.lineHeight,
   },
   miniBarTrack: {
     height: 8,
@@ -532,6 +536,7 @@ const styles = StyleSheet.create({
   dayRowScoreText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.bold,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   legendRow: {
     flexDirection: 'row',
@@ -555,6 +560,7 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+    lineHeight: textRoles.caption.lineHeight,
   },
   sleepHeaderRow: {
     flexDirection: 'row',
@@ -568,6 +574,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xxl,
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
+    lineHeight: 34,
   },
   sleepChartRow: {
     flexDirection: 'row',
@@ -581,6 +588,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
     marginBottom: 4,
+    lineHeight: textRoles.caption.lineHeight,
   },
   sleepBarStack: {
     width: '100%',
@@ -598,6 +606,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.medium,
     color: colors.text,
     marginTop: 4,
+    lineHeight: textRoles.caption.lineHeight,
   },
   sleepLegendRow: {
     flexDirection: 'row',
@@ -628,6 +637,7 @@ const styles = StyleSheet.create({
     width: 96,
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   cycleStats: {
     flex: 1,
@@ -642,6 +652,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   workoutsList: {
     gap: 0,
@@ -661,15 +672,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
     color: colors.text,
+    lineHeight: textRoles.body.lineHeight,
   },
   workoutDate: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
     marginTop: 2,
+    lineHeight: textRoles.caption.lineHeight,
   },
   workoutDuration: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   workoutStats: {
     flexDirection: 'row',

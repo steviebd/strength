@@ -120,6 +120,8 @@ function getWebhookEventId(event: WhoopWebhookEvent): string {
   return `${event.eventType}:${event.userId}:${event.objectId}`;
 }
 
+let cleanupCounter = 0;
+
 async function recordWebhookEvent(
   db: DrizzleD1Database<typeof schema>,
   eventId: string,
@@ -143,12 +145,14 @@ async function recordWebhookEvent(
     throw err;
   }
 
-  // Clean up entries older than 6 minutes
-  const cutoff = new Date(Date.now() - 6 * 60 * 1000);
-  await db
-    .delete(schema.webhookEventLog)
-    .where(lt(schema.webhookEventLog.processedAt, cutoff))
-    .run();
+  cleanupCounter++;
+  if (cleanupCounter % 100 === 0) {
+    const cutoff = new Date(Date.now() - 6 * 60 * 1000);
+    await db
+      .delete(schema.webhookEventLog)
+      .where(lt(schema.webhookEventLog.processedAt, cutoff))
+      .run();
+  }
 
   return true;
 }

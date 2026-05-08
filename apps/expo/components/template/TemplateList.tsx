@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { useTemplates, type Template } from '@/hooks/useTemplates';
 import { Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
-import { colors, spacing } from '@/theme';
+import { colors, radius, spacing, typography, overlay } from '@/theme';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { formatHeight } from '@/lib/units';
 
@@ -147,13 +147,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     marginBottom: spacing.sm,
   },
   emptyText: {
-    fontSize: 15,
+    fontSize: typography.fontSizes.base,
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
@@ -175,19 +175,19 @@ const styles = StyleSheet.create({
   },
   templateName: {
     flex: 1,
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     marginRight: spacing.sm,
   },
   templateDescription: {
-    fontSize: 13,
+    fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
     lineHeight: 20,
   },
   exercisesSection: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: overlay.muted,
     paddingTop: spacing.md,
     marginBottom: spacing.md,
   },
@@ -228,14 +228,14 @@ const styles = StyleSheet.create({
   startButtonText: {
     color: colors.text,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: typography.fontWeights.semibold,
   },
   deleteButton: {
     height: 48,
     width: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: 'rgba(251,113,133,0.2)',
     backgroundColor: 'rgba(251,113,133,0.1)',
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
   amrapBadge: {
     fontSize: 10,
     color: colors.accent,
-    fontWeight: '600',
+    fontWeight: typography.fontWeights.semibold,
     marginLeft: 4,
   },
 });

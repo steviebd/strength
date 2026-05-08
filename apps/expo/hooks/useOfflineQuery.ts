@@ -23,7 +23,7 @@ export function useOfflineQuery<TData>(options: {
     queryKey: options.queryKey,
     enabled: options.enabled,
     staleTime: options.staleTime ?? 0,
-    refetchOnMount: options.refetchOnMount ?? 'always',
+    refetchOnMount: options.refetchOnMount ?? true,
     refetchOnWindowFocus: options.refetchOnWindowFocus ?? true,
     refetchInterval: options.refetchInterval,
     queryFn: async () => {

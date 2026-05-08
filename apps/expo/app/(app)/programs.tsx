@@ -16,7 +16,6 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
@@ -29,7 +28,7 @@ import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { generateId } from '@strength/db/client';
 import { enqueueSyncItem } from '@/db/sync-queue';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { useScrollToInput } from '@/context/ScrollContext';
 import { PageLayout } from '@/components/ui/PageLayout';
@@ -72,14 +71,14 @@ const PROGRAM_INFO: ProgramListItem[] = [
       'The classic beginner program that has helped millions get stronger. Simple, effective, and proven.',
     difficulty: 'beginner',
     daysPerWeek: 3,
-    estimatedWeeks: 8,
-    totalSessions: 24,
+    estimatedWeeks: 12,
+    totalSessions: 36,
   },
   {
     slug: '531',
-    name: 'Wendler 5/3/1',
+    name: '5/3/1 (Wendler)',
     description:
-      'A time-tested strength program that uses wave loading and AMRAP sets to build real strength.',
+      'The most popular strength program ever created. Flexible, sustainable, and proven to work.',
     difficulty: 'intermediate',
     daysPerWeek: 4,
     estimatedWeeks: 12,
@@ -87,20 +86,19 @@ const PROGRAM_INFO: ProgramListItem[] = [
   },
   {
     slug: 'madcow-5x5',
-    name: 'MadCow 5×5',
-    description:
-      'An intermediate progression from StrongLifts with more volume and progressive overload.',
+    name: 'Madcow 5×5',
+    description: 'Bridge from beginner to advanced. Built-in deloads and weekly weight increases.',
     difficulty: 'intermediate',
     daysPerWeek: 3,
-    estimatedWeeks: 12,
-    totalSessions: 36,
+    estimatedWeeks: 8,
+    totalSessions: 24,
   },
   {
     slug: 'candito-6-week',
-    name: 'Candito 6-Week',
+    name: 'Candito 6 Week',
     description:
-      'A high-volume powerlifting program designed for intermediates looking to break through plateaus.',
-    difficulty: 'intermediate',
+      'Block periodization with 3-week strength block followed by 3-week peaking block. Great for meet preparation.',
+    difficulty: 'advanced',
     daysPerWeek: 4,
     estimatedWeeks: 6,
     totalSessions: 24,
@@ -109,7 +107,7 @@ const PROGRAM_INFO: ProgramListItem[] = [
     slug: 'nsuns-lp',
     name: 'nSuns LP',
     description:
-      'A high-volume linear progression program that builds impressive strength and volume.',
+      'High volume linear progression. Excellent for building base strength with paired T1/T2 lifts.',
     difficulty: 'intermediate',
     daysPerWeek: 4,
     estimatedWeeks: 8,
@@ -118,34 +116,38 @@ const PROGRAM_INFO: ProgramListItem[] = [
   {
     slug: 'sheiko',
     name: 'Sheiko',
-    description: 'A Russian-inspired powerlifting program known for its high frequency and volume.',
+    description:
+      'Russian-style high volume programming at moderate intensity. Excellent for technique work and building work capacity.',
     difficulty: 'advanced',
     daysPerWeek: 4,
-    estimatedWeeks: 12,
-    totalSessions: 48,
+    estimatedWeeks: 8,
+    totalSessions: 32,
   },
   {
     slug: 'nuckols-28-programs',
-    name: 'Nuckols 28 Programs',
-    description: 'A customizable program system by Greg Nuckols with options for all skill levels.',
-    difficulty: 'intermediate',
-    daysPerWeek: 3,
-    estimatedWeeks: 8,
-    totalSessions: 24,
-  },
-  {
-    slug: 'stronger-by-the-day',
-    name: 'Stronger By The Day',
-    description: "Megsquats' program designed to build lasting strength with smart periodization.",
+    name: 'Greg Nuckols 28 Programs',
+    description:
+      'Science-backed programming with 4-week wave periodization. Evidence-based progression for intermediate lifters.',
     difficulty: 'intermediate',
     daysPerWeek: 4,
     estimatedWeeks: 8,
     totalSessions: 32,
   },
   {
+    slug: 'stronger-by-the-day',
+    name: 'Stronger by the Day (Megsquats)',
+    description:
+      'A 12-week upper/lower split program designed specifically for women, featuring training max progression and glute-focused accessories.',
+    difficulty: 'beginner',
+    daysPerWeek: 3,
+    estimatedWeeks: 12,
+    totalSessions: 36,
+  },
+  {
     slug: 'unapologetically-strong',
-    name: 'Unapologetically Strong',
-    description: "Jen Sinkler's program focused on building functional strength for women.",
+    name: 'Unapologetically Strong (Jen Sinkler)',
+    description:
+      'An 8-week full body strength program designed to build a solid foundation of power and confidence.',
     difficulty: 'intermediate',
     daysPerWeek: 3,
     estimatedWeeks: 8,
@@ -217,6 +219,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.md,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   programsList: {
     gap: spacing.md,
@@ -239,14 +242,17 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
     flex: 1,
+    lineHeight: textRoles.cardTitle.lineHeight,
   },
   cardDescription: {
     color: colors.textMuted,
-    fontSize: typography.fontSizes.xs,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginTop: spacing.xs,
   },
   badgeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.md,
@@ -255,19 +261,25 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    flexShrink: 0,
   },
   difficultyText: {
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.medium,
     textTransform: 'capitalize',
+    lineHeight: textRoles.caption.lineHeight,
   },
   separator: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
+    flexShrink: 0,
   },
   metaText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
+    flexShrink: 0,
   },
   modalScroll: {
     flex: 1,
@@ -290,6 +302,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   modalContent: {
     paddingHorizontal: layout.screenPadding,
@@ -305,6 +318,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
+    lineHeight: textRoles.button.lineHeight,
   },
   secondaryButton: {
     borderRadius: radius.lg,
@@ -316,6 +330,8 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.button.lineHeight,
   },
   infoBox: {
     borderRadius: radius.lg,
@@ -330,27 +346,30 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.xs,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   infoBoxText: {
     color: colors.textMuted,
-    fontSize: typography.fontSizes.xs,
-    lineHeight: 18,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   programNameTitle: {
     color: colors.text,
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.sm,
+    lineHeight: textRoles.metricValue.lineHeight,
   },
   programDescriptionText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
-    lineHeight: 20,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginBottom: spacing.lg,
   },
   instructionsText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginBottom: spacing.xl,
   },
   inputGroup: {
@@ -376,15 +395,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   inputIcon: {
-    fontSize: 20,
+    fontSize: typography.fontSizes.xl,
   },
   inputLabel: {
     color: colors.text,
+    fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
   },
   inputUnit: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
   },
   input: {
     minHeight: layout.controlHeight,
@@ -421,6 +442,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.semibold,
     textAlign: 'center',
+    lineHeight: textRoles.button.lineHeight,
   },
   dayChip: {
     borderRadius: radius.md,
@@ -445,11 +467,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   dayChipTextSelected: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   timeChip: {
     flex: 1,
@@ -474,11 +498,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   timeChipTextSelected: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   scheduleCard: {
     borderRadius: radius.lg,
@@ -493,10 +519,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
     marginBottom: spacing.xs,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   scheduleHint: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
     marginBottom: spacing.md,
   },
   dayChipsRow: {
@@ -517,6 +545,8 @@ const styles = StyleSheet.create({
   dateButtonText: {
     color: colors.text,
     fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   startModeSection: {
     marginTop: spacing.md,
@@ -553,10 +583,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   startModeDescription: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
     marginTop: spacing.xs,
   },
   firstSessionRow: {
@@ -573,10 +605,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.semibold,
     marginBottom: spacing.xs,
+    lineHeight: textRoles.metricValue.lineHeight,
   },
   reviewMeta: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginBottom: spacing.lg,
   },
   reviewSection: {
@@ -585,16 +619,18 @@ const styles = StyleSheet.create({
   reviewLabel: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.xs,
+    lineHeight: textRoles.caption.lineHeight,
     marginBottom: spacing.xs,
+  },
+  reviewValue: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   reviewDaysRow: {
     flexDirection: 'row',
     gap: spacing.xs,
     flexWrap: 'wrap',
-  },
-  reviewValue: {
-    color: colors.text,
-    fontSize: typography.fontSizes.sm,
   },
   activeSection: {
     marginBottom: spacing.xl,
@@ -616,10 +652,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   activeCardMeta: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.sm,
+    lineHeight: textRoles.bodySmall.lineHeight,
     marginTop: spacing.xs,
   },
   activeCardButtons: {
@@ -650,6 +688,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.base,
     fontWeight: typography.fontWeights.medium,
     color: colors.error,
+    lineHeight: textRoles.button.lineHeight,
   },
   offlineBanner: {
     borderRadius: radius.md,
@@ -662,6 +701,27 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
+  },
+  editInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
+    padding: 0,
+  },
+  inputText: {
+    color: colors.text,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
+  },
+  inputPlaceholder: {
+    color: colors.textMuted,
+    fontSize: textRoles.metricValue.fontSize,
+    lineHeight: textRoles.metricValue.lineHeight,
+    fontWeight: textRoles.metricValue.fontWeight,
   },
 });
 
@@ -676,6 +736,143 @@ function getDifficultyColor(difficulty: string) {
     default:
       return { bg: colors.surfaceAlt, text: colors.textMuted };
   }
+}
+
+function OneRmInputFields({
+  values,
+  setOneRmValues,
+  valuesRef,
+  weightUnit,
+}: {
+  values: OneRmValues;
+  setOneRmValues: (nextValues: OneRmValues) => void;
+  valuesRef: React.MutableRefObject<OneRmValues>;
+  weightUnit: string;
+}) {
+  const scrollToInput = useScrollToInput();
+  const squatWrapperRef = useRef<View | null>(null);
+  const benchWrapperRef = useRef<View | null>(null);
+  const deadliftWrapperRef = useRef<View | null>(null);
+  const ohpWrapperRef = useRef<View | null>(null);
+  const wrapperRefs: Record<keyof OneRmValues, React.RefObject<View | null>> = {
+    squat: squatWrapperRef,
+    bench: benchWrapperRef,
+    deadlift: deadliftWrapperRef,
+    ohp: ohpWrapperRef,
+  };
+  const [editingKey, setEditingKey] = useState<keyof OneRmValues | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const editingKeyRef = useRef<keyof OneRmValues | null>(null);
+  editingKeyRef.current = editingKey;
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
+
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
+
+  const handleEditStart = useCallback(
+    (key: keyof OneRmValues) => {
+      if (dismissTimerRef.current) {
+        clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
+      }
+
+      if (editingKey === key) {
+        setEditingKey(null);
+        return;
+      }
+
+      if (editingKey) {
+        const sanitized = editValue.replace(/[^0-9.]/g, '');
+        setOneRmValues({ ...valuesRef.current, [editingKey]: sanitized });
+      }
+
+      setEditValue(valuesRef.current[key]);
+      scrollToInput(wrapperRefs[key], 200);
+      setEditingKey(key);
+    },
+    [editingKey, editValue, scrollToInput, setOneRmValues],
+  );
+
+  const handleEditEnd = useCallback(
+    (key: keyof OneRmValues) => {
+      if (editingKeyRef.current !== key) return;
+      const sanitized = editValue.replace(/[^0-9.]/g, '');
+      setOneRmValues({ ...valuesRef.current, [key]: sanitized });
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = setTimeout(() => {
+        if (editingKeyRef.current === key) {
+          setEditingKey(null);
+        }
+      }, 150);
+    },
+    [editValue],
+  );
+
+  const focusNextInput = (key: (typeof inputOrder)[number]) => {
+    const currentIndex = inputOrder.indexOf(key);
+    const nextKey = inputOrder[currentIndex + 1];
+
+    handleEditEnd(key);
+
+    if (nextKey) {
+      handleEditStart(nextKey);
+    }
+  };
+
+  return (
+    <View style={styles.inputGroup}>
+      {(
+        [
+          { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
+          { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
+          { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
+          { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
+        ] as const
+      ).map(({ key, label, icon }) => (
+        <View key={`program-1rm:${key}`} style={styles.inputCard}>
+          <View style={styles.inputHeaderRow}>
+            <View style={styles.inputLabelRow}>
+              <Text style={styles.inputIcon}>{icon}</Text>
+              <Text style={styles.inputLabel}>{label}</Text>
+            </View>
+            <Text style={styles.inputUnit}>{weightUnit}</Text>
+          </View>
+          <View ref={wrapperRefs[key]} collapsable={false}>
+            <Pressable
+              testID={`program-1rm-${key}`}
+              accessibilityLabel={`program-1rm-${key}`}
+              onPress={() => handleEditStart(key)}
+              style={[styles.input, editingKey === key && styles.inputFocused]}
+            >
+              {editingKey === key ? (
+                <TextInput
+                  style={styles.editInput}
+                  value={editValue}
+                  onChangeText={setEditValue}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  selectTextOnFocus
+                  returnKeyType={key === 'ohp' ? 'done' : 'next'}
+                  blurOnSubmit={key === 'ohp'}
+                  onFocus={() => scrollToInput(wrapperRefs[key], 200)}
+                  onBlur={() => handleEditEnd(key)}
+                  onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
+                />
+              ) : (
+                <Text style={values[key] ? styles.inputText : styles.inputPlaceholder}>
+                  {values[key] || '0'}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export default function ProgramsScreen() {
@@ -710,31 +907,13 @@ export default function ProgramsScreen() {
   const queryClient = useQueryClient();
   const scrollViewRef = useRef<ScrollView>(null);
   const detailScrollRef = useRef<ScrollView>(null);
-  const squatWrapperRef = useRef<View>(null);
-  const benchWrapperRef = useRef<View>(null);
-  const deadliftWrapperRef = useRef<View>(null);
-  const ohpWrapperRef = useRef<View>(null);
-  const wrapperRefs: Record<keyof OneRmValues, React.RefObject<View>> = {
-    squat: squatWrapperRef,
-    bench: benchWrapperRef,
-    deadlift: deadliftWrapperRef,
-    ohp: ohpWrapperRef,
-  };
-  const scrollToInput = useScrollToInput();
-  const [editingKey, setEditingKey] = useState<keyof OneRmValues | null>(null);
-  const [editValue, setEditValue] = useState('');
   const modalContentY = useRef(0);
   const scheduleSectionY = useRef<number | null>(null);
   const valuesRef = useRef<OneRmValues>(values);
-  const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
   const { programs: availablePrograms, isLoading: isLoadingPrograms } =
     useProgramsCatalog(PROGRAM_INFO);
-  const {
-    activePrograms,
-    isLoading: isLoadingActivePrograms,
-    refetch: refetchActivePrograms,
-  } = useActivePrograms();
-  const { latestOneRMs, refetch: refetchLatestOneRms } = useLatestOneRms();
+  const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
+  const { latestOneRMs } = useLatestOneRms();
   const loading = isLoadingPrograms || isLoadingActivePrograms;
 
   const scrollToScheduleSection = useCallback(() => {
@@ -760,47 +939,12 @@ export default function ProgramsScreen() {
     };
   }, [scheduleStep, scrollToScheduleSection]);
 
-  const handleEditStart = useCallback(
-    (key: keyof OneRmValues) => {
-      if (editingKey === key) return;
-      setEditValue(valuesRef.current[key]);
-      scrollToInput(wrapperRefs[key]);
-      setEditingKey(key);
-    },
-    [editingKey, scrollToInput],
-  );
-
-  const handleEditEnd = useCallback(
-    (key: keyof OneRmValues) => {
-      const sanitized = editValue.replace(/[^0-9.]/g, '');
-      setOneRmValues({ ...valuesRef.current, [key]: sanitized });
-      setEditingKey(null);
-    },
-    [editValue],
-  );
-
-  const focusNextInput = (key: (typeof inputOrder)[number]) => {
-    const currentIndex = inputOrder.indexOf(key);
-    const nextKey = inputOrder[currentIndex + 1];
-
-    handleEditEnd(key);
-
-    if (nextKey) {
-      handleEditStart(nextKey);
-    }
-  };
-
   const hasAllOneRmValues = (oneRmValues: OneRmValues) =>
     Boolean(oneRmValues.squat && oneRmValues.bench && oneRmValues.deadlift && oneRmValues.ohp);
 
   const setOneRmValues = (nextValues: OneRmValues) => {
     valuesRef.current = nextValues;
     setValues(nextValues);
-  };
-
-  const updateOneRmValue = (key: keyof OneRmValues, value: string) => {
-    const nextValue = value.replace(/[^0-9.]/g, '');
-    setOneRmValues({ ...valuesRef.current, [key]: nextValue });
   };
 
   const continueToSchedule = () => {
@@ -811,13 +955,6 @@ export default function ProgramsScreen() {
     setReviewConfirmed(false);
     setScheduleStep('schedule');
   };
-
-  useFocusEffect(
-    useCallback(() => {
-      void refetchActivePrograms();
-      void refetchLatestOneRms();
-    }, [refetchActivePrograms, refetchLatestOneRms]),
-  );
 
   const onRefresh = useCallback(async () => {
     setOfflineMessage(null);
@@ -899,7 +1036,7 @@ export default function ProgramsScreen() {
           sessionNumber: workout.sessionNumber,
         })),
       });
-      void runTrainingSync(userId);
+      void syncOfflineQueueAndCache(userId);
 
       setShowStartModal(false);
       setShowDetailModal(false);
@@ -1155,7 +1292,7 @@ export default function ProgramsScreen() {
                       </Text>
                     </View>
                     <Text style={styles.separator}>·</Text>
-                    <Text style={styles.metaText}>{program.daysPerWeek} days/week</Text>
+                    <Text style={styles.metaText}>{program.daysPerWeek} days per week</Text>
                     <Text style={styles.separator}>·</Text>
                     <Text style={styles.metaText}>{program.estimatedWeeks} weeks</Text>
                   </View>
@@ -1224,7 +1361,7 @@ export default function ProgramsScreen() {
                   </Text>
                 </View>
                 <Text style={styles.separator}>·</Text>
-                <Text style={styles.metaText}>{selectedProgram.daysPerWeek} days/week</Text>
+                <Text style={styles.metaText}>{selectedProgram.daysPerWeek} days per week</Text>
                 <Text style={styles.separator}>·</Text>
                 <Text style={styles.metaText}>{selectedProgram.estimatedWeeks} weeks</Text>
               </View>
@@ -1304,63 +1441,12 @@ export default function ProgramsScreen() {
                   to calculate your working weights.
                 </Text>
 
-                <View style={styles.inputGroup}>
-                  {(
-                    [
-                      { key: 'squat', label: 'Squat 1RM', icon: '🏋️' },
-                      { key: 'bench', label: 'Bench Press 1RM', icon: '💪' },
-                      { key: 'deadlift', label: 'Deadlift 1RM', icon: '🦵' },
-                      { key: 'ohp', label: 'Overhead Press 1RM', icon: '🙆' },
-                    ] as const
-                  ).map(({ key, label, icon }) => (
-                    <View key={`program-1rm:${key}`} style={styles.inputCard}>
-                      <View style={styles.inputHeaderRow}>
-                        <View style={styles.inputLabelRow}>
-                          <Text style={styles.inputIcon}>{icon}</Text>
-                          <Text style={styles.inputLabel}>{label}</Text>
-                        </View>
-                        <Text style={styles.inputUnit}>{weightUnit}</Text>
-                      </View>
-                      <View ref={wrapperRefs[key]} collapsable={false}>
-                        <Pressable
-                          testID={`program-1rm-${key}`}
-                          accessibilityLabel={`program-1rm-${key}`}
-                          onPress={() => handleEditStart(key)}
-                          style={[
-                            styles.input,
-                            editingKey === key && styles.inputFocused,
-                          ]}
-                        >
-                          {editingKey === key ? (
-                            <TextInput
-                              style={styles.editInput}
-                              value={editValue}
-                              onChangeText={setEditValue}
-                              keyboardType="decimal-pad"
-                              autoFocus
-                              returnKeyType={key === 'ohp' ? 'done' : 'next'}
-                              blurOnSubmit={key === 'ohp'}
-                              onBlur={() => handleEditEnd(key)}
-                              onSubmitEditing={() =>
-                                focusNextInput(key as (typeof inputOrder)[number])
-                              }
-                            />
-                          ) : (
-                            <Text
-                              style={
-                                values[key]
-                                  ? styles.inputText
-                                  : styles.inputPlaceholder
-                              }
-                            >
-                              {values[key] || '0'}
-                            </Text>
-                          )}
-                        </Pressable>
-                      </View>
-                    </View>
-                  ))}
-                </View>
+                <OneRmInputFields
+                  values={values}
+                  setOneRmValues={setOneRmValues}
+                  valuesRef={valuesRef}
+                  weightUnit={weightUnit}
+                />
 
                 {scheduleStep === '1rm' && (
                   <>
@@ -1683,7 +1769,7 @@ export default function ProgramsScreen() {
                       <Text style={styles.reviewProgramName}>{selectedProgram?.name}</Text>
                       <Text style={styles.reviewMeta}>
                         {selectedProgram?.estimatedWeeks} weeks · {selectedProgram?.totalSessions}{' '}
-                        sessions · {selectedProgram?.daysPerWeek} days/week
+                        sessions · {selectedProgram?.daysPerWeek} days per week
                       </Text>
 
                       <View style={styles.reviewSection}>

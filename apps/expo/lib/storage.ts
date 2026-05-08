@@ -3,12 +3,9 @@ import { platformStorage } from './platform-storage';
 import { getLocalDb } from '../db/client';
 import { localPendingWorkouts } from '../db/local-schema';
 
-const MAX_CACHED_CHAT_MESSAGES = 20;
-
 const STORAGE_KEYS = {
   PENDING_WORKOUTS: 'pending_workouts',
   DISMISSED_DEVICE_TIMEZONE: 'dismissed_device_timezone',
-  NUTRITION_CHAT_MESSAGES: (date: string) => `nutrition_chat_messages_${date}`,
   NUTRITION_CHAT_DRAFT: (date: string) => `nutrition_chat_draft_${date}`,
   NUTRITION_PENDING_IMAGE: (date: string) => `nutrition_pending_image_${date}`,
 } as const;
@@ -26,11 +23,6 @@ interface PendingWorkout {
   durationMinutes: null;
   totalVolume: null;
   totalSets: null;
-}
-
-interface NutritionChatCache {
-  messages: unknown[];
-  cachedAt: string;
 }
 
 interface NutritionPendingImage {
@@ -95,25 +87,6 @@ async function removePendingWorkout(workoutId: string): Promise<void> {
   db.delete(localPendingWorkouts).where(eq(localPendingWorkouts.id, workoutId)).run();
 }
 
-async function getNutritionChatMessages<T>(date: string): Promise<T[]> {
-  const data = platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date));
-  if (!data) return [];
-  try {
-    const parsed = JSON.parse(data) as NutritionChatCache;
-    return Array.isArray(parsed.messages) ? (parsed.messages as T[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function setNutritionChatMessages<T>(date: string, messages: T[]): Promise<void> {
-  const data: NutritionChatCache = {
-    messages: messages.slice(-MAX_CACHED_CHAT_MESSAGES),
-    cachedAt: new Date().toISOString(),
-  };
-  platformStorage.setItem(STORAGE_KEYS.NUTRITION_CHAT_MESSAGES(date), JSON.stringify(data));
-}
-
 async function getNutritionChatDraft(date: string): Promise<string> {
   return platformStorage.getItem(STORAGE_KEYS.NUTRITION_CHAT_DRAFT(date)) ?? '';
 }
@@ -164,8 +137,6 @@ export {
   getPendingWorkouts,
   addPendingWorkout,
   removePendingWorkout,
-  getNutritionChatMessages,
-  setNutritionChatMessages,
   getNutritionChatDraft,
   setNutritionChatDraft,
   getNutritionPendingImage,

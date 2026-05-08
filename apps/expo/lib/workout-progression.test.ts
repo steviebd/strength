@@ -85,7 +85,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getLastWorkoutSummary(sets, 'weights', 'kg')).toBe('45 kg × 6 reps');
+    expect(getLastWorkoutSummary(sets, 'weights', 'kg', 'km')).toBe('45 kg × 6 reps');
   });
 
   test('getLastWorkoutSummary returns max reps for bodyweight without weight', () => {
@@ -109,7 +109,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getLastWorkoutSummary(sets, 'bodyweight', 'kg')).toBe('12 reps');
+    expect(getLastWorkoutSummary(sets, 'bodyweight', 'kg', 'km')).toBe('12 reps');
   });
 
   test('getLastWorkoutSummary returns duration and distance for cardio', () => {
@@ -124,7 +124,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getLastWorkoutSummary(sets, 'cardio', 'kg')).toBe('10:00 • 2.1 km');
+    expect(getLastWorkoutSummary(sets, 'cardio', 'kg', 'km')).toBe('10:00 • 2.1 km');
   });
 
   test('getLastWorkoutSummary returns duration for timed', () => {
@@ -139,7 +139,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getLastWorkoutSummary(sets, 'timed', 'kg')).toBe('1:00');
+    expect(getLastWorkoutSummary(sets, 'timed', 'kg', 'km')).toBe('1:00');
   });
 
   test('getSuggestedSummary increments weight for weighted', () => {
@@ -154,7 +154,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getSuggestedSummary(sets, 'weights', 2.5, 'kg')).toEqual({
+    expect(getSuggestedSummary(sets, 'weights', 2.5, 'kg', 'km')).toEqual({
       summary: '42.5 kg × 8 reps',
       delta: '+2.5 kg',
     });
@@ -172,7 +172,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getSuggestedSummary(sets, 'bodyweight', 2, 'kg')).toEqual({
+    expect(getSuggestedSummary(sets, 'bodyweight', 2, 'kg', 'km')).toEqual({
       summary: '12 reps',
       delta: '+2 reps',
     });
@@ -190,7 +190,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getSuggestedSummary(sets, 'cardio', 60, 'kg')).toEqual({
+    expect(getSuggestedSummary(sets, 'cardio', 60, 'kg', 'km')).toEqual({
       summary: '11:00 • 2.1 km',
       delta: '+1:00 min',
     });
@@ -208,7 +208,7 @@ describe('workout progression helpers', () => {
         height: null,
       },
     ];
-    expect(getSuggestedSummary(sets, 'timed', 5, 'kg')).toEqual({
+    expect(getSuggestedSummary(sets, 'timed', 5, 'kg', 'km')).toEqual({
       summary: '1:05',
       delta: '+5 sec',
     });

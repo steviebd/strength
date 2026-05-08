@@ -49,14 +49,14 @@ describe('cleanupStaleLocalData', () => {
     const { cleanupStaleLocalData } = await import('./local-cleanup');
     await cleanupStaleLocalData('user-1');
 
-    expect(mockDb.delete).toHaveBeenCalledTimes(2);
+    expect(mockDb.delete).toHaveBeenCalledTimes(4);
   });
 
   test('deletes WHOOP data older than 7 days', async () => {
     const { cleanupStaleLocalData } = await import('./local-cleanup');
     await cleanupStaleLocalData('user-1');
 
-    expect(mockDb.delete).toHaveBeenCalledTimes(2);
+    expect(mockDb.delete).toHaveBeenCalledTimes(4);
   });
 
   test('returns early when db is unavailable', async () => {

@@ -1,4 +1,5 @@
 import type { ExerciseHistorySnapshot } from '@/db/workouts';
+import { formatDistance, formatDuration, type DistanceUnit } from './units';
 
 export type WeightUnit = 'kg' | 'lbs';
 export type ProgressionMode = 'progress' | 'use_last' | 'empty' | 'custom' | null;
@@ -90,29 +91,16 @@ export function hasProgressionHistoryData(
   );
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds <= 0) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins > 0 && secs > 0) return `${mins}:${secs.toString().padStart(2, '0')}`;
-  if (mins > 0) return `${mins}:00`;
-  return `${secs} sec`;
-}
-
 function formatDurationIncrement(seconds: number): string {
   const formatted = formatDuration(seconds);
   return formatted.includes(':') ? `${formatted} min` : formatted;
-}
-
-function formatDistance(meters: number): string {
-  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-  return `${meters} m`;
 }
 
 export function getLastWorkoutSummary(
   sets: Array<ProgressionHistorySet>,
   exerciseType: string | null | undefined,
   weightUnit: WeightUnit,
+  distanceUnit: DistanceUnit,
 ): string {
   const type = exerciseType ?? 'weights';
   const hasWeight = hasWeightInSets(sets);
@@ -150,7 +138,8 @@ export function getLastWorkoutSummary(
     if (!best) return 'No data';
     const parts: string[] = [];
     if (best.duration !== null && best.duration > 0) parts.push(formatDuration(best.duration));
-    if (best.distance !== null && best.distance > 0) parts.push(formatDistance(best.distance));
+    if (best.distance !== null && best.distance > 0)
+      parts.push(formatDistance(best.distance, distanceUnit));
     return parts.length > 0 ? parts.join(' • ') : 'No data';
   }
 
@@ -171,6 +160,7 @@ export function getSuggestedSummary(
   exerciseType: string | null | undefined,
   increment: number,
   weightUnit: WeightUnit,
+  distanceUnit: DistanceUnit,
 ): { summary: string; delta: string } {
   const type = exerciseType ?? 'weights';
   const hasWeight = hasWeightInSets(sets);
@@ -212,7 +202,8 @@ export function getSuggestedSummary(
     const parts: string[] = [];
     if (best.duration !== null && best.duration > 0)
       parts.push(formatDuration(best.duration + increment));
-    if (best.distance !== null && best.distance > 0) parts.push(formatDistance(best.distance));
+    if (best.distance !== null && best.distance > 0)
+      parts.push(formatDistance(best.distance, distanceUnit));
     const summary = parts.length > 0 ? parts.join(' • ') : 'No data';
     return { summary, delta: `+${formatDurationIncrement(increment)}` };
   }

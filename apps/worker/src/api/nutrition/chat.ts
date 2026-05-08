@@ -206,7 +206,8 @@ async function generateNutritionChatAssistantContent({
 
   const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
   const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
-  const bodyweightKg = bodyStats?.bodyweightKg ?? null;
+  const bodyweightKg =
+    bodyStats?.bodyweightKg != null ? Math.round(bodyStats.bodyweightKg * 10) / 10 : null;
   const hasProgram = !!activeProgram;
 
   const {
@@ -386,12 +387,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   if (!shouldSkipRateLimit(c.env)) {
-    const rateLimit = await checkRateLimit(
-      db,
-      userId,
-      'nutrition-chat',
-      getRateLimitPerHour(c.env),
-    );
+    const rateLimit = await checkRateLimit(userId, 'nutrition-chat', getRateLimitPerHour(c.env));
     if (!rateLimit.allowed) {
       return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
     }

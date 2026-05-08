@@ -28,12 +28,9 @@ export function useTemplates() {
       return cached.length > 0 ? cached : null;
     },
     writeCacheFn: (data) => cacheTemplates(userId!, data),
-    networkFirst: true,
     fallbackToCacheOnError: true,
     isDirtyFn: () => hasPendingTrainingWrites(userId!, ['template']),
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: Infinity,
   });
 
   const createTemplate = useMutation({

@@ -17,6 +17,7 @@ import {
   type WeightUnit,
 } from '@/lib/workout-progression';
 import { accent, border, colors, layout, radius, spacing, text, typography } from '@/theme';
+import { formatDistance, formatHeight, type DistanceUnit, type HeightUnit } from '@/lib/units';
 
 export type ProgressionExercisePreview = {
   exerciseId: string;
@@ -64,6 +65,8 @@ type ProgressionPromptModalProps = {
   title?: string;
   subtitle?: string;
   weightUnit: WeightUnit;
+  distanceUnit: DistanceUnit;
+  heightUnit: HeightUnit;
   defaultIncrement: number;
   templateDefaults?: ProgressionDefaults;
   exercises: ProgressionExercisePreview[];
@@ -80,7 +83,12 @@ function formatDate(date: string | null) {
   return `Last ${parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
 }
 
-function formatSetValue(set: ProgressionExercisePreview['sets'][number], weightUnit: WeightUnit) {
+function formatSetValue(
+  set: ProgressionExercisePreview['sets'][number],
+  weightUnit: WeightUnit,
+  distanceUnit: DistanceUnit,
+  heightUnit: HeightUnit,
+) {
   const parts: string[] = [];
   if (set.weight !== null && set.weight > 0) parts.push(`${set.weight} ${weightUnit}`);
   if (set.reps !== null) parts.push(`${set.reps} reps`);
@@ -92,10 +100,11 @@ function formatSetValue(set: ProgressionExercisePreview['sets'][number], weightU
     else parts.push(`${secs} sec`);
   }
   if (set.distance !== null && set.distance > 0) {
-    if (set.distance >= 1000) parts.push(`${(set.distance / 1000).toFixed(1)} km`);
-    else parts.push(`${set.distance} m`);
+    parts.push(formatDistance(set.distance, distanceUnit));
   }
-  if (set.height !== null && set.height > 0) parts.push(`${set.height} cm`);
+  if (set.height !== null && set.height > 0) {
+    parts.push(formatHeight(set.height, heightUnit));
+  }
   return parts.length > 0 ? parts.join(' × ') : 'No target';
 }
 
@@ -213,6 +222,8 @@ export function ProgressionPromptModal({
   title = 'Progress from last workout',
   subtitle,
   weightUnit,
+  distanceUnit,
+  heightUnit,
   defaultIncrement,
   templateDefaults,
   exercises,
@@ -407,12 +418,14 @@ export function ProgressionPromptModal({
               exercise.sets,
               exercise.exerciseType,
               weightUnit,
+              distanceUnit,
             );
             const suggested = getSuggestedSummary(
               exercise.sets,
               exercise.exerciseType,
               previewIncrement,
               weightUnit,
+              distanceUnit,
             );
             const isExpanded = expandedExercises.has(exercise.exerciseId);
 
@@ -480,8 +493,11 @@ export function ProgressionPromptModal({
                       return (
                         <View key={`${exercise.exerciseId}:set:${set.setNumber ?? index}`}>
                           <Text style={styles.setLine}>
-                            Set {set.setNumber ?? index + 1} · {formatSetValue(set, weightUnit)}
-                            {showProgression ? `  →  ${formatSetValue(nextSet, weightUnit)}` : ''}
+                            Set {set.setNumber ?? index + 1} ·{' '}
+                            {formatSetValue(set, weightUnit, distanceUnit, heightUnit)}
+                            {showProgression
+                              ? `  →  ${formatSetValue(nextSet, weightUnit, distanceUnit, heightUnit)}`
+                              : ''}
                           </Text>
                         </View>
                       );

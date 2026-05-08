@@ -815,5 +815,48 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     );
   });
 
+  applyVersionedMigration(sqlite, '20260507_nutrition_local_tables', () => {
+    sqlite.execSync(`
+      CREATE TABLE IF NOT EXISTS local_nutrition_chat_messages (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        has_image INTEGER NOT NULL DEFAULT 0,
+        image_uri TEXT,
+        created_at INTEGER NOT NULL,
+        synced_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS local_nutrition_entries (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        meal_type TEXT,
+        name TEXT,
+        calories REAL,
+        protein_g REAL,
+        carbs_g REAL,
+        fat_g REAL,
+        logged_at INTEGER NOT NULL,
+        synced_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS local_nutrition_training_context (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL UNIQUE,
+        training_type TEXT NOT NULL,
+        custom_label TEXT,
+        synced_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_local_nutrition_chat_messages_user_date
+        ON local_nutrition_chat_messages (user_id, date, created_at);
+      CREATE INDEX IF NOT EXISTS idx_local_nutrition_entries_user_date
+        ON local_nutrition_entries (user_id, date, logged_at);
+    `);
+  });
+
   createLocalIndexes(sqlite);
 }

@@ -22,4 +22,5 @@ export {
   type ProgramStartPlan,
 } from './training/program-start';
 export * from './training/program-advance';
+export * from './training/set-values';
 export * from './timezones';

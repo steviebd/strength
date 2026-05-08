@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   amrapText: {
-    fontSize: 10,
+    fontSize: typography.fontSizes.xxs,
     fontWeight: typography.fontWeights.bold,
     color: colors.warning,
   },

@@ -3,7 +3,7 @@ import { ActivityIndicator, View, AppState } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '@/theme';
+import { colors, typography } from '@/theme';
 import { UserPreferencesProvider, useUserPreferences } from '@/context/UserPreferencesContext';
 import { WorkoutSessionProvider } from '@/context/WorkoutSessionContext';
 import { FirstSyncGate } from '@/components/FirstSyncGate';
@@ -12,7 +12,7 @@ import { apiFetch } from '@/lib/api';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
 import { getLocalDb } from '@/db/client';
 import { localBodyStats } from '@/db/local-schema';
-import { useTrainingSync } from '@/hooks/useTrainingSync';
+import { useDataSync } from '@/hooks/useDataSync';
 import { TabIconWithBadge } from '@/components/TabIconWithBadge';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
 import { WeightPickerModal } from '@/components/profile/WeightPickerModal';
@@ -101,7 +101,7 @@ function AppTabs() {
       });
     },
   });
-  useTrainingSync();
+  useDataSync();
 
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? null;
@@ -119,7 +119,7 @@ function AppTabs() {
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabelStyle: {
             fontSize: 12,
-            fontWeight: '600',
+            fontWeight: typography.fontWeights.semibold,
             marginTop: 2,
           },
           tabBarItemStyle: {

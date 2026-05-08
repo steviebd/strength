@@ -1,9 +1,11 @@
+/* oxlint-disable no-unused-vars */
 import { eq, and, or, gt, gte, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { exerciseLibrary } from '@strength/db';
 import { getProgramCycleById, getOrCreateExerciseForUser } from '@strength/db';
 import { chunkArray, getSafeInsertChunkSize, chunkedQueryMany } from '@strength/db';
 import {
+  computePlannedSetValues,
   consolidateProgramTargetLifts,
   consolidateProgramTargetLiftsForWorkoutSections,
   getCurrentCycleWorkout,
@@ -30,21 +32,16 @@ export {
 };
 
 function buildProgramSetValues(segment: NormalizedProgramTargetLift) {
-  const type = segment.exerciseType ?? 'weights';
-  const reps = segment.isAmrap ? null : normalizeProgramReps(segment.reps);
-  const weight =
-    type === 'weights'
-      ? (segment.targetWeight ?? 0) + segment.addedWeight
-      : type === 'bodyweight' && ((segment.targetWeight ?? 0) > 0 || segment.addedWeight > 0)
-        ? (segment.targetWeight ?? 0) + segment.addedWeight
-        : null;
-  return {
-    weight,
-    reps: type === 'timed' || type === 'cardio' ? null : reps,
-    duration: type === 'timed' || type === 'cardio' ? (segment.targetDuration ?? 0) : null,
-    distance: type === 'cardio' ? segment.targetDistance : null,
-    height: type === 'plyo' ? (segment.targetHeight ?? 0) : null,
-  };
+  return computePlannedSetValues({
+    exerciseType: segment.exerciseType,
+    targetWeight: segment.targetWeight,
+    addedWeight: segment.addedWeight,
+    reps: normalizeProgramReps(segment.reps),
+    isAmrap: segment.isAmrap,
+    targetDuration: segment.targetDuration,
+    targetDistance: segment.targetDistance,
+    targetHeight: segment.targetHeight,
+  });
 }
 
 function hasAnyRecordedOneRM(oneRMs: {

@@ -244,20 +244,30 @@ router.get(
       ]);
 
       const normalizedRecovery = recovery.map((row) => {
-        const rawData = parseJsonObject(row.rawData);
-        const score = getObject(rawData, 'score');
         const storedDate =
           row.date instanceof Date && !Number.isNaN(row.date.getTime()) ? row.date.getTime() : null;
+
+        let rawData: Record<string, unknown> | null = null;
+        let score: Record<string, unknown> | null = null;
+        const getRawData = () => {
+          if (rawData === null) {
+            rawData = parseJsonObject(row.rawData);
+            score = getObject(rawData, 'score');
+          }
+          return { rawData, score };
+        };
+
         const fallbackDate =
-          getTimestamp(rawData, 'created_at') ??
-          getTimestamp(rawData, 'updated_at') ??
+          getTimestamp(getRawData().rawData!, 'created_at') ??
+          getTimestamp(getRawData().rawData!, 'updated_at') ??
           (row.createdAt instanceof Date ? row.createdAt.getTime() : null);
 
         return withWhoopFallbacks(row, {
           date: new Date(storedDate ?? fallbackDate ?? Date.now()),
-          recoveryScore: row.recoveryScore ?? getNumber(score, 'recovery_score'),
-          hrvRmssdMilli: row.hrvRmssdMilli ?? getNumber(score, 'hrv_rmssd_milli'),
-          restingHeartRate: row.restingHeartRate ?? getNumber(score, 'resting_heart_rate'),
+          recoveryScore: row.recoveryScore ?? getNumber(getRawData().score, 'recovery_score'),
+          hrvRmssdMilli: row.hrvRmssdMilli ?? getNumber(getRawData().score, 'hrv_rmssd_milli'),
+          restingHeartRate:
+            row.restingHeartRate ?? getNumber(getRawData().score, 'resting_heart_rate'),
         });
       });
 
@@ -266,10 +276,17 @@ router.get(
       );
 
       const normalizedSleep = sleep.map((row) => {
-        const rawData = parseJsonObject(row.rawData);
-        const score = getObject(rawData, 'score');
-        const stageSummary = getObject(score, 'stage_summary');
-        const sleepNeeded = getObject(score, 'sleep_needed');
+        let rawData: Record<string, unknown> | null = null;
+        let score: Record<string, unknown> | null = null;
+        const getRawData = () => {
+          if (rawData === null) {
+            rawData = parseJsonObject(row.rawData);
+            score = getObject(rawData, 'score');
+          }
+          return { rawData, score };
+        };
+        const stageSummary = getObject(getRawData().score, 'stage_summary');
+        const sleepNeeded = getObject(getRawData().score, 'sleep_needed');
         const lightSleep =
           row.lightSleepTimeMilli ?? getNumber(stageSummary, 'total_light_sleep_time_milli');
         const slowWaveSleep =
@@ -284,17 +301,20 @@ router.get(
 
         return withWhoopFallbacks(row, {
           sleepPerformancePercentage:
-            row.sleepPerformancePercentage ?? getNumber(score, 'sleep_performance_percentage'),
+            row.sleepPerformancePercentage ??
+            getNumber(getRawData().score, 'sleep_performance_percentage'),
           totalSleepTimeMilli: totalSleepTime > 0 ? totalSleepTime : null,
           sleepEfficiencyPercentage:
-            row.sleepEfficiencyPercentage ?? getNumber(score, 'sleep_efficiency_percentage'),
+            row.sleepEfficiencyPercentage ??
+            getNumber(getRawData().score, 'sleep_efficiency_percentage'),
           slowWaveSleepTimeMilli: slowWaveSleep,
           remSleepTimeMilli: remSleep,
           lightSleepTimeMilli: lightSleep,
           wakeTimeMilli: row.wakeTimeMilli ?? getNumber(stageSummary, 'total_awake_time_milli'),
           disturbanceCount: row.disturbanceCount ?? getNumber(stageSummary, 'disturbance_count'),
           sleepConsistencyPercentage:
-            row.sleepConsistencyPercentage ?? getNumber(score, 'sleep_consistency_percentage'),
+            row.sleepConsistencyPercentage ??
+            getNumber(getRawData().score, 'sleep_consistency_percentage'),
           sleepNeedBaselineMilli:
             row.sleepNeedBaselineMilli ?? getNumber(sleepNeeded, 'baseline_milli'),
           sleepNeedFromSleepDebtMilli:
@@ -304,19 +324,27 @@ router.get(
             getNumber(sleepNeeded, 'need_from_recent_strain_milli'),
           sleepNeedFromRecentNapMilli:
             row.sleepNeedFromRecentNapMilli ?? getNumber(sleepNeeded, 'need_from_recent_nap_milli'),
-          respiratoryRate: getNumber(score, 'respiratory_rate'),
+          respiratoryRate: getNumber(getRawData().score, 'respiratory_rate'),
         });
       });
 
       const normalizedCycles = cycles.map((row) => {
-        const rawData = parseJsonObject(row.rawData);
-        const score = getObject(rawData, 'score');
+        let rawData: Record<string, unknown> | null = null;
+        let score: Record<string, unknown> | null = null;
+        const getRawData = () => {
+          if (rawData === null) {
+            rawData = parseJsonObject(row.rawData);
+            score = getObject(rawData, 'score');
+          }
+          return { rawData, score };
+        };
 
         return withWhoopFallbacks(row, {
-          dayStrain: row.dayStrain ?? getNumber(score, 'strain'),
-          averageHeartRate: row.averageHeartRate ?? getNumber(score, 'average_heart_rate'),
-          maxHeartRate: row.maxHeartRate ?? getNumber(score, 'max_heart_rate'),
-          kilojoule: row.kilojoule ?? getNumber(score, 'kilojoule'),
+          dayStrain: row.dayStrain ?? getNumber(getRawData().score, 'strain'),
+          averageHeartRate:
+            row.averageHeartRate ?? getNumber(getRawData().score, 'average_heart_rate'),
+          maxHeartRate: row.maxHeartRate ?? getNumber(getRawData().score, 'max_heart_rate'),
+          kilojoule: row.kilojoule ?? getNumber(getRawData().score, 'kilojoule'),
         });
       });
 
@@ -328,13 +356,19 @@ router.get(
       });
 
       const normalizedWorkouts = workouts.map((row) => {
-        const score = parseJsonObject(row.score);
-        const kilojoule = getNumber(score, 'kilojoule');
+        let score: Record<string, unknown> | null = null;
+        const getScore = () => {
+          if (score === null) {
+            score = parseJsonObject(row.score);
+          }
+          return score;
+        };
+        const kilojoule = getNumber(getScore(), 'kilojoule');
 
         return withWhoopFallbacks(row, {
-          strain: getNumber(score, 'strain'),
-          averageHeartRate: getNumber(score, 'average_heart_rate'),
-          maxHeartRate: getNumber(score, 'max_heart_rate'),
+          strain: getNumber(getScore(), 'strain'),
+          averageHeartRate: getNumber(getScore(), 'average_heart_rate'),
+          maxHeartRate: getNumber(getScore(), 'max_heart_rate'),
           kilojoule,
           caloriesKcal: kilojoule != null ? Math.round(kilojoule / 4.184) : null,
         } as Partial<typeof row> & {

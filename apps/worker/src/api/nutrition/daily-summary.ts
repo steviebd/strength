@@ -27,7 +27,7 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
     timezoneResult.timezone,
   );
 
-  const [entries, bodyStats, trainingCtxRow, whoopData] = await Promise.all([
+  const [entries, bodyStats, trainingCtxRow, whoopData, prefs] = await Promise.all([
     db
       .select()
       .from(schema.nutritionEntries)
@@ -54,6 +54,7 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
       )
       .get(),
     getWhoopDataForDay(db, userId, validated.date, timezoneResult.timezone),
+    db.select().from(schema.userPreferences).where(eq(schema.userPreferences.userId, userId)).get(),
   ]);
 
   const trainingContext: TrainingContext | null = trainingCtxRow
@@ -117,7 +118,12 @@ export const dailySummaryHandler = createHandler(async (c, { userId, db }) => {
   } else if (bodyStats?.bodyweightKg) {
     targets = calculateMacroTargets(bodyStats.bodyweightKg, trainingContext?.type ?? null, 2500);
     targetStrategy = 'bodyweight';
-    targetExplanation = `Targets are estimated from ${bodyStats.bodyweightKg} kg bodyweight, with protein at 2.0 g/kg, fat at 0.8 g/kg, and carbs using the remaining calories.`;
+    const bwUnit = prefs?.weightUnit ?? 'kg';
+    const displayBw =
+      bwUnit === 'lbs'
+        ? Math.ceil(bodyStats.bodyweightKg * 2.20462)
+        : Math.ceil(bodyStats.bodyweightKg);
+    targetExplanation = `Targets are estimated from ${displayBw} ${bwUnit} bodyweight, with protein at 2.0 g/kg, fat at 0.8 g/kg, and carbs using the remaining calories.`;
   } else {
     targets = calculateMacroTargets(80, trainingContext?.type ?? null, 2500);
     targetStrategy = 'default';

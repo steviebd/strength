@@ -113,6 +113,7 @@ export default function Profile() {
     writeCacheFn: (fresh) => cacheBodyStats(session!.user.id, fresh, true),
     isDirtyFn: () => hasPendingTrainingWrites(session!.user.id, ['body_stats']),
     fallbackToCacheOnError: true,
+    staleTime: Infinity,
   });
 
   const saveBodyweightMutation = useMutation({
@@ -450,43 +451,7 @@ export default function Profile() {
       const returnTo = Linking.createURL('/whoop-callback');
       const result = await connectWhoop(returnTo);
       if (result.authUrl) {
-        // Open browser for WHOOP auth. The deep link handler (whoop-callback.tsx)
-        // will handle the redirect result and route back to this screen with
-        // whoop=connected or error params. openBrowserAsync does NOT block on
-        // the redirect, so the deep link is the single source of truth.
         await WebBrowser.openBrowserAsync(result.authUrl);
-        // Poll whoop status as a fallback in case the deep link does not fire
-        // (e.g. if the user dismisses the browser and the system intent is lost).
-        // Stop once connected or after 60 seconds.
-        let attempts = 0;
-        const maxAttempts = 30;
-        const poll = () => {
-          fetchWhoopStatus()
-            .then((status) => {
-              attempts++;
-              if (status.connected) {
-                setWhoopStatus(status);
-                setSyncResult('WHOOP connected successfully!');
-                setHighlightWhoopCard(true);
-                setShouldFocusWhoopCard(true);
-                setWhoopLoading(false);
-                return;
-              }
-              if (attempts < maxAttempts) {
-                setTimeout(poll, 2000);
-              } else {
-                setWhoopLoading(false);
-              }
-            })
-            .catch(() => {
-              if (attempts < maxAttempts) {
-                setTimeout(poll, 2000);
-              } else {
-                setWhoopLoading(false);
-              }
-            });
-        };
-        setTimeout(poll, 2000);
       } else if (result.error) {
         setError(result.error);
         setWhoopLoading(false);
@@ -548,15 +513,13 @@ export default function Profile() {
         setHighlightWhoopCard(true);
         setShouldFocusWhoopCard(true);
       }
-      void loadWhoopStatus();
-      router.replace('/(app)/profile');
+      router.setParams({ whoop: undefined, focus: undefined });
       return;
     }
 
     if (typeof searchParams.error === 'string' && searchParams.error.length > 0) {
       setError(decodeURIComponent(searchParams.error).replace(/_/g, ' '));
-      void loadWhoopStatus();
-      router.replace('/(app)/profile');
+      router.setParams({ error: undefined });
     }
   }, [router, searchParams.error, searchParams.focus, searchParams.whoop, session?.user]);
 
@@ -662,7 +625,7 @@ export default function Profile() {
               ]}
             >
               {saveBodyweightMutation.isPending ? (
-                <ActivityIndicator color="#ffffff" size="small" />
+                <ActivityIndicator color={colors.text} size="small" />
               ) : (
                 <Text style={styles.saveButtonText}>Save</Text>
               )}
@@ -699,8 +662,8 @@ export default function Profile() {
                       {auto.calories} cal | {auto.proteinG}g P | {auto.carbsG}g C | {auto.fatG}g F
                       {'\n'}
                       <Text style={styles.autoTargetsSubtext}>
-                        Based on {bodyStats?.bodyweightKg}kg bodyweight. Adjusted daily by training
-                        type.
+                        Based on {convertToDisplayWeight(bodyStats?.bodyweightKg ?? 0, weightUnit)}
+                        {weightUnit} bodyweight. Adjusted daily by training type.
                       </Text>
                     </Text>
                   );
@@ -791,7 +754,7 @@ export default function Profile() {
                   ]}
                 >
                   {saveTargetsMutation.isPending ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    <ActivityIndicator color={colors.text} size="small" />
                   ) : (
                     <Text style={styles.targetSaveButtonText}>Save targets</Text>
                   )}
@@ -850,7 +813,7 @@ export default function Profile() {
               >
                 {syncing ? (
                   <View style={styles.buttonSpinner}>
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    <ActivityIndicator color={colors.text} size="small" />
                   </View>
                 ) : (
                   <Text style={styles.buttonPrimaryText}>Sync Data</Text>
@@ -893,7 +856,7 @@ export default function Profile() {
             >
               {whoopLoading ? (
                 <View style={styles.buttonSpinner}>
-                  <ActivityIndicator color="#ffffff" size="small" />
+                  <ActivityIndicator color={colors.text} size="small" />
                 </View>
               ) : (
                 <Text style={styles.buttonPrimaryText}>Connect WHOOP</Text>
@@ -1103,6 +1066,7 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.textMuted,
     fontSize: typography.fontSizes.base,
+    lineHeight: textRoles.body.lineHeight,
   },
   avatarSection: {
     alignItems: 'center',
@@ -1133,6 +1097,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
     marginTop: spacing.xs,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   card: {
     backgroundColor: colors.surface,
@@ -1155,6 +1120,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     marginBottom: spacing.md,
+    lineHeight: textRoles.cardTitle.lineHeight,
   },
   row: {
     flexDirection: 'row',
@@ -1170,10 +1136,12 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   rowValue: {
     fontSize: typography.fontSizes.base,
     color: colors.text,
+    lineHeight: textRoles.body.lineHeight,
   },
   rowValueFlex: {
     flex: 1,
@@ -1182,7 +1150,7 @@ const styles = StyleSheet.create({
   rowValueRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
     flexShrink: 1,
     marginLeft: spacing.md,
   },
@@ -1193,16 +1161,18 @@ const styles = StyleSheet.create({
   rowChevron: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: spacing.sm,
+    height: spacing.sm,
+    borderRadius: spacing.xs,
     backgroundColor: colors.success,
   },
   statusConnectedText: {
     fontSize: typography.fontSizes.sm,
     color: colors.success,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   loadingRow: {
     alignItems: 'center',
@@ -1226,14 +1196,16 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonSecondary: {
     backgroundColor: colors.border,
   },
   buttonSecondaryText: {
-    fontSize: typography.fontSizes.base,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonDanger: {
     borderWidth: 1,
@@ -1241,12 +1213,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   buttonDangerText: {
-    fontSize: typography.fontSizes.base,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.accent,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   buttonWhoop: {
-    backgroundColor: '#E41E3F',
+    backgroundColor: colors.error,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -1263,12 +1236,13 @@ const styles = StyleSheet.create({
   syncResultText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+    lineHeight: textRoles.caption.lineHeight,
   },
   connectDescription: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
     marginBottom: spacing.md,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   errorBox: {
     marginTop: spacing.sm + spacing.xs,
@@ -1281,10 +1255,11 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   unitToggle: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   unitButton: {
     borderRadius: radius.sm,
@@ -1300,6 +1275,7 @@ const styles = StyleSheet.create({
   unitButtonText: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   unitButtonTextActive: {
     color: colors.text,
@@ -1310,13 +1286,14 @@ const styles = StyleSheet.create({
   buttonSignOut: {
     marginTop: spacing.xl,
     backgroundColor: colors.accent,
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
   },
   buttonSignOutText: {
-    fontSize: typography.fontSizes.base,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     textAlign: 'center',
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   versionRow: {
     alignItems: 'center',
@@ -1325,6 +1302,7 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
+    lineHeight: textRoles.caption.lineHeight,
   },
   bodyweightRow: {
     flexDirection: 'row',
@@ -1337,7 +1315,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 8,
+    gap: spacing.sm,
   },
   bodyweightInputContainer: {
     flex: 1,
@@ -1361,6 +1339,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   offlineBanner: {
     marginTop: spacing.sm,
@@ -1373,6 +1352,7 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     fontSize: typography.fontSizes.sm,
     color: colors.error,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   nutritionGoalsSection: {
     marginTop: spacing.md,
@@ -1396,12 +1376,12 @@ const styles = StyleSheet.create({
   autoTargetsText: {
     fontSize: typography.fontSizes.base,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   autoTargetsSubtext: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
-    lineHeight: 20,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   customTargetsBox: {
     gap: spacing.md,
@@ -1420,6 +1400,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
+    lineHeight: textRoles.caption.lineHeight,
   },
   targetInputContainer: {
     flex: 1,
@@ -1433,6 +1414,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.error,
     textAlign: 'center',
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   targetButtonRow: {
     flexDirection: 'row',
@@ -1451,6 +1433,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
     textAlign: 'center',
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   targetSaveButton: {
     flex: 1,
@@ -1464,6 +1447,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.buttonSmall.lineHeight,
   },
   targetButtonDisabled: {
     opacity: 0.5,

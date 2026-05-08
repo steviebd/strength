@@ -1,7 +1,9 @@
+/* oxlint-disable no-unused-vars */
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   WORKOUT_TYPE_ONE_RM_TEST,
   WORKOUT_TYPE_TRAINING,
+  computePlannedSetValues,
   consolidateProgramTargetLiftsForWorkoutSections,
   exerciseLibrary,
   getCurrentCycleWorkout,
@@ -41,6 +43,7 @@ export interface LocalWorkoutHistoryItem {
   exerciseCount: number;
   syncStatus: WorkoutSyncStatus;
   lastSyncError: string | null;
+  programName: string | null;
 }
 
 export interface LocalActiveWorkoutDraftItem {
@@ -202,19 +205,16 @@ function buildPlannedSetValues(input: {
   targetDistance?: number | null;
   targetHeight?: number | null;
 }) {
-  const type = input.exerciseType ?? 'weights';
-  return {
-    weight:
-      type === 'weights'
-        ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
-        : type === 'bodyweight' && ((input.targetWeight ?? 0) > 0 || (input.addedWeight ?? 0) > 0)
-          ? (input.targetWeight ?? 0) + (input.addedWeight ?? 0)
-          : null,
-    reps: input.isAmrap || type === 'timed' || type === 'cardio' ? null : (input.reps ?? 10),
-    duration: type === 'timed' || type === 'cardio' ? (input.targetDuration ?? 0) : null,
-    distance: type === 'cardio' ? (input.targetDistance ?? null) : null,
-    height: type === 'plyo' ? (input.targetHeight ?? 0) : null,
-  };
+  return computePlannedSetValues({
+    exerciseType: input.exerciseType,
+    targetWeight: input.targetWeight,
+    addedWeight: input.addedWeight,
+    reps: input.reps ?? 10,
+    isAmrap: input.isAmrap,
+    targetDuration: input.targetDuration,
+    targetDistance: input.targetDistance,
+    targetHeight: input.targetHeight,
+  });
 }
 
 function getLibraryExerciseType(libraryId: string | null | undefined) {
@@ -1260,6 +1260,21 @@ export async function listLocalWorkoutHistory(userId: string, limit = 50) {
     counts.set(row.workoutId, (counts.get(row.workoutId) ?? 0) + 1);
   }
 
+  const programCycleIds = [
+    ...new Set(rows.map((row) => row.programCycleId).filter(Boolean)),
+  ] as string[];
+  const programNameMap = new Map<string, string>();
+  if (programCycleIds.length > 0) {
+    const cycles = db
+      .select({ id: localProgramCycles.id, name: localProgramCycles.name })
+      .from(localProgramCycles)
+      .where(inArray(localProgramCycles.id, programCycleIds))
+      .all();
+    for (const cycle of cycles) {
+      programNameMap.set(cycle.id, cycle.name);
+    }
+  }
+
   return rows.map(
     (row): LocalWorkoutHistoryItem => ({
       id: row.id,
@@ -1272,6 +1287,7 @@ export async function listLocalWorkoutHistory(userId: string, limit = 50) {
       exerciseCount: counts.get(row.id) ?? 0,
       syncStatus: row.syncStatus as WorkoutSyncStatus,
       lastSyncError: row.lastSyncError ?? null,
+      programName: row.programCycleId ? (programNameMap.get(row.programCycleId) ?? null) : null,
     }),
   );
 }

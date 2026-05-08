@@ -73,6 +73,29 @@ export async function getRunnableSyncItems(
     .all();
 }
 
+export async function getRecoverableWorkoutSyncItems(
+  userId: string,
+  limit = 10,
+): Promise<LocalSyncQueueItem[]> {
+  const db = getLocalDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(localSyncQueue)
+    .where(
+      and(
+        eq(localSyncQueue.userId, userId),
+        eq(localSyncQueue.entityType, 'workout'),
+        eq(localSyncQueue.operation, 'complete_workout'),
+        inArray(localSyncQueue.status, ['pending', 'syncing', 'failed']),
+      ),
+    )
+    .orderBy(localSyncQueue.createdAt)
+    .limit(limit)
+    .all();
+}
+
 export async function markSyncItemStatus(
   id: string,
   status: SyncQueueStatus,

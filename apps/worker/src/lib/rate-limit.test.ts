@@ -1,41 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { checkRateLimit, getRateLimitPerHour, getRateLimitByEndpoint } from './rate-limit';
-
-function createDb(config: { selectResults: (Record<string, unknown> | null)[] }) {
-  let selectIndex = 0;
-
-  return {
-    insert: () => ({
-      values: () => ({
-        onConflictDoUpdate: () => ({
-          run: async () => ({ success: true }),
-        }),
-      }),
-    }),
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          get: async () => {
-            const result = config.selectResults[selectIndex++];
-            if (!result) return undefined;
-            return {
-              ...result,
-              id: (result.id as string) ?? 'rl-1',
-              userId: 'user-1',
-              endpoint: 'test',
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            };
-          },
-        }),
-      }),
-    }),
-  } as any;
-}
-
-function makeRow(requests: number, windowStart: Date, id?: string): Record<string, unknown> {
-  return { requests, windowStart, ...(id ? { id } : {}) };
-}
+import {
+  checkRateLimit,
+  getRateLimitPerHour,
+  getRateLimitByEndpoint,
+  getRateLimitGranularity,
+} from './rate-limit';
 
 describe('getRateLimitPerHour', () => {
   test('returns parsed env value', () => {
@@ -69,66 +38,113 @@ describe('getRateLimitByEndpoint', () => {
   });
 });
 
+describe('getRateLimitGranularity', () => {
+  test('returns skip for GET cheap read paths', () => {
+    expect(getRateLimitGranularity('GET', '/api/home/summary')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/programs/active')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/programs/latest-1rms')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/nutrition/entries')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/nutrition/daily-summary')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/nutrition/body-stats')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/nutrition/training-context')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/nutrition/chat/jobs/abc')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/nutrition/chat/history')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/exercises')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/exercises/123')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/templates')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/templates/abc')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/me')).toBe('skip');
+    expect(getRateLimitGranularity('GET', '/api/profile/preferences')).toBe('skip');
+  });
+
+  test('does not skip non-GET on cheap read paths', () => {
+    expect(getRateLimitGranularity('POST', '/api/exercises')).toBe('endpoint');
+  });
+
+  test('returns endpoint for auth paths', () => {
+    expect(getRateLimitGranularity('GET', '/api/auth/sign-in/email')).toBe('endpoint');
+    expect(getRateLimitGranularity('POST', '/api/auth/sign-in/email')).toBe('endpoint');
+  });
+
+  test('returns endpoint for whoop paths', () => {
+    expect(getRateLimitGranularity('GET', '/api/whoop/status')).toBe('endpoint');
+  });
+
+  test('returns endpoint for POST nutrition chat', () => {
+    expect(getRateLimitGranularity('POST', '/api/nutrition/chat')).toBe('endpoint');
+  });
+
+  test('returns endpoint for mutating workout paths', () => {
+    expect(getRateLimitGranularity('POST', '/api/workouts/123')).toBe('endpoint');
+    expect(getRateLimitGranularity('PUT', '/api/workouts/123')).toBe('endpoint');
+    expect(getRateLimitGranularity('DELETE', '/api/workouts/123')).toBe('endpoint');
+  });
+
+  test('returns endpoint for general POST/PUT/DELETE', () => {
+    expect(getRateLimitGranularity('POST', '/api/programs')).toBe('endpoint');
+    expect(getRateLimitGranularity('DELETE', '/api/whatever')).toBe('endpoint');
+  });
+
+  test('returns read as default for authenticated GET', () => {
+    expect(getRateLimitGranularity('GET', '/api/workouts')).toBe('read');
+    expect(getRateLimitGranularity('GET', '/api/programs')).toBe('read');
+    expect(getRateLimitGranularity('GET', '/api/something-else')).toBe('read');
+  });
+});
+
 describe('checkRateLimit', () => {
-  test('allows first request and inserts row', async () => {
-    const now = Date.now();
-    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
-    const db = createDb({ selectResults: [makeRow(1, windowStart)] });
-    const result = await checkRateLimit(db, 'user-1', 'test', 10);
+  test('allows first request', async () => {
+    const userId = `first-${Date.now()}`;
+    const result = await checkRateLimit(userId, 'test', 10);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(9);
   });
 
-  test('allows request within window (atomic increment)', async () => {
-    const now = Date.now();
-    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
-
-    const db = createDb({
-      selectResults: [makeRow(4, windowStart)],
-    });
-
-    const result = await checkRateLimit(db, 'user-1', 'test', 10);
+  test('allows request within window', async () => {
+    const userId = `within-${Date.now()}`;
+    await checkRateLimit(userId, 'test', 10);
+    await checkRateLimit(userId, 'test', 10);
+    await checkRateLimit(userId, 'test', 10);
+    await checkRateLimit(userId, 'test', 10);
+    const result = await checkRateLimit(userId, 'test', 10);
     expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(6);
-  });
-
-  test('resets old window and allows after hour', async () => {
-    const now = Date.now();
-    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
-
-    const db = createDb({
-      selectResults: [makeRow(1, windowStart)],
-    });
-
-    const result = await checkRateLimit(db, 'user-1', 'test', 10);
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(9);
+    expect(result.remaining).toBe(5);
   });
 
   test('blocks when limit reached', async () => {
-    const now = Date.now();
-    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
-
-    const db = createDb({
-      selectResults: [makeRow(11, windowStart)],
-    });
-
-    const result = await checkRateLimit(db, 'user-1', 'test', 10);
+    const userId = `block-${Date.now()}`;
+    const limit = 3;
+    for (let i = 0; i < limit; i++) {
+      await checkRateLimit(userId, 'test', limit);
+    }
+    const result = await checkRateLimit(userId, 'test', limit);
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
+  });
+
+  test('retryAfter is positive when blocked', async () => {
+    const userId = `retry-${Date.now()}`;
+    const limit = 1;
+    await checkRateLimit(userId, 'test', limit);
+    const result = await checkRateLimit(userId, 'test', limit);
+    expect(result.allowed).toBe(false);
     expect(result.retryAfter).toBeGreaterThan(0);
   });
 
-  test('handles duplicate insert by falling through to atomic increment', async () => {
-    const now = Date.now();
-    const windowStart = new Date(Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000));
+  test('different endpoints do not share buckets', async () => {
+    const userId = `ep-${Date.now()}`;
+    const r1 = await checkRateLimit(userId, 'endpoint-a', 10);
+    const r2 = await checkRateLimit(userId, 'endpoint-b', 10);
+    expect(r1.allowed).toBe(true);
+    expect(r2.allowed).toBe(true);
+  });
 
-    const db = createDb({
-      selectResults: [makeRow(2, windowStart)],
-    });
-
-    const result = await checkRateLimit(db, 'user-1', 'test', 10);
-    expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(8);
+  test('different users do not share buckets', async () => {
+    const a = `ua-${Date.now()}`;
+    const b = `ub-${Date.now()}`;
+    const r1 = await checkRateLimit(a, 'test', 1);
+    const r2 = await checkRateLimit(b, 'test', 1);
+    expect(r1.allowed).toBe(true);
+    expect(r2.allowed).toBe(true);
   });
 });

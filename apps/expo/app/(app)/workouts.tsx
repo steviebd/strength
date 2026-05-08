@@ -70,7 +70,7 @@ import { eq } from 'drizzle-orm';
 import { localTemplateExercises } from '@/db/local-schema';
 import type { Template } from '@/components/template/TemplateEditor/types';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, radius, spacing, statusBg, typography } from '@/theme';
 
 interface WorkoutHistoryItem {
   id: string;
@@ -83,6 +83,7 @@ interface WorkoutHistoryItem {
   exerciseCount: number | null;
   syncStatus?: WorkoutSyncStatus;
   lastSyncError?: string | null;
+  programName?: string | null;
 }
 
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
@@ -133,7 +134,7 @@ export default function WorkoutsIndex() {
   const [showStartWorkout, setShowStartWorkout] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const { startWorkout, isLoading, error: workoutSessionError } = useWorkoutSessionContext();
-  const { weightUnit } = useUserPreferences();
+  const { weightUnit, distanceUnit, heightUnit } = useUserPreferences();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
 
@@ -209,9 +210,8 @@ export default function WorkoutsIndex() {
   useEffect(() => {
     if (view === 'history') {
       void loadLocalHistory();
-      void queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     }
-  }, [loadLocalHistory, view, queryClient]);
+  }, [loadLocalHistory, view]);
 
   useEffect(() => {
     if (params.focusProgramId && activePrograms.length > 0) {
@@ -269,9 +269,12 @@ export default function WorkoutsIndex() {
     for (const item of localHistory) {
       byId.set(item.id, item);
     }
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-    );
+    return Array.from(byId.values())
+      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+      .map((item) => ({
+        ...item,
+        name: item.programName ? `${item.programName} - ${item.name}` : item.name,
+      }));
   }, [localHistory, workoutHistory]);
 
   const getDisplaySessionNumber = (program: ActiveProgram) =>
@@ -985,18 +988,8 @@ export default function WorkoutsIndex() {
             <View style={styles.templatesSection}>
               <SectionTitle title="Templates" />
               {offlineMessage && (
-                <View
-                  style={{
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: 'rgba(239, 68, 68, 0.2)',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    marginBottom: spacing.sm,
-                  }}
-                >
-                  <Text style={{ fontSize: 14, color: colors.error }}>{offlineMessage}</Text>
+                <View style={styles.offlineBanner}>
+                  <Text style={styles.offlineBannerText}>{offlineMessage}</Text>
                 </View>
               )}
               <TemplateList
@@ -1129,6 +1122,8 @@ export default function WorkoutsIndex() {
             : undefined
         }
         weightUnit={weightUnit}
+        distanceUnit={distanceUnit}
+        heightUnit={heightUnit}
         defaultIncrement={getDefaultProgressionIncrement(weightUnit)}
         templateDefaults={templateDefaults}
         exercises={templateProgressionPreviews}
@@ -1242,8 +1237,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(244,63,94,0.2)',
-    backgroundColor: 'rgba(244,63,94,0.1)',
+    borderColor: statusBg.dangerStrong,
+    backgroundColor: statusBg.dangerSubtle,
     paddingVertical: 14,
     paddingHorizontal: spacing.md,
   },
@@ -1378,5 +1373,18 @@ const styles = StyleSheet.create({
   },
   modalForm: {
     gap: spacing.md,
+  },
+  offlineBanner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: statusBg.errorBorder,
+    backgroundColor: statusBg.error,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  offlineBannerText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.error,
   },
 });

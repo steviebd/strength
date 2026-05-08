@@ -9,7 +9,7 @@ import {
   Text,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { colors, radius, spacing } from '@/theme';
+import { colors, radius, spacing, typography } from '@/theme';
 import { KeyboardFormLayout } from '@/components/ui/KeyboardFormLayout';
 import { MealImageCapture } from './MealImageCapture';
 
@@ -110,9 +110,9 @@ export function ChatInput({
           ]}
         >
           {isLoading ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color={colors.text} />
           ) : (
-            <Ionicons name="paper-plane" size={18} color="#ffffff" />
+            <Ionicons name="paper-plane" size={18} color={colors.text} />
           )}
         </Pressable>
       </View>
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     padding: spacing.md,
-    paddingBottom: 48,
+    paddingBottom: spacing.xxl,
   },
   containerWithPreview: {
     gap: spacing.md,
@@ -172,11 +172,11 @@ const styles = StyleSheet.create({
   previewTitle: {
     color: colors.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: typography.fontWeights.bold,
   },
   previewText: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: typography.fontSizes.sm,
     lineHeight: 18,
   },
   previewClear: {
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     color: colors.text,
-    fontSize: 15,
+    fontSize: typography.fontSizes.base,
     textAlignVertical: 'top',
   },
   sendButton: {

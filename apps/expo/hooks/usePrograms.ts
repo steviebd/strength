@@ -88,9 +88,7 @@ export function useActivePrograms() {
       ),
     writeCacheFn: (data) => cacheActivePrograms(userId!, data),
     isDirtyFn: () => hasPendingTrainingWrites(userId!, ['program', 'program_cycle', 'workout']),
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: Infinity,
   });
 
   return {
@@ -117,9 +115,7 @@ export function useLatestOneRms() {
     writeCacheFn: (data) => cacheLatestOneRMs(userId!, data),
     isDirtyFn: async () =>
       shouldUseLocalLatestOneRMs(userId!, await getCachedLatestOneRMs(userId!)),
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    staleTime: Infinity,
   });
 
   return {

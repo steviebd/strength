@@ -8,7 +8,8 @@ import {
   Surface,
 } from '@/components/ui/app-primitives';
 import { MealCard } from './MealCard';
-import { colors, radius, spacing, typography } from '@/theme';
+import { colors, radius, spacing, textRoles, typography } from '@/theme';
+import { convertToDisplayWeight } from '@strength/db/client';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
 
@@ -43,6 +44,7 @@ interface NutritionDashboardProps {
   targets: { calories: number; proteinG: number; carbsG: number; fatG: number };
   targetMeta: TargetMeta;
   bodyweightKg: number | null;
+  weightUnit: 'kg' | 'lbs';
   trainingType: TrainingType;
   onTrainingTypeChange: (type: TrainingType) => void;
   whoopData?: WhoopData | null;
@@ -81,6 +83,7 @@ export function NutritionDashboard({
   targets,
   targetMeta,
   bodyweightKg,
+  weightUnit,
   trainingType,
   onTrainingTypeChange,
   whoopData,
@@ -180,7 +183,8 @@ export function NutritionDashboard({
             <View style={styles.contextRow}>
               <Text style={styles.contextLabel}>Target basis</Text>
               <Text style={styles.contextValue}>
-                {bodyweightKg} kg bodyweight
+                {Math.ceil(convertToDisplayWeight(bodyweightKg, weightUnit))} {weightUnit}{' '}
+                bodyweight
                 {targetMeta.strategy === 'manual' ? ' with manual profile overrides' : ''}
               </Text>
             </View>
@@ -269,16 +273,18 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
+    lineHeight: textRoles.metricLabel.lineHeight,
   },
   summaryValue: {
     fontSize: typography.fontSizes.xxxl,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
-    lineHeight: 38,
+    lineHeight: textRoles.display.lineHeight,
   },
   summaryDelta: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
+    lineHeight: textRoles.body.lineHeight,
   },
   summaryDeltaOver: {
     color: colors.error,
@@ -301,7 +307,7 @@ const styles = StyleSheet.create({
   summaryExplanation: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
-    lineHeight: 20,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   macroRow: {
     flexDirection: 'row',
@@ -320,11 +326,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
     textTransform: 'uppercase',
+    lineHeight: textRoles.caption.lineHeight,
   },
   contextValue: {
     fontSize: typography.fontSizes.base,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   contextWhoopRow: {
     flexDirection: 'row',
@@ -336,6 +343,7 @@ const styles = StyleSheet.create({
   contextMeta: {
     fontSize: typography.fontSizes.sm,
     color: colors.textMuted,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   emptyState: {
     borderRadius: radius.md,
@@ -349,11 +357,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text,
+    lineHeight: textRoles.sectionTitle.lineHeight,
   },
   emptyStateText: {
     fontSize: typography.fontSizes.base,
     color: colors.textMuted,
-    lineHeight: 22,
+    lineHeight: textRoles.body.lineHeight,
   },
   mealList: {
     gap: spacing.md,

@@ -21,14 +21,13 @@ import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import {
   getNutritionChatDraft,
-  getNutritionChatMessages,
   getNutritionPendingImage,
   removeNutritionPendingImage,
   setNutritionChatDraft,
-  setNutritionChatMessages,
   setNutritionPendingImage,
 } from '@/lib/storage';
 import { getCachedDailySummary, cacheDailySummary } from '@/db/nutrition';
+import { getLocalChatMessages } from '@/db/nutrition-cache';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ChatInput } from '@/components/nutrition/ChatInput';
@@ -49,7 +48,7 @@ import { getLocalDb } from '@/db/client';
 import { localChatMessageQueue } from '@/db/local-schema';
 import { eq, and } from 'drizzle-orm';
 import { generateId } from '@strength/db/client';
-import { runTrainingSync } from '@/lib/workout-sync';
+import { syncOfflineQueueAndCache } from '@/lib/workout-sync';
 import { hasPendingTrainingWrites } from '@/db/training-read-model';
 
 type TrainingType = 'rest_day' | 'cardio' | 'powerlifting';
@@ -364,7 +363,7 @@ export default function NutritionScreen() {
   const params = useLocalSearchParams<{ focusChat?: string }>();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
-  const { activeTimezone } = useUserPreferences();
+  const { activeTimezone, weightUnit } = useUserPreferences();
   const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const date = getTodayLocalDate(activeTimezone);
   const localStateKey = useMemo(
@@ -388,6 +387,7 @@ export default function NutritionScreen() {
   const [exchangeExpansion, setExchangeExpansion] = useState<Record<string, boolean>>({});
   const [savingAnalysisMessageId, setSavingAnalysisMessageId] = useState<string | null>(null);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const hasAppliedServerHistory = useRef(false);
   const messagesScrollRef = useRef<ScrollView | null>(null);
   const chatInputRef = useRef<TextInput | null>(null);
@@ -409,6 +409,7 @@ export default function NutritionScreen() {
     writeCacheFn: (data) => cacheDailySummary(userId!, date, activeTimezone ?? 'UTC', data),
     isDirtyFn: () => hasPendingTrainingWrites(userId!, ['nutrition']),
     fallbackToCacheOnError: true,
+    staleTime: Infinity,
   });
 
   useEffect(() => {
@@ -422,14 +423,21 @@ export default function NutritionScreen() {
 
     async function restoreLocalState() {
       const [cachedMessages, cachedDraft, cachedPendingImage] = await Promise.all([
-        getNutritionChatMessages<ChatMessageData>(localStateKey),
+        userId ? getLocalChatMessages(userId, date) : Promise.resolve([]),
         getNutritionChatDraft(localStateKey),
         getNutritionPendingImage(localStateKey),
       ]);
 
       if (isCancelled) return;
 
-      setMessages(cachedMessages.map(normalizeMessage));
+      setMessages(
+        cachedMessages.map(
+          (m): ChatMessageData => ({
+            ...m,
+            imageUri: undefined,
+          }),
+        ),
+      );
       setDraftText(cachedDraft);
       setPendingImage(cachedPendingImage);
       setHistoryCursor(null);
@@ -446,11 +454,6 @@ export default function NutritionScreen() {
       isCancelled = true;
     };
   }, [localStateKey]);
-
-  useEffect(() => {
-    if (!hasRestoredLocalState) return;
-    void setNutritionChatMessages(localStateKey, messages.slice(-CHAT_HISTORY_PAGE_SIZE));
-  }, [hasRestoredLocalState, localStateKey, messages]);
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
@@ -512,9 +515,8 @@ export default function NutritionScreen() {
           limit: CHAT_HISTORY_PAGE_SIZE,
         }),
       ),
-    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
-    staleTime: 0,
+    staleTime: Infinity,
   });
 
   useEffect(() => {
@@ -796,7 +798,7 @@ export default function NutritionScreen() {
         .set({ status: 'pending', attemptCount: 0, updatedAt: new Date() })
         .where(eq(localChatMessageQueue.id, queueId))
         .run();
-      await runTrainingSync(userId);
+      await syncOfflineQueueAndCache(userId);
     },
     [userId],
   );
@@ -1046,12 +1048,18 @@ export default function NutritionScreen() {
   }, [params.focusChat, scrollToChatInput]);
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
       scrollToChatInput(false, 0);
+    });
+
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
     });
 
     return () => {
       showSubscription.remove();
+      hideSubscription.remove();
     };
   }, [scrollToChatInput]);
 
@@ -1067,7 +1075,7 @@ export default function NutritionScreen() {
             />
           }
           screenScrollViewProps={{
-            bottomInset: NUTRITION_BOTTOM_INSET,
+            bottomInset: NUTRITION_BOTTOM_INSET + keyboardHeight,
             keyboardDismissMode: 'interactive',
             keyboardShouldPersistTaps: 'handled',
             refreshControl: (
@@ -1087,6 +1095,7 @@ export default function NutritionScreen() {
               targets={summary.targets}
               targetMeta={summary.targetMeta}
               bodyweightKg={summary.bodyweightKg}
+              weightUnit={weightUnit}
               trainingType={trainingType}
               onTrainingTypeChange={handleTrainingTypeChange}
               whoopData={

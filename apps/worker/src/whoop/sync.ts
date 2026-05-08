@@ -816,30 +816,43 @@ export async function syncAllWhoopData(
       result.errors.push(`Body Measurements: ${formatSyncError(e)}`);
     }
 
-    // Prune rawData for WHOOP records older than 30 days
+    // Prune rawData for WHOOP records older than 30 days — only if needed
     try {
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      await db
-        .update(whoopRecovery)
-        .set({ rawData: null })
-        .where(and(eq(whoopRecovery.userId, userId), lt(whoopRecovery.date, cutoff)));
-      await db
-        .update(whoopCycle)
-        .set({ rawData: null })
-        .where(and(eq(whoopCycle.userId, userId), lt(whoopCycle.start, cutoff)));
-      await db
-        .update(whoopSleep)
-        .set({ rawData: null })
-        .where(and(eq(whoopSleep.userId, userId), lt(whoopSleep.start, cutoff)));
-      await db
-        .update(whoopBodyMeasurement)
-        .set({ rawData: null })
-        .where(
-          and(
-            eq(whoopBodyMeasurement.userId, userId),
-            lt(whoopBodyMeasurement.measurementDate, cutoff),
-          ),
-        );
+      const oldestRecovery = await db
+        .select({ date: whoopRecovery.date, rawData: whoopRecovery.rawData })
+        .from(whoopRecovery)
+        .where(eq(whoopRecovery.userId, userId))
+        .orderBy(whoopRecovery.date)
+        .limit(1)
+        .get();
+
+      const needsPrune =
+        oldestRecovery && oldestRecovery.rawData !== null && oldestRecovery.date < cutoff;
+
+      if (needsPrune) {
+        await db
+          .update(whoopRecovery)
+          .set({ rawData: null })
+          .where(and(eq(whoopRecovery.userId, userId), lt(whoopRecovery.date, cutoff)));
+        await db
+          .update(whoopCycle)
+          .set({ rawData: null })
+          .where(and(eq(whoopCycle.userId, userId), lt(whoopCycle.start, cutoff)));
+        await db
+          .update(whoopSleep)
+          .set({ rawData: null })
+          .where(and(eq(whoopSleep.userId, userId), lt(whoopSleep.start, cutoff)));
+        await db
+          .update(whoopBodyMeasurement)
+          .set({ rawData: null })
+          .where(
+            and(
+              eq(whoopBodyMeasurement.userId, userId),
+              lt(whoopBodyMeasurement.measurementDate, cutoff),
+            ),
+          );
+      }
     } catch {
       // silently ignore cleanup errors so they don't fail the sync
     }

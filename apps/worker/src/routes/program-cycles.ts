@@ -16,7 +16,7 @@ import {
   startCycleWorkout,
 } from '../lib/program-helpers';
 import { getProgramCycleWithWorkouts, getProgramCycleById } from '@strength/db';
-import { getUtcRangeForLocalDate } from '../lib/timezone';
+import { getUtcRangeForLocalDate, resolveUserTimezone } from '../lib/timezone';
 import { pickAllowedKeys } from '../lib/validation';
 
 const router = createRouter();
@@ -37,12 +37,8 @@ router.get(
     }
 
     const { cycle, workouts } = result;
-    const profileTimezone = await db
-      .select({ timezone: schema.userPreferences.timezone })
-      .from(schema.userPreferences)
-      .where(eq(schema.userPreferences.userId, userId))
-      .get();
-    const timezone = profileTimezone?.timezone ?? 'UTC';
+    const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
+    const timezone = timezoneResult.timezone ?? 'UTC';
     const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(
       formatLocalDate(new Date(), timezone),
       timezone,
@@ -612,7 +608,10 @@ router.put(
     const cycleWorkoutId = c.req.param('cycleWorkoutId') as string;
 
     const body = await c.req.json();
-    const { scheduledAt } = body as { scheduledAt?: number };
+    const { scheduledAt, timezone: bodyTimezone } = body as {
+      scheduledAt?: number;
+      timezone?: string;
+    };
 
     if (scheduledAt === undefined) {
       return c.json({ message: 'scheduledAt is required' }, 400);
@@ -625,12 +624,8 @@ router.put(
     const cycleWorkout = await requireOwnedProgramCycleWorkout({ userId, db }, cycleWorkoutId);
     if (cycleWorkout instanceof Response) return cycleWorkout;
 
-    const profileTimezone = await db
-      .select({ timezone: schema.userPreferences.timezone })
-      .from(schema.userPreferences)
-      .where(eq(schema.userPreferences.userId, userId))
-      .get();
-    const timezone = profileTimezone?.timezone ?? 'UTC';
+    const timezoneResult = await resolveUserTimezone(db, userId, bodyTimezone);
+    const timezone = timezoneResult.timezone ?? 'UTC';
     const { start: dayStart, end: dayEnd } = getUtcRangeForLocalDate(
       formatLocalDate(new Date(), timezone),
       timezone,

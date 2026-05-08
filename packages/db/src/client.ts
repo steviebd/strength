@@ -31,6 +31,10 @@ export {
   addDaysToLocalDate,
   zonedDateTimeToUtc,
   getUtcRangeForLocalDate,
+  getDayOfWeek,
+  getMondayOfWeek,
+  getWeekRange,
+  computeStreak,
 } from './timezones';
 export {
   createProgramAdvancePlan,
@@ -53,3 +57,8 @@ export {
   type ProgramStartPayload,
   type ProgramStartPlan,
 } from './training/program-start';
+export {
+  computePlannedSetValues,
+  type PlannedSetInput,
+  type PlannedSetValues,
+} from './training/set-values';

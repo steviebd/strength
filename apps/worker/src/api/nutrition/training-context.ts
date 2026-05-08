@@ -1,5 +1,16 @@
+import { eq } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { createHandler } from '../auth';
+
+export const getTrainingContextHandler = createHandler(async (c, { userId, db }) => {
+  const context = await db
+    .select()
+    .from(schema.nutritionTrainingContext)
+    .where(eq(schema.nutritionTrainingContext.userId, userId))
+    .get();
+
+  return c.json(context ?? null);
+});
 
 export const upsertTrainingContextHandler = createHandler(async (c, { userId, db }) => {
   let body: {
