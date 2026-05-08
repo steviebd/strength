@@ -576,7 +576,7 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
     },
     weeklyStats: {
       workoutsCompleted: weeklyWorkouts.length,
-      workoutsTarget: activeCycle ? 3 : 0,
+      workoutsTarget: 3,
       streakDays,
       totalVolume: weekVolume,
       totalVolumeLabel,
