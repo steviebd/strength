@@ -22,6 +22,15 @@ const config: ExpoConfig = {
     'expo-secure-store',
     'expo-web-browser',
     [
+      'expo-build-properties',
+      {
+        android: {
+          enableMinifyInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
+        },
+      },
+    ],
+    [
       'expo-background-task',
       {
         minimumInterval: 900,
@@ -35,6 +44,8 @@ const config: ExpoConfig = {
   android: {
     package: `com.strength.app${bundleSuffix}`,
     jsEngine: 'hermes',
+    // @ts-expect-error hermesFlags is supported by the native build but not yet in ExpoConfig types
+    hermesFlags: ['-O'],
     softwareKeyboardLayoutMode: 'resize',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
@@ -56,4 +67,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+export default config as ExpoConfig;

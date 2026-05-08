@@ -592,7 +592,7 @@ export default function Profile() {
     <PageLayout
       scrollViewRef={scrollViewRef}
       screenScrollViewProps={{ bottomInset: 120 }}
-      header={<PageHeader title="Profile" description={user.email} />}
+      header={<PageHeader title="Profile" />}
     >
       <View style={styles.avatarSection}>
         <View style={styles.avatarCircle}>
@@ -600,22 +600,6 @@ export default function Profile() {
         </View>
         <Text style={styles.userName}>{user.name}</Text>
         <Text style={styles.userEmail}>{user.email}</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Account</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Name</Text>
-          <Text style={styles.rowValue}>{user.name}</Text>
-        </View>
-
-        <View style={[styles.row, styles.rowLast]}>
-          <Text style={styles.rowLabel}>Email</Text>
-          <Text style={[styles.rowValue, styles.rowValueFlex]} numberOfLines={1}>
-            {user.email}
-          </Text>
-        </View>
       </View>
 
       <View style={styles.card}>
