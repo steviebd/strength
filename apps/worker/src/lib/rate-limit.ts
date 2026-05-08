@@ -1,6 +1,16 @@
-import { eq, and, sql } from 'drizzle-orm';
-import * as schema from '@strength/db';
-import type { DrizzleD1Database } from 'drizzle-orm/d1';
+const store = new Map<string, { count: number; windowStart: number }>();
+let checkCount = 0;
+const CLEANUP_INTERVAL = 100;
+const HOUR_MS = 60 * 60 * 1000;
+
+function cleanupStale(): void {
+  const cutoff = Date.now() - HOUR_MS;
+  for (const [key, entry] of store) {
+    if (entry.windowStart < cutoff) {
+      store.delete(key);
+    }
+  }
+}
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -31,49 +41,89 @@ export function getRateLimitByEndpoint(path: string): number {
   return 500;
 }
 
+const cheapReadPrefixes = [
+  '/api/home/summary',
+  '/api/programs/active',
+  '/api/programs/latest-1rms',
+  '/api/nutrition/entries',
+  '/api/nutrition/daily-summary',
+  '/api/nutrition/body-stats',
+  '/api/nutrition/training-context',
+  '/api/nutrition/chat/jobs/',
+  '/api/nutrition/chat/history',
+  '/api/exercises',
+  '/api/templates',
+  '/api/me',
+  '/api/profile/preferences',
+];
+
+const sensitivePrefixes = ['/api/auth/', '/api/whoop/'];
+
+export function getRateLimitGranularity(
+  method: string,
+  path: string,
+): 'endpoint' | 'read' | 'skip' {
+  if (method === 'GET') {
+    for (const prefix of cheapReadPrefixes) {
+      if (path.startsWith(prefix)) {
+        return 'skip';
+      }
+    }
+  }
+
+  for (const prefix of sensitivePrefixes) {
+    if (path.startsWith(prefix)) {
+      return 'endpoint';
+    }
+  }
+
+  if (method === 'POST' && path === '/api/nutrition/chat') {
+    return 'endpoint';
+  }
+
+  if (
+    (method === 'POST' || method === 'PUT' || method === 'DELETE') &&
+    path.startsWith('/api/workouts/')
+  ) {
+    return 'endpoint';
+  }
+
+  if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+    return 'endpoint';
+  }
+
+  return 'read';
+}
+
 export async function checkRateLimit(
-  db: DrizzleD1Database<typeof schema>,
-  userId: string,
+  key: string,
   endpoint: string,
   limitPerHour: number,
 ): Promise<RateLimitResult> {
+  const mapKey = `${key}:${endpoint}`;
   const now = Date.now();
-  const windowStart = Math.floor(now / (60 * 60 * 1000)) * (60 * 60 * 1000);
+  const currentWindow = Math.floor(now / HOUR_MS) * HOUR_MS;
 
-  await db
-    .insert(schema.rateLimit)
-    .values({
-      userId,
-      endpoint,
-      requests: 1,
-      windowStart: new Date(windowStart),
-      createdAt: new Date(now),
-      updatedAt: new Date(now),
-    })
-    .onConflictDoUpdate({
-      target: [schema.rateLimit.userId, schema.rateLimit.endpoint],
-      set: {
-        requests: sql`CASE WHEN window_start < ${windowStart} THEN 1 ELSE min(requests + 1, ${limitPerHour + 1}) END`,
-        windowStart: sql`CASE WHEN window_start < ${windowStart} THEN ${windowStart} ELSE window_start END`,
-        updatedAt: new Date(now),
-      },
-    })
-    .run();
+  const entry = store.get(mapKey);
 
-  const current = await db
-    .select()
-    .from(schema.rateLimit)
-    .where(and(eq(schema.rateLimit.userId, userId), eq(schema.rateLimit.endpoint, endpoint)))
-    .get();
-
-  if (!current || current.windowStart.getTime() < windowStart) {
-    return { allowed: false, remaining: 0 };
+  if (!entry || entry.windowStart < currentWindow) {
+    store.set(mapKey, { count: 1, windowStart: currentWindow });
+    return { allowed: true, remaining: limitPerHour - 1 };
   }
 
-  if (current.requests <= limitPerHour) {
-    return { allowed: true, remaining: limitPerHour - current.requests };
+  entry.count = Math.min(entry.count + 1, limitPerHour + 1);
+
+  if (entry.count <= limitPerHour) {
+    return { allowed: true, remaining: limitPerHour - entry.count };
   }
 
-  const retryAfter = Math.ceil((current.windowStart.getTime() + 60 * 60 * 1000 - now) / 1000);
+  const retryAfter = Math.ceil((entry.windowStart + HOUR_MS - now) / 1000);
+
+  checkCount++;
+  if (checkCount >= CLEANUP_INTERVAL) {
+    checkCount = 0;
+    cleanupStale();
+  }
+
   return { allowed: false, remaining: 0, retryAfter: retryAfter > 0 ? retryAfter : 0 };
 }

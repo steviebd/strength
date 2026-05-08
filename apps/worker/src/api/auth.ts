@@ -3,6 +3,9 @@ import type { Context } from 'hono';
 import { createAuth, resolveBaseURL, type WorkerEnv } from '../auth';
 import * as schema from '@strength/db';
 
+const sessionCache = new Map<string, { session: any; expiresAt: number }>();
+const SESSION_CACHE_TTL_MS = 30_000;
+
 type AuthInstance = ReturnType<typeof createAuth>;
 
 type AuthUser = AuthInstance['$Infer']['Session']['user'];
@@ -67,7 +70,24 @@ export function getAuth(c: any) {
 export async function loadAuthSession(c: any) {
   const auth = getAuth(c);
   const headers = getAuthHeaders(c);
+  const cookieKey = headers.get('Cookie');
+
+  if (cookieKey) {
+    const cached = sessionCache.get(cookieKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.session;
+    }
+  }
+
   const session = await auth.api.getSession({ headers });
+
+  if (session && cookieKey) {
+    sessionCache.set(cookieKey, {
+      session,
+      expiresAt: Date.now() + SESSION_CACHE_TTL_MS,
+    });
+  }
+
   return session;
 }
 

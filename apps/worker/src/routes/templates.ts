@@ -120,7 +120,7 @@ router.post(
 
     if (typeof id === 'string' && id.trim()) {
       const existing = await db
-        .select()
+        .select({ id: schema.templates.id, userId: schema.templates.userId })
         .from(schema.templates)
         .where(eq(schema.templates.id, id))
         .get();
@@ -671,7 +671,23 @@ router.post(
       .get();
 
     const originalExercises = await db
-      .select()
+      .select({
+        exerciseId: schema.templateExercises.exerciseId,
+        sets: schema.templateExercises.sets,
+        reps: schema.templateExercises.reps,
+        targetWeight: schema.templateExercises.targetWeight,
+        addedWeight: schema.templateExercises.addedWeight,
+        repsRaw: schema.templateExercises.repsRaw,
+        exerciseType: schema.templateExercises.exerciseType,
+        targetDuration: schema.templateExercises.targetDuration,
+        targetDistance: schema.templateExercises.targetDistance,
+        targetHeight: schema.templateExercises.targetHeight,
+        isAmrap: schema.templateExercises.isAmrap,
+        isAccessory: schema.templateExercises.isAccessory,
+        isRequired: schema.templateExercises.isRequired,
+        orderIndex: schema.templateExercises.orderIndex,
+        setNumber: schema.templateExercises.setNumber,
+      })
       .from(schema.templateExercises)
       .where(eq(schema.templateExercises.templateId, id))
       .orderBy(schema.templateExercises.orderIndex)

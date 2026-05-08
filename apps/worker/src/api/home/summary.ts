@@ -52,6 +52,7 @@ export async function recomputeHomeSummary(
   db: any,
   userId: string,
   requestedTimezone?: string | null,
+  _existingActiveCycles?: any[],
 ) {
   const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   const timezone = timezoneResult.timezone ?? 'UTC';
@@ -180,7 +181,13 @@ export async function homeSummaryHandler(c: any) {
   const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
   let cached = await db
-    .select()
+    .select({
+      streakCount: schema.homeSummary.streakCount,
+      weeklyVolume: schema.homeSummary.weeklyVolume,
+      weeklyWorkouts: schema.homeSummary.weeklyWorkouts,
+      lastWorkoutDate: schema.homeSummary.lastWorkoutDate,
+      updatedAt: schema.homeSummary.updatedAt,
+    })
     .from(schema.homeSummary)
     .where(eq(schema.homeSummary.userId, userId))
     .get();
@@ -211,21 +218,21 @@ export async function homeSummaryHandler(c: any) {
     }
   }
 
-  if (needsRecompute) {
-    try {
-      await recomputeHomeSummary(db, userId, requestedTimezone);
-      cached = await db
-        .select()
-        .from(schema.homeSummary)
-        .where(eq(schema.homeSummary.userId, userId))
-        .get();
-    } catch {
-      // ignore recompute failures and continue with stale or missing cache
-    }
-  }
-
   const activeCycles = await db
-    .select()
+    .select({
+      id: schema.userProgramCycles.id,
+      name: schema.userProgramCycles.name,
+      programSlug: schema.userProgramCycles.programSlug,
+      currentWeek: schema.userProgramCycles.currentWeek,
+      currentSession: schema.userProgramCycles.currentSession,
+      status: schema.userProgramCycles.status,
+      isComplete: schema.userProgramCycles.isComplete,
+      startedAt: schema.userProgramCycles.startedAt,
+      squat1rm: schema.userProgramCycles.squat1rm,
+      bench1rm: schema.userProgramCycles.bench1rm,
+      deadlift1rm: schema.userProgramCycles.deadlift1rm,
+      ohp1rm: schema.userProgramCycles.ohp1rm,
+    })
     .from(schema.userProgramCycles)
     .where(
       and(
@@ -237,10 +244,16 @@ export async function homeSummaryHandler(c: any) {
     .orderBy(desc(schema.userProgramCycles.startedAt))
     .all();
 
+  if (needsRecompute) {
+    try {
+      c.executionCtx.waitUntil(recomputeHomeSummary(db, userId, requestedTimezone, activeCycles));
+    } catch {}
+  }
+
   const hasActiveProgram = activeCycles.length > 0;
   const activeCycle = activeCycles[0] ?? null;
 
-  let todayScheduledWorkout: typeof schema.programCycleWorkouts.$inferSelect | null = null;
+  let todayScheduledWorkout: any = null;
   let nextWorkout: {
     cycleWorkoutId: string;
     name: string;
@@ -249,10 +262,20 @@ export async function homeSummaryHandler(c: any) {
   } | null = null;
   let isRestDay = false;
 
-  let cycleWorkouts: (typeof schema.programCycleWorkouts.$inferSelect)[] = [];
+  let cycleWorkouts: any[] = [];
   if (activeCycle) {
     cycleWorkouts = await db
-      .select()
+      .select({
+        id: schema.programCycleWorkouts.id,
+        cycleId: schema.programCycleWorkouts.cycleId,
+        weekNumber: schema.programCycleWorkouts.weekNumber,
+        sessionNumber: schema.programCycleWorkouts.sessionNumber,
+        sessionName: schema.programCycleWorkouts.sessionName,
+        workoutId: schema.programCycleWorkouts.workoutId,
+        scheduledAt: schema.programCycleWorkouts.scheduledAt,
+        isComplete: schema.programCycleWorkouts.isComplete,
+        targetLifts: schema.programCycleWorkouts.targetLifts,
+      })
       .from(schema.programCycleWorkouts)
       .where(eq(schema.programCycleWorkouts.cycleId, activeCycle.id))
       .orderBy(schema.programCycleWorkouts.weekNumber, schema.programCycleWorkouts.sessionNumber)
@@ -361,45 +384,84 @@ export async function homeSummaryHandler(c: any) {
     };
   }
 
-  const [whoopRecovery, whoopCycles, whoopSleepRecords, whoopProfile, latestOneRMs, prefs] =
-    await Promise.all([
-      db
-        .select()
-        .from(schema.whoopRecovery)
-        .where(
-          and(
-            eq(schema.whoopRecovery.userId, userId),
-            gte(schema.whoopRecovery.date, todayStart),
-            lte(schema.whoopRecovery.date, todayEnd),
-          ),
-        )
-        .get(),
-      db
-        .select()
-        .from(schema.whoopCycle)
-        .where(
-          and(
-            eq(schema.whoopCycle.userId, userId),
-            gte(schema.whoopCycle.start, todayStart),
-            lte(schema.whoopCycle.start, todayEnd),
-          ),
-        )
-        .all(),
-      db
-        .select()
-        .from(schema.whoopSleep)
-        .where(and(eq(schema.whoopSleep.userId, userId), lte(schema.whoopSleep.start, todayEnd)))
-        .orderBy(desc(schema.whoopSleep.end))
-        .limit(10)
-        .all(),
-      db.select().from(schema.whoopProfile).where(eq(schema.whoopProfile.userId, userId)).get(),
+  const whoopProfileQuick = await db
+    .select({ id: schema.whoopProfile.userId })
+    .from(schema.whoopProfile)
+    .where(eq(schema.whoopProfile.userId, userId))
+    .get();
+
+  let whoopRecovery: any = null;
+  let whoopCycles: any[] = [];
+  let whoopSleepRecords: any[] = [];
+  let whoopProfile: any = null;
+  let latestOneRMs: any;
+  let prefs: any = null;
+
+  if (!whoopProfileQuick) {
+    [latestOneRMs, prefs] = await Promise.all([
       getLatestOneRMsForUser(db, userId),
       db
-        .select()
+        .select({ weightUnit: schema.userPreferences.weightUnit })
         .from(schema.userPreferences)
         .where(eq(schema.userPreferences.userId, userId))
         .get(),
     ]);
+  } else {
+    [whoopRecovery, whoopCycles, whoopSleepRecords, whoopProfile, latestOneRMs, prefs] =
+      await Promise.all([
+        db
+          .select({
+            recoveryScore: schema.whoopRecovery.recoveryScore,
+            date: schema.whoopRecovery.date,
+          })
+          .from(schema.whoopRecovery)
+          .where(
+            and(
+              eq(schema.whoopRecovery.userId, userId),
+              gte(schema.whoopRecovery.date, todayStart),
+              lte(schema.whoopRecovery.date, todayEnd),
+            ),
+          )
+          .get(),
+        db
+          .select({
+            dayStrain: schema.whoopCycle.dayStrain,
+            start: schema.whoopCycle.start,
+          })
+          .from(schema.whoopCycle)
+          .where(
+            and(
+              eq(schema.whoopCycle.userId, userId),
+              gte(schema.whoopCycle.start, todayStart),
+              lte(schema.whoopCycle.start, todayEnd),
+            ),
+          )
+          .all(),
+        db
+          .select({
+            totalSleepTimeMilli: schema.whoopSleep.totalSleepTimeMilli,
+            sleepPerformancePercentage: schema.whoopSleep.sleepPerformancePercentage,
+            start: schema.whoopSleep.start,
+            end: schema.whoopSleep.end,
+          })
+          .from(schema.whoopSleep)
+          .where(and(eq(schema.whoopSleep.userId, userId), lte(schema.whoopSleep.start, todayEnd)))
+          .orderBy(desc(schema.whoopSleep.end))
+          .limit(10)
+          .all(),
+        db
+          .select({ id: schema.whoopProfile.id })
+          .from(schema.whoopProfile)
+          .where(eq(schema.whoopProfile.userId, userId))
+          .get(),
+        getLatestOneRMsForUser(db, userId),
+        db
+          .select({ weightUnit: schema.userPreferences.weightUnit })
+          .from(schema.userPreferences)
+          .where(eq(schema.userPreferences.userId, userId))
+          .get(),
+      ]);
+  }
 
   const workoutsCompleted = cached?.weeklyWorkouts ?? 0;
 

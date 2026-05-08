@@ -25,6 +25,7 @@ import {
 } from './lib/whoop-oauth';
 import {
   checkRateLimit,
+  getRateLimitGranularity,
   getRateLimitPerHour,
   getRateLimitByEndpoint,
   shouldSkipRateLimit,
@@ -257,7 +258,6 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
-// PostHog analytics capture for authenticated API requests
 app.use('/api/*', async (c, next) => {
   await next();
 
@@ -267,17 +267,23 @@ app.use('/api/*', async (c, next) => {
   const path = c.req.path;
   if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) return;
 
-  const eventName = c.req.method === 'GET' ? '$pageview' : 'api_request';
-  const properties = {
-    path,
-    method: c.req.method,
-    status: c.res.status,
-  };
+  const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method);
+  const isImportantRead =
+    c.req.method === 'GET' &&
+    (path === '/api/home/summary' ||
+      path === '/api/training/offline-snapshot' ||
+      path === '/api/whoop/data');
+  if (isMutation || isImportantRead) {
+    const eventName = isMutation ? 'api_request' : 'screen_view';
+    const properties = {
+      path,
+      method: c.req.method,
+      status: c.res.status,
+    };
 
-  try {
-    c.executionCtx.waitUntil(captureEvent(c.env, user.id, eventName, properties));
-  } catch {
-    // Silently fail — analytics should not break the API
+    try {
+      c.executionCtx.waitUntil(captureEvent(c.env, user.id, eventName, properties));
+    } catch {}
   }
 });
 
@@ -344,9 +350,16 @@ app.use('/api/*', async (c, next) => {
   const user = c.get('user');
   const key =
     user?.id ?? c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown';
-  const db = createDb(c.env);
+  const granularity = getRateLimitGranularity(c.req.method, c.req.path);
+
+  if (granularity === 'skip') {
+    await next();
+    return;
+  }
+
+  const rateLimitEndpoint = granularity === 'read' ? 'read' : c.req.path;
   const limit = getRateLimitByEndpoint(c.req.path);
-  const result = await checkRateLimit(db, key, c.req.path, limit);
+  const result = await checkRateLimit(key, rateLimitEndpoint, limit);
   if (!result.allowed) {
     return c.json({ message: 'Rate limit exceeded' }, 429);
   }
@@ -359,14 +372,6 @@ app.post('/api/auth/check-email-provider', async (c) => {
   const email = typeof body.email === 'string' ? body.email.toLowerCase().trim() : '';
 
   const db = createDb(c.env);
-  const key = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown';
-  const limit = getRateLimitByEndpoint('/api/auth/check-email-provider');
-  if (!shouldSkipRateLimit(c.env)) {
-    const rateLimitResult = await checkRateLimit(db, key, '/api/auth/check-email-provider', limit);
-    if (!rateLimitResult.allowed) {
-      return c.json({ message: 'Rate limit exceeded' }, 429);
-    }
-  }
 
   const user = email
     ? await db.select().from(schema.user).where(eq(schema.user.email, email)).get()
@@ -581,7 +586,6 @@ app.get('/api/auth/whoop/callback', async (c) => {
 
   if (!shouldSkipRateLimit(resolvedEnv)) {
     const rateLimit = await checkRateLimit(
-      db,
       userId,
       'whoop-callback',
       getRateLimitPerHour(resolvedEnv),
@@ -675,12 +679,7 @@ app.post('/api/webhooks/whoop', async (c) => {
     }
 
     if (!shouldSkipRateLimit(c.env)) {
-      const rateLimit = await checkRateLimit(
-        db,
-        userId,
-        'whoop-webhook',
-        getRateLimitPerHour(c.env),
-      );
+      const rateLimit = await checkRateLimit(userId, 'whoop-webhook', getRateLimitPerHour(c.env));
       if (!rateLimit.allowed) {
         return c.json({ error: 'Rate limit exceeded' }, 429);
       }

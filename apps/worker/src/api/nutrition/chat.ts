@@ -387,12 +387,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   if (!shouldSkipRateLimit(c.env)) {
-    const rateLimit = await checkRateLimit(
-      db,
-      userId,
-      'nutrition-chat',
-      getRateLimitPerHour(c.env),
-    );
+    const rateLimit = await checkRateLimit(userId, 'nutrition-chat', getRateLimitPerHour(c.env));
     if (!rateLimit.allowed) {
       return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
     }

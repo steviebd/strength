@@ -71,7 +71,7 @@ router.post(
 
     if (typeof id === 'string' && id.trim()) {
       const existing = await db
-        .select()
+        .select({ id: schema.userProgramCycles.id, userId: schema.userProgramCycles.userId })
         .from(schema.userProgramCycles)
         .where(eq(schema.userProgramCycles.id, id))
         .get();

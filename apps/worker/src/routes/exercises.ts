@@ -62,7 +62,11 @@ router.post(
       const resolvedExerciseType = libraryExercise?.exerciseType ?? exerciseType;
       const resolvedExerciseId = await resolveToUserExerciseId(db, userId, libraryId);
       const existingLibraryExercise = await db
-        .select()
+        .select({
+          id: schema.exercises.id,
+          name: schema.exercises.name,
+          exerciseType: schema.exercises.exerciseType,
+        })
         .from(schema.exercises)
         .where(
           and(
@@ -142,7 +146,17 @@ router.get(
   createHandler(async (c, { userId, db }) => {
     const id = c.req.param('id') as string;
     const result = await db
-      .select()
+      .select({
+        id: schema.exercises.id,
+        name: schema.exercises.name,
+        muscleGroup: schema.exercises.muscleGroup,
+        description: schema.exercises.description,
+        libraryId: schema.exercises.libraryId,
+        exerciseType: schema.exercises.exerciseType,
+        isAmrap: schema.exercises.isAmrap,
+        createdAt: schema.exercises.createdAt,
+        updatedAt: schema.exercises.updatedAt,
+      })
       .from(schema.exercises)
       .where(and(eq(schema.exercises.id, id), eq(schema.exercises.userId, userId)))
       .get();
