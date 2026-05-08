@@ -200,8 +200,14 @@ export default function HomeScreen() {
 
   function format1rm(value: number | null): string {
     if (value === null || value === undefined) return `-- ${weightUnit}`;
-    const display = convertToDisplayWeight(value, weightUnit);
+    const display = Math.ceil(convertToDisplayWeight(value, weightUnit));
     return `${display} ${weightUnit}`;
+  }
+
+  function formatVolume(volumeKg: number): string {
+    const display = convertToDisplayWeight(volumeKg, weightUnit);
+    if (display >= 1000) return `${Math.round(display / 1000)}k ${weightUnit}`;
+    return `${Math.round(display)} ${weightUnit}`;
   }
 
   return (
@@ -326,7 +332,7 @@ export default function HomeScreen() {
         />
         <MetricTile
           label="Volume"
-          value={weeklyProgress.totalVolumeLabel}
+          value={formatVolume(weeklyProgress.totalVolume)}
           hint="Lifted"
           tone="sky"
         />

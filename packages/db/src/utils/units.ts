@@ -12,8 +12,8 @@ export function convertToStorageWeight(weight: number, fromUnit: WeightUnit): nu
 }
 
 export function formatWeight(weightKg: number, unit: WeightUnit): string {
-  const display = convertToDisplayWeight(weightKg, unit);
-  return `${display.toFixed(1)} ${unit}`;
+  const display = Math.ceil(convertToDisplayWeight(weightKg, unit));
+  return `${display} ${unit}`;
 }
 
 export function getWeightIncrement(unit: WeightUnit): number {

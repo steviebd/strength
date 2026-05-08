@@ -11,7 +11,7 @@ import {
   zonedDateTimeToUtc,
 } from '@strength/db';
 import { getLatestOneRMsForUser } from '../lib/program-helpers';
-import { getStoredUserTimezone } from '../lib/timezone';
+import { resolveUserTimezone } from '../lib/timezone';
 import { getOrCreateExerciseForUser } from '@strength/db';
 import { getExerciseTypeByLibraryId } from '@strength/db/exercise-library';
 import { batchParallel } from '@strength/db';
@@ -63,6 +63,7 @@ router.post(
       programStartDate,
       firstSessionDate,
       cycleWorkouts: clientCycleWorkouts,
+      timezone: bodyTimezone,
     } = body;
     if (!programSlug || !name) {
       return c.json({ message: 'programSlug and name are required' }, 400);
@@ -106,8 +107,8 @@ router.post(
 
     const generatedWorkouts = programConfig.generateWorkouts(oneRMs);
 
-    const profileTimezone = await getStoredUserTimezone(db, userId);
-    const timezone = profileTimezone ?? 'UTC';
+    const timezoneResult = await resolveUserTimezone(db, userId, bodyTimezone);
+    const timezone = timezoneResult.timezone ?? 'UTC';
 
     const startDate = programStartDate
       ? zonedDateTimeToUtc(programStartDate, timezone, '00:00:00')

@@ -43,11 +43,11 @@ describe('units', () => {
 
   describe('formatWeight', () => {
     it('should format weight in kg', () => {
-      expect(formatWeight(100, 'kg')).toBe('100.0 kg');
+      expect(formatWeight(100, 'kg')).toBe('100 kg');
     });
 
-    it('should format weight in lbs with one decimal', () => {
-      expect(formatWeight(100, 'lbs')).toBe('220.5 lbs');
+    it('should format weight in lbs rounding up', () => {
+      expect(formatWeight(100, 'lbs')).toBe('221 lbs');
     });
   });
 

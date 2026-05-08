@@ -1,5 +1,5 @@
 import type { ExerciseHistorySnapshot } from '@/db/workouts';
-import type { DistanceUnit } from '@/lib/units';
+import { formatDistance, formatDuration, type DistanceUnit } from './units';
 
 export type WeightUnit = 'kg' | 'lbs';
 export type ProgressionMode = 'progress' | 'use_last' | 'empty' | 'custom' | null;
@@ -91,27 +91,9 @@ export function hasProgressionHistoryData(
   );
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds <= 0) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins > 0 && secs > 0) return `${mins}:${secs.toString().padStart(2, '0')}`;
-  if (mins > 0) return `${mins}:00`;
-  return `${secs} sec`;
-}
-
 function formatDurationIncrement(seconds: number): string {
   const formatted = formatDuration(seconds);
   return formatted.includes(':') ? `${formatted} min` : formatted;
-}
-
-function formatDistance(meters: number, unit: DistanceUnit): string {
-  if (unit === 'km') {
-    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-    return `${meters} m`;
-  }
-  if (meters >= 1609.344) return `${(meters / 1609.344).toFixed(1)} mi`;
-  return `${meters} m`;
 }
 
 export function getLastWorkoutSummary(

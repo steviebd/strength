@@ -2,9 +2,11 @@ import { and, desc, eq, inArray, isNotNull, isNull, like } from 'drizzle-orm';
 import {
   createProgramAdvancePlan,
   createProgramStartPlan,
+  computeStreak,
   formatLocalDate,
   getCurrentCycleWorkout,
   getUtcRangeForLocalDate,
+  getWeekRange,
   groupConsecutiveExercises,
   parseProgramTargetLifts,
   type ProgramStartPayload,
@@ -526,6 +528,35 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
   }
   const recent = await getCachedRecentWorkoutHistory(userId, 50);
   const today = formatLocalDate(new Date(), timezone);
+
+  const { weekStart, weekEnd } = getWeekRange(today);
+  const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
+  const { end: weekEndUtc } = getUtcRangeForLocalDate(weekEnd, timezone);
+
+  const weeklyWorkouts = recent.filter((item) => {
+    if (!item.completedAt) return false;
+    const completedMs = item.completedAt.getTime();
+    return completedMs >= weekStartUtc.getTime() && completedMs <= weekEndUtc.getTime();
+  });
+
+  const workoutDates = new Set(
+    recent
+      .map((item) =>
+        item.completedAt ? formatLocalDate(new Date(item.completedAt), timezone) : null,
+      )
+      .filter((d): d is string => d !== null),
+  );
+  const streakDays = computeStreak(today, workoutDates);
+
+  const weekVolume = weeklyWorkouts.reduce((sum, item) => sum + (item.totalVolume ?? 0), 0);
+
+  const weightUnit = 'kg';
+  const displayVolume = weekVolume;
+  const totalVolumeLabel =
+    displayVolume > 1000
+      ? `${Math.round(displayVolume / 1000)}k ${weightUnit}`
+      : `${Math.round(displayVolume)} ${weightUnit}`;
+
   return {
     date: {
       localDate: today,
@@ -544,11 +575,11 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
       isRestDay: Boolean(activeCycle && !workout),
     },
     weeklyStats: {
-      workoutsCompleted: recent.length,
+      workoutsCompleted: weeklyWorkouts.length,
       workoutsTarget: activeCycle ? 3 : 0,
-      streakDays: 0,
-      totalVolume: recent.reduce((sum, item) => sum + (item.totalVolume ?? 0), 0),
-      totalVolumeLabel: '0 kg',
+      streakDays,
+      totalVolume: weekVolume,
+      totalVolumeLabel,
     },
     oneRepMaxes: {
       squat: activeCycle?.squat1rm ?? latestOneRMs?.squat1rm ?? null,

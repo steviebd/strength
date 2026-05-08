@@ -45,7 +45,10 @@ export function useProgramSchedule(cycleId: string) {
   return useOfflineQuery({
     queryKey: ['programSchedule', cycleId],
     enabled: Boolean(cycleId),
-    apiFn: () => apiFetch<ProgramScheduleResponse>(`/api/programs/cycles/${cycleId}/schedule`),
+    apiFn: () =>
+      apiFetch<ProgramScheduleResponse>(
+        `/api/programs/cycles/${cycleId}/schedule${activeTimezone ? `?timezone=${encodeURIComponent(activeTimezone)}` : ''}`,
+      ),
     cacheFn: () => getCachedProgramSchedule(userId!, cycleId, activeTimezone ?? 'UTC'),
     writeCacheFn: async () => {},
     isDirtyFn: () =>
@@ -126,6 +129,7 @@ export function useRescheduleWorkout() {
   const queryClient = useQueryClient();
   const session = authClient.useSession();
   const userId = session.data?.user?.id ?? null;
+  const { activeTimezone } = useUserPreferences();
 
   return useMutation({
     mutationFn: async ({
@@ -145,7 +149,7 @@ export function useRescheduleWorkout() {
             warning?: 'date_collision';
           }>(`/api/programs/cycle-workouts/${cycleWorkoutId}/schedule`, {
             method: 'PUT',
-            body: { scheduledAt },
+            body: { scheduledAt, timezone: activeTimezone },
           }),
         userId,
         entityType: 'program',

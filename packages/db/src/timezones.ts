@@ -576,3 +576,36 @@ export function getUtcRangeForLocalDate(localDate: string, timeZone: string) {
   const end = zonedDateTimeToUtc(addDaysToLocalDate(localDate, 1), timeZone, '00:00:00');
   return { start, end };
 }
+
+export function getDayOfWeek(localDate: string): number {
+  const { year, month, day } = parseLocalDate(localDate);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+export function getMondayOfWeek(localDate: string): string {
+  const dayOfWeek = getDayOfWeek(localDate);
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  return addDaysToLocalDate(localDate, diff);
+}
+
+export function getWeekRange(localDate: string): { weekStart: string; weekEnd: string } {
+  const monday = getMondayOfWeek(localDate);
+  const sunday = addDaysToLocalDate(monday, 6);
+  return { weekStart: monday, weekEnd: sunday };
+}
+
+export function computeStreak(localDate: string, workoutDates: Set<string>): number {
+  if (workoutDates.size === 0) return 0;
+  let earliestDate = localDate;
+  for (const d of workoutDates) {
+    if (d < earliestDate) earliestDate = d;
+  }
+  let streakDays = 0;
+  let checkDate = localDate;
+  while (workoutDates.has(checkDate)) {
+    streakDays++;
+    checkDate = addDaysToLocalDate(checkDate, -1);
+    if (checkDate < earliestDate) break;
+  }
+  return streakDays;
+}

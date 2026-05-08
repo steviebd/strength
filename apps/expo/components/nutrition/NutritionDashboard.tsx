@@ -183,7 +183,8 @@ export function NutritionDashboard({
             <View style={styles.contextRow}>
               <Text style={styles.contextLabel}>Target basis</Text>
               <Text style={styles.contextValue}>
-                {convertToDisplayWeight(bodyweightKg, weightUnit)} {weightUnit} bodyweight
+                {Math.ceil(convertToDisplayWeight(bodyweightKg, weightUnit))} {weightUnit}{' '}
+                bodyweight
                 {targetMeta.strategy === 'manual' ? ' with manual profile overrides' : ''}
               </Text>
             </View>

@@ -31,6 +31,10 @@ export {
   addDaysToLocalDate,
   zonedDateTimeToUtc,
   getUtcRangeForLocalDate,
+  getDayOfWeek,
+  getMondayOfWeek,
+  getWeekRange,
+  computeStreak,
 } from './timezones';
 export {
   createProgramAdvancePlan,

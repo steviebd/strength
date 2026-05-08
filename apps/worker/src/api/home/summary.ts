@@ -1,5 +1,5 @@
 import { eq, and, gte, lte, desc, isNotNull } from 'drizzle-orm';
-import { formatLocalDate } from '@strength/db';
+import { formatLocalDate, addDaysToLocalDate, getWeekRange, computeStreak } from '@strength/db';
 import { groupConsecutiveExercises, type GroupedExercise } from '@strength/db/client';
 import * as schema from '@strength/db';
 import { requireAuthContext } from '../auth';
@@ -29,44 +29,6 @@ function parseTargetLifts(
   }
 }
 
-function getMondayOfWeek(localDateStr: string): string {
-  const { year, month, day } = parseLocalDate(localDateStr);
-  const d = new Date(Date.UTC(year, month - 1, day));
-  const dayOfWeek = d.getUTCDay();
-  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  d.setUTCDate(d.getUTCDate() + diff);
-  return formatDateParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
-}
-
-function parseLocalDate(localDate: string): { year: number; month: number; day: number } {
-  const parts = localDate.split('-');
-  return {
-    year: parseInt(parts[0], 10),
-    month: parseInt(parts[1], 10),
-    day: parseInt(parts[2], 10),
-  };
-}
-
-function formatDateParts(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function addDays(localDate: string, days: number): string {
-  const { year, month, day } = parseLocalDate(localDate);
-  const d = new Date(Date.UTC(year, month - 1, day));
-  d.setUTCDate(d.getUTCDate() + days);
-  return formatDateParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
-}
-
-function getWeekRange(
-  localDate: string,
-  _timezone: string,
-): { weekStart: string; weekEnd: string } {
-  const mondayStr = getMondayOfWeek(localDate);
-  const sundayStr = addDays(mondayStr, 6);
-  return { weekStart: mondayStr, weekEnd: sundayStr };
-}
-
 function formatSleepDuration(milliseconds: number | null): string | null {
   if (milliseconds === null || milliseconds === undefined) {
     return null;
@@ -75,22 +37,6 @@ function formatSleepDuration(milliseconds: number | null): string | null {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${hours}h ${minutes}m`;
-}
-
-export function computeStreak(localDate: string, workoutDates: Set<string>): number {
-  if (workoutDates.size === 0) return 0;
-  let earliestDate = localDate;
-  for (const d of workoutDates) {
-    if (d < earliestDate) earliestDate = d;
-  }
-  let streakDays = 0;
-  let checkDate = localDate;
-  while (workoutDates.has(checkDate)) {
-    streakDays++;
-    checkDate = addDays(checkDate, -1);
-    if (checkDate < earliestDate) break;
-  }
-  return streakDays;
 }
 
 type RecoveryStatus = 'green' | 'yellow' | 'red' | null;
@@ -102,17 +48,21 @@ function getRecoveryStatusTone(recoveryScore: number | null): RecoveryStatus {
   return 'red';
 }
 
-export async function recomputeHomeSummary(db: any, userId: string) {
-  const timezoneResult = await resolveUserTimezone(db, userId);
+export async function recomputeHomeSummary(
+  db: any,
+  userId: string,
+  requestedTimezone?: string | null,
+) {
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   const timezone = timezoneResult.timezone ?? 'UTC';
   const now = new Date();
   const localDate = formatLocalDate(now, timezone);
 
-  const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
+  const { weekStart, weekEnd } = getWeekRange(localDate);
   const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
   const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
 
-  const lookbackStartLocal = addDays(localDate, -365);
+  const lookbackStartLocal = addDaysToLocalDate(localDate, -365);
   const { start: rangeStart } = getUtcRangeForLocalDate(lookbackStartLocal, timezone);
   const { end: rangeEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
@@ -224,7 +174,8 @@ export async function homeSummaryHandler(c: any) {
   if (auth instanceof Response) return auth;
   const { userId, db } = auth;
 
-  const timezoneResult = await resolveUserTimezone(db, userId);
+  const requestedTimezone = c.req.query('timezone') || null;
+  const timezoneResult = await resolveUserTimezone(db, userId, requestedTimezone);
   const timezone = timezoneResult.timezone ?? 'UTC';
   const now = new Date();
   const localDate = formatLocalDate(now, timezone);
@@ -240,9 +191,10 @@ export async function homeSummaryHandler(c: any) {
     }),
   };
 
-  const { weekStart, weekEnd } = getWeekRange(localDate, timezone);
+  const { weekStart, weekEnd } = getWeekRange(localDate);
   const { start: weekStartUtc } = getUtcRangeForLocalDate(weekStart, timezone);
   const { end: weekEndUtcEnd } = getUtcRangeForLocalDate(weekEnd, timezone);
+  const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
   let cached = await db
     .select()
@@ -271,11 +223,14 @@ export async function homeSummaryHandler(c: any) {
     if (!needsRecompute && cached.updatedAt < weekStartUtc) {
       needsRecompute = true;
     }
+    if (!needsRecompute && cached.updatedAt < todayStart) {
+      needsRecompute = true;
+    }
   }
 
   if (needsRecompute) {
     try {
-      await recomputeHomeSummary(db, userId);
+      await recomputeHomeSummary(db, userId, requestedTimezone);
       cached = await db
         .select()
         .from(schema.homeSummary)
@@ -310,8 +265,6 @@ export async function homeSummaryHandler(c: any) {
     scheduledAt: Date | null;
   } | null = null;
   let isRestDay = false;
-
-  const { start: todayStart, end: todayEnd } = getUtcRangeForLocalDate(localDate, timezone);
 
   let cycleWorkouts: (typeof schema.programCycleWorkouts.$inferSelect)[] = [];
   if (activeCycle) {
@@ -425,7 +378,7 @@ export async function homeSummaryHandler(c: any) {
     };
   }
 
-  const [whoopRecovery, whoopCycles, whoopSleepRecords, whoopProfile, latestOneRMs] =
+  const [whoopRecovery, whoopCycles, whoopSleepRecords, whoopProfile, latestOneRMs, prefs] =
     await Promise.all([
       db
         .select()
@@ -458,6 +411,11 @@ export async function homeSummaryHandler(c: any) {
         .all(),
       db.select().from(schema.whoopProfile).where(eq(schema.whoopProfile.userId, userId)).get(),
       getLatestOneRMsForUser(db, userId),
+      db
+        .select()
+        .from(schema.userPreferences)
+        .where(eq(schema.userPreferences.userId, userId))
+        .get(),
     ]);
 
   const workoutsCompleted = cached?.weeklyWorkouts ?? 0;
@@ -474,8 +432,12 @@ export async function homeSummaryHandler(c: any) {
 
   const totalVolume = cached?.weeklyVolume ?? 0;
 
+  const weightUnit = prefs?.weightUnit ?? 'kg';
+  const displayVolume = weightUnit === 'lbs' ? totalVolume * 2.20462 : totalVolume;
   const totalVolumeLabel =
-    totalVolume > 1000 ? `${Math.round(totalVolume / 1000)}k kg` : `${Math.round(totalVolume)} kg`;
+    displayVolume > 1000
+      ? `${Math.round(displayVolume / 1000)}k ${weightUnit}`
+      : `${Math.round(displayVolume)} ${weightUnit}`;
 
   const streakDays = cached?.streakCount ?? 0;
 

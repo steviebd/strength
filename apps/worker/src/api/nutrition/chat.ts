@@ -206,7 +206,8 @@ async function generateNutritionChatAssistantContent({
 
   const energyUnit = (prefs?.weightUnit === 'lbs' ? 'kj' : 'kcal') as 'kcal' | 'kj';
   const weightUnit = (prefs?.weightUnit as 'kg' | 'lbs') ?? 'kg';
-  const bodyweightKg = bodyStats?.bodyweightKg ?? null;
+  const bodyweightKg =
+    bodyStats?.bodyweightKg != null ? Math.round(bodyStats.bodyweightKg * 10) / 10 : null;
   const hasProgram = !!activeProgram;
 
   const {

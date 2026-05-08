@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { computeStreak } from './summary';
+import { computeStreak } from '@strength/db';
 
 describe('computeStreak', () => {
   test('returns 0 when no workouts exist', () => {

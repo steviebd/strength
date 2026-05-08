@@ -5,7 +5,7 @@ import { getUtcRangeForLocalDate, resolveUserTimezone } from '../../lib/timezone
 import { validateDateParam } from '../../lib/validation';
 
 export const getEntriesHandler = createHandler(async (c, { userId, db }) => {
-  const timezoneResult = await resolveUserTimezone(db, userId);
+  const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
   }
@@ -76,7 +76,7 @@ export const createEntryHandler = createHandler(async (c, { userId, db }) => {
     return c.json({ error: 'fatG must be between 0 and 1000' }, 400);
   }
 
-  const timezoneResult = await resolveUserTimezone(db, userId);
+  const timezoneResult = await resolveUserTimezone(db, userId, c.req.query('timezone'));
   if (timezoneResult.error || !timezoneResult.timezone) {
     return c.json({ error: timezoneResult.error }, 400);
   }
