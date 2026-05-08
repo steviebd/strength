@@ -3,6 +3,8 @@ import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { authClient } from '@/lib/auth-client';
 import { buildLocalHomeSummary } from '@/db/training-cache';
 import { hasPendingTrainingWrites } from '@/db/training-read-model';
+import { cacheWhoopData } from '@/db/whoop';
+import { getTodayLocalDate } from '@/lib/timezone';
 import { useOfflineQuery } from './useOfflineQuery';
 
 type HomeScheduledWorkout = {
@@ -73,10 +75,34 @@ export function useHomeSummary() {
       ),
     cacheFn: () =>
       buildLocalHomeSummary(userId!, activeTimezone ?? 'UTC') as Promise<HomeSummaryResponse>,
-    writeCacheFn: async () => {},
+    writeCacheFn: async (data) => {
+      if (!userId) return;
+      const tz = data.date?.timezone ?? activeTimezone ?? 'UTC';
+      const date = data.date?.localDate ?? getTodayLocalDate(tz);
+      const snapshot = data.recoverySnapshot;
+      if (snapshot) {
+        await cacheWhoopData(
+          userId,
+          date,
+          tz,
+          {
+            recoveryScore: snapshot.recoveryScore,
+            status: snapshot.recoveryStatus,
+            hrv: null,
+            caloriesBurned: null,
+            totalStrain: snapshot.strain,
+            isWhoopConnected: snapshot.isWhoopConnected,
+            sleepDurationLabel: snapshot.sleepDurationLabel,
+            sleepPerformancePercentage: snapshot.sleepPerformancePercentage,
+          },
+          null,
+        );
+      }
+    },
     isDirtyFn: () =>
       hasPendingTrainingWrites(userId!, ['program', 'program_cycle', 'workout', 'one_rms']),
     fallbackToCacheOnError: true,
     staleTime: Infinity,
+    refetchOnMount: false,
   });
 }

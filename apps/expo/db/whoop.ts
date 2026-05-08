@@ -8,6 +8,9 @@ export interface WhoopCacheData {
   hrv: number | null;
   caloriesBurned: number | null;
   totalStrain: number | null;
+  isWhoopConnected: boolean;
+  sleepDurationLabel: string | null;
+  sleepPerformancePercentage: number | null;
 }
 
 export async function getCachedWhoopData(
@@ -39,6 +42,9 @@ export async function getCachedWhoopData(
       hrv: row.hrv ?? null,
       caloriesBurned: row.caloriesBurned ?? null,
       totalStrain: row.totalStrain ?? null,
+      isWhoopConnected: row.isWhoopConnected ?? false,
+      sleepDurationLabel: row.sleepDurationLabel ?? null,
+      sleepPerformancePercentage: row.sleepPerformancePercentage ?? null,
     },
     hydratedAt: row.hydratedAt,
   };
@@ -87,6 +93,9 @@ export async function cacheWhoopData(
       hrv: data.hrv ?? null,
       caloriesBurned: data.caloriesBurned ?? null,
       totalStrain: data.totalStrain ?? null,
+      isWhoopConnected: data.isWhoopConnected ?? false,
+      sleepDurationLabel: data.sleepDurationLabel ?? null,
+      sleepPerformancePercentage: data.sleepPerformancePercentage ?? null,
       serverUpdatedAt: serverUpdatedAt ? new Date(serverUpdatedAt) : null,
       hydratedAt: now,
     })
@@ -98,6 +107,9 @@ export async function cacheWhoopData(
         hrv: data.hrv ?? null,
         caloriesBurned: data.caloriesBurned ?? null,
         totalStrain: data.totalStrain ?? null,
+        isWhoopConnected: data.isWhoopConnected ?? false,
+        sleepDurationLabel: data.sleepDurationLabel ?? null,
+        sleepPerformancePercentage: data.sleepPerformancePercentage ?? null,
         serverUpdatedAt: serverUpdatedAt ? new Date(serverUpdatedAt) : null,
         hydratedAt: now,
       },

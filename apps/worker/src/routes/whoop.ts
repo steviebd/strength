@@ -153,14 +153,15 @@ router.get(
       return c.json({ connected: false });
     }
 
+    const whoopUserId = await getWhoopUserId(db, userId);
+    const profile = await getWhoopProfileByUserId(db, userId);
+
     try {
       await getValidWhoopToken(db, c.env, userId);
 
-      const whoopUserId = await getWhoopUserId(db, userId);
-      const profile = await getWhoopProfileByUserId(db, userId);
-
       return c.json({
         connected: true,
+        tokenValid: true,
         whoopUserId,
         profile: profile
           ? {
@@ -173,12 +174,32 @@ router.get(
     } catch (e) {
       if (isWhoopAuthError(e)) {
         return c.json({
-          connected: false,
-          ...toWhoopAuthErrorResponse(e),
+          connected: true,
+          tokenValid: false,
+          tokenError: toWhoopAuthErrorResponse(e),
+          whoopUserId,
+          profile: profile
+            ? {
+                email: profile.email,
+                firstName: profile.firstName,
+                lastName: profile.lastName,
+              }
+            : null,
         });
       }
 
-      return c.json({ message: 'Failed to check WHOOP status' }, 500);
+      return c.json({
+        connected: true,
+        tokenValid: false,
+        whoopUserId,
+        profile: profile
+          ? {
+              email: profile.email,
+              firstName: profile.firstName,
+              lastName: profile.lastName,
+            }
+          : null,
+      });
     }
   }),
 );

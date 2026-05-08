@@ -19,6 +19,9 @@ interface WhoopCache {
   recovery: WhoopRecovery | null;
   cycle: WhoopCycle | null;
   timestamp: number;
+  isWhoopConnected: boolean;
+  sleepDurationLabel: string | null;
+  sleepPerformancePercentage: number | null;
 }
 
 interface UseWhoopDataResult {
@@ -48,6 +51,9 @@ function toWhoopCache(cached: { data: WhoopCacheData; hydratedAt: Date }): Whoop
           }
         : null,
     timestamp: cached.hydratedAt.getTime(),
+    isWhoopConnected: cached.data.isWhoopConnected,
+    sleepDurationLabel: cached.data.sleepDurationLabel,
+    sleepPerformancePercentage: cached.data.sleepPerformancePercentage,
   };
 }
 
@@ -84,6 +90,9 @@ export function useWhoopData(
           hrv: response.whoopRecovery?.hrv ?? null,
           caloriesBurned: response.whoopCycle?.caloriesBurned ?? null,
           totalStrain: response.whoopCycle?.totalStrain ?? null,
+          isWhoopConnected: false,
+          sleepDurationLabel: null,
+          sleepPerformancePercentage: null,
         },
         response.whoopUpdatedAt,
       );
@@ -92,6 +101,9 @@ export function useWhoopData(
         recovery: response.whoopRecovery,
         cycle: response.whoopCycle,
         timestamp: Date.now(),
+        isWhoopConnected: false,
+        sleepDurationLabel: null,
+        sleepPerformancePercentage: null,
       };
     },
     staleTime: STALENESS_MS,

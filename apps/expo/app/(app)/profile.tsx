@@ -29,9 +29,14 @@ import { colors, overlay, radius, spacing, statusBg, textRoles, typography } fro
 import { Input } from '@/components/ui/Input';
 import { convertToDisplayWeight, convertToStorageWeight } from '@strength/db/client';
 import { TimezonePickerModal } from '@/components/profile/TimezonePickerModal';
+import { platformStorage } from '@/lib/platform-storage';
+
+const WHOOP_STATUS_CACHE_KEY = 'whoop_status_cache';
 
 interface WhoopStatus {
   connected: boolean;
+  tokenValid?: boolean;
+  tokenError?: { error?: string; message?: string };
   whoopUserId?: string;
   profile?: {
     email?: string;
@@ -437,8 +442,16 @@ export default function Profile() {
     try {
       const status = await fetchWhoopStatus();
       setWhoopStatus(status);
+      void platformStorage.setItemAsync(WHOOP_STATUS_CACHE_KEY, JSON.stringify(status));
     } catch {
-      // no-op
+      try {
+        const cached = await platformStorage.getItemAsync(WHOOP_STATUS_CACHE_KEY);
+        if (cached) {
+          setWhoopStatus(JSON.parse(cached) as WhoopStatus);
+        }
+      } catch {
+        // ignore cache parse errors
+      }
     } finally {
       setWhoopLoading(false);
     }
@@ -468,6 +481,10 @@ export default function Profile() {
     try {
       await disconnectWhoop();
       setWhoopStatus({ connected: false });
+      void platformStorage.setItemAsync(
+        WHOOP_STATUS_CACHE_KEY,
+        JSON.stringify({ connected: false }),
+      );
     } catch {
       setError('Failed to disconnect WHOOP');
     } finally {
@@ -782,8 +799,20 @@ export default function Profile() {
             <View style={styles.row}>
               <Text style={styles.rowLabel}>Status</Text>
               <View style={styles.rowValueRight}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusConnectedText}>Connected</Text>
+                <View
+                  style={
+                    whoopStatus.tokenValid === false ? styles.statusDotWarning : styles.statusDot
+                  }
+                />
+                <Text
+                  style={
+                    whoopStatus.tokenValid === false
+                      ? styles.statusWarningText
+                      : styles.statusConnectedText
+                  }
+                >
+                  {whoopStatus.tokenValid === false ? 'Token needs renewal' : 'Connected'}
+                </Text>
               </View>
             </View>
 
@@ -805,11 +834,26 @@ export default function Profile() {
               </View>
             )}
 
+            {whoopStatus.tokenValid === false && (
+              <View style={styles.tokenWarningBox}>
+                <Text style={styles.tokenWarningText}>
+                  WHOOP access token needs to be refreshed.{' '}
+                  {whoopStatus.tokenError?.message
+                    ? String(whoopStatus.tokenError.message)
+                    : 'Data sync is unavailable until reconnected.'}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.buttonGroup}>
               <Pressable
                 onPress={handleSyncWhoop}
-                disabled={syncing}
-                style={[styles.button, styles.buttonPrimary, syncing && styles.buttonDisabled]}
+                disabled={syncing || whoopStatus.tokenValid === false}
+                style={[
+                  styles.button,
+                  styles.buttonPrimary,
+                  (syncing || whoopStatus.tokenValid === false) && styles.buttonDisabled,
+                ]}
               >
                 {syncing ? (
                   <View style={styles.buttonSpinner}>
@@ -1169,10 +1213,34 @@ const styles = StyleSheet.create({
     borderRadius: spacing.xs,
     backgroundColor: colors.success,
   },
+  statusDotWarning: {
+    width: spacing.sm,
+    height: spacing.sm,
+    borderRadius: spacing.xs,
+    backgroundColor: colors.accentSecondary,
+  },
   statusConnectedText: {
     fontSize: typography.fontSizes.sm,
     color: colors.success,
     lineHeight: textRoles.buttonSmall.lineHeight,
+  },
+  statusWarningText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.accentSecondary,
+    lineHeight: textRoles.buttonSmall.lineHeight,
+  },
+  tokenWarningBox: {
+    marginTop: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.3)',
+    backgroundColor: 'rgba(251,191,36,0.1)',
+    padding: spacing.sm + spacing.xs,
+  },
+  tokenWarningText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.accentSecondary,
+    lineHeight: textRoles.bodySmall.lineHeight,
   },
   loadingRow: {
     alignItems: 'center',

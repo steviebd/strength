@@ -858,5 +858,30 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     `);
   });
 
+  applyVersionedMigration(sqlite, '20260508_whoop_recovery_snapshot', () => {
+    addColumnIfMissing(
+      sqlite,
+      'local_whoop_data',
+      'is_whoop_connected',
+      'is_whoop_connected INTEGER',
+    );
+    addColumnIfMissing(
+      sqlite,
+      'local_whoop_data',
+      'sleep_duration_label',
+      'sleep_duration_label TEXT',
+    );
+    addColumnIfMissing(
+      sqlite,
+      'local_whoop_data',
+      'sleep_performance_percentage',
+      'sleep_performance_percentage REAL',
+    );
+    sqlite.execSync(`
+      CREATE INDEX IF NOT EXISTS idx_local_whoop_data_user_date
+        ON local_whoop_data (user_id, date);
+    `);
+  });
+
   createLocalIndexes(sqlite);
 }

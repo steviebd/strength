@@ -33,6 +33,7 @@ import {
 import type { Workout } from '@/context/WorkoutSessionContext';
 import type { Template } from '@/components/template/TemplateEditor/types';
 import { platformStorage } from '@/lib/platform-storage';
+import { getCachedWhoopData } from './whoop';
 
 const DIRTY_WORKOUT_STATUSES = ['pending', 'syncing', 'failed', 'conflict'];
 
@@ -493,6 +494,29 @@ export async function getCachedProgramSchedule(userId: string, cycleId: string, 
   };
 }
 
+async function buildLocalRecoverySnapshot(userId: string, timezone: string) {
+  const today = formatLocalDate(new Date(), timezone);
+  const cached = await getCachedWhoopData(userId, today, timezone);
+  if (cached) {
+    return {
+      sleepDurationLabel: cached.data.sleepDurationLabel,
+      sleepPerformancePercentage: cached.data.sleepPerformancePercentage,
+      recoveryScore: cached.data.recoveryScore,
+      recoveryStatus: cached.data.status,
+      strain: cached.data.totalStrain,
+      isWhoopConnected: cached.data.isWhoopConnected,
+    };
+  }
+  return {
+    sleepDurationLabel: null,
+    sleepPerformancePercentage: null,
+    recoveryScore: null,
+    recoveryStatus: null,
+    strain: null,
+    isWhoopConnected: false,
+  };
+}
+
 export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
   const activePrograms = await getCachedActivePrograms(userId);
   const activeCycle = activePrograms[0] ?? null;
@@ -587,14 +611,7 @@ export async function buildLocalHomeSummary(userId: string, timezone = 'UTC') {
       deadlift: activeCycle?.deadlift1rm ?? latestOneRMs?.deadlift1rm ?? null,
       ohp: activeCycle?.ohp1rm ?? latestOneRMs?.ohp1rm ?? null,
     },
-    recoverySnapshot: {
-      sleepDurationLabel: null,
-      sleepPerformancePercentage: null,
-      recoveryScore: null,
-      recoveryStatus: null,
-      strain: null,
-      isWhoopConnected: false,
-    },
+    recoverySnapshot: await buildLocalRecoverySnapshot(userId, timezone),
   };
 }
 
