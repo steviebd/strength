@@ -38,6 +38,10 @@ interface LastWorkoutResponse {
   sets: { weight: number | null; reps: number | null; rpe: number | null }[];
 }
 
+const DEFAULT_TEMPLATE_SETS = 1;
+const DEFAULT_TEMPLATE_REPS = 5;
+const DEFAULT_TEMPLATE_WEIGHT = 0;
+
 export function useTemplateEditor(): UseTemplateEditorReturn {
   const session = authClient.useSession();
   const [template, setTemplate] = useState<Template | null>(null);
@@ -80,9 +84,10 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
           exerciseId: ex.exerciseId,
           name: ex.exercise?.name || '',
           muscleGroup: ex.exercise?.muscleGroup || null,
-          sets: ex.sets || 3,
-          reps: ex.reps || 10,
-          targetWeight: ex.targetWeight || 0,
+          sets: ex.sets || DEFAULT_TEMPLATE_SETS,
+          reps: ex.reps || DEFAULT_TEMPLATE_REPS,
+          repsRaw: ex.repsRaw || undefined,
+          targetWeight: ex.targetWeight || DEFAULT_TEMPLATE_WEIGHT,
           isAmrap: ex.isAmrap || false,
           isAccessory: ex.isAccessory || false,
           isRequired: ex.isRequired !== false,
@@ -134,6 +139,7 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
               isRequired: ex.isRequired,
               sets: ex.sets,
               reps: ex.reps,
+              repsRaw: ex.repsRaw ?? ex.reps.toString(),
               targetWeight: ex.targetWeight,
               isAmrap: ex.isAmrap,
             },
@@ -176,6 +182,7 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
           isRequired: ex.isRequired,
           sets: ex.sets,
           reps: ex.reps,
+          repsRaw: ex.repsRaw ?? ex.reps.toString(),
           targetWeight: ex.targetWeight,
           isAmrap: ex.isAmrap,
         },
@@ -223,9 +230,10 @@ export function useTemplateEditor(): UseTemplateEditorReturn {
         exerciseId: exercise.id,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
-        sets: historyDefaults?.sets.length || 3,
-        reps: firstSetWithValues?.reps ?? 10,
-        targetWeight: firstSetWithValues?.weight ?? 0,
+        sets: historyDefaults?.sets.length || DEFAULT_TEMPLATE_SETS,
+        reps: firstSetWithValues?.reps ?? DEFAULT_TEMPLATE_REPS,
+        repsRaw: (firstSetWithValues?.reps ?? DEFAULT_TEMPLATE_REPS).toString(),
+        targetWeight: firstSetWithValues?.weight ?? DEFAULT_TEMPLATE_WEIGHT,
         isAmrap: false,
         isAccessory: false,
         isRequired: true,

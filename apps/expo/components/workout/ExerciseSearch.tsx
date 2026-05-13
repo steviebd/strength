@@ -10,7 +10,12 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db/client';
+import {
+  exerciseLibrary,
+  inferExerciseType,
+  type ExerciseLibraryItem as LibItem,
+  type ExerciseType,
+} from '@strength/db/client';
 import {
   createCustomExercise,
   ensurePersistedExercise,
@@ -51,8 +56,17 @@ const MUSCLE_GROUPS = [
 interface CreateFormState {
   name: string;
   muscleGroup: string;
+  exerciseType: ExerciseType;
   description: string;
 }
+
+const EXERCISE_TYPES: Array<{ value: ExerciseType; label: string }> = [
+  { value: 'weighted', label: 'Weighted' },
+  { value: 'bodyweight', label: 'Bodyweight' },
+  { value: 'timed', label: 'Timed' },
+  { value: 'cardio', label: 'Cardio' },
+  { value: 'plyo', label: 'Plyo' },
+];
 
 function getUserSelectionKey(id: string) {
   return `user:${id}`;
@@ -82,14 +96,17 @@ export function ExerciseSearch({
   const [createForm, setCreateForm] = useState<CreateFormState>({
     name: '',
     muscleGroup: '',
+    exerciseType: 'weighted',
     description: '',
   });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState(false);
   const scrollViewportHeight = useRef(0);
 
   const handleClose = () => {
+    if (confirming) return;
     setPendingSelection([]);
     onClose();
   };
@@ -139,6 +156,8 @@ export function ExerciseSearch({
           name: newExercise.name,
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
+          exerciseType: newExercise.exerciseType,
+          isAmrap: newExercise.isAmrap,
           libraryId: null,
         },
         ...prev,
@@ -148,7 +167,7 @@ export function ExerciseSearch({
         return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
       });
       setShowCreateForm(false);
-      setCreateForm({ name: '', muscleGroup: '', description: '' });
+      setCreateForm({ name: '', muscleGroup: '', exerciseType: 'weighted', description: '' });
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
@@ -157,10 +176,13 @@ export function ExerciseSearch({
   }
 
   function handleConfirm() {
+    if (confirming || pendingSelection.length === 0) return;
+    const selection = pendingSelection;
+    setConfirming(true);
     void (async () => {
       const selectedExercises: ExerciseLibraryItem[] = [];
 
-      for (const selectionKey of pendingSelection) {
+      for (const selectionKey of selection) {
         if (selectionKey.startsWith('user:')) {
           const userId = selectionKey.slice('user:'.length);
           const userEx = userExercises.find((exercise) => exercise.id === userId);
@@ -174,7 +196,9 @@ export function ExerciseSearch({
             libraryId: userEx.libraryId,
             name: userEx.name,
             muscleGroup: userEx.muscleGroup ?? '',
+            exerciseType: userEx.exerciseType,
             description: userEx.description ?? '',
+            isAmrap: userEx.isAmrap ?? undefined,
           });
           continue;
         }
@@ -197,7 +221,9 @@ export function ExerciseSearch({
             libraryId: persistedExercise.libraryId,
             name: persistedExercise.name,
             muscleGroup: persistedExercise.muscleGroup ?? '',
+            exerciseType: persistedExercise.exerciseType,
             description: persistedExercise.description ?? '',
+            isAmrap: persistedExercise.isAmrap ?? undefined,
           });
         } catch {
           selectedExercises.push({
@@ -205,6 +231,7 @@ export function ExerciseSearch({
             libraryId: libraryExercise.id,
             name: libraryExercise.name,
             muscleGroup: libraryExercise.muscleGroup,
+            exerciseType: inferExerciseType(libraryExercise),
             description: libraryExercise.description,
           });
         }
@@ -213,7 +240,9 @@ export function ExerciseSearch({
       onSelect(selectedExercises);
       setPendingSelection([]);
       onClose();
-    })();
+    })().finally(() => {
+      setConfirming(false);
+    });
   }
 
   const excludeIdSet = useMemo(() => new Set(excludeIds), [excludeIds]);
@@ -304,7 +333,9 @@ export function ExerciseSearch({
               </View>
             )}
           </View>
-          <Text style={styles.muscleGroupText}>{ex.muscleGroup}</Text>
+          <Text style={styles.muscleGroupText}>
+            {ex.muscleGroup} · {inferExerciseType(ex)}
+          </Text>
         </View>
         {isSelected ? (
           <View style={styles.selectedBadge}>
@@ -395,6 +426,36 @@ export function ExerciseSearch({
           </View>
 
           <View style={styles.formField}>
+            <Text style={styles.formLabel}>Exercise Type *</Text>
+            <View style={styles.muscleGroupGrid}>
+              {EXERCISE_TYPES.map((type) => {
+                const isSelected = createForm.exerciseType === type.value;
+                return (
+                  <Pressable
+                    key={`exercise-type:${type.value}`}
+                    onPress={() => setCreateForm((f) => ({ ...f, exerciseType: type.value }))}
+                    style={[
+                      styles.muscleGroupChip,
+                      isSelected ? styles.muscleGroupChipSelected : styles.muscleGroupChipDefault,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.muscleGroupChipText,
+                        isSelected
+                          ? styles.muscleGroupChipTextSelected
+                          : styles.muscleGroupChipTextDefault,
+                      ]}
+                    >
+                      {type.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.formField}>
             <Text style={styles.formLabel}>Description (optional)</Text>
             <TextInput
               style={[styles.formInput, styles.formInputMultiline]}
@@ -416,7 +477,12 @@ export function ExerciseSearch({
             <Pressable
               onPress={() => {
                 setShowCreateForm(false);
-                setCreateForm({ name: '', muscleGroup: '', description: '' });
+                setCreateForm({
+                  name: '',
+                  muscleGroup: '',
+                  exerciseType: 'weighted',
+                  description: '',
+                });
                 setCreateError(null);
               }}
               style={({ pressed }) => [styles.cancelButton, pressed && styles.buttonPressed]}
@@ -469,10 +535,13 @@ export function ExerciseSearch({
                 testID="workout-exercise-confirm"
                 accessibilityLabel="workout-exercise-confirm"
                 onPress={handleConfirm}
-                style={styles.confirmButton}
+                disabled={confirming}
+                style={[styles.confirmButton, confirming && styles.confirmButtonDisabled]}
               >
                 <Text style={styles.confirmButtonText}>
-                  Add {pendingSelection.length} Exercise{pendingSelection.length > 1 ? 's' : ''}
+                  {confirming
+                    ? 'Adding...'
+                    : `Add ${pendingSelection.length} Exercise${pendingSelection.length > 1 ? 's' : ''}`}
                 </Text>
               </Pressable>
             </View>
@@ -771,6 +840,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     paddingHorizontal: 24,
     paddingVertical: 12,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.7,
   },
   confirmButtonText: {
     fontSize: typography.fontSizes.sm,

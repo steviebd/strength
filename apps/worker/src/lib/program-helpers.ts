@@ -1,6 +1,6 @@
 import { eq, and, or, gt, desc, sql, inArray } from 'drizzle-orm';
 import * as schema from '@strength/db';
-import { exerciseLibrary } from '@strength/db';
+import { exerciseLibrary, inferExerciseType } from '@strength/db';
 import { getProgramCycleById, getOrCreateExerciseForUser } from '@strength/db';
 import { chunkArray, getSafeInsertChunkSize } from '@strength/db';
 import {
@@ -597,6 +597,7 @@ export async function resolveToUserExerciseId(
         name: libraryExercise.name,
         muscleGroup: libraryExercise.muscleGroup,
         description: libraryExercise.description,
+        exerciseType: inferExerciseType(libraryExercise),
         libraryId: libraryExercise.id,
         createdAt: now,
         updatedAt: now,
@@ -727,6 +728,9 @@ export async function getLastCompletedExerciseSnapshots(
     workoutExerciseId: string;
     weight: number | null;
     reps: number | null;
+    duration: number | null;
+    distance: number | null;
+    height: number | null;
     rpe: number | null;
     setNumber: number | null;
   };
@@ -735,6 +739,9 @@ export async function getLastCompletedExerciseSnapshots(
       workoutExerciseId: schema.workoutSets.workoutExerciseId,
       weight: schema.workoutSets.weight,
       reps: schema.workoutSets.reps,
+      duration: schema.workoutSets.duration,
+      distance: schema.workoutSets.distance,
+      height: schema.workoutSets.height,
       rpe: schema.workoutSets.rpe,
       setNumber: schema.workoutSets.setNumber,
     })
@@ -756,6 +763,9 @@ export async function getLastCompletedExerciseSnapshots(
     sets: {
       weight: number | null;
       reps: number | null;
+      duration: number | null;
+      distance: number | null;
+      height: number | null;
       rpe: number | null;
       setNumber: number | null;
     }[];
@@ -766,6 +776,9 @@ export async function getLastCompletedExerciseSnapshots(
       const sets = (setsByWorkoutExerciseId.get(latest.workoutExerciseId) ?? []).map((s) => ({
         weight: s.weight,
         reps: s.reps,
+        duration: s.duration,
+        distance: s.distance,
+        height: s.height,
         rpe: s.rpe,
         setNumber: s.setNumber,
       }));

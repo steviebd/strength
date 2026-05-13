@@ -89,6 +89,7 @@ export default function WorkoutSessionScreen() {
     completeWorkout,
     discardWorkout,
     addExercise,
+    updateExercise,
     addSet,
     updateSet,
     deleteSet,
@@ -241,10 +242,28 @@ export default function WorkoutSessionScreen() {
   const handleAddExercise = useCallback(
     async (exercisesList: ExerciseLibraryItem[]) => {
       for (const exercise of exercisesList) {
+        const isAmrapExercise =
+          exercise.isAmrap ??
+          (exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'));
+        if (isAmrapExercise) {
+          const amrapMode = await new Promise<'only' | 'with-working' | 'cancel'>((resolve) => {
+            Alert.alert('AMRAP sets', 'How should this exercise be added?', [
+              { text: 'AMRAP only', onPress: () => resolve('only') },
+              { text: 'Working sets + AMRAP', onPress: () => resolve('with-working') },
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve('cancel') },
+            ]);
+          });
+          if (amrapMode === 'cancel') continue;
+          const addedId = await addExercise(exercise, { amrapOnly: amrapMode === 'only' });
+          if (addedId) {
+            updateExercise(addedId, { isAmrap: true });
+          }
+          continue;
+        }
         await addExercise(exercise);
       }
     },
-    [addExercise],
+    [addExercise, updateExercise],
   );
 
   const handleExerciseSetsUpdate = useCallback(
@@ -259,6 +278,9 @@ export default function WorkoutSessionScreen() {
             updateSet(set.id, {
               weight: sets[idx].weight,
               reps: sets[idx].reps,
+              duration: sets[idx].duration,
+              distance: sets[idx].distance,
+              height: sets[idx].height,
               isComplete: sets[idx].completed,
             });
           }
@@ -621,7 +643,10 @@ export default function WorkoutSessionScreen() {
               const localSets = (exercise.sets ?? []).map((s) => ({
                 id: s.id,
                 reps: s.reps ?? 0,
-                weight: s.weight ?? 0,
+                weight: s.weight ?? null,
+                duration: s.duration ?? 0,
+                distance: s.distance ?? null,
+                height: s.height ?? 0,
                 completed: s.isComplete,
               }));
               return (
@@ -635,6 +660,7 @@ export default function WorkoutSessionScreen() {
                       exerciseId: exercise.exerciseId,
                       name: exercise.name,
                       muscleGroup: exercise.muscleGroup,
+                      exerciseType: exercise.exerciseType,
                       isAmrap: exercise.isAmrap,
                     }}
                     sets={localSets}

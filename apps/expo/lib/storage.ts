@@ -13,6 +13,9 @@ const STORAGE_KEYS = {
 interface LastWorkoutData {
   weight: number | null;
   reps: number | null;
+  duration?: number | null;
+  distance?: number | null;
+  height?: number | null;
   rpe: number | null;
   date: string;
 }

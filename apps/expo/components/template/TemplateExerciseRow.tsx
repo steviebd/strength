@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { type TemplateExercise } from '@/hooks/useTemplateEditor';
 import { colors, spacing, radius } from '@/theme';
@@ -7,6 +7,8 @@ type WeightUnit = 'kg' | 'lbs';
 
 const KG_TO_LBS = 2.20462;
 const LBS_TO_KG = 0.453592;
+const DEFAULT_TEMPLATE_SETS = 1;
+const DEFAULT_TEMPLATE_REPS = 5;
 
 function toDisplayWeight(weightKg: number, unit: WeightUnit): number {
   return unit === 'lbs' ? weightKg * KG_TO_LBS : weightKg;
@@ -14,6 +16,11 @@ function toDisplayWeight(weightKg: number, unit: WeightUnit): number {
 
 function toStorageWeight(weight: number, fromUnit: WeightUnit): number {
   return fromUnit === 'lbs' ? weight * LBS_TO_KG : weight;
+}
+
+function parsePositiveInteger(text: string): number | null {
+  const parsed = Number.parseInt(text, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 interface TemplateExerciseRowProps {
@@ -39,10 +46,58 @@ export function TemplateExerciseRow({
 }: TemplateExerciseRowProps) {
   const displayWeight = toDisplayWeight(exercise.targetWeight, weightUnit);
   const [localWeight, setLocalWeight] = useState(displayWeight.toString());
+  const [localSets, setLocalSets] = useState((exercise.sets || DEFAULT_TEMPLATE_SETS).toString());
+  const [localReps, setLocalReps] = useState(
+    exercise.repsRaw || (exercise.reps || DEFAULT_TEMPLATE_REPS).toString(),
+  );
+
+  useEffect(() => {
+    setLocalSets((exercise.sets || DEFAULT_TEMPLATE_SETS).toString());
+  }, [exercise.sets]);
+
+  useEffect(() => {
+    setLocalReps(exercise.repsRaw || (exercise.reps || DEFAULT_TEMPLATE_REPS).toString());
+  }, [exercise.reps, exercise.repsRaw]);
 
   const handleWeightChange = useCallback((text: string) => {
     setLocalWeight(text);
   }, []);
+
+  const handleSetsChange = useCallback(
+    (text: string) => {
+      setLocalSets(text);
+      const sets = parsePositiveInteger(text);
+      if (sets !== null) {
+        onUpdate({ sets });
+      }
+    },
+    [onUpdate],
+  );
+
+  const handleSetsBlur = useCallback(() => {
+    const sets = parsePositiveInteger(localSets) ?? DEFAULT_TEMPLATE_SETS;
+    setLocalSets(sets.toString());
+    onUpdate({ sets });
+  }, [localSets, onUpdate]);
+
+  const handleRepsChange = useCallback(
+    (text: string) => {
+      setLocalReps(text);
+      const reps = parsePositiveInteger(text);
+      if (reps !== null) {
+        onUpdate({ reps, repsRaw: text });
+      } else {
+        onUpdate({ repsRaw: text });
+      }
+    },
+    [onUpdate],
+  );
+
+  const handleRepsBlur = useCallback(() => {
+    const reps = parsePositiveInteger(localReps) ?? DEFAULT_TEMPLATE_REPS;
+    setLocalReps(reps.toString());
+    onUpdate({ reps, repsRaw: reps.toString() });
+  }, [localReps, onUpdate]);
 
   const handleWeightBlur = useCallback(() => {
     const num = parseFloat(localWeight);
@@ -87,13 +142,9 @@ export function TemplateExerciseRow({
           <Text style={styles.inputLabel}>Sets</Text>
           <TextInput
             style={styles.input}
-            value={exercise.sets.toString()}
-            onChangeText={(text) => {
-              const num = parseInt(text, 10);
-              if (!isNaN(num) && num >= 0) {
-                onUpdate({ sets: num });
-              }
-            }}
+            value={localSets}
+            onChangeText={handleSetsChange}
+            onBlur={handleSetsBlur}
             keyboardType="number-pad"
             selectTextOnFocus
           />
@@ -102,13 +153,9 @@ export function TemplateExerciseRow({
           <Text style={styles.inputLabel}>Reps</Text>
           <TextInput
             style={styles.input}
-            value={exercise.reps.toString()}
-            onChangeText={(text) => {
-              const num = parseInt(text, 10);
-              if (!isNaN(num) && num >= 0) {
-                onUpdate({ reps: num });
-              }
-            }}
+            value={localReps}
+            onChangeText={handleRepsChange}
+            onBlur={handleRepsBlur}
             keyboardType="number-pad"
             selectTextOnFocus
           />

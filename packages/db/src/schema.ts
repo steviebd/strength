@@ -26,6 +26,7 @@ export const userPreferences = sqliteTable('user_preferences', {
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
   weightUnit: text('weight_unit').default('kg'),
+  distanceUnit: text('distance_unit').default('km'),
   timezone: text('timezone'),
   weightPromptedAt: integer('weight_prompted_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
@@ -84,118 +85,161 @@ export const exercises = sqliteTable(
     name: text('name').notNull(),
     muscleGroup: text('muscle_group'),
     description: text('description'),
+    exerciseType: text('exercise_type'),
+    isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
     libraryId: text('library_id'),
     isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [unique('exercises_user_id_library_id_unique').on(t.userId, t.libraryId)],
+  (t) => [
+    unique('exercises_user_id_library_id_unique').on(t.userId, t.libraryId),
+    index('idx_exercises_user_id_updated_at').on(t.userId, t.updatedAt),
+    index('idx_exercises_muscle_group').on(t.muscleGroup),
+  ],
 );
 
-export const templates = sqliteTable('templates', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description'),
-  notes: text('notes'),
-  programCycleId: text('program_cycle_id'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const templates = sqliteTable(
+  'templates',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    notes: text('notes'),
+    programCycleId: text('program_cycle_id'),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_templates_user_id_updated_at').on(t.userId, t.updatedAt)],
+);
 
-export const templateExercises = sqliteTable('template_exercises', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  templateId: text('template_id')
-    .notNull()
-    .references(() => templates.id, { onDelete: 'cascade' }),
-  exerciseId: text('exercise_id')
-    .notNull()
-    .references(() => exercises.id, { onDelete: 'cascade' }),
-  orderIndex: integer('order_index').notNull(),
-  targetWeight: real('target_weight'),
-  addedWeight: real('added_weight').default(0),
-  sets: integer('sets'),
-  reps: integer('reps'),
-  repsRaw: text('reps_raw'),
-  isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
-  isAccessory: integer('is_accessory', { mode: 'boolean' }).default(false),
-  isRequired: integer('is_required', { mode: 'boolean' }).default(true),
-  setNumber: integer('set_number'),
-});
+export const templateExercises = sqliteTable(
+  'template_exercises',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    templateId: text('template_id')
+      .notNull()
+      .references(() => templates.id, { onDelete: 'cascade' }),
+    exerciseId: text('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull(),
+    exerciseType: text('exercise_type').notNull().default('weighted'),
+    targetDuration: integer('target_duration'),
+    targetDistance: integer('target_distance'),
+    targetHeight: integer('target_height'),
+    targetWeight: real('target_weight'),
+    addedWeight: real('added_weight').default(0),
+    sets: integer('sets'),
+    reps: integer('reps'),
+    repsRaw: text('reps_raw'),
+    isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
+    isAccessory: integer('is_accessory', { mode: 'boolean' }).default(false),
+    isRequired: integer('is_required', { mode: 'boolean' }).default(true),
+    setNumber: integer('set_number'),
+  },
+  (t) => [index('idx_template_exercises_template_id').on(t.templateId)],
+);
 
-export const workouts = sqliteTable('workouts', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  templateId: text('template_id').references(() => templates.id, { onDelete: 'set null' }),
-  programCycleId: text('program_cycle_id').references(() => userProgramCycles.id, {
-    onDelete: 'set null',
-  }),
-  name: text('name').notNull(),
-  startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
-  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
-  notes: text('notes'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-  squat1rm: real('squat_1rm'),
-  bench1rm: real('bench_1rm'),
-  deadlift1rm: real('deadlift_1rm'),
-  ohp1rm: real('ohp_1rm'),
-  startingSquat1rm: real('starting_squat_1rm'),
-  startingBench1rm: real('starting_bench_1rm'),
-  startingDeadlift1rm: real('starting_deadlift_1rm'),
-  startingOhp1rm: real('starting_ohp_1rm'),
-  totalVolume: real('total_volume'),
-  totalSets: integer('total_sets'),
-  durationMinutes: integer('duration_minutes'),
-});
+export const workouts = sqliteTable(
+  'workouts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    templateId: text('template_id').references(() => templates.id, { onDelete: 'set null' }),
+    programCycleId: text('program_cycle_id').references(() => userProgramCycles.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    notes: text('notes'),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    squat1rm: real('squat_1rm'),
+    bench1rm: real('bench_1rm'),
+    deadlift1rm: real('deadlift_1rm'),
+    ohp1rm: real('ohp_1rm'),
+    startingSquat1rm: real('starting_squat_1rm'),
+    startingBench1rm: real('starting_bench_1rm'),
+    startingDeadlift1rm: real('starting_deadlift_1rm'),
+    startingOhp1rm: real('starting_ohp_1rm'),
+    totalVolume: real('total_volume'),
+    totalSets: integer('total_sets'),
+    durationMinutes: integer('duration_minutes'),
+  },
+  (t) => [
+    index('idx_workouts_user_id_started_at').on(t.userId, t.startedAt),
+    index('idx_workouts_template_id').on(t.templateId),
+    index('idx_workouts_completed_at').on(t.completedAt),
+  ],
+);
 
-export const workoutExercises = sqliteTable('workout_exercises', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  workoutId: text('workout_id')
-    .notNull()
-    .references(() => workouts.id, { onDelete: 'cascade' }),
-  exerciseId: text('exercise_id')
-    .notNull()
-    .references(() => exercises.id, { onDelete: 'cascade' }),
-  orderIndex: integer('order_index').notNull(),
-  notes: text('notes'),
-  isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
-  setNumber: integer('set_number'),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const workoutExercises = sqliteTable(
+  'workout_exercises',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    workoutId: text('workout_id')
+      .notNull()
+      .references(() => workouts.id, { onDelete: 'cascade' }),
+    exerciseId: text('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull(),
+    notes: text('notes'),
+    isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
+    setNumber: integer('set_number'),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_workout_exercises_order').on(t.workoutId, t.orderIndex),
+    index('idx_workout_exercises_exercise_id').on(t.exerciseId),
+  ],
+);
 
-export const workoutSets = sqliteTable('workout_sets', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  workoutExerciseId: text('workout_exercise_id')
-    .notNull()
-    .references(() => workoutExercises.id, { onDelete: 'cascade' }),
-  setNumber: integer('set_number').notNull(),
-  weight: real('weight'),
-  reps: integer('reps'),
-  rpe: real('rpe'),
-  isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
-  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const workoutSets = sqliteTable(
+  'workout_sets',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    workoutExerciseId: text('workout_exercise_id')
+      .notNull()
+      .references(() => workoutExercises.id, { onDelete: 'cascade' }),
+    setNumber: integer('set_number').notNull(),
+    weight: real('weight'),
+    reps: integer('reps'),
+    duration: integer('duration'),
+    distance: integer('distance'),
+    height: integer('height'),
+    rpe: real('rpe'),
+    isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_workout_sets_workout_exercise_id').on(t.workoutExerciseId),
+    index('idx_workout_sets_completed_at').on(t.completedAt),
+  ],
+);
 
 export const workoutSyncOperations = sqliteTable(
   'workout_sync_operations',
@@ -213,57 +257,133 @@ export const workoutSyncOperations = sqliteTable(
   (t) => [unique('workout_sync_operations_user_id_id_unique').on(t.userId, t.id)],
 );
 
-export const userProgramCycles = sqliteTable('user_program_cycles', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  programSlug: text('program_slug').notNull(),
-  name: text('name').notNull(),
-  squat1rm: real('squat_1rm').notNull(),
-  bench1rm: real('bench_1rm').notNull(),
-  deadlift1rm: real('deadlift_1rm').notNull(),
-  ohp1rm: real('ohp_1rm').notNull(),
-  startingSquat1rm: real('starting_squat_1rm'),
-  startingBench1rm: real('starting_bench_1rm'),
-  startingDeadlift1rm: real('starting_deadlift_1rm'),
-  startingOhp1rm: real('starting_ohp_1rm'),
-  currentWeek: integer('current_week').default(1),
-  currentSession: integer('current_session').default(1),
-  totalSessionsCompleted: integer('total_sessions_completed').default(0),
-  totalSessionsPlanned: integer('total_sessions_planned').notNull(),
-  estimatedWeeks: integer('estimated_weeks'),
-  status: text('status').default('active'),
-  isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
-  startedAt: integer('started_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
-  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
-  preferredGymDays: text('preferred_gym_days'),
-  preferredTimeOfDay: text('preferred_time_of_day'),
-  programStartAt: integer('program_start_at', { mode: 'timestamp_ms' }),
-  firstSessionAt: integer('first_session_at', { mode: 'timestamp_ms' }),
-});
+export const userProgramCycles = sqliteTable(
+  'user_program_cycles',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    programSlug: text('program_slug').notNull(),
+    name: text('name').notNull(),
+    squat1rm: real('squat_1rm').notNull(),
+    bench1rm: real('bench_1rm').notNull(),
+    deadlift1rm: real('deadlift_1rm').notNull(),
+    ohp1rm: real('ohp_1rm').notNull(),
+    startingSquat1rm: real('starting_squat_1rm'),
+    startingBench1rm: real('starting_bench_1rm'),
+    startingDeadlift1rm: real('starting_deadlift_1rm'),
+    startingOhp1rm: real('starting_ohp_1rm'),
+    currentWeek: integer('current_week').default(1),
+    currentSession: integer('current_session').default(1),
+    totalSessionsCompleted: integer('total_sessions_completed').default(0),
+    totalSessionsPlanned: integer('total_sessions_planned').notNull(),
+    estimatedWeeks: integer('estimated_weeks'),
+    status: text('status').default('active'),
+    isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+    preferredGymDays: text('preferred_gym_days'),
+    preferredTimeOfDay: text('preferred_time_of_day'),
+    programStartAt: integer('program_start_at', { mode: 'timestamp_ms' }),
+    firstSessionAt: integer('first_session_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('idx_user_program_cycles_user_id').on(t.userId)],
+);
 
-export const programCycleWorkouts = sqliteTable('program_cycle_workouts', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  cycleId: text('cycle_id')
-    .notNull()
-    .references(() => userProgramCycles.id, { onDelete: 'cascade' }),
-  templateId: text('template_id').references(() => templates.id, { onDelete: 'cascade' }),
-  weekNumber: integer('week_number').notNull(),
-  sessionNumber: integer('session_number').notNull(),
-  sessionName: text('session_name').notNull(),
-  targetLifts: text('target_lifts'),
-  isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
-  workoutId: text('workout_id'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
-  scheduledAt: integer('scheduled_at', { mode: 'timestamp_ms' }),
-});
+export const programCycleWorkouts = sqliteTable(
+  'program_cycle_workouts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    cycleId: text('cycle_id')
+      .notNull()
+      .references(() => userProgramCycles.id, { onDelete: 'cascade' }),
+    templateId: text('template_id').references(() => templates.id, { onDelete: 'cascade' }),
+    weekNumber: integer('week_number').notNull(),
+    sessionNumber: integer('session_number').notNull(),
+    sessionName: text('session_name').notNull(),
+    targetLifts: text('target_lifts'),
+    isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
+    workoutId: text('workout_id'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+    scheduledAt: integer('scheduled_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [
+    index('idx_program_cycle_workouts_cycle_id').on(t.cycleId),
+    index('idx_program_cycle_workouts_scheduled_at').on(t.scheduledAt),
+  ],
+);
+
+export const customPrograms = sqliteTable(
+  'custom_programs',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    weeks: integer('weeks').notNull(),
+    daysPerWeek: integer('days_per_week').notNull(),
+    requiresOneRm: integer('requires_one_rm', { mode: 'boolean' }).default(true),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_custom_programs_user_id_updated_at').on(t.userId, t.updatedAt)],
+);
+
+export const customProgramDays = sqliteTable(
+  'custom_program_days',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    customProgramId: text('custom_program_id')
+      .notNull()
+      .references(() => customPrograms.id, { onDelete: 'cascade' }),
+    dayIndex: integer('day_index').notNull(),
+    name: text('name').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_custom_program_days_program').on(t.customProgramId, t.dayIndex)],
+);
+
+export const customProgramExercises = sqliteTable(
+  'custom_program_exercises',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    customProgramDayId: text('custom_program_day_id')
+      .notNull()
+      .references(() => customProgramDays.id, { onDelete: 'cascade' }),
+    exerciseId: text('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull(),
+    sets: integer('sets').notNull(),
+    reps: integer('reps'),
+    startingWeight: real('starting_weight'),
+    incrementWeight: real('increment_weight').notNull().default(0),
+    targetDistance: integer('target_distance'),
+    targetHeight: integer('target_height'),
+    progressionMode: text('progression_mode').notNull().default('session'),
+    isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_custom_program_exercises_day').on(t.customProgramDayId, t.orderIndex)],
+);
 
 export const _exercisesUserIdUpdatedAtIdx = index('idx_exercises_user_id_updated_at').on(
   exercises.userId,
@@ -311,6 +431,19 @@ export const _programCycleWorkoutsScheduledAtIdx = index(
   'idx_program_cycle_workouts_scheduled_at',
 ).on(programCycleWorkouts.scheduledAt);
 
+export const _customProgramsUserIdUpdatedAtIdx = index('idx_custom_programs_user_id_updated_at').on(
+  customPrograms.userId,
+  customPrograms.updatedAt,
+);
+export const _customProgramDaysProgramIdx = index('idx_custom_program_days_program').on(
+  customProgramDays.customProgramId,
+  customProgramDays.dayIndex,
+);
+export const _customProgramExercisesDayIdx = index('idx_custom_program_exercises_day').on(
+  customProgramExercises.customProgramDayId,
+  customProgramExercises.orderIndex,
+);
+
 export const _templateExercisesTemplateIdIdx = index('idx_template_exercises_template_id').on(
   templateExercises.templateId,
 );
@@ -337,157 +470,222 @@ export const userIntegration = sqliteTable(
   (t) => [
     unique('user_integration_user_id_provider_unique').on(t.userId, t.provider),
     unique('user_integration_provider_provider_user_id_unique').on(t.provider, t.providerUserId),
+    index('idx_user_integration_user_id').on(t.userId),
+    index('idx_user_integration_provider').on(t.provider),
+    index('idx_user_integration_user_id_provider').on(t.userId, t.provider),
   ],
 );
 
-export const whoopProfile = sqliteTable('whoop_profile', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  whoopUserId: text('whoop_user_id').notNull().unique(),
-  email: text('email'),
-  firstName: text('first_name'),
-  lastName: text('last_name'),
-  rawData: text('raw_data'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const whoopProfile = sqliteTable(
+  'whoop_profile',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    whoopUserId: text('whoop_user_id').notNull().unique(),
+    email: text('email'),
+    firstName: text('first_name'),
+    lastName: text('last_name'),
+    rawData: text('raw_data'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_whoop_profile_user_id').on(t.userId),
+    index('idx_whoop_profile_whoop_user_id').on(t.whoopUserId),
+  ],
+);
 
-export const whoopWorkout = sqliteTable('whoop_workout', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  whoopWorkoutId: text('whoop_workout_id').notNull().unique(),
-  start: integer('start', { mode: 'timestamp_ms' }).notNull(),
-  end: integer('end', { mode: 'timestamp_ms' }).notNull(),
-  timezoneOffset: text('timezone_offset'),
-  sportName: text('sport_name'),
-  scoreState: text('score_state'),
-  score: text('score'),
-  during: text('during'),
-  zoneDuration: text('zone_duration'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const whoopWorkout = sqliteTable(
+  'whoop_workout',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    whoopWorkoutId: text('whoop_workout_id').notNull().unique(),
+    start: integer('start', { mode: 'timestamp_ms' }).notNull(),
+    end: integer('end', { mode: 'timestamp_ms' }).notNull(),
+    timezoneOffset: text('timezone_offset'),
+    sportName: text('sport_name'),
+    scoreState: text('score_state'),
+    score: text('score'),
+    during: text('during'),
+    zoneDuration: text('zone_duration'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_whoop_workout_user_id').on(t.userId),
+    index('idx_whoop_workout_whoop_workout_id').on(t.whoopWorkoutId),
+    index('idx_whoop_workout_start').on(t.start),
+    index('idx_whoop_workout_user_id_start').on(t.userId, t.start),
+  ],
+);
 
-export const whoopRecovery = sqliteTable('whoop_recovery', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  whoopRecoveryId: text('whoop_recovery_id').notNull().unique(),
-  cycleId: text('cycle_id'),
-  date: integer('date', { mode: 'timestamp_ms' }).notNull(),
-  recoveryScore: integer('recovery_score'),
-  hrvRmssdMilli: real('hrv_rmssd_milli'),
-  hrvRmssdBaseline: real('hrv_rmssd_baseline'),
-  restingHeartRate: integer('resting_heart_rate'),
-  restingHeartRateBaseline: integer('resting_heart_rate_baseline'),
-  respiratoryRate: real('respiratory_rate'),
-  respiratoryRateBaseline: real('respiratory_rate_baseline'),
-  rawData: text('raw_data'),
-  recoveryScoreTier: text('recovery_score_tier'),
-  timezoneOffset: text('timezone_offset'),
-  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const whoopRecovery = sqliteTable(
+  'whoop_recovery',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    whoopRecoveryId: text('whoop_recovery_id').notNull().unique(),
+    cycleId: text('cycle_id'),
+    date: integer('date', { mode: 'timestamp_ms' }).notNull(),
+    recoveryScore: integer('recovery_score'),
+    hrvRmssdMilli: real('hrv_rmssd_milli'),
+    hrvRmssdBaseline: real('hrv_rmssd_baseline'),
+    restingHeartRate: integer('resting_heart_rate'),
+    restingHeartRateBaseline: integer('resting_heart_rate_baseline'),
+    respiratoryRate: real('respiratory_rate'),
+    respiratoryRateBaseline: real('respiratory_rate_baseline'),
+    rawData: text('raw_data'),
+    recoveryScoreTier: text('recovery_score_tier'),
+    timezoneOffset: text('timezone_offset'),
+    webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_whoop_recovery_user_id').on(t.userId),
+    index('idx_whoop_recovery_whoop_recovery_id').on(t.whoopRecoveryId),
+    index('idx_whoop_recovery_date').on(t.date),
+    index('idx_whoop_recovery_user_id_date').on(t.userId, t.date),
+    index('idx_whoop_recovery_cycle_id').on(t.cycleId),
+  ],
+);
 
-export const whoopCycle = sqliteTable('whoop_cycle', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  whoopCycleId: text('whoop_cycle_id').notNull().unique(),
-  start: integer('start', { mode: 'timestamp_ms' }).notNull(),
-  end: integer('end', { mode: 'timestamp_ms' }).notNull(),
-  timezoneOffset: text('timezone_offset'),
-  dayStrain: real('day_strain'),
-  averageHeartRate: integer('average_heart_rate'),
-  maxHeartRate: integer('max_heart_rate'),
-  kilojoule: real('kilojoule'),
-  percentRecorded: real('percent_recorded'),
-  distanceMeter: integer('distance_meter'),
-  altitudeGainMeter: integer('altitude_gain_meter'),
-  altitudeChangeMeter: integer('altitude_change_meter'),
-  rawData: text('raw_data'),
-  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const whoopCycle = sqliteTable(
+  'whoop_cycle',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    whoopCycleId: text('whoop_cycle_id').notNull().unique(),
+    start: integer('start', { mode: 'timestamp_ms' }).notNull(),
+    end: integer('end', { mode: 'timestamp_ms' }).notNull(),
+    timezoneOffset: text('timezone_offset'),
+    dayStrain: real('day_strain'),
+    averageHeartRate: integer('average_heart_rate'),
+    maxHeartRate: integer('max_heart_rate'),
+    kilojoule: real('kilojoule'),
+    percentRecorded: real('percent_recorded'),
+    distanceMeter: integer('distance_meter'),
+    altitudeGainMeter: integer('altitude_gain_meter'),
+    altitudeChangeMeter: integer('altitude_change_meter'),
+    rawData: text('raw_data'),
+    webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_whoop_cycle_user_id').on(t.userId),
+    index('idx_whoop_cycle_whoop_cycle_id').on(t.whoopCycleId),
+    index('idx_whoop_cycle_start').on(t.start),
+    index('idx_whoop_cycle_user_id_start').on(t.userId, t.start),
+    index('idx_whoop_cycle_day_strain').on(t.dayStrain),
+  ],
+);
 
-export const whoopSleep = sqliteTable('whoop_sleep', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  whoopSleepId: text('whoop_sleep_id').notNull().unique(),
-  start: integer('start', { mode: 'timestamp_ms' }).notNull(),
-  end: integer('end', { mode: 'timestamp_ms' }).notNull(),
-  timezoneOffset: text('timezone_offset'),
-  sleepPerformancePercentage: integer('sleep_performance_percentage'),
-  totalSleepTimeMilli: integer('total_sleep_time_milli'),
-  sleepEfficiencyPercentage: real('sleep_efficiency_percentage'),
-  slowWaveSleepTimeMilli: integer('slow_wave_sleep_time_milli'),
-  remSleepTimeMilli: integer('rem_sleep_time_milli'),
-  lightSleepTimeMilli: integer('light_sleep_time_milli'),
-  wakeTimeMilli: integer('wake_time_milli'),
-  arousalTimeMilli: integer('arousal_time_milli'),
-  disturbanceCount: integer('disturbance_count'),
-  sleepLatencyMilli: integer('sleep_latency_milli'),
-  sleepConsistencyPercentage: real('sleep_consistency_percentage'),
-  sleepNeedBaselineMilli: integer('sleep_need_baseline_milli'),
-  sleepNeedFromSleepDebtMilli: integer('sleep_need_from_sleep_debt_milli'),
-  sleepNeedFromRecentStrainMilli: integer('sleep_need_from_recent_strain_milli'),
-  sleepNeedFromRecentNapMilli: integer('sleep_need_from_recent_nap_milli'),
-  rawData: text('raw_data'),
-  sleepQualityTier: text('sleep_quality_tier'),
-  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const whoopSleep = sqliteTable(
+  'whoop_sleep',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    whoopSleepId: text('whoop_sleep_id').notNull().unique(),
+    start: integer('start', { mode: 'timestamp_ms' }).notNull(),
+    end: integer('end', { mode: 'timestamp_ms' }).notNull(),
+    timezoneOffset: text('timezone_offset'),
+    sleepPerformancePercentage: integer('sleep_performance_percentage'),
+    totalSleepTimeMilli: integer('total_sleep_time_milli'),
+    sleepEfficiencyPercentage: real('sleep_efficiency_percentage'),
+    slowWaveSleepTimeMilli: integer('slow_wave_sleep_time_milli'),
+    remSleepTimeMilli: integer('rem_sleep_time_milli'),
+    lightSleepTimeMilli: integer('light_sleep_time_milli'),
+    wakeTimeMilli: integer('wake_time_milli'),
+    arousalTimeMilli: integer('arousal_time_milli'),
+    disturbanceCount: integer('disturbance_count'),
+    sleepLatencyMilli: integer('sleep_latency_milli'),
+    sleepConsistencyPercentage: real('sleep_consistency_percentage'),
+    sleepNeedBaselineMilli: integer('sleep_need_baseline_milli'),
+    sleepNeedFromSleepDebtMilli: integer('sleep_need_from_sleep_debt_milli'),
+    sleepNeedFromRecentStrainMilli: integer('sleep_need_from_recent_strain_milli'),
+    sleepNeedFromRecentNapMilli: integer('sleep_need_from_recent_nap_milli'),
+    rawData: text('raw_data'),
+    sleepQualityTier: text('sleep_quality_tier'),
+    webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_whoop_sleep_user_id').on(t.userId),
+    index('idx_whoop_sleep_whoop_sleep_id').on(t.whoopSleepId),
+    index('idx_whoop_sleep_start').on(t.start),
+    index('idx_whoop_sleep_user_id_start').on(t.userId, t.start),
+    index('idx_whoop_sleep_user_id_sleep_performance').on(t.userId, t.sleepPerformancePercentage),
+  ],
+);
 
-export const whoopBodyMeasurement = sqliteTable('whoop_body_measurement', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  whoopMeasurementId: text('whoop_measurement_id').notNull().unique(),
-  heightMeter: real('height_meter'),
-  weightKilogram: real('weight_kilogram'),
-  maxHeartRate: integer('max_heart_rate'),
-  measurementDate: integer('measurement_date', { mode: 'timestamp_ms' }),
-  rawData: text('raw_data'),
-  webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const whoopBodyMeasurement = sqliteTable(
+  'whoop_body_measurement',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    whoopMeasurementId: text('whoop_measurement_id').notNull().unique(),
+    heightMeter: real('height_meter'),
+    weightKilogram: real('weight_kilogram'),
+    maxHeartRate: integer('max_heart_rate'),
+    measurementDate: integer('measurement_date', { mode: 'timestamp_ms' }),
+    rawData: text('raw_data'),
+    webhookReceivedAt: integer('webhook_received_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_whoop_body_measurement_user_id').on(t.userId),
+    index('idx_whoop_body_measurement_whoop_measurement_id').on(t.whoopMeasurementId),
+    index('idx_whoop_body_measurement_measurement_date').on(t.measurementDate),
+    index('idx_whoop_body_measurement_user_id_measurement_date').on(t.userId, t.measurementDate),
+  ],
+);
 
-export const rateLimit = sqliteTable('rate_limit', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id').notNull(),
-  endpoint: text('endpoint').notNull(),
-  requests: integer('requests').notNull().default(0),
-  windowStart: integer('window_start', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const rateLimit = sqliteTable(
+  'rate_limit',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id').notNull(),
+    endpoint: text('endpoint').notNull(),
+    requests: integer('requests').notNull().default(0),
+    windowStart: integer('window_start', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_rate_limit_user_id_endpoint').on(t.userId, t.endpoint),
+    index('idx_rate_limit_window_start').on(t.windowStart),
+  ],
+);
 
 export const _userIntegrationUserIdIdx = index('idx_user_integration_user_id').on(
   userIntegration.userId,
@@ -573,25 +771,32 @@ export const _rateLimitWindowStartIdx = index('idx_rate_limit_window_start').on(
   rateLimit.windowStart,
 );
 
-export const nutritionEntries = sqliteTable('nutrition_entries', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  mealType: text('meal_type'),
-  name: text('name'),
-  calories: real('calories'),
-  proteinG: real('protein_g'),
-  carbsG: real('carbs_g'),
-  fatG: real('fat_g'),
-  aiAnalysis: text('ai_analysis'),
-  loggedAt: integer('logged_at', { mode: 'timestamp_ms' }).notNull(),
-  isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const nutritionEntries = sqliteTable(
+  'nutrition_entries',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    mealType: text('meal_type'),
+    name: text('name'),
+    calories: real('calories'),
+    proteinG: real('protein_g'),
+    carbsG: real('carbs_g'),
+    fatG: real('fat_g'),
+    aiAnalysis: text('ai_analysis'),
+    loggedAt: integer('logged_at', { mode: 'timestamp_ms' }).notNull(),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_nutrition_entries_user_logged_at').on(t.userId, t.loggedAt),
+    index('idx_nutrition_entries_user_deleted').on(t.userId, t.isDeleted),
+  ],
+);
 
 export const nutritionChatMessages = sqliteTable('nutrition_chat_messages', {
   id: text('id')
@@ -625,24 +830,28 @@ export const nutritionChatJobs = sqliteTable('nutrition_chat_jobs', {
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
 });
 
-export const userBodyStats = sqliteTable('user_body_stats', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id')
-    .notNull()
-    .unique()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  bodyweightKg: real('bodyweight_kg'),
-  heightCm: real('height_cm'),
-  targetCalories: integer('target_calories'),
-  targetProteinG: integer('target_protein_g'),
-  targetCarbsG: integer('target_carbs_g'),
-  targetFatG: integer('target_fat_g'),
-  recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
+export const userBodyStats = sqliteTable(
+  'user_body_stats',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    bodyweightKg: real('bodyweight_kg'),
+    heightCm: real('height_cm'),
+    targetCalories: integer('target_calories'),
+    targetProteinG: integer('target_protein_g'),
+    targetCarbsG: integer('target_carbs_g'),
+    targetFatG: integer('target_fat_g'),
+    recordedAt: integer('recorded_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_user_body_stats_user').on(t.userId)],
+);
 
 export const nutritionTrainingContext = sqliteTable(
   'nutrition_training_context',

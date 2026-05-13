@@ -43,6 +43,7 @@ import {
   type WorkoutSyncStatus,
 } from '@/db/workouts';
 import { retryWorkoutSync } from '@/lib/workout-sync';
+import { incrementHistorySet } from '@/lib/exerciseProgression';
 import { useActivePrograms, type ActiveProgram } from '@/hooks/usePrograms';
 import type { Template } from '@/hooks/useTemplateEditor';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
@@ -94,7 +95,30 @@ async function fetchExerciseHistorySnapshot(
 }
 
 function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) {
-  return snapshot?.sets?.some((set) => set.weight !== null || set.reps !== null) ?? false;
+  return (
+    snapshot?.sets?.some(
+      (set) =>
+        set.weight !== null ||
+        set.reps !== null ||
+        set.duration !== null ||
+        set.distance !== null ||
+        set.height !== null,
+    ) ?? false
+  );
+}
+
+async function confirmHistoryIncrement() {
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(
+      'Use last workout?',
+      'Previous values were found. Start from them as-is, or increment them by the default amount for each exercise type?',
+      [
+        { text: 'Use as-is', onPress: () => resolve(false) },
+        { text: 'Increment', onPress: () => resolve(true) },
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      ],
+    );
+  });
 }
 
 export default function WorkoutsIndex() {
@@ -284,7 +308,24 @@ export default function WorkoutsIndex() {
               snapshot !== null && snapshot !== undefined && hasUsableHistory(snapshot),
           ),
         ];
-        const local = await createLocalWorkoutFromTemplate(userId, template.id, historySnapshots);
+        const shouldIncrement =
+          historySnapshots.length > 0 ? await confirmHistoryIncrement() : false;
+        const exerciseTypeById = new Map(
+          templateExercises.map((exercise) => [exercise.exerciseId, exercise.exerciseType]),
+        );
+        const resolvedHistorySnapshots = shouldIncrement
+          ? historySnapshots.map((snapshot) => ({
+              ...snapshot,
+              sets: snapshot.sets.map((set) =>
+                incrementHistorySet(set, exerciseTypeById.get(snapshot.exerciseId)),
+              ),
+            }))
+          : historySnapshots;
+        const local = await createLocalWorkoutFromTemplate(
+          userId,
+          template.id,
+          resolvedHistorySnapshots,
+        );
         if (local?.id) {
           router.push(`/workout-session?workoutId=${local.id}`);
           return;

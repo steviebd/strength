@@ -1,5 +1,14 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, Modal, StyleSheet } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -10,10 +19,63 @@ import { ScreenScrollView } from '@/components/ui/Screen';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { useUndo } from '@/hooks/useUndo';
 import { apiFetch } from '@/lib/api';
+import { getDefaultExerciseTargets } from '@/lib/exerciseProgression';
 import type { SelectedExercise, Template, TemplateEditorProps } from './types';
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
+
+const DEFAULT_TEMPLATE_SETS = 1;
+const DEFAULT_TEMPLATE_REPS = 5;
+const DEFAULT_TEMPLATE_WEIGHT = 0;
+
+function parseIntegerField(value: string): number | null {
+  if (value.trim() === '') return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseDecimalField(value: string): number | null {
+  if (value.trim() === '') return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function templateExercisePayload(ex: SelectedExercise, orderIndex: number) {
+  return {
+    exerciseId: ex.exerciseId,
+    orderIndex,
+    exerciseType: ex.exerciseType ?? 'weighted',
+    isAccessory: ex.isAccessory ?? false,
+    isRequired: ex.isRequired ?? true,
+    sets: ex.sets ?? DEFAULT_TEMPLATE_SETS,
+    reps: ex.reps ?? DEFAULT_TEMPLATE_REPS,
+    repsRaw: ex.repsRaw ?? (ex.reps ?? DEFAULT_TEMPLATE_REPS).toString(),
+    targetWeight: ex.targetWeight ?? DEFAULT_TEMPLATE_WEIGHT,
+    addedWeight: ex.addedWeight ?? 0,
+    targetDuration: ex.targetDuration ?? null,
+    targetDistance: ex.targetDistance ?? null,
+    targetHeight: ex.targetHeight ?? null,
+    isAmrap: ex.isAmrap ?? false,
+  };
+}
+
+function isAmrapExercise(exercise: { isAmrap?: boolean | null; name: string }) {
+  return (
+    exercise.isAmrap ??
+    (exercise.name.endsWith('3+') || exercise.name.toLowerCase().includes('amrap'))
+  );
+}
+
+async function chooseAmrapMode() {
+  return new Promise<'only' | 'with-working' | 'skip'>((resolve) => {
+    Alert.alert('AMRAP sets', 'How should this exercise be added?', [
+      { text: 'AMRAP only', onPress: () => resolve('only') },
+      { text: 'Working sets + AMRAP', onPress: () => resolve('with-working') },
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve('skip') },
+    ]);
+  });
 }
 
 interface FormData {
@@ -169,8 +231,11 @@ function useTemplateEditorApi({
   const [isLoading, _setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const isSavingRef = useRef(false);
 
   const saveTemplate = useCallback(async (): Promise<Template | null> => {
+    if (isSavingRef.current) return null;
+    isSavingRef.current = true;
     setIsSaving(true);
     setAutoSaveStatus('saving');
     try {
@@ -190,22 +255,14 @@ function useTemplateEditorApi({
       if (!isNew && templateId && savedTemplate.id) {
         await syncExercises(templateId, savedTemplate.id);
       } else if (isNew) {
-        for (let i = 0; i < selectedExercises.length; i++) {
-          const ex = selectedExercises[i];
-          await apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
-            method: 'POST',
-            body: {
-              exerciseId: ex.exerciseId,
-              orderIndex: i,
-              isAccessory: ex.isAccessory ?? false,
-              isRequired: ex.isRequired ?? true,
-              sets: ex.sets ?? 3,
-              reps: ex.reps ?? 10,
-              targetWeight: ex.targetWeight ?? 0,
-              isAmrap: ex.isAmrap ?? false,
-            },
-          });
-        }
+        await Promise.all(
+          selectedExercises.map((ex, i) =>
+            apiFetch(`/api/templates/${savedTemplate.id}/exercises`, {
+              method: 'POST',
+              body: templateExercisePayload(ex, i),
+            }),
+          ),
+        );
       }
 
       setAutoSaveStatus('saved');
@@ -220,51 +277,32 @@ function useTemplateEditorApi({
       setAutoSaveStatus('idle');
       return null;
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   }, [mode, templateId, formData, selectedExercises, onSaved]);
 
   const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
-    const newExerciseIds = new Set(selectedExercises.map((e) => e.exerciseId));
-
     const existingExercises = await apiFetch<Array<{ exerciseId: string; orderIndex: number }>>(
       `/api/templates/${currentTemplateId}/exercises`,
     );
 
-    const deletePromises = existingExercises
-      .filter((existing) => !newExerciseIds.has(existing.exerciseId))
-      .map((existing) =>
+    await Promise.all(
+      existingExercises.map((existing) =>
         apiFetch(`/api/templates/${currentTemplateId}/exercises/${existing.exerciseId}`, {
           method: 'DELETE',
         }),
-      );
+      ),
+    );
 
-    await Promise.all(deletePromises);
-
-    const addPromises: Array<Promise<unknown>> = [];
-    for (let i = 0; i < selectedExercises.length; i++) {
-      const ex = selectedExercises[i];
-      const existing = existingExercises.find((ee) => ee.exerciseId === ex.exerciseId);
-      if (!existing) {
-        addPromises.push(
-          apiFetch(`/api/templates/${newTemplateId}/exercises`, {
-            method: 'POST',
-            body: {
-              exerciseId: ex.exerciseId,
-              orderIndex: i,
-              isAccessory: ex.isAccessory ?? false,
-              isRequired: ex.isRequired ?? true,
-              sets: ex.sets ?? 3,
-              reps: ex.reps ?? 10,
-              targetWeight: ex.targetWeight ?? 0,
-              isAmrap: ex.isAmrap ?? false,
-            },
-          }),
-        );
-      }
-    }
-
-    await Promise.all(addPromises);
+    await Promise.all(
+      selectedExercises.map((ex, i) =>
+        apiFetch(`/api/templates/${newTemplateId}/exercises`, {
+          method: 'POST',
+          body: templateExercisePayload(ex, i),
+        }),
+      ),
+    );
   };
 
   return {
@@ -319,29 +357,40 @@ export function TemplateEditor({
   });
 
   const handleAddExercise = useCallback(
-    (
+    async (
       exercises: Array<{
         id: string;
         libraryId?: string | null;
         name: string;
         muscleGroup: string | null;
+        exerciseType?: string | null;
+        isAmrap?: boolean | null;
       }>,
     ) => {
       pushUndo();
       for (const exercise of exercises) {
+        const targets = getDefaultExerciseTargets(exercise.exerciseType);
+        const amrapMode = isAmrapExercise(exercise) ? await chooseAmrapMode() : null;
+        if (amrapMode === 'skip') continue;
         const newExercise: SelectedExercise = {
           id: generateId(),
           exerciseId: exercise.id,
           libraryId: exercise.libraryId ?? undefined,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
-          isAmrap: false,
+          isAmrap: amrapMode !== null,
           isAccessory: false,
           isRequired: true,
-          sets: 3,
-          reps: 10,
-          repsRaw: '10',
-          targetWeight: 0,
+          exerciseType: exercise.exerciseType ?? 'weighted',
+          sets: amrapMode === 'only' ? 1 : Number.parseInt(targets.sets, 10),
+          reps: targets.reps ? Number.parseInt(targets.reps, 10) : DEFAULT_TEMPLATE_REPS,
+          repsRaw: targets.reps || DEFAULT_TEMPLATE_REPS.toString(),
+          targetWeight: targets.weight
+            ? Number.parseFloat(targets.weight)
+            : DEFAULT_TEMPLATE_WEIGHT,
+          targetDuration: targets.duration ? Number.parseInt(targets.duration, 10) : null,
+          targetDistance: targets.distance ? Number.parseInt(targets.distance, 10) : null,
+          targetHeight: targets.height ? Number.parseInt(targets.height, 10) : null,
         };
         addExercise(newExercise);
       }
@@ -387,11 +436,8 @@ export function TemplateEditor({
 
   const handleSave = useCallback(async () => {
     if (!validateForm()) return;
-    const result = await saveTemplate();
-    if (result && onSaved) {
-      onSaved(result);
-    }
-  }, [validateForm, saveTemplate, onSaved]);
+    await saveTemplate();
+  }, [validateForm, saveTemplate]);
 
   const handleCancel = useCallback(() => {
     if (mode === 'create' && (formData.name || selectedExercises.length > 0)) {
@@ -516,98 +562,213 @@ export function TemplateEditor({
                       <View style={styles.counterContainer}>
                         <Pressable
                           onPress={() => {
-                            const currentSets = exercise.sets ?? 3;
-                            const newSets = currentSets > 1 ? currentSets - 1 : 1;
-                            handleUpdateExercise(exercise.id, { sets: newSets });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>-</Text>
-                        </Pressable>
-                        <Text style={styles.counterValue}>{exercise.sets ?? 3}</Text>
-                        <Pressable
-                          onPress={() => {
-                            const currentSets = exercise.sets ?? 3;
-                            const newSets = currentSets + 1;
-                            handleUpdateExercise(exercise.id, { sets: newSets });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>+</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                    <View style={styles.exerciseField}>
-                      <Text style={styles.fieldLabel}>Reps</Text>
-                      <View style={styles.counterContainer}>
-                        <Pressable
-                          onPress={() => {
-                            const currentReps = exercise.reps ?? 10;
-                            const newReps = currentReps > 1 ? currentReps - 1 : 1;
+                            const currentSets = exercise.sets ?? DEFAULT_TEMPLATE_SETS;
                             handleUpdateExercise(exercise.id, {
-                              reps: newReps,
-                              repsRaw: newReps.toString(),
+                              sets: Math.max(1, currentSets - 1),
                             });
                           }}
-                          style={styles.counterButton}
+                          style={({ pressed }) => [
+                            styles.counterButton,
+                            styles.counterButtonLeft,
+                            pressed && styles.counterButtonPressed,
+                          ]}
                         >
                           <Text style={styles.counterButtonText}>-</Text>
                         </Pressable>
-                        <Text style={styles.counterValue}>
-                          {exercise.repsRaw || (exercise.reps ?? 10).toString()}
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            const currentReps = exercise.reps ?? 10;
-                            const newReps = currentReps + 1;
+                        <TextInput
+                          style={styles.exerciseInput}
+                          value={(exercise.sets ?? DEFAULT_TEMPLATE_SETS).toString()}
+                          onChangeText={(text) => {
+                            const sets = parseIntegerField(text);
                             handleUpdateExercise(exercise.id, {
-                              reps: newReps,
-                              repsRaw: newReps.toString(),
+                              sets: sets ?? DEFAULT_TEMPLATE_SETS,
                             });
                           }}
-                          style={styles.counterButton}
+                          keyboardType="number-pad"
+                          selectTextOnFocus
+                          placeholderTextColor={colors.placeholderText}
+                        />
+                        <Pressable
+                          onPress={() => {
+                            const currentSets = exercise.sets ?? DEFAULT_TEMPLATE_SETS;
+                            handleUpdateExercise(exercise.id, { sets: currentSets + 1 });
+                          }}
+                          style={({ pressed }) => [
+                            styles.counterButton,
+                            styles.counterButtonRight,
+                            pressed && styles.counterButtonPressed,
+                          ]}
                         >
                           <Text style={styles.counterButtonText}>+</Text>
                         </Pressable>
                       </View>
                     </View>
-                    <View style={styles.exerciseField}>
-                      <Text style={styles.fieldLabel}>Weight</Text>
-                      <View style={styles.counterContainer}>
-                        <Pressable
-                          onPress={() => {
-                            const currentWeight = exercise.targetWeight ?? 0;
-                            const newWeight = Math.max(0, currentWeight - 5);
-                            handleUpdateExercise(exercise.id, { targetWeight: newWeight });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>-</Text>
-                        </Pressable>
-                        <Text style={styles.counterValue}>
-                          {exercise.targetWeight && exercise.targetWeight > 0
-                            ? exercise.targetWeight
-                            : '0'}
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            const currentWeight = exercise.targetWeight ?? 0;
-                            const newWeight = currentWeight + 5;
-                            handleUpdateExercise(exercise.id, { targetWeight: newWeight });
-                          }}
-                          style={styles.counterButton}
-                        >
-                          <Text style={styles.counterButtonText}>+</Text>
-                        </Pressable>
+                    {exercise.exerciseType !== 'timed' && exercise.exerciseType !== 'cardio' && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Reps</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const currentReps = exercise.reps ?? DEFAULT_TEMPLATE_REPS;
+                              const reps = Math.max(1, currentReps - 1);
+                              handleUpdateExercise(exercise.id, {
+                                reps,
+                                repsRaw: reps.toString(),
+                              });
+                            }}
+                            style={({ pressed }) => [
+                              styles.counterButton,
+                              styles.counterButtonLeft,
+                              pressed && styles.counterButtonPressed,
+                            ]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.exerciseInput}
+                            value={
+                              exercise.repsRaw ||
+                              (exercise.reps ?? DEFAULT_TEMPLATE_REPS).toString()
+                            }
+                            onChangeText={(text) => {
+                              const reps = parseIntegerField(text);
+                              handleUpdateExercise(exercise.id, {
+                                reps: reps ?? DEFAULT_TEMPLATE_REPS,
+                                repsRaw: text,
+                              });
+                            }}
+                            keyboardType="number-pad"
+                            selectTextOnFocus
+                            placeholderTextColor={colors.placeholderText}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const currentReps = exercise.reps ?? DEFAULT_TEMPLATE_REPS;
+                              const reps = currentReps + 1;
+                              handleUpdateExercise(exercise.id, {
+                                reps,
+                                repsRaw: reps.toString(),
+                              });
+                            }}
+                            style={({ pressed }) => [
+                              styles.counterButton,
+                              styles.counterButtonRight,
+                              pressed && styles.counterButtonPressed,
+                            ]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
+                    )}
+                    {(!exercise.exerciseType || exercise.exerciseType === 'weighted') && (
+                      <View style={styles.exerciseField}>
+                        <Text style={styles.fieldLabel}>Weight</Text>
+                        <View style={styles.counterContainer}>
+                          <Pressable
+                            onPress={() => {
+                              const currentWeight =
+                                exercise.targetWeight ?? DEFAULT_TEMPLATE_WEIGHT;
+                              handleUpdateExercise(exercise.id, {
+                                targetWeight: Math.max(0, currentWeight - 5),
+                              });
+                            }}
+                            style={({ pressed }) => [
+                              styles.counterButton,
+                              styles.counterButtonLeft,
+                              pressed && styles.counterButtonPressed,
+                            ]}
+                          >
+                            <Text style={styles.counterButtonText}>-</Text>
+                          </Pressable>
+                          <TextInput
+                            style={styles.exerciseInput}
+                            value={(exercise.targetWeight ?? DEFAULT_TEMPLATE_WEIGHT).toString()}
+                            onChangeText={(text) => {
+                              const targetWeight = parseDecimalField(text);
+                              handleUpdateExercise(exercise.id, {
+                                targetWeight: targetWeight ?? DEFAULT_TEMPLATE_WEIGHT,
+                              });
+                            }}
+                            keyboardType="decimal-pad"
+                            selectTextOnFocus
+                            placeholderTextColor={colors.placeholderText}
+                          />
+                          <Pressable
+                            onPress={() => {
+                              const currentWeight =
+                                exercise.targetWeight ?? DEFAULT_TEMPLATE_WEIGHT;
+                              handleUpdateExercise(exercise.id, {
+                                targetWeight: currentWeight + 5,
+                              });
+                            }}
+                            style={({ pressed }) => [
+                              styles.counterButton,
+                              styles.counterButtonRight,
+                              pressed && styles.counterButtonPressed,
+                            ]}
+                          >
+                            <Text style={styles.counterButtonText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+                    {(exercise.exerciseType === 'timed' || exercise.exerciseType === 'cardio') && (
+                      <TargetNumberField
+                        label="Duration (sec)"
+                        value={exercise.targetDuration}
+                        onChange={(targetDuration) =>
+                          handleUpdateExercise(exercise.id, { targetDuration })
+                        }
+                      />
+                    )}
+                    {exercise.exerciseType === 'cardio' && (
+                      <TargetNumberField
+                        label="Distance (m)"
+                        value={exercise.targetDistance}
+                        onChange={(targetDistance) =>
+                          handleUpdateExercise(exercise.id, { targetDistance })
+                        }
+                      />
+                    )}
+                    {exercise.exerciseType === 'plyo' && (
+                      <TargetNumberField
+                        label="Height (cm)"
+                        value={exercise.targetHeight}
+                        onChange={(targetHeight) =>
+                          handleUpdateExercise(exercise.id, { targetHeight })
+                        }
+                      />
+                    )}
                   </View>
 
                   <View style={styles.toggleRow}>
                     <Pressable
-                      onPress={() =>
-                        handleUpdateExercise(exercise.id, { isAmrap: !exercise.isAmrap })
-                      }
+                      onPress={() => {
+                        if (exercise.isAmrap) {
+                          handleUpdateExercise(exercise.id, { isAmrap: false });
+                          return;
+                        }
+                        Alert.alert('AMRAP sets', 'How should this exercise be added?', [
+                          {
+                            text: 'AMRAP only',
+                            onPress: () =>
+                              handleUpdateExercise(exercise.id, {
+                                isAmrap: true,
+                                sets: 1,
+                              }),
+                          },
+                          {
+                            text: 'Working sets + AMRAP',
+                            onPress: () =>
+                              handleUpdateExercise(exercise.id, {
+                                isAmrap: true,
+                                sets: Math.max(2, exercise.sets ?? DEFAULT_TEMPLATE_SETS),
+                              }),
+                          },
+                          { text: 'Cancel', style: 'cancel' },
+                        ]);
+                      }}
                       style={[
                         styles.toggleButton,
                         exercise.isAmrap ? styles.toggleButtonActive : styles.toggleButtonDefault,
@@ -730,6 +891,31 @@ export function TemplateEditor({
           excludeIds={currentExercises.map((e) => e.exerciseId)}
         />
       </Modal>
+    </View>
+  );
+}
+
+function TargetNumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <View style={styles.exerciseField}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={styles.exerciseInput}
+        value={value == null ? '' : value.toString()}
+        onChangeText={(text) => onChange(parseIntegerField(text))}
+        keyboardType="number-pad"
+        selectTextOnFocus
+        placeholder="0"
+        placeholderTextColor={colors.placeholderText}
+      />
     </View>
   );
 }
@@ -874,28 +1060,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
   },
   counterButton: {
     position: 'absolute',
-    left: 0,
     top: 0,
     bottom: 0,
     width: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+  },
+  counterButtonLeft: {
+    left: 0,
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+  },
+  counterButtonRight: {
+    right: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+  },
+  counterButtonPressed: {
+    backgroundColor: colors.border,
   },
   counterButtonText: {
     fontSize: typography.fontSizes.lg,
-    color: colors.textMuted,
+    color: colors.text,
   },
-  counterValue: {
+  exerciseInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 36,
+    paddingVertical: 8,
     fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
     color: colors.text,
     textAlign: 'center',
   },

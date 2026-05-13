@@ -297,7 +297,12 @@ export function ExercisePicker({
               <Pressable
                 onPress={() => {
                   setShowCreateForm(false);
-                  setCreateForm({ name: '', muscleGroup: '', description: '' });
+                  setCreateForm({
+                    name: '',
+                    muscleGroup: '',
+                    exerciseType: 'weighted',
+                    description: '',
+                  });
                   setCreateError(null);
                 }}
                 style={styles.cancelButton}

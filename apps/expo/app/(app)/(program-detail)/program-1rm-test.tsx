@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -57,10 +59,12 @@ function formatPercentIncrease(testVal: number, startVal: number | null): string
 }
 
 interface LiftField {
-  key: 'squat' | 'bench' | 'deadlift' | 'ohp';
+  key: LiftKey;
   label: string;
   startingKey: 'startingSquat1rm' | 'startingBench1rm' | 'startingDeadlift1rm' | 'startingOhp1rm';
 }
+
+type LiftKey = 'squat' | 'bench' | 'deadlift' | 'ohp';
 
 const LIFT_FIELDS: LiftField[] = [
   { key: 'squat', label: 'Squat', startingKey: 'startingSquat1rm' },
@@ -71,6 +75,13 @@ const LIFT_FIELDS: LiftField[] = [
 
 export default function ProgramOneRMTestScreen() {
   const router = useRouter();
+  const scrollViewRef = useRef<any>(null);
+  const inputRefs = useRef<Record<LiftKey, TextInput | null>>({
+    squat: null,
+    bench: null,
+    deadlift: null,
+    ohp: null,
+  });
   const { cycleId, squatMax, benchMax, deadliftMax, ohpMax } = useLocalSearchParams<{
     cycleId?: string;
     squatMax?: string;
@@ -94,6 +105,37 @@ export default function ProgramOneRMTestScreen() {
     deadlift: '',
     ohp: '',
   });
+
+  const setInputRef = useCallback(
+    (key: LiftKey) => (node: TextInput | null) => {
+      inputRefs.current[key] = node;
+    },
+    [],
+  );
+
+  const focusInput = useCallback((key: LiftKey) => {
+    requestAnimationFrame(() => {
+      const input = inputRefs.current[key];
+      if (!input || !scrollViewRef.current) return;
+
+      input.measure(
+        (
+          _x: number,
+          _y: number,
+          _width: number,
+          _height: number,
+          _pageX: number,
+          pageY: number,
+        ) => {
+          const targetY = pageY - 400;
+          scrollViewRef.current?.scrollTo({
+            y: Math.max(0, targetY),
+            animated: true,
+          });
+        },
+      );
+    });
+  }, []);
 
   const load = useCallback(async () => {
     if (!cycleId) return;
@@ -242,95 +284,111 @@ export default function ProgramOneRMTestScreen() {
   }
 
   return (
-    <PageLayout
-      headerType="custom"
-      header={
-        <CustomPageHeader
-          title="1RM Results"
-          onBack={handleDiscard}
-          rightSlot={
-            <Pressable onPress={handleDiscard} style={styles.headerAction}>
-              <Text style={styles.headerActionText}>Discard</Text>
-            </Pressable>
-          }
-        />
-      }
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      style={{ flex: 1 }}
     >
-      <View>
-        <Text style={styles.sectionLabel}>Program Cycle</Text>
-        <Text style={styles.programTitle}>{cycle?.name ?? 'Program'}</Text>
+      <PageLayout
+        scrollViewRef={scrollViewRef}
+        screenScrollViewProps={{
+          bottomInset: 360,
+          keyboardShouldPersistTaps: 'handled',
+        }}
+        headerType="custom"
+        header={
+          <CustomPageHeader
+            title="1RM Results"
+            onBack={handleDiscard}
+            rightSlot={
+              <Pressable onPress={handleDiscard} style={styles.headerAction}>
+                <Text style={styles.headerActionText}>Discard</Text>
+              </Pressable>
+            }
+          />
+        }
+      >
+        <View>
+          <Text style={styles.sectionLabel}>Program Cycle</Text>
+          <Text style={styles.programTitle}>{cycle?.name ?? 'Program'}</Text>
 
-        {LIFT_FIELDS.map((field) => {
-          const startKg = (cycle?.[field.startingKey] as number | null | undefined) ?? null;
-          const testValStr = values[field.key];
-          const testValNum = Number.parseFloat(testValStr);
-          const hasTestValue = Number.isFinite(testValNum) && testValStr !== '';
-          const hasStartValue = startKg !== null && startKg !== undefined;
+          {LIFT_FIELDS.map((field) => {
+            const startKg = (cycle?.[field.startingKey] as number | null | undefined) ?? null;
+            const testValStr = values[field.key];
+            const testValNum = Number.parseFloat(testValStr);
+            const hasTestValue = Number.isFinite(testValNum) && testValStr !== '';
+            const hasStartValue = startKg !== null && startKg !== undefined;
 
-          return (
-            <View key={`1rm-summary:${field.key}`} style={styles.card}>
-              <Text style={styles.cardTitle}>{field.label}</Text>
+            return (
+              <View key={`1rm-summary:${field.key}`} style={styles.card}>
+                <Text style={styles.cardTitle}>{field.label}</Text>
 
-              <View style={styles.row}>
-                <View style={styles.cell}>
-                  <Text style={styles.cellLabel}>Starting</Text>
-                  <Text style={styles.cellValue}>
-                    {hasStartValue ? `${toDisplayWeight(startKg, weightUnit)} ${weightUnit}` : '—'}
-                  </Text>
+                <View style={styles.row}>
+                  <View style={styles.cell}>
+                    <Text style={styles.cellLabel}>Starting</Text>
+                    <Text style={styles.cellValue}>
+                      {hasStartValue
+                        ? `${toDisplayWeight(startKg, weightUnit)} ${weightUnit}`
+                        : '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.cell}>
+                    <Text style={styles.cellLabel}>Tested</Text>
+                    <TextInput
+                      ref={setInputRef(field.key)}
+                      style={styles.cellInput}
+                      value={testValStr}
+                      onFocus={() => focusInput(field.key)}
+                      onChangeText={(text) =>
+                        setValues((prev) => ({
+                          ...prev,
+                          [field.key]: text.replace(/[^0-9.]/g, ''),
+                        }))
+                      }
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={colors.placeholderText}
+                      selectTextOnFocus
+                    />
+                  </View>
                 </View>
-                <View style={styles.cell}>
-                  <Text style={styles.cellLabel}>Tested</Text>
-                  <TextInput
-                    style={styles.cellInput}
-                    value={testValStr}
-                    onChangeText={(text) =>
-                      setValues((prev) => ({
-                        ...prev,
-                        [field.key]: text.replace(/[^0-9.]/g, ''),
-                      }))
-                    }
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.placeholderText}
-                  />
-                </View>
+
+                {hasTestValue && hasStartValue && (
+                  <View style={styles.metricsRow}>
+                    <View style={styles.metricBadge}>
+                      <Text style={styles.metricLabel}>Difference</Text>
+                      <Text style={styles.metricValue}>
+                        {formatDiff(testValNum, startKg, weightUnit)}
+                      </Text>
+                    </View>
+                    <View style={styles.metricBadge}>
+                      <Text style={styles.metricLabel}>% Increase</Text>
+                      <Text style={styles.metricValue}>
+                        {formatPercentIncrease(testValNum, startKg)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
+            );
+          })}
 
-              {hasTestValue && hasStartValue && (
-                <View style={styles.metricsRow}>
-                  <View style={styles.metricBadge}>
-                    <Text style={styles.metricLabel}>Difference</Text>
-                    <Text style={styles.metricValue}>
-                      {formatDiff(testValNum, startKg, weightUnit)}
-                    </Text>
-                  </View>
-                  <View style={styles.metricBadge}>
-                    <Text style={styles.metricLabel}>% Increase</Text>
-                    <Text style={styles.metricValue}>
-                      {formatPercentIncrease(testValNum, startKg)}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          );
-        })}
-
-        <Pressable
-          style={[styles.saveButton, saving && styles.buttonDisabled]}
-          onPress={() => {
-            void handleSave();
-          }}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save 1RMs</Text>
-          )}
-        </Pressable>
-      </View>
-    </PageLayout>
+          <Pressable
+            style={[styles.saveButton, saving && styles.buttonDisabled]}
+            onPress={() => {
+              void handleSave();
+            }}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save 1RMs</Text>
+            )}
+          </Pressable>
+        </View>
+      </PageLayout>
+    </KeyboardAvoidingView>
   );
 }
 

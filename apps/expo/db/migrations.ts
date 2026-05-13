@@ -56,6 +56,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     CREATE TABLE IF NOT EXISTS local_user_preferences (
       user_id TEXT PRIMARY KEY NOT NULL,
       weight_unit TEXT NOT NULL DEFAULT 'kg',
+      distance_unit TEXT NOT NULL DEFAULT 'km',
       timezone TEXT,
       bodyweight_kg REAL,
       weight_prompted_at INTEGER,
@@ -103,6 +104,7 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       library_id TEXT,
       name TEXT NOT NULL,
       muscle_group TEXT,
+      exercise_type TEXT NOT NULL DEFAULT 'weighted',
       order_index INTEGER NOT NULL,
       notes TEXT,
       is_amrap INTEGER NOT NULL DEFAULT 0,
@@ -117,6 +119,9 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       set_number INTEGER NOT NULL,
       weight REAL,
       reps INTEGER,
+      duration INTEGER,
+      distance INTEGER,
+      height INTEGER,
       rpe REAL,
       is_complete INTEGER NOT NULL DEFAULT 0,
       completed_at INTEGER,
@@ -144,7 +149,11 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       exercise_id TEXT NOT NULL,
       name TEXT NOT NULL,
       muscle_group TEXT,
+      exercise_type TEXT NOT NULL DEFAULT 'weighted',
       order_index INTEGER NOT NULL,
+      target_duration INTEGER,
+      target_distance INTEGER,
+      target_height INTEGER,
       target_weight REAL,
       added_weight REAL,
       sets INTEGER,
@@ -161,7 +170,9 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       name TEXT NOT NULL,
       muscle_group TEXT,
       description TEXT,
+      exercise_type TEXT NOT NULL DEFAULT 'weighted',
       library_id TEXT,
+      is_amrap INTEGER NOT NULL DEFAULT 0,
       created_locally INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER,
       updated_at INTEGER,
@@ -257,6 +268,53 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_local_sync_queue_runnable
       ON local_sync_queue (status, available_at);
   `);
+
+  addColumnIfMissing(
+    sqlite,
+    'local_workout_exercises',
+    'exercise_type',
+    "exercise_type TEXT NOT NULL DEFAULT 'weighted'",
+  );
+  addColumnIfMissing(sqlite, 'local_workout_sets', 'duration', 'duration INTEGER');
+  addColumnIfMissing(sqlite, 'local_workout_sets', 'distance', 'distance INTEGER');
+  addColumnIfMissing(sqlite, 'local_workout_sets', 'height', 'height INTEGER');
+  addColumnIfMissing(
+    sqlite,
+    'local_template_exercises',
+    'exercise_type',
+    "exercise_type TEXT NOT NULL DEFAULT 'weighted'",
+  );
+  addColumnIfMissing(
+    sqlite,
+    'local_template_exercises',
+    'target_duration',
+    'target_duration INTEGER',
+  );
+  addColumnIfMissing(
+    sqlite,
+    'local_template_exercises',
+    'target_distance',
+    'target_distance INTEGER',
+  );
+  addColumnIfMissing(sqlite, 'local_template_exercises', 'target_height', 'target_height INTEGER');
+  addColumnIfMissing(
+    sqlite,
+    'local_user_exercises',
+    'exercise_type',
+    "exercise_type TEXT NOT NULL DEFAULT 'weighted'",
+  );
+  addColumnIfMissing(
+    sqlite,
+    'local_user_exercises',
+    'is_amrap',
+    'is_amrap INTEGER NOT NULL DEFAULT 0',
+  );
+  addColumnIfMissing(
+    sqlite,
+    'local_user_preferences',
+    'distance_unit',
+    "distance_unit TEXT NOT NULL DEFAULT 'km'",
+  );
 
   applyVersionedMigration(sqlite, '20260428_training_cache_columns', () => {
     addColumnIfMissing(sqlite, 'local_workout_exercises', 'library_id', 'library_id TEXT');

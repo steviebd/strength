@@ -38,12 +38,6 @@ export function useProgramSchedule(cycleId: string) {
   return useQuery({
     queryKey: ['programSchedule', cycleId],
     queryFn: async () => {
-      if (userId) {
-        const cached = await getCachedProgramSchedule(userId, cycleId, activeTimezone ?? 'UTC');
-        if (cached) {
-          return cached as ProgramScheduleResponse;
-        }
-      }
       try {
         const response = await apiFetch<ProgramScheduleResponse>(
           `/api/programs/cycles/${cycleId}/schedule`,

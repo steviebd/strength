@@ -2,14 +2,22 @@ import { useState, useCallback, useEffect, useMemo, useRef, forwardRef } from 'r
 import { Pressable, StyleSheet, Text, View, TextInput, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollToInput } from '@/context/ScrollContext';
+import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { colors, radius, spacing, typography } from '@/theme';
+import { formatDuration, formatDistance, formatHeight } from '@/lib/units';
+import { DurationPickerModal } from './DurationPickerModal';
+import { DistancePickerModal } from './DistancePickerModal';
+import { HeightPickerModal } from './HeightPickerModal';
 
 type WeightUnit = 'kg' | 'lbs';
 
 interface WorkoutSetData {
   id: string;
   reps: number;
-  weight: number;
+  weight: number | null;
+  duration: number;
+  distance: number | null;
+  height: number;
   completed: boolean;
 }
 
@@ -20,11 +28,14 @@ interface SetLoggerProps {
   onDelete?: () => void;
   weightUnit?: WeightUnit;
   isEditMode?: boolean;
+  exerciseType: string;
+  exerciseName?: string;
 }
 
 const KG_TO_LBS = 2.20462;
 
-function convertToDisplayWeight(weightKg: number, unit: WeightUnit): number {
+function convertToDisplayWeight(weightKg: number | null, unit: WeightUnit): number {
+  if (weightKg === null) return 0;
   return unit === 'lbs' ? weightKg * KG_TO_LBS : weightKg;
 }
 
@@ -43,7 +54,16 @@ function getResponsiveSizes(width: number) {
 }
 
 export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
-  { setNumber, set, onUpdate, onDelete, weightUnit = 'kg', isEditMode = false },
+  {
+    setNumber,
+    set,
+    onUpdate,
+    onDelete,
+    weightUnit = 'kg',
+    isEditMode = false,
+    exerciseType,
+    exerciseName = '',
+  },
   ref,
 ) {
   const { width } = useWindowDimensions();
@@ -53,16 +73,25 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const inputHeight = sizes.inputHeight;
   const fontSize = sizes.fontSize;
 
+  const { distanceUnit } = useUserPreferences();
+
   const displayWeight = useMemo(
     () => convertToDisplayWeight(set.weight, weightUnit),
     [set.weight, weightUnit],
   );
   const [localWeight, setLocalWeight] = useState(displayWeight);
   const [localReps, setLocalReps] = useState(set.reps);
+  const [localDuration, setLocalDuration] = useState(set.duration);
+  const [localDistance, setLocalDistance] = useState(set.distance);
+  const [localHeight, setLocalHeight] = useState(set.height);
+  const [showWeight, setShowWeight] = useState(set.weight !== null);
   const [isEditingWeight, setIsEditingWeight] = useState(false);
   const [editWeightValue, setEditWeightValue] = useState('');
   const [isRepsEditing, setIsRepsEditing] = useState(false);
   const [editRepsValue, setEditRepsValue] = useState('');
+  const [showDurationModal, setShowDurationModal] = useState(false);
+  const [showDistanceModal, setShowDistanceModal] = useState(false);
+  const [showHeightModal, setShowHeightModal] = useState(false);
   const weightInputRef = useRef<any>(null);
   const repsInputRef = useRef<any>(null);
   const latestSetRef = useRef(set);
@@ -72,7 +101,13 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     latestSetRef.current = set;
     setLocalWeight(displayWeight);
     setLocalReps(set.reps);
-  }, [displayWeight, set]);
+    setLocalDuration(set.duration);
+    setLocalDistance(set.distance);
+    setLocalHeight(set.height);
+    if (exerciseType === 'bodyweight') {
+      setShowWeight(set.weight !== null);
+    }
+  }, [displayWeight, set, exerciseType]);
 
   const emitUpdate = useCallback(
     (updates: Partial<WorkoutSetData>) => {
@@ -105,6 +140,19 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     setIsEditingWeight(true);
   }, [localWeight, scrollToInput]);
 
+  const handleWeightEditChange = useCallback(
+    (value: string) => {
+      setEditWeightValue(value);
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed) && parsed >= 0) {
+        setLocalWeight(parsed);
+        const storageWeight = convertToStorageWeight(parsed, weightUnit);
+        emitUpdate({ weight: storageWeight });
+      }
+    },
+    [emitUpdate, weightUnit],
+  );
+
   const handleWeightEditEnd = useCallback(() => {
     const parsed = parseFloat(editWeightValue);
     if (!isNaN(parsed) && parsed >= 0) {
@@ -120,6 +168,18 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     scrollToInput(repsInputRef);
     setIsRepsEditing(true);
   }, [localReps, scrollToInput]);
+
+  const handleRepsEditChange = useCallback(
+    (value: string) => {
+      setEditRepsValue(value);
+      const parsed = parseInt(value, 10);
+      if (!isNaN(parsed) && parsed >= 0) {
+        setLocalReps(parsed);
+        emitUpdate({ reps: parsed });
+      }
+    },
+    [emitUpdate],
+  );
 
   const handleRepsEditEnd = useCallback(() => {
     const parsed = parseInt(editRepsValue, 10);
@@ -145,6 +205,97 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const handleToggleComplete = useCallback(() => {
     emitUpdate({ completed: !latestSetRef.current.completed });
   }, [emitUpdate]);
+
+  const handleAddWeight = useCallback(() => {
+    setShowWeight(true);
+    setLocalWeight(0);
+    emitUpdate({ weight: 0 });
+  }, [emitUpdate]);
+
+  const handleRemoveWeight = useCallback(() => {
+    setShowWeight(false);
+    setLocalWeight(0);
+    emitUpdate({ weight: null });
+  }, [emitUpdate]);
+
+  const durationIncrement = useMemo(() => {
+    const name = exerciseName.toLowerCase();
+    if (name.includes('row')) return 15;
+    if (name.includes('treadmill') || name.includes('bike')) return 60;
+    return 5;
+  }, [exerciseName]);
+
+  const handleDurationDecrease = useCallback(() => {
+    const newDuration = Math.max(0, localDuration - durationIncrement);
+    setLocalDuration(newDuration);
+    emitUpdate({ duration: newDuration });
+  }, [emitUpdate, localDuration, durationIncrement]);
+
+  const handleDurationIncrease = useCallback(() => {
+    const newDuration = localDuration + durationIncrement;
+    setLocalDuration(newDuration);
+    emitUpdate({ duration: newDuration });
+  }, [emitUpdate, localDuration, durationIncrement]);
+
+  const handleDurationSave = useCallback(
+    (seconds: number) => {
+      setLocalDuration(seconds);
+      emitUpdate({ duration: seconds });
+      setShowDurationModal(false);
+    },
+    [emitUpdate],
+  );
+
+  const handleDistanceDecrease = useCallback(() => {
+    if (localDistance === null) return;
+    const newDistance = Math.max(0, localDistance - 100);
+    setLocalDistance(newDistance);
+    emitUpdate({ distance: newDistance });
+  }, [emitUpdate, localDistance]);
+
+  const handleDistanceIncrease = useCallback(() => {
+    const current = localDistance ?? 0;
+    const newDistance = current + 100;
+    setLocalDistance(newDistance);
+    emitUpdate({ distance: newDistance });
+  }, [emitUpdate, localDistance]);
+
+  const handleDistanceSave = useCallback(
+    (meters: number) => {
+      setLocalDistance(meters);
+      emitUpdate({ distance: meters });
+      setShowDistanceModal(false);
+    },
+    [emitUpdate],
+  );
+
+  const handleAddDistance = useCallback(() => {
+    setLocalDistance(0);
+    emitUpdate({ distance: 0 });
+  }, [emitUpdate]);
+
+  const heightIncrement = useMemo(() => (distanceUnit === 'km' ? 5 : 2 * 2.54), [distanceUnit]);
+
+  const handleHeightDecrease = useCallback(() => {
+    const newHeight = Math.max(0, localHeight - heightIncrement);
+    setLocalHeight(newHeight);
+    emitUpdate({ height: newHeight });
+  }, [emitUpdate, localHeight, heightIncrement]);
+
+  const handleHeightIncrease = useCallback(() => {
+    const newHeight = localHeight + heightIncrement;
+    setLocalHeight(newHeight);
+    emitUpdate({ height: newHeight });
+  }, [emitUpdate, localHeight, heightIncrement]);
+
+  const handleHeightSave = useCallback(
+    (cm: number) => {
+      setLocalHeight(cm);
+      emitUpdate({ height: cm });
+      setShowHeightModal(false);
+    },
+    [emitUpdate],
+  );
 
   const containerStyle = set.completed
     ? [styles.container, styles.containerCompleted]
@@ -172,145 +323,308 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
     height: inputHeight,
   };
 
+  const renderStepperButton = (
+    onPress: () => void,
+    icon: 'remove' | 'add',
+    disabled?: boolean,
+    sizeStyle?: { width: number; height: number },
+  ) => (
+    <Pressable
+      onPress={onPress}
+      disabled={!isEditMode || disabled}
+      style={({ pressed }) => [
+        styles.stepperButton,
+        sizeStyle ?? stepperStyle,
+        !isEditMode && styles.stepperDisabled,
+        pressed && styles.stepperPressed,
+      ]}
+    >
+      <Ionicons name={icon} size={fontSize + 4} color={colors.textMuted} />
+    </Pressable>
+  );
+
+  const renderNumberInput = (
+    value: string | number,
+    onPress: () => void,
+    isEditing: boolean,
+    editInput: React.ReactNode,
+    testIdSuffix: string,
+    extraStyle?: object,
+  ) => (
+    <Pressable
+      testID={`workout-set-${setNumber}-${testIdSuffix}`}
+      accessibilityLabel={`workout-set-${setNumber}-${testIdSuffix}`}
+      onPress={onPress}
+      disabled={!isEditMode}
+      style={({ pressed }) => [
+        styles.inputButton,
+        inputStyle,
+        !isEditMode && styles.inputButtonDisabled,
+        pressed && styles.stepperPressed,
+        extraStyle,
+      ]}
+    >
+      {isEditing ? (
+        editInput
+      ) : (
+        <Text
+          style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      )}
+    </Pressable>
+  );
+
+  const renderWeightSection = () => (
+    <View style={[styles.inputSection, styles.weightSection]}>
+      <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+        Weight
+      </Text>
+      <View style={styles.weightStepperGroup}>
+        {renderStepperButton(handleWeightDecrease, 'remove')}
+        {renderNumberInput(
+          localWeight.toFixed(1),
+          handleWeightEditStart,
+          isEditingWeight,
+          <TextInput
+            testID={`workout-set-${setNumber}-weight-input`}
+            ref={weightInputRef}
+            style={[styles.weightInput, { fontSize }]}
+            value={editWeightValue}
+            onChangeText={handleWeightEditChange}
+            onBlur={handleWeightEditEnd}
+            onSubmitEditing={handleWeightEditEnd}
+            keyboardType="decimal-pad"
+            autoFocus
+          />,
+          'weight',
+        )}
+        <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }]}>{weightUnit}</Text>
+        {renderStepperButton(handleWeightIncrease, 'add')}
+      </View>
+    </View>
+  );
+
+  const renderRepsSection = () => (
+    <View style={[styles.inputSection, styles.repsSection]}>
+      <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+        Reps
+      </Text>
+      <View style={styles.repsStepperGroup}>
+        {renderStepperButton(handleRepsDecrease, 'remove', undefined, repsStepperStyle)}
+        {renderNumberInput(
+          localReps,
+          handleRepsEditStart,
+          isRepsEditing,
+          <TextInput
+            testID={`workout-set-${setNumber}-reps-input`}
+            ref={repsInputRef}
+            style={[styles.repsInput, { fontSize }]}
+            value={editRepsValue}
+            onChangeText={handleRepsEditChange}
+            onBlur={handleRepsEditEnd}
+            onSubmitEditing={handleRepsEditEnd}
+            keyboardType="number-pad"
+            autoFocus
+          />,
+          'reps',
+        )}
+        {renderStepperButton(handleRepsIncrease, 'add', undefined, repsStepperStyle)}
+      </View>
+    </View>
+  );
+
+  const renderDurationSection = (label = 'Duration') => (
+    <View style={[styles.inputSection, { flex: 1 }]}>
+      <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+        {label}
+      </Text>
+      <View style={styles.weightStepperGroup}>
+        {renderStepperButton(handleDurationDecrease, 'remove')}
+        <Pressable
+          testID={`workout-set-${setNumber}-duration`}
+          accessibilityLabel={`workout-set-${setNumber}-duration`}
+          onPress={() => isEditMode && setShowDurationModal(true)}
+          disabled={!isEditMode}
+          style={({ pressed }) => [
+            styles.inputButton,
+            inputStyle,
+            !isEditMode && styles.inputButtonDisabled,
+            pressed && styles.stepperPressed,
+            { flex: 1 },
+          ]}
+        >
+          <Text
+            style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
+            numberOfLines={1}
+          >
+            {formatDuration(localDuration)}
+          </Text>
+        </Pressable>
+        {renderStepperButton(handleDurationIncrease, 'add')}
+      </View>
+    </View>
+  );
+
+  const renderDistanceSection = () => (
+    <View style={[styles.inputSection, { flex: 1 }]}>
+      <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+        Distance
+      </Text>
+      <View style={styles.weightStepperGroup}>
+        {localDistance !== null ? (
+          <>
+            {renderStepperButton(handleDistanceDecrease, 'remove')}
+            <Pressable
+              testID={`workout-set-${setNumber}-distance`}
+              accessibilityLabel={`workout-set-${setNumber}-distance`}
+              onPress={() => isEditMode && setShowDistanceModal(true)}
+              disabled={!isEditMode}
+              style={({ pressed }) => [
+                styles.inputButton,
+                inputStyle,
+                !isEditMode && styles.inputButtonDisabled,
+                pressed && styles.stepperPressed,
+                { flex: 1 },
+              ]}
+            >
+              <Text
+                style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
+                numberOfLines={1}
+              >
+                {formatDistance(localDistance, distanceUnit)}
+              </Text>
+            </Pressable>
+            {renderStepperButton(handleDistanceIncrease, 'add')}
+          </>
+        ) : (
+          <Pressable
+            testID={`workout-set-${setNumber}-add-distance`}
+            onPress={handleAddDistance}
+            disabled={!isEditMode}
+            style={({ pressed }) => [
+              styles.addMetricButton,
+              !isEditMode && styles.inputButtonDisabled,
+              pressed && styles.stepperPressed,
+            ]}
+          >
+            <Ionicons name="add" size={fontSize + 4} color={colors.accent} />
+            <Text style={[styles.addMetricText, { fontSize: fontSize - 2 }]}>Add Distance</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+
+  const renderHeightSection = () => (
+    <View style={[styles.inputSection, { flex: 1 }]}>
+      <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
+        Height
+      </Text>
+      <View style={styles.weightStepperGroup}>
+        {renderStepperButton(handleHeightDecrease, 'remove')}
+        <Pressable
+          testID={`workout-set-${setNumber}-height`}
+          accessibilityLabel={`workout-set-${setNumber}-height`}
+          onPress={() => isEditMode && setShowHeightModal(true)}
+          disabled={!isEditMode}
+          style={({ pressed }) => [
+            styles.inputButton,
+            inputStyle,
+            !isEditMode && styles.inputButtonDisabled,
+            pressed && styles.stepperPressed,
+            { flex: 1 },
+          ]}
+        >
+          <Text
+            style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
+            numberOfLines={1}
+          >
+            {formatHeight(localHeight, distanceUnit)}
+          </Text>
+        </Pressable>
+        {renderStepperButton(handleHeightIncrease, 'add')}
+      </View>
+    </View>
+  );
+
+  const renderInputs = () => {
+    switch (exerciseType) {
+      case 'bodyweight':
+        return (
+          <View style={styles.inputsCol}>
+            <View style={styles.inputsRow}>
+              <View style={[styles.inputSection, { flex: 1 }]}>{renderRepsSection()}</View>
+            </View>
+            {showWeight && (
+              <View style={styles.inputsRow}>
+                <View style={[styles.inputSection, { flex: 1 }]}>{renderWeightSection()}</View>
+                {isEditMode && (
+                  <Pressable
+                    onPress={handleRemoveWeight}
+                    style={({ pressed }) => [
+                      styles.removeMetricButton,
+                      pressed && styles.stepperPressed,
+                    ]}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                )}
+              </View>
+            )}
+            {!showWeight && isEditMode && (
+              <Pressable
+                onPress={handleAddWeight}
+                style={({ pressed }) => [styles.addWeightButton, pressed && styles.stepperPressed]}
+              >
+                <Text style={[styles.addWeightText, { fontSize: fontSize - 2 }]}>Add Weight</Text>
+              </Pressable>
+            )}
+          </View>
+        );
+      case 'timed':
+        return (
+          <View style={styles.inputsRow}>
+            <View style={[styles.inputSection, { flex: 1 }]}>{renderDurationSection()}</View>
+          </View>
+        );
+      case 'cardio':
+        return (
+          <View style={styles.inputsRow}>
+            {renderDurationSection()}
+            {renderDistanceSection()}
+          </View>
+        );
+      case 'plyo':
+        return (
+          <View style={styles.inputsRow}>
+            <View style={[styles.inputSection, { flex: 1 }]}>{renderRepsSection()}</View>
+            {renderHeightSection()}
+          </View>
+        );
+      case 'weighted':
+      default:
+        return (
+          <View style={styles.inputsRow}>
+            {renderWeightSection()}
+            {renderRepsSection()}
+          </View>
+        );
+    }
+  };
+
   return (
     <View ref={ref} style={containerStyle}>
       <View style={styles.headerRow}>
         <View style={numberBgStyle}>
-          <Text style={[styles.numberText, { fontSize: fontSize }]}>{setNumber}</Text>
+          <Text style={[styles.numberText, { fontSize }]}>{setNumber}</Text>
         </View>
         <Text style={styles.setTitle}>Set {setNumber}</Text>
       </View>
 
-      <View style={styles.inputsRow}>
-        <View style={[styles.inputSection, styles.weightSection]}>
-          <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
-            Weight
-          </Text>
-          <View style={styles.weightStepperGroup}>
-            <Pressable
-              onPress={handleWeightDecrease}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.stepperButton,
-                stepperStyle,
-                !isEditMode && styles.stepperDisabled,
-                pressed && styles.stepperPressed,
-              ]}
-            >
-              <Ionicons name="remove" size={fontSize + 4} color={colors.textMuted} />
-            </Pressable>
-            <Pressable
-              testID={`workout-set-${setNumber}-weight`}
-              accessibilityLabel={`workout-set-${setNumber}-weight`}
-              onPress={handleWeightEditStart}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.inputButton,
-                inputStyle,
-                !isEditMode && styles.inputButtonDisabled,
-                pressed && styles.stepperPressed,
-              ]}
-            >
-              {isEditingWeight ? (
-                <TextInput
-                  testID={`workout-set-${setNumber}-weight-input`}
-                  ref={weightInputRef}
-                  style={[styles.weightInput, { fontSize }]}
-                  value={editWeightValue}
-                  onChangeText={setEditWeightValue}
-                  onBlur={handleWeightEditEnd}
-                  onSubmitEditing={handleWeightEditEnd}
-                  keyboardType="decimal-pad"
-                  autoFocus
-                />
-              ) : (
-                <>
-                  <Text
-                    style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}
-                  >
-                    {localWeight.toFixed(1)}
-                  </Text>
-                  <Text style={[styles.unitLabel, { fontSize: fontSize - 4 }]}>{weightUnit}</Text>
-                </>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleWeightIncrease}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.stepperButton,
-                stepperStyle,
-                !isEditMode && styles.stepperDisabled,
-                pressed && styles.stepperPressed,
-              ]}
-            >
-              <Ionicons name="add" size={fontSize + 4} color={colors.textMuted} />
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={[styles.inputSection, styles.repsSection]}>
-          <Text numberOfLines={1} style={[styles.labelText, { fontSize: fontSize - 2 }]}>
-            Reps
-          </Text>
-          <View style={styles.repsStepperGroup}>
-            <Pressable
-              onPress={handleRepsDecrease}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.stepperButton,
-                repsStepperStyle,
-                !isEditMode && styles.stepperDisabled,
-                pressed && styles.stepperPressed,
-              ]}
-            >
-              <Ionicons name="remove" size={fontSize + 4} color={colors.textMuted} />
-            </Pressable>
-            <Pressable
-              testID={`workout-set-${setNumber}-reps`}
-              accessibilityLabel={`workout-set-${setNumber}-reps`}
-              onPress={handleRepsEditStart}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.inputButton,
-                inputStyle,
-                !isEditMode && styles.inputButtonDisabled,
-                pressed && styles.stepperPressed,
-              ]}
-            >
-              {isRepsEditing ? (
-                <TextInput
-                  testID={`workout-set-${setNumber}-reps-input`}
-                  ref={repsInputRef}
-                  style={[styles.repsInput, { fontSize }]}
-                  value={editRepsValue}
-                  onChangeText={setEditRepsValue}
-                  onBlur={handleRepsEditEnd}
-                  onSubmitEditing={handleRepsEditEnd}
-                  keyboardType="number-pad"
-                  autoFocus
-                />
-              ) : (
-                <Text style={[styles.inputText, { fontSize }, !isEditMode && styles.textDisabled]}>
-                  {localReps}
-                </Text>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleRepsIncrease}
-              disabled={!isEditMode}
-              style={({ pressed }) => [
-                styles.stepperButton,
-                repsStepperStyle,
-                !isEditMode && styles.stepperDisabled,
-                pressed && styles.stepperPressed,
-              ]}
-            >
-              <Ionicons name="add" size={fontSize + 4} color={colors.textMuted} />
-            </Pressable>
-          </View>
-        </View>
-      </View>
+      {renderInputs()}
 
       <View style={styles.footer}>
         <Pressable
@@ -328,7 +642,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
           <Text
             style={[
               set.completed ? styles.completeTextDone : styles.completeTextDefault,
-              { fontSize: fontSize },
+              { fontSize },
             ]}
           >
             {set.completed ? 'Complete' : 'Mark Complete'}
@@ -344,6 +658,27 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
           </Pressable>
         )}
       </View>
+
+      <DurationPickerModal
+        visible={showDurationModal}
+        initialSeconds={localDuration}
+        onSave={handleDurationSave}
+        onCancel={() => setShowDurationModal(false)}
+      />
+      <DistancePickerModal
+        visible={showDistanceModal}
+        initialMeters={localDistance}
+        unit={distanceUnit}
+        onSave={handleDistanceSave}
+        onCancel={() => setShowDistanceModal(false)}
+      />
+      <HeightPickerModal
+        visible={showHeightModal}
+        initialCm={localHeight}
+        unit={distanceUnit}
+        onSave={handleHeightSave}
+        onCancel={() => setShowHeightModal(false)}
+      />
     </View>
   );
 });
@@ -394,6 +729,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minWidth: 0,
   },
+  inputsCol: {
+    gap: spacing.sm,
+    minWidth: 0,
+  },
   inputSection: {
     gap: spacing.sm,
     minWidth: 0,
@@ -437,9 +776,6 @@ const styles = StyleSheet.create({
   stepperPressed: {
     transform: [{ scale: 0.95 }],
     opacity: 0.8,
-  },
-  stepperText: {
-    color: colors.textMuted,
   },
   inputButton: {
     borderRadius: radius.sm,
@@ -489,6 +825,46 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     textAlignVertical: 'center',
     includeFontPadding: false,
+  },
+  addWeightButton: {
+    alignSelf: 'flex-start',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  addWeightText: {
+    color: colors.textMuted,
+    fontWeight: typography.fontWeights.medium,
+  },
+  addMetricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(239,111,79,0.1)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  addMetricText: {
+    color: colors.accent,
+    fontWeight: typography.fontWeights.medium,
+  },
+  removeMetricButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 9999,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   footer: {
     marginTop: spacing.md,

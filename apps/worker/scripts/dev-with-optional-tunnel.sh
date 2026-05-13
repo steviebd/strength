@@ -33,6 +33,35 @@ if (($# == 0)); then
   exit 1
 fi
 
+ensure_supported_node() {
+  NODE_VERSION="$(node -v 2>/dev/null || true)"
+  NODE_MAJOR="${NODE_VERSION#v}"
+  NODE_MAJOR="${NODE_MAJOR%%.*}"
+
+  if [[ -n "$NODE_MAJOR" && "$NODE_MAJOR" -ge 22 ]]; then
+    return
+  fi
+
+  for NODE_DIR in /opt/homebrew/opt/node@24/bin /opt/homebrew/opt/node@22/bin; do
+    if [[ -x "$NODE_DIR/node" ]]; then
+      export PATH="$NODE_DIR:$PATH"
+      NODE_VERSION="$(node -v 2>/dev/null || true)"
+      NODE_MAJOR="${NODE_VERSION#v}"
+      NODE_MAJOR="${NODE_MAJOR%%.*}"
+      if [[ -n "$NODE_MAJOR" && "$NODE_MAJOR" -ge 22 ]]; then
+        return
+      fi
+    fi
+  done
+}
+
+ensure_supported_node
+if [[ -z "$NODE_MAJOR" || "$NODE_MAJOR" -lt 22 ]]; then
+  echo "Node.js 22+ is required for local worker dev. Current version: ${NODE_VERSION:-not found}" >&2
+  echo "Switch to Node.js 22 or newer, then rerun bun run dev." >&2
+  exit 1
+fi
+
 TUNNEL_PID=""
 
 cleanup() {

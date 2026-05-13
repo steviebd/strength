@@ -3,6 +3,7 @@ import {
   consolidateProgramTargetLifts,
   getCurrentCycleWorkout,
   generateId,
+  inferExerciseType,
   normalizeProgramReps,
   parseProgramTargetLifts,
 } from '@strength/db/client';
@@ -42,6 +43,7 @@ type LocalExerciseInput = {
   libraryId?: string | null;
   name: string;
   muscleGroup?: string | null;
+  exerciseType?: string | null;
   orderIndex: number;
   notes?: string | null;
   isAmrap?: boolean;
@@ -50,6 +52,9 @@ type LocalExerciseInput = {
     setNumber: number;
     weight?: number | null;
     reps?: number | null;
+    duration?: number | null;
+    distance?: number | null;
+    height?: number | null;
     rpe?: number | null;
     isComplete?: boolean;
     completedAt?: Date | string | null;
@@ -62,6 +67,9 @@ export type ExerciseHistorySnapshot = {
   sets: Array<{
     weight: number | null;
     reps: number | null;
+    duration?: number | null;
+    distance?: number | null;
+    height?: number | null;
     rpe: number | null;
     setNumber?: number | null;
   }>;
@@ -92,6 +100,9 @@ function asWorkoutSet(row: LocalWorkoutSet): WorkoutSet {
     setNumber: row.setNumber,
     weight: row.weight ?? null,
     reps: row.reps ?? null,
+    duration: row.duration ?? null,
+    distance: row.distance ?? null,
+    height: row.height ?? null,
     rpe: row.rpe ?? null,
     isComplete: Boolean(row.isComplete),
     completedAt: toIso(row.completedAt),
@@ -140,6 +151,27 @@ function computeWorkoutTotals(exercises: WorkoutExercise[], startedAt: string) {
   return { completedAt, totalSets, totalVolume, durationMinutes };
 }
 
+function buildPlannedSetValues(input: {
+  exerciseType?: string | null;
+  targetWeight?: number | null;
+  addedWeight?: number | null;
+  reps?: number | null;
+  isAmrap?: boolean | null;
+  targetDuration?: number | null;
+  targetDistance?: number | null;
+  targetHeight?: number | null;
+}) {
+  const type = inferExerciseType(input);
+  const addedWeight = (input.targetWeight ?? 0) + (input.addedWeight ?? 0);
+  return {
+    weight: type === 'weighted' || (type === 'bodyweight' && addedWeight > 0) ? addedWeight : null,
+    reps: input.isAmrap || type === 'timed' || type === 'cardio' ? null : (input.reps ?? 5),
+    duration: type === 'timed' || type === 'cardio' ? (input.targetDuration ?? 0) : null,
+    distance: type === 'cardio' ? (input.targetDistance ?? null) : null,
+    height: type === 'plyo' ? (input.targetHeight ?? 0) : null,
+  };
+}
+
 async function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[]) {
   const db = getLocalDb();
   if (!db) return;
@@ -168,6 +200,7 @@ async function replaceLocalExercises(workoutId: string, exercises: LocalExercise
         libraryId: exercise.libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup ?? null,
+        exerciseType: inferExerciseType(exercise),
         orderIndex: exercise.orderIndex,
         notes: exercise.notes ?? null,
         isAmrap: exercise.isAmrap ?? false,
@@ -185,6 +218,9 @@ async function replaceLocalExercises(workoutId: string, exercises: LocalExercise
           setNumber: set.setNumber,
           weight: set.weight ?? null,
           reps: set.reps ?? null,
+          duration: set.duration ?? null,
+          distance: set.distance ?? null,
+          height: set.height ?? null,
           rpe: set.rpe ?? null,
           isComplete: set.isComplete ?? false,
           completedAt: toDate(set.completedAt),
@@ -291,24 +327,29 @@ export async function createLocalWorkoutFromTemplate(
       const historySnapshot = historyByExerciseId.get(exercise.exerciseId);
       const historySetCount = historySnapshot?.sets.length ?? 0;
       const plannedSetCount = Math.max(1, exercise.sets ?? 3);
-      const setCount = historySetCount > 0 ? historySetCount : plannedSetCount;
+      const setCount = Math.max(plannedSetCount, historySetCount);
 
       return {
         exerciseId: exercise.exerciseId,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
+        exerciseType: inferExerciseType(exercise),
         orderIndex: exercise.orderIndex,
         isAmrap: Boolean(exercise.isAmrap),
-        sets: Array.from({ length: setCount }, (_, index) => ({
-          setNumber: index + 1,
-          weight:
-            historySnapshot?.sets[index]?.weight ??
-            (exercise.targetWeight ?? 0) + (exercise.addedWeight ?? 0),
-          reps:
-            historySnapshot?.sets[index]?.reps ?? (exercise.isAmrap ? null : (exercise.reps ?? 10)),
-          rpe: historySnapshot?.sets[index]?.rpe ?? null,
-          isComplete: false,
-        })),
+        sets: Array.from({ length: setCount }, (_, index) => {
+          const planned = buildPlannedSetValues(exercise);
+          const historySet = historySnapshot?.sets[index];
+          return {
+            setNumber: index + 1,
+            weight: historySet?.weight ?? planned.weight,
+            reps: historySet?.reps ?? planned.reps,
+            duration: historySet?.duration ?? planned.duration,
+            distance: historySet?.distance ?? planned.distance,
+            height: historySet?.height ?? planned.height,
+            rpe: historySet?.rpe ?? null,
+            isComplete: false,
+          };
+        }),
       };
     }),
   });
@@ -419,6 +460,9 @@ export async function getLocalLastCompletedExerciseSnapshots(
       workoutExerciseId: localWorkoutSets.workoutExerciseId,
       weight: localWorkoutSets.weight,
       reps: localWorkoutSets.reps,
+      duration: localWorkoutSets.duration,
+      distance: localWorkoutSets.distance,
+      height: localWorkoutSets.height,
       rpe: localWorkoutSets.rpe,
       setNumber: localWorkoutSets.setNumber,
     })
@@ -447,6 +491,9 @@ export async function getLocalLastCompletedExerciseSnapshots(
     sets: (setsByWorkoutExerciseId.get(latest.workoutExerciseId) ?? []).map((set) => ({
       weight: set.weight,
       reps: set.reps,
+      duration: set.duration,
+      distance: set.distance,
+      height: set.height,
       rpe: set.rpe,
       setNumber: set.setNumber,
     })),
@@ -471,7 +518,10 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
   const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
     const sets = exercise.segments.flatMap((segment) =>
       Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
-        weight: (segment.targetWeight ?? 0) + (segment.addedWeight ?? 0),
+        weight:
+          typeof segment.targetWeight === 'number'
+            ? segment.targetWeight + (segment.addedWeight ?? 0)
+            : null,
         reps: segment.isAmrap ? null : normalizeProgramReps(segment.reps),
         rpe: null,
         isComplete: false,
@@ -483,6 +533,7 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
       libraryId: exercise.libraryId ?? null,
       name: exercise.name,
       muscleGroup: null,
+      exerciseType: inferExerciseType(exercise),
       orderIndex: index,
       isAmrap: exercise.isAmrap,
       sets: sets.map((set, setIndex) => ({ ...set, setNumber: setIndex + 1 })),
@@ -576,6 +627,7 @@ export async function getLocalWorkout(workoutId: string): Promise<Workout | null
       libraryId: exercise.libraryId,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup ?? null,
+      exerciseType: inferExerciseType(exercise),
       orderIndex: exercise.orderIndex,
       notes: exercise.notes ?? null,
       isAmrap: Boolean(exercise.isAmrap),
@@ -697,6 +749,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
         libraryId: (exercise as any).libraryId ?? null,
         name: exercise.name,
         muscleGroup: exercise.muscleGroup,
+        exerciseType: inferExerciseType(exercise),
         orderIndex: exercise.orderIndex,
         notes: exercise.notes,
         isAmrap: exercise.isAmrap,
@@ -705,6 +758,9 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
           setNumber: set.setNumber,
           weight: set.weight,
           reps: set.reps,
+          duration: set.duration,
+          distance: set.distance,
+          height: set.height,
           rpe: set.rpe,
           isComplete: set.isComplete,
           completedAt: set.completedAt,
@@ -758,6 +814,7 @@ export async function completeLocalWorkout(
       libraryId: (exercise as any).libraryId ?? null,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      exerciseType: inferExerciseType(exercise),
       orderIndex: exerciseIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
@@ -766,6 +823,9 @@ export async function completeLocalWorkout(
         setNumber: setIndex + 1,
         weight: set.weight,
         reps: set.reps,
+        duration: set.duration,
+        distance: set.distance,
+        height: set.height,
         rpe: set.rpe,
         isComplete: set.isComplete,
         completedAt: set.isComplete ? (set.completedAt ?? totals.completedAt) : null,
@@ -819,6 +879,7 @@ export async function saveLocalWorkoutDraft(
       libraryId: (exercise as any).libraryId ?? null,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      exerciseType: inferExerciseType(exercise),
       orderIndex: exerciseIndex,
       notes: exercise.notes,
       isAmrap: exercise.isAmrap,
@@ -827,6 +888,9 @@ export async function saveLocalWorkoutDraft(
         setNumber: setIndex + 1,
         weight: set.weight,
         reps: set.reps,
+        duration: set.duration,
+        distance: set.distance,
+        height: set.height,
         rpe: set.rpe,
         isComplete: set.isComplete,
         completedAt: set.completedAt,
@@ -902,6 +966,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
       isAmrap: exercise.isAmrap,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      exerciseType: inferExerciseType(exercise),
     })),
     sets: workout.exercises.flatMap((exercise) =>
       (exercise.sets ?? []).map((set) => ({
@@ -910,6 +975,9 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
         setNumber: set.setNumber,
         weight: set.weight,
         reps: set.reps,
+        duration: set.duration,
+        distance: set.distance,
+        height: set.height,
         rpe: set.rpe,
         isComplete: set.isComplete,
         completedAt: set.completedAt,
@@ -1003,6 +1071,10 @@ export async function cacheTemplates(userId: string, templates: any[]) {
           exerciseId: exercise.exerciseId,
           name: exercise.name,
           muscleGroup: exercise.muscleGroup ?? null,
+          exerciseType: inferExerciseType(exercise),
+          targetDuration: exercise.targetDuration ?? null,
+          targetDistance: exercise.targetDistance ?? null,
+          targetHeight: exercise.targetHeight ?? null,
           orderIndex: exercise.orderIndex ?? 0,
           targetWeight: exercise.targetWeight ?? null,
           addedWeight: exercise.addedWeight ?? 0,
@@ -1030,7 +1102,9 @@ export async function cacheUserExercises(userId: string, exercises: any[]) {
         name: exercise.name,
         muscleGroup: exercise.muscleGroup ?? null,
         description: exercise.description ?? null,
+        exerciseType: inferExerciseType(exercise),
         libraryId: exercise.libraryId ?? null,
+        isAmrap: exercise.isAmrap ?? false,
         createdAt: toDate(exercise.createdAt),
         updatedAt: toDate(exercise.updatedAt),
         hydratedAt,
@@ -1041,13 +1115,23 @@ export async function cacheUserExercises(userId: string, exercises: any[]) {
           name: exercise.name,
           muscleGroup: exercise.muscleGroup ?? null,
           description: exercise.description ?? null,
+          exerciseType: inferExerciseType(exercise),
           libraryId: exercise.libraryId ?? null,
+          isAmrap: exercise.isAmrap ?? false,
           updatedAt: toDate(exercise.updatedAt),
           hydratedAt,
         },
       })
       .run();
   }
+}
+
+export async function deleteCachedUserExercise(userId: string, exerciseId: string) {
+  const db = getLocalDb();
+  if (!db) return;
+  db.delete(localUserExercises)
+    .where(and(eq(localUserExercises.userId, userId), eq(localUserExercises.id, exerciseId)))
+    .run();
 }
 
 export async function cacheActivePrograms(userId: string, programs: any[]) {

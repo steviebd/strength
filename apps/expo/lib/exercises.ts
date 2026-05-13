@@ -1,6 +1,10 @@
 import { apiFetch } from '@/lib/api';
-import type { ExerciseLibraryItem } from '@strength/db/client';
-import { cacheUserExercises } from '@/db/workouts';
+import {
+  inferExerciseType,
+  type ExerciseLibraryItem,
+  type ExerciseType,
+} from '@strength/db/client';
+import { cacheUserExercises, deleteCachedUserExercise } from '@/db/workouts';
 import { getCachedUserExercises } from '@/db/training-cache';
 import { authClient } from './auth-client';
 
@@ -9,13 +13,17 @@ export interface UserExercise {
   name: string;
   muscleGroup: string | null;
   description: string | null;
+  exerciseType: ExerciseType;
   libraryId: string | null;
+  isAmrap?: boolean | null;
 }
 
 interface CreateExerciseInput {
   name: string;
   muscleGroup: string;
   description?: string | null;
+  exerciseType?: ExerciseType;
+  isAmrap?: boolean;
 }
 
 export async function listUserExercises(search?: string, signal?: AbortSignal) {
@@ -40,7 +48,9 @@ export async function listUserExercises(search?: string, signal?: AbortSignal) {
           name: exercise.name,
           muscleGroup: exercise.muscleGroup,
           description: exercise.description,
+          exerciseType: inferExerciseType(exercise),
           libraryId: exercise.libraryId,
+          isAmrap: exercise.isAmrap,
         }));
       }
     }
@@ -54,6 +64,8 @@ export async function createCustomExercise(input: CreateExerciseInput) {
     body: {
       name: input.name.trim(),
       muscleGroup: input.muscleGroup,
+      exerciseType: input.exerciseType,
+      isAmrap: input.isAmrap,
       description: input.description?.trim() || null,
     },
   });
@@ -67,12 +79,26 @@ export async function createCustomExercise(input: CreateExerciseInput) {
   return exercise;
 }
 
+export async function deleteCustomExercise(exerciseId: string) {
+  await apiFetch<{ success: boolean }>(`/api/exercises/${encodeURIComponent(exerciseId)}`, {
+    method: 'DELETE',
+  });
+
+  const session = await authClient.getSession();
+  const userId = session.data?.user?.id;
+  if (userId) {
+    await deleteCachedUserExercise(userId, exerciseId);
+  }
+}
+
 export async function ensurePersistedExercise(exercise: ExerciseLibraryItem) {
   const persistedExercise = await apiFetch<UserExercise>('/api/exercises', {
     method: 'POST',
     body: {
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
+      exerciseType: exercise.exerciseType ?? inferExerciseType(exercise),
+      isAmrap: false,
       description: exercise.description || null,
       libraryId: exercise.id,
     },

@@ -12,6 +12,7 @@ export function serializePreferences(
 ) {
   return {
     weightUnit: prefs.weightUnit ?? 'kg',
+    distanceUnit: prefs.distanceUnit ?? 'km',
     timezone: prefs.timezone ?? null,
     weightPromptedAt: prefs.weightPromptedAt ?? null,
     bodyweightKg: bodyStats?.bodyweightKg ?? null,
@@ -36,6 +37,7 @@ router.get(
           .values({
             userId,
             weightUnit: 'kg',
+            distanceUnit: 'km',
             timezone: null,
             createdAt: now,
             updatedAt: now,
@@ -73,6 +75,7 @@ router.put(
       }
 
       const weightUnit = typeof body.weightUnit === 'string' ? body.weightUnit : undefined;
+      const distanceUnit = typeof body.distanceUnit === 'string' ? body.distanceUnit : undefined;
       const timezone =
         body.timezone === null
           ? null
@@ -90,6 +93,10 @@ router.put(
         return c.json({ message: 'Invalid weight unit' }, 400);
       }
 
+      if (distanceUnit !== undefined && !['km', 'mi'].includes(distanceUnit)) {
+        return c.json({ message: 'Invalid distance unit' }, 400);
+      }
+
       if (timezone !== undefined && timezone !== null && !isValidTimeZone(timezone)) {
         return c.json({ message: 'Invalid timezone' }, 400);
       }
@@ -101,6 +108,7 @@ router.put(
         .get();
 
       const nextWeightUnit = weightUnit ?? existing?.weightUnit ?? 'kg';
+      const nextDistanceUnit = distanceUnit ?? existing?.distanceUnit ?? 'km';
       const nextTimezone = timezone === undefined ? (existing?.timezone ?? null) : timezone;
       const nextWeightPromptedAt =
         weightPromptedAt === undefined
@@ -115,6 +123,7 @@ router.put(
         .values({
           userId,
           weightUnit: nextWeightUnit,
+          distanceUnit: nextDistanceUnit,
           timezone: nextTimezone,
           weightPromptedAt: nextWeightPromptedAt,
           createdAt: now,
@@ -124,6 +133,7 @@ router.put(
           target: schema.userPreferences.userId,
           set: {
             weightUnit: nextWeightUnit,
+            distanceUnit: nextDistanceUnit,
             timezone: nextTimezone,
             weightPromptedAt: nextWeightPromptedAt,
             updatedAt: now,

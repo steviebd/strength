@@ -5,7 +5,9 @@ export interface TemplateExercise {
   muscleGroup: string | null;
   sets: number;
   reps: number;
+  repsRaw?: string | null;
   targetWeight: number;
+  exerciseType?: string | null;
   isAmrap: boolean;
   isAccessory: boolean;
   isRequired: boolean;
@@ -37,6 +39,10 @@ export interface SelectedExercise {
   repsRaw?: string;
   targetWeight?: number;
   addedWeight?: number;
+  exerciseType?: string;
+  targetDuration?: number | null;
+  targetDistance?: number | null;
+  targetHeight?: number | null;
 }
 
 export interface TemplateEditorProps {

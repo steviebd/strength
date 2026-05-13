@@ -1,12 +1,13 @@
 import { eq, and, like, desc } from 'drizzle-orm';
 import * as schema from '@strength/db';
+import { inferExerciseType } from '@strength/db';
 import { createRouter } from '../lib/router';
 import { createHandler } from '../api/auth';
 import { resolveToUserExerciseId, findExistingUserExerciseByName } from '../lib/program-helpers';
 
 export function buildExerciseUpdate(body: Record<string, unknown>) {
   const allowed: Record<string, unknown> = {};
-  const keys = ['name', 'muscleGroup', 'description'];
+  const keys = ['name', 'muscleGroup', 'description', 'exerciseType', 'isAmrap'];
   for (const key of keys) {
     if (key in body) {
       allowed[key] = body[key];
@@ -35,6 +36,8 @@ router.get(
           name: schema.exercises.name,
           muscleGroup: schema.exercises.muscleGroup,
           description: schema.exercises.description,
+          exerciseType: schema.exercises.exerciseType,
+          isAmrap: schema.exercises.isAmrap,
           libraryId: schema.exercises.libraryId,
           createdAt: schema.exercises.createdAt,
           updatedAt: schema.exercises.updatedAt,
@@ -57,6 +60,12 @@ router.post(
       const body = await c.req.json();
       const { name, muscleGroup, description, libraryId } = body;
       const trimmedName = typeof name === 'string' ? name.trim() : '';
+      const exerciseType = inferExerciseType({
+        id: typeof libraryId === 'string' ? libraryId : null,
+        name: trimmedName,
+        muscleGroup: typeof muscleGroup === 'string' ? muscleGroup : null,
+        exerciseType: typeof body.exerciseType === 'string' ? body.exerciseType : null,
+      });
 
       if (!trimmedName) {
         return c.json({ message: 'Name is required' }, 400);
@@ -106,6 +115,8 @@ router.post(
           name: trimmedName,
           muscleGroup: muscleGroup || null,
           description: description || null,
+          exerciseType,
+          isAmrap: body.isAmrap === true,
           libraryId: null,
           createdAt: now,
           updatedAt: now,

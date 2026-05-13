@@ -15,16 +15,83 @@ CREATE TABLE `account` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE TABLE `custom_program_days` (
+	`id` text PRIMARY KEY NOT NULL,
+	`custom_program_id` text NOT NULL,
+	`day_index` integer NOT NULL,
+	`name` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`custom_program_id`) REFERENCES `custom_programs`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_custom_program_days_program` ON `custom_program_days` (`custom_program_id`,`day_index`);--> statement-breakpoint
+CREATE TABLE `custom_program_exercises` (
+	`id` text PRIMARY KEY NOT NULL,
+	`custom_program_day_id` text NOT NULL,
+	`exercise_id` text NOT NULL,
+	`order_index` integer NOT NULL,
+	`sets` integer NOT NULL,
+	`reps` integer,
+	`starting_weight` real,
+	`increment_weight` real DEFAULT 0 NOT NULL,
+	`target_distance` integer,
+	`target_height` integer,
+	`progression_mode` text DEFAULT 'session' NOT NULL,
+	`is_amrap` integer DEFAULT false,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`custom_program_day_id`) REFERENCES `custom_program_days`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`exercise_id`) REFERENCES `exercises`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_custom_program_exercises_day` ON `custom_program_exercises` (`custom_program_day_id`,`order_index`);--> statement-breakpoint
+CREATE TABLE `custom_programs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`name` text NOT NULL,
+	`description` text,
+	`weeks` integer NOT NULL,
+	`days_per_week` integer NOT NULL,
+	`requires_one_rm` integer DEFAULT true,
+	`is_deleted` integer DEFAULT false,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_custom_programs_user_id_updated_at` ON `custom_programs` (`user_id`,`updated_at`);--> statement-breakpoint
 CREATE TABLE `exercises` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
 	`name` text NOT NULL,
 	`muscle_group` text,
 	`description` text,
+	`exercise_type` text,
+	`is_amrap` integer DEFAULT false,
 	`library_id` text,
 	`is_deleted` integer DEFAULT false,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_exercises_user_id_updated_at` ON `exercises` (`user_id`,`updated_at`);--> statement-breakpoint
+CREATE INDEX `idx_exercises_muscle_group` ON `exercises` (`muscle_group`);--> statement-breakpoint
+CREATE UNIQUE INDEX `exercises_user_id_library_id_unique` ON `exercises` (`user_id`,`library_id`);--> statement-breakpoint
+CREATE TABLE `nutrition_chat_jobs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`error` text,
+	`messages_json` text NOT NULL,
+	`date` text NOT NULL,
+	`has_image` integer DEFAULT false,
+	`image_base64` text,
+	`assistant_message_id` text,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	`completed_at` integer,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -55,6 +122,8 @@ CREATE TABLE `nutrition_entries` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_nutrition_entries_user_logged_at` ON `nutrition_entries` (`user_id`,`logged_at`);--> statement-breakpoint
+CREATE INDEX `idx_nutrition_entries_user_deleted` ON `nutrition_entries` (`user_id`,`is_deleted`);--> statement-breakpoint
 CREATE TABLE `nutrition_training_context` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -65,6 +134,7 @@ CREATE TABLE `nutrition_training_context` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `nutrition_training_context_user_id_unique` ON `nutrition_training_context` (`user_id`);--> statement-breakpoint
 CREATE TABLE `program_cycle_workouts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`cycle_id` text NOT NULL,
@@ -82,6 +152,8 @@ CREATE TABLE `program_cycle_workouts` (
 	FOREIGN KEY (`template_id`) REFERENCES `templates`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_program_cycle_workouts_cycle_id` ON `program_cycle_workouts` (`cycle_id`);--> statement-breakpoint
+CREATE INDEX `idx_program_cycle_workouts_scheduled_at` ON `program_cycle_workouts` (`scheduled_at`);--> statement-breakpoint
 CREATE TABLE `rate_limit` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -92,6 +164,8 @@ CREATE TABLE `rate_limit` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
+CREATE INDEX `idx_rate_limit_user_id_endpoint` ON `rate_limit` (`user_id`,`endpoint`);--> statement-breakpoint
+CREATE INDEX `idx_rate_limit_window_start` ON `rate_limit` (`window_start`);--> statement-breakpoint
 CREATE TABLE `session` (
 	`id` text PRIMARY KEY NOT NULL,
 	`expires_at` integer NOT NULL,
@@ -110,6 +184,10 @@ CREATE TABLE `template_exercises` (
 	`template_id` text NOT NULL,
 	`exercise_id` text NOT NULL,
 	`order_index` integer NOT NULL,
+	`exercise_type` text DEFAULT 'weighted' NOT NULL,
+	`target_duration` integer,
+	`target_distance` integer,
+	`target_height` integer,
 	`target_weight` real,
 	`added_weight` real DEFAULT 0,
 	`sets` integer,
@@ -123,6 +201,7 @@ CREATE TABLE `template_exercises` (
 	FOREIGN KEY (`exercise_id`) REFERENCES `exercises`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_template_exercises_template_id` ON `template_exercises` (`template_id`);--> statement-breakpoint
 CREATE TABLE `templates` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -136,6 +215,7 @@ CREATE TABLE `templates` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_templates_user_id_updated_at` ON `templates` (`user_id`,`updated_at`);--> statement-breakpoint
 CREATE TABLE `user` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -163,6 +243,7 @@ CREATE TABLE `user_body_stats` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `user_body_stats_user_id_unique` ON `user_body_stats` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_user_body_stats_user` ON `user_body_stats` (`user_id`);--> statement-breakpoint
 CREATE TABLE `user_integration` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -178,9 +259,15 @@ CREATE TABLE `user_integration` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_user_integration_user_id` ON `user_integration` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_user_integration_provider` ON `user_integration` (`provider`);--> statement-breakpoint
+CREATE INDEX `idx_user_integration_user_id_provider` ON `user_integration` (`user_id`,`provider`);--> statement-breakpoint
+CREATE UNIQUE INDEX `user_integration_user_id_provider_unique` ON `user_integration` (`user_id`,`provider`);--> statement-breakpoint
+CREATE UNIQUE INDEX `user_integration_provider_provider_user_id_unique` ON `user_integration` (`provider`,`provider_user_id`);--> statement-breakpoint
 CREATE TABLE `user_preferences` (
 	`user_id` text PRIMARY KEY NOT NULL,
 	`weight_unit` text DEFAULT 'kg',
+	`distance_unit` text DEFAULT 'km',
 	`timezone` text,
 	`weight_prompted_at` integer,
 	`created_at` integer NOT NULL,
@@ -218,6 +305,7 @@ CREATE TABLE `user_program_cycles` (
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_user_program_cycles_user_id` ON `user_program_cycles` (`user_id`);--> statement-breakpoint
 CREATE TABLE `verification` (
 	`id` text PRIMARY KEY NOT NULL,
 	`identifier` text NOT NULL,
@@ -243,6 +331,10 @@ CREATE TABLE `whoop_body_measurement` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `whoop_body_measurement_whoop_measurement_id_unique` ON `whoop_body_measurement` (`whoop_measurement_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_body_measurement_user_id` ON `whoop_body_measurement` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_body_measurement_whoop_measurement_id` ON `whoop_body_measurement` (`whoop_measurement_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_body_measurement_measurement_date` ON `whoop_body_measurement` (`measurement_date`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_body_measurement_user_id_measurement_date` ON `whoop_body_measurement` (`user_id`,`measurement_date`);--> statement-breakpoint
 CREATE TABLE `whoop_cycle` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -266,6 +358,11 @@ CREATE TABLE `whoop_cycle` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `whoop_cycle_whoop_cycle_id_unique` ON `whoop_cycle` (`whoop_cycle_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_cycle_user_id` ON `whoop_cycle` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_cycle_whoop_cycle_id` ON `whoop_cycle` (`whoop_cycle_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_cycle_start` ON `whoop_cycle` (`start`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_cycle_user_id_start` ON `whoop_cycle` (`user_id`,`start`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_cycle_day_strain` ON `whoop_cycle` (`day_strain`);--> statement-breakpoint
 CREATE TABLE `whoop_profile` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -280,6 +377,8 @@ CREATE TABLE `whoop_profile` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `whoop_profile_whoop_user_id_unique` ON `whoop_profile` (`whoop_user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_profile_user_id` ON `whoop_profile` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_profile_whoop_user_id` ON `whoop_profile` (`whoop_user_id`);--> statement-breakpoint
 CREATE TABLE `whoop_recovery` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -303,6 +402,11 @@ CREATE TABLE `whoop_recovery` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `whoop_recovery_whoop_recovery_id_unique` ON `whoop_recovery` (`whoop_recovery_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_recovery_user_id` ON `whoop_recovery` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_recovery_whoop_recovery_id` ON `whoop_recovery` (`whoop_recovery_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_recovery_date` ON `whoop_recovery` (`date`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_recovery_user_id_date` ON `whoop_recovery` (`user_id`,`date`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_recovery_cycle_id` ON `whoop_recovery` (`cycle_id`);--> statement-breakpoint
 CREATE TABLE `whoop_sleep` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -334,6 +438,11 @@ CREATE TABLE `whoop_sleep` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `whoop_sleep_whoop_sleep_id_unique` ON `whoop_sleep` (`whoop_sleep_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_sleep_user_id` ON `whoop_sleep` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_sleep_whoop_sleep_id` ON `whoop_sleep` (`whoop_sleep_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_sleep_start` ON `whoop_sleep` (`start`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_sleep_user_id_start` ON `whoop_sleep` (`user_id`,`start`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_sleep_user_id_sleep_performance` ON `whoop_sleep` (`user_id`,`sleep_performance_percentage`);--> statement-breakpoint
 CREATE TABLE `whoop_workout` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -352,6 +461,10 @@ CREATE TABLE `whoop_workout` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `whoop_workout_whoop_workout_id_unique` ON `whoop_workout` (`whoop_workout_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_workout_user_id` ON `whoop_workout` (`user_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_workout_whoop_workout_id` ON `whoop_workout` (`whoop_workout_id`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_workout_start` ON `whoop_workout` (`start`);--> statement-breakpoint
+CREATE INDEX `idx_whoop_workout_user_id_start` ON `whoop_workout` (`user_id`,`start`);--> statement-breakpoint
 CREATE TABLE `workout_exercises` (
 	`id` text PRIMARY KEY NOT NULL,
 	`workout_id` text NOT NULL,
@@ -366,12 +479,17 @@ CREATE TABLE `workout_exercises` (
 	FOREIGN KEY (`exercise_id`) REFERENCES `exercises`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_workout_exercises_order` ON `workout_exercises` (`workout_id`,`order_index`);--> statement-breakpoint
+CREATE INDEX `idx_workout_exercises_exercise_id` ON `workout_exercises` (`exercise_id`);--> statement-breakpoint
 CREATE TABLE `workout_sets` (
 	`id` text PRIMARY KEY NOT NULL,
 	`workout_exercise_id` text NOT NULL,
 	`set_number` integer NOT NULL,
 	`weight` real,
 	`reps` integer,
+	`duration` integer,
+	`distance` integer,
+	`height` integer,
 	`rpe` real,
 	`is_complete` integer DEFAULT false,
 	`completed_at` integer,
@@ -381,6 +499,20 @@ CREATE TABLE `workout_sets` (
 	FOREIGN KEY (`workout_exercise_id`) REFERENCES `workout_exercises`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE INDEX `idx_workout_sets_workout_exercise_id` ON `workout_sets` (`workout_exercise_id`);--> statement-breakpoint
+CREATE INDEX `idx_workout_sets_completed_at` ON `workout_sets` (`completed_at`);--> statement-breakpoint
+CREATE TABLE `workout_sync_operations` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`workout_id` text NOT NULL,
+	`status` text DEFAULT 'applied' NOT NULL,
+	`request_hash` text,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `workout_sync_operations_user_id_id_unique` ON `workout_sync_operations` (`user_id`,`id`);--> statement-breakpoint
 CREATE TABLE `workouts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -408,3 +540,7 @@ CREATE TABLE `workouts` (
 	FOREIGN KEY (`template_id`) REFERENCES `templates`(`id`) ON UPDATE no action ON DELETE set null,
 	FOREIGN KEY (`program_cycle_id`) REFERENCES `user_program_cycles`(`id`) ON UPDATE no action ON DELETE set null
 );
+--> statement-breakpoint
+CREATE INDEX `idx_workouts_user_id_started_at` ON `workouts` (`user_id`,`started_at`);--> statement-breakpoint
+CREATE INDEX `idx_workouts_template_id` ON `workouts` (`template_id`);--> statement-breakpoint
+CREATE INDEX `idx_workouts_completed_at` ON `workouts` (`completed_at`);

@@ -1,5 +1,10 @@
 export { generateId } from './schema';
-export { exerciseLibrary, type ExerciseLibraryItem } from './exercise-library';
+export {
+  exerciseLibrary,
+  inferExerciseType,
+  type ExerciseLibraryItem,
+  type ExerciseType,
+} from './exercise-library';
 export { convertToDisplayWeight, convertToStorageWeight } from './utils/units';
 export {
   normalizeProgramSetCount,

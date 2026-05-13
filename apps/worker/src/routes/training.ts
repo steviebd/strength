@@ -42,6 +42,7 @@ async function listTemplatesForSnapshot(db: any, userId: string) {
                 exerciseId: schema.templateExercises.exerciseId,
                 name: schema.exercises.name,
                 muscleGroup: schema.exercises.muscleGroup,
+                exerciseType: schema.exercises.exerciseType,
                 libraryId: schema.exercises.libraryId,
                 sets: schema.templateExercises.sets,
                 reps: schema.templateExercises.reps,
@@ -86,6 +87,7 @@ async function listUserExercisesForSnapshot(db: any, userId: string) {
       name: schema.exercises.name,
       muscleGroup: schema.exercises.muscleGroup,
       description: schema.exercises.description,
+      exerciseType: schema.exercises.exerciseType,
       libraryId: schema.exercises.libraryId,
       createdAt: schema.exercises.createdAt,
       updatedAt: schema.exercises.updatedAt,
@@ -144,6 +146,7 @@ async function listRecentWorkoutsForSnapshot(db: any, userId: string, limit: num
                 isAmrap: schema.workoutExercises.isAmrap,
                 name: schema.exercises.name,
                 muscleGroup: schema.exercises.muscleGroup,
+                exerciseType: schema.exercises.exerciseType,
                 libraryId: schema.exercises.libraryId,
               })
               .from(schema.workoutExercises)

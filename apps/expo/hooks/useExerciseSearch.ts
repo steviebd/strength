@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { exerciseLibrary } from '@strength/db/client';
+import { exerciseLibrary, inferExerciseType, type ExerciseType } from '@strength/db/client';
 import { createCustomExercise, listUserExercises, type UserExercise } from '@/lib/exercises';
 
 export function getUserSelectionKey(id: string) {
@@ -26,7 +26,12 @@ export function useExerciseSearch({
   const [loading, setLoading] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', muscleGroup: '', description: '' });
+  const [createForm, setCreateForm] = useState<{
+    name: string;
+    muscleGroup: string;
+    exerciseType: ExerciseType;
+    description: string;
+  }>({ name: '', muscleGroup: '', exerciseType: 'weighted', description: '' });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -125,6 +130,8 @@ export function useExerciseSearch({
           name: newExercise.name,
           muscleGroup: newExercise.muscleGroup,
           description: newExercise.description,
+          exerciseType: newExercise.exerciseType,
+          isAmrap: newExercise.isAmrap,
           libraryId: newExercise.libraryId,
         },
         ...prev,
@@ -134,7 +141,7 @@ export function useExerciseSearch({
         return prev.includes(selectionKey) ? prev : [...prev, selectionKey];
       });
       setShowCreateForm(false);
-      setCreateForm({ name: '', muscleGroup: '', description: '' });
+      setCreateForm({ name: '', muscleGroup: '', exerciseType: 'weighted', description: '' });
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create exercise');
     } finally {
@@ -171,6 +178,7 @@ export function useExerciseSearch({
     setCreateError,
     filteredUserExercises,
     filteredLibraryExercises,
+    inferExerciseType,
     handleCreateExercise,
     toggleSelection,
     isSelected,

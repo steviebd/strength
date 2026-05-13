@@ -51,6 +51,10 @@ router.get(
               exerciseId: schema.templateExercises.exerciseId,
               name: schema.exercises.name,
               muscleGroup: schema.exercises.muscleGroup,
+              exerciseType: schema.templateExercises.exerciseType,
+              targetDuration: schema.templateExercises.targetDuration,
+              targetDistance: schema.templateExercises.targetDistance,
+              targetHeight: schema.templateExercises.targetHeight,
               sets: schema.templateExercises.sets,
               reps: schema.templateExercises.reps,
               targetWeight: schema.templateExercises.targetWeight,
@@ -138,6 +142,10 @@ router.get(
           sets: schema.templateExercises.sets,
           reps: schema.templateExercises.reps,
           repsRaw: schema.templateExercises.repsRaw,
+          exerciseType: schema.templateExercises.exerciseType,
+          targetDuration: schema.templateExercises.targetDuration,
+          targetDistance: schema.templateExercises.targetDistance,
+          targetHeight: schema.templateExercises.targetHeight,
           isAmrap: schema.templateExercises.isAmrap,
           isAccessory: schema.templateExercises.isAccessory,
           isRequired: schema.templateExercises.isRequired,
@@ -145,6 +153,7 @@ router.get(
             id: schema.exercises.id,
             name: schema.exercises.name,
             muscleGroup: schema.exercises.muscleGroup,
+            exerciseType: schema.exercises.exerciseType,
           },
         })
         .from(schema.templateExercises)
@@ -241,6 +250,10 @@ router.get(
           sets: schema.templateExercises.sets,
           reps: schema.templateExercises.reps,
           repsRaw: schema.templateExercises.repsRaw,
+          exerciseType: schema.templateExercises.exerciseType,
+          targetDuration: schema.templateExercises.targetDuration,
+          targetDistance: schema.templateExercises.targetDistance,
+          targetHeight: schema.templateExercises.targetHeight,
           isAmrap: schema.templateExercises.isAmrap,
           isAccessory: schema.templateExercises.isAccessory,
           isRequired: schema.templateExercises.isRequired,
@@ -275,6 +288,10 @@ router.post(
         sets,
         reps,
         repsRaw,
+        exerciseType,
+        targetDuration,
+        targetDistance,
+        targetHeight,
         isAmrap,
         isAccessory,
         isRequired,
@@ -284,11 +301,17 @@ router.post(
       }
 
       let resolvedExerciseId = exerciseId;
+      let resolvedExerciseType =
+        typeof exerciseType === 'string' &&
+        ['weighted', 'bodyweight', 'timed', 'cardio', 'plyo'].includes(exerciseType)
+          ? exerciseType
+          : 'weighted';
 
       const existingExercise = await db
         .select({
           id: schema.exercises.id,
           libraryId: schema.exercises.libraryId,
+          exerciseType: schema.exercises.exerciseType,
         })
         .from(schema.exercises)
         .where(
@@ -304,6 +327,7 @@ router.post(
         const existingLibraryExercise = await db
           .select({
             id: schema.exercises.id,
+            exerciseType: schema.exercises.exerciseType,
           })
           .from(schema.exercises)
           .where(
@@ -317,6 +341,7 @@ router.post(
 
         if (existingLibraryExercise) {
           resolvedExerciseId = existingLibraryExercise.id;
+          resolvedExerciseType = existingLibraryExercise.exerciseType ?? resolvedExerciseType;
         } else {
           const libraryExercise = schema.exerciseLibrary.find(
             (exercise) => exercise.id === exerciseId,
@@ -334,6 +359,7 @@ router.post(
               name: libraryExercise.name,
               muscleGroup: libraryExercise.muscleGroup,
               description: libraryExercise.description,
+              exerciseType: libraryExercise.exerciseType,
               libraryId: libraryExercise.id,
               createdAt: now,
               updatedAt: now,
@@ -346,7 +372,14 @@ router.post(
           }
 
           resolvedExerciseId = createdExercise.id;
+          resolvedExerciseType = libraryExercise.exerciseType;
         }
+      } else if (existingExercise.libraryId) {
+        const libraryExercise = schema.exerciseLibrary.find(
+          (exercise) => exercise.id === existingExercise.libraryId,
+        );
+        resolvedExerciseType =
+          libraryExercise?.exerciseType ?? existingExercise.exerciseType ?? resolvedExerciseType;
       }
 
       const result = await db
@@ -360,6 +393,10 @@ router.post(
           sets: sets || null,
           reps: reps || null,
           repsRaw: repsRaw || null,
+          exerciseType: resolvedExerciseType,
+          targetDuration: targetDuration ?? null,
+          targetDistance: targetDistance ?? null,
+          targetHeight: targetHeight ?? null,
           isAmrap: isAmrap || false,
           isAccessory: isAccessory || false,
           isRequired: isRequired !== false,
@@ -434,6 +471,10 @@ router.post(
             sets: te.sets,
             reps: te.reps,
             repsRaw: te.repsRaw,
+            exerciseType: te.exerciseType,
+            targetDuration: te.targetDuration,
+            targetDistance: te.targetDistance,
+            targetHeight: te.targetHeight,
             isAmrap: te.isAmrap,
             isAccessory: te.isAccessory,
             isRequired: te.isRequired,

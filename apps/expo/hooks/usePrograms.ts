@@ -6,10 +6,13 @@ import { getCachedActivePrograms } from '@/db/training-cache';
 
 export interface ProgramListItem {
   slug: string;
+  source?: 'prebuilt' | 'custom';
+  customProgramId?: string;
   name: string;
   description: string;
   difficulty: string;
   daysPerWeek: number;
+  requiresOneRm?: boolean;
   estimatedWeeks: number;
   totalSessions: number;
 }

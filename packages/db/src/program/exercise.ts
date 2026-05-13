@@ -2,7 +2,7 @@ import { eq, and } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import { exercises, generateId } from '../schema';
 import type { ExerciseLibraryItem } from '../exercise-library';
-import { exerciseLibrary } from '../exercise-library';
+import { exerciseLibrary, inferExerciseType } from '../exercise-library';
 
 export type LiftType = 'squat' | 'bench' | 'deadlift' | 'ohp' | 'row';
 
@@ -43,6 +43,7 @@ export async function getOrCreateExerciseForUser(
         name: exerciseName,
         muscleGroup: inferMuscleGroup(liftType),
         description: null,
+        exerciseType: inferExerciseType({ id: libraryId, name: exerciseName }),
         libraryId,
         createdAt: now,
         updatedAt: now,
@@ -52,6 +53,7 @@ export async function getOrCreateExerciseForUser(
         set: {
           name: exerciseName,
           muscleGroup: inferMuscleGroup(liftType),
+          exerciseType: inferExerciseType({ id: libraryId, name: exerciseName }),
           updatedAt: now,
         },
       })
@@ -82,6 +84,7 @@ export async function getOrCreateExerciseForUser(
         name: libraryItem.name,
         muscleGroup: libraryItem.muscleGroup,
         description: libraryItem.description,
+        exerciseType: inferExerciseType(libraryItem),
         libraryId: libraryItem.id,
         createdAt: now,
         updatedAt: now,
@@ -92,6 +95,7 @@ export async function getOrCreateExerciseForUser(
           name: libraryItem.name,
           muscleGroup: libraryItem.muscleGroup,
           description: libraryItem.description,
+          exerciseType: inferExerciseType(libraryItem),
           updatedAt: now,
         },
       })
@@ -109,6 +113,10 @@ export async function getOrCreateExerciseForUser(
       name: exerciseName,
       muscleGroup: inferMuscleGroup(liftType),
       description: null,
+      exerciseType: inferExerciseType({
+        name: exerciseName,
+        muscleGroup: inferMuscleGroup(liftType),
+      }),
       libraryId: null,
       createdAt: now,
       updatedAt: now,
