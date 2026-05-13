@@ -2,8 +2,6 @@ import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { generateId } from '@strength/db/client';
 import { tryOnlineOrEnqueue } from '@/lib/offline-mutation';
-import { getLocalDb } from '@/db/client';
-import { localCustomPrograms } from '@/db/local-schema';
 import { getCachedCustomPrograms, upsertLocalCustomProgramSnapshot } from '@/db/training-cache';
 import { hasPendingTrainingWrites } from '@/db/training-read-model';
 import { useOfflineQuery } from './useOfflineQuery';
@@ -158,38 +156,11 @@ export function useSaveCustomProgram() {
       entityId: programId,
       payload: { ...payload, id: programId },
       onEnqueue: async () => {
-        const db = getLocalDb();
-        if (!db) return;
-        const now = new Date();
-        db.insert(localCustomPrograms)
-          .values({
-            id: programId,
-            userId,
-            name: payload.name,
-            description: payload.description ?? null,
-            notes: payload.notes ?? null,
-            daysPerWeek: payload.daysPerWeek,
-            weeks: payload.weeks,
-            isDeleted: false,
-            createdLocally: true,
-            createdAt: now,
-            updatedAt: now,
-            hydratedAt: now,
-          })
-          .onConflictDoUpdate({
-            target: localCustomPrograms.id,
-            set: {
-              name: payload.name,
-              description: payload.description ?? null,
-              notes: payload.notes ?? null,
-              daysPerWeek: payload.daysPerWeek,
-              weeks: payload.weeks,
-              isDeleted: false,
-              updatedAt: now,
-              hydratedAt: now,
-            },
-          })
-          .run();
+        await upsertLocalCustomProgramSnapshot(
+          userId,
+          { ...payload, id: programId },
+          { createdLocally: true },
+        );
       },
     });
   };

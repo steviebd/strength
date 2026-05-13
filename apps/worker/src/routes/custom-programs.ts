@@ -20,6 +20,290 @@ function formatCustomProgramSessionName(
   return `${programName} - Week ${weekNumber} - Workout ${sessionNumber}`;
 }
 
+const EXERCISE_TYPES = ['weights', 'bodyweight', 'timed', 'cardio', 'plyo'] as const;
+
+function normalizeExerciseType(value: unknown) {
+  return typeof value === 'string' && EXERCISE_TYPES.includes(value as any) ? value : 'weights';
+}
+
+function pickAllowedKeys(body: Record<string, any>, keys: readonly string[]) {
+  const values: Record<string, any> = {};
+  for (const key of keys) {
+    if (body[key] !== undefined) values[key] = body[key];
+  }
+  return values;
+}
+
+async function requireOwnedCustomWorkout(
+  db: any,
+  userId: string,
+  workoutId: string,
+  message = 'Workout not found',
+) {
+  const workout = await db
+    .select({
+      id: schema.customProgramWorkouts.id,
+      customProgramId: schema.customProgramWorkouts.customProgramId,
+    })
+    .from(schema.customProgramWorkouts)
+    .innerJoin(
+      schema.customPrograms,
+      and(
+        eq(schema.customProgramWorkouts.customProgramId, schema.customPrograms.id),
+        eq(schema.customPrograms.userId, userId),
+        eq(schema.customPrograms.isDeleted, false),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.customProgramWorkouts.id, workoutId),
+        eq(schema.customProgramWorkouts.isDeleted, false),
+      ),
+    )
+    .get();
+
+  return workout ?? Response.json({ message }, { status: 404 });
+}
+
+async function requireOwnedCustomWorkoutExercise(
+  db: any,
+  userId: string,
+  exerciseId: string,
+  message = 'Exercise not found',
+) {
+  const exercise = await db
+    .select({
+      id: schema.customProgramWorkoutExercises.id,
+      customProgramWorkoutId: schema.customProgramWorkoutExercises.customProgramWorkoutId,
+    })
+    .from(schema.customProgramWorkoutExercises)
+    .innerJoin(
+      schema.customProgramWorkouts,
+      eq(
+        schema.customProgramWorkoutExercises.customProgramWorkoutId,
+        schema.customProgramWorkouts.id,
+      ),
+    )
+    .innerJoin(
+      schema.customPrograms,
+      and(
+        eq(schema.customProgramWorkouts.customProgramId, schema.customPrograms.id),
+        eq(schema.customPrograms.userId, userId),
+        eq(schema.customPrograms.isDeleted, false),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.customProgramWorkoutExercises.id, exerciseId),
+        eq(schema.customProgramWorkouts.isDeleted, false),
+      ),
+    )
+    .get();
+
+  return exercise ?? Response.json({ message }, { status: 404 });
+}
+
+async function resolveCustomProgramExerciseId(db: any, userId: string, exerciseId: string) {
+  const existingExercise = await db
+    .select({ id: schema.exercises.id })
+    .from(schema.exercises)
+    .where(
+      and(
+        eq(schema.exercises.userId, userId),
+        eq(schema.exercises.isDeleted, false),
+        eq(schema.exercises.id, exerciseId),
+      ),
+    )
+    .get();
+
+  if (existingExercise) return existingExercise.id;
+
+  const libraryExercise = schema.exerciseLibrary.find((exercise) => exercise.id === exerciseId);
+  if (!libraryExercise) return null;
+
+  return getOrCreateExerciseForUser(
+    db,
+    userId,
+    libraryExercise.name,
+    undefined,
+    libraryExercise.id,
+  );
+}
+
+async function buildCustomProgramExerciseValues(
+  db: any,
+  userId: string,
+  workoutId: string,
+  body: Record<string, any>,
+) {
+  const { id, exerciseId, orderIndex } = body;
+  if (!exerciseId || orderIndex === undefined) {
+    return Response.json({ message: 'exerciseId and orderIndex are required' }, { status: 400 });
+  }
+
+  const resolvedExerciseId = await resolveCustomProgramExerciseId(db, userId, exerciseId);
+  if (!resolvedExerciseId) {
+    return Response.json({ message: 'Exercise not found' }, { status: 404 });
+  }
+
+  return {
+    ...(typeof id === 'string' && id.trim() ? { id } : {}),
+    customProgramWorkoutId: workoutId,
+    exerciseId: resolvedExerciseId,
+    orderIndex,
+    exerciseType: normalizeExerciseType(body.exerciseType),
+    sets: body.sets ?? null,
+    reps: body.reps ?? null,
+    repsRaw: body.repsRaw ?? null,
+    weightMode: body.weightMode ?? null,
+    fixedWeight: body.fixedWeight ?? null,
+    percentageOfLift: body.percentageOfLift ?? null,
+    percentageLift: body.percentageLift ?? null,
+    addedWeight: body.addedWeight ?? 0,
+    targetDuration: body.targetDuration ?? null,
+    targetDistance: body.targetDistance ?? null,
+    targetHeight: body.targetHeight ?? null,
+    isAmrap: body.isAmrap ?? false,
+    isAccessory: body.isAccessory ?? false,
+    isRequired: body.isRequired !== false,
+    setNumber: body.setNumber ?? null,
+    progressionAmount: body.progressionAmount ?? null,
+    progressionInterval: body.progressionInterval ?? 1,
+    progressionType: body.progressionType ?? 'fixed',
+  } satisfies typeof schema.customProgramWorkoutExercises.$inferInsert;
+}
+
+async function saveCustomProgramGraph(db: any, userId: string, programId: string, workouts: any[]) {
+  const submittedWorkoutIds = new Set<string>();
+  const submittedExerciseIds = new Set<string>();
+
+  for (const workout of workouts) {
+    if (!workout?.id || workout.dayIndex === undefined || !workout.name) {
+      return Response.json({ message: 'workouts require id, dayIndex, and name' }, { status: 400 });
+    }
+
+    submittedWorkoutIds.add(workout.id);
+    const existingWorkout = await db
+      .select({
+        id: schema.customProgramWorkouts.id,
+        customProgramId: schema.customProgramWorkouts.customProgramId,
+      })
+      .from(schema.customProgramWorkouts)
+      .where(eq(schema.customProgramWorkouts.id, workout.id))
+      .get();
+
+    if (existingWorkout && existingWorkout.customProgramId !== programId) {
+      return Response.json(
+        { message: 'Workout id already exists for another custom program' },
+        { status: 409 },
+      );
+    }
+
+    await db
+      .insert(schema.customProgramWorkouts)
+      .values({
+        id: workout.id,
+        customProgramId: programId,
+        dayIndex: workout.dayIndex,
+        name: workout.name,
+        orderIndex: workout.orderIndex ?? workout.dayIndex,
+        isDeleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: schema.customProgramWorkouts.id,
+        set: {
+          customProgramId: programId,
+          dayIndex: workout.dayIndex,
+          name: workout.name,
+          orderIndex: workout.orderIndex ?? workout.dayIndex,
+          isDeleted: false,
+          updatedAt: new Date(),
+        },
+      })
+      .returning()
+      .get();
+
+    if (Array.isArray(workout.exercises)) {
+      for (let index = 0; index < workout.exercises.length; index++) {
+        const exercise = { ...workout.exercises[index], orderIndex: index };
+        const values = await buildCustomProgramExerciseValues(db, userId, workout.id, exercise);
+        if (values instanceof Response) return values;
+        const customProgramExerciseId = typeof values.id === 'string' ? values.id : null;
+        if (customProgramExerciseId) submittedExerciseIds.add(customProgramExerciseId);
+
+        const existingExercise = customProgramExerciseId
+          ? await db
+              .select({
+                id: schema.customProgramWorkoutExercises.id,
+                customProgramWorkoutId: schema.customProgramWorkoutExercises.customProgramWorkoutId,
+              })
+              .from(schema.customProgramWorkoutExercises)
+              .where(eq(schema.customProgramWorkoutExercises.id, customProgramExerciseId))
+              .get()
+          : null;
+
+        if (existingExercise && existingExercise.customProgramWorkoutId !== workout.id) {
+          return Response.json({ message: 'Workout exercise id already exists' }, { status: 409 });
+        }
+
+        if (existingExercise) {
+          await db
+            .update(schema.customProgramWorkoutExercises)
+            .set(values as any)
+            .where(eq(schema.customProgramWorkoutExercises.id, customProgramExerciseId!))
+            .run();
+        } else {
+          await db
+            .insert(schema.customProgramWorkoutExercises)
+            .values(values as any)
+            .run();
+        }
+      }
+    }
+  }
+
+  const existingWorkouts = await db
+    .select({ id: schema.customProgramWorkouts.id })
+    .from(schema.customProgramWorkouts)
+    .where(eq(schema.customProgramWorkouts.customProgramId, programId))
+    .all();
+
+  for (const workout of existingWorkouts) {
+    if (!submittedWorkoutIds.has(workout.id)) {
+      await db
+        .update(schema.customProgramWorkouts)
+        .set({ isDeleted: true, updatedAt: new Date() })
+        .where(eq(schema.customProgramWorkouts.id, workout.id))
+        .run();
+    }
+  }
+
+  const keptWorkoutIds = [...submittedWorkoutIds];
+  if (keptWorkoutIds.length > 0) {
+    const existingExercises = await db
+      .select({
+        id: schema.customProgramWorkoutExercises.id,
+        customProgramWorkoutId: schema.customProgramWorkoutExercises.customProgramWorkoutId,
+      })
+      .from(schema.customProgramWorkoutExercises)
+      .where(inArray(schema.customProgramWorkoutExercises.customProgramWorkoutId, keptWorkoutIds))
+      .all();
+
+    for (const exercise of existingExercises) {
+      if (!submittedExerciseIds.has(exercise.id)) {
+        await db
+          .delete(schema.customProgramWorkoutExercises)
+          .where(eq(schema.customProgramWorkoutExercises.id, exercise.id))
+          .run();
+      }
+    }
+  }
+
+  return null;
+}
+
 // List custom programs
 router.get(
   '/',
@@ -72,6 +356,12 @@ router.post(
           .where(and(eq(schema.customPrograms.id, id), eq(schema.customPrograms.userId, userId)))
           .returning()
           .get();
+
+        if (Array.isArray(body.workouts)) {
+          const graphError = await saveCustomProgramGraph(db, userId, updated.id, body.workouts);
+          if (graphError) return graphError;
+        }
+
         return c.json(updated, 200);
       }
     }
@@ -92,6 +382,12 @@ router.post(
       })
       .returning()
       .get();
+
+    if (Array.isArray(body.workouts)) {
+      const graphError = await saveCustomProgramGraph(db, userId, result.id, body.workouts);
+      if (graphError) return graphError;
+    }
+
     return c.json(result, 201);
   }),
 );
@@ -319,34 +615,12 @@ router.put(
   '/workouts/:wid',
   createHandler(async (c, { userId, db }) => {
     const wid = c.req.param('wid') as string;
-    const workout = await db
-      .select({ id: schema.customProgramWorkouts.id })
-      .from(schema.customProgramWorkouts)
-      .innerJoin(
-        schema.customPrograms,
-        and(
-          eq(schema.customProgramWorkouts.customProgramId, schema.customPrograms.id),
-          eq(schema.customPrograms.userId, userId),
-          eq(schema.customPrograms.isDeleted, false),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.customProgramWorkouts.id, wid),
-          eq(schema.customProgramWorkouts.isDeleted, false),
-        ),
-      )
-      .get();
-    if (!workout) {
-      return c.json({ message: 'Workout not found' }, 404);
-    }
+    const workout = await requireOwnedCustomWorkout(db, userId, wid);
+    if (workout instanceof Response) return workout;
 
     const body = await c.req.json();
-    const allowed: Record<string, any> = {};
     const keys = ['name', 'dayIndex', 'orderIndex'] as const;
-    for (const key of keys) {
-      if (body[key] !== undefined) allowed[key] = body[key];
-    }
+    const allowed = pickAllowedKeys(body, keys);
     if (Object.keys(allowed).length === 0) {
       return c.json({ message: 'No fields to update' }, 400);
     }
@@ -366,27 +640,8 @@ router.delete(
   '/workouts/:wid',
   createHandler(async (c, { userId, db }) => {
     const wid = c.req.param('wid') as string;
-    const workout = await db
-      .select({ id: schema.customProgramWorkouts.id })
-      .from(schema.customProgramWorkouts)
-      .innerJoin(
-        schema.customPrograms,
-        and(
-          eq(schema.customProgramWorkouts.customProgramId, schema.customPrograms.id),
-          eq(schema.customPrograms.userId, userId),
-          eq(schema.customPrograms.isDeleted, false),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.customProgramWorkouts.id, wid),
-          eq(schema.customProgramWorkouts.isDeleted, false),
-        ),
-      )
-      .get();
-    if (!workout) {
-      return c.json({ message: 'Workout not found' }, 404);
-    }
+    const workout = await requireOwnedCustomWorkout(db, userId, wid);
+    if (workout instanceof Response) return workout;
 
     const result = await db
       .update(schema.customProgramWorkouts)
@@ -402,144 +657,13 @@ router.post(
   '/workouts/:wid/exercises',
   createHandler(async (c, { userId, db }) => {
     const wid = c.req.param('wid') as string;
-    const workout = await db
-      .select({ id: schema.customProgramWorkouts.id })
-      .from(schema.customProgramWorkouts)
-      .innerJoin(
-        schema.customPrograms,
-        and(
-          eq(schema.customProgramWorkouts.customProgramId, schema.customPrograms.id),
-          eq(schema.customPrograms.userId, userId),
-          eq(schema.customPrograms.isDeleted, false),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.customProgramWorkouts.id, wid),
-          eq(schema.customProgramWorkouts.isDeleted, false),
-        ),
-      )
-      .get();
-    if (!workout) {
-      return c.json({ message: 'Workout not found' }, 404);
-    }
+    const workout = await requireOwnedCustomWorkout(db, userId, wid);
+    if (workout instanceof Response) return workout;
 
     const body = await c.req.json();
-    const {
-      id: requestedId,
-      exerciseId,
-      orderIndex,
-      exerciseType,
-      sets,
-      reps,
-      repsRaw,
-      weightMode,
-      fixedWeight,
-      percentageOfLift,
-      percentageLift,
-      addedWeight,
-      targetDuration,
-      targetDistance,
-      targetHeight,
-      isAmrap,
-      isAccessory,
-      isRequired,
-      setNumber,
-      progressionAmount,
-      progressionInterval,
-      progressionType,
-    } = body;
-
-    if (!exerciseId || orderIndex === undefined) {
-      return c.json({ message: 'exerciseId and orderIndex are required' }, 400);
-    }
-
-    const resolvedExerciseType =
-      typeof exerciseType === 'string' &&
-      ['weights', 'bodyweight', 'timed', 'cardio', 'plyo'].includes(exerciseType)
-        ? exerciseType
-        : 'weights';
-
-    let resolvedExerciseId = exerciseId;
-    const existingExercise = await db
-      .select({ id: schema.exercises.id, libraryId: schema.exercises.libraryId })
-      .from(schema.exercises)
-      .where(
-        and(
-          eq(schema.exercises.userId, userId),
-          eq(schema.exercises.isDeleted, false),
-          eq(schema.exercises.id, exerciseId),
-        ),
-      )
-      .get();
-
-    if (!existingExercise) {
-      const libraryExercise = schema.exerciseLibrary.find((e: any) => e.id === exerciseId);
-      if (!libraryExercise) {
-        return c.json({ message: 'Exercise not found' }, 404);
-      }
-      const now = new Date();
-      const created = await db
-        .insert(schema.exercises)
-        .values({
-          userId,
-          name: libraryExercise.name,
-          muscleGroup: libraryExercise.muscleGroup,
-          description: libraryExercise.description,
-          libraryId: libraryExercise.id,
-          exerciseType: libraryExercise.exerciseType,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: schema.exercises.id })
-        .get();
-      if (!created) {
-        const fallback = await db
-          .select({ id: schema.exercises.id })
-          .from(schema.exercises)
-          .where(
-            and(
-              eq(schema.exercises.userId, userId),
-              eq(schema.exercises.isDeleted, false),
-              eq(schema.exercises.libraryId, libraryExercise.id),
-            ),
-          )
-          .get();
-        if (!fallback) {
-          return c.json({ message: 'Failed to create exercise' }, 500);
-        }
-        resolvedExerciseId = fallback.id;
-      } else {
-        resolvedExerciseId = created.id;
-      }
-    }
-
-    const insertValues: typeof schema.customProgramWorkoutExercises.$inferInsert = {
-      ...(typeof requestedId === 'string' && requestedId.trim() ? { id: requestedId as any } : {}),
-      customProgramWorkoutId: wid as any,
-      exerciseId: resolvedExerciseId as any,
-      orderIndex: orderIndex as any,
-      exerciseType: resolvedExerciseType as any,
-      sets: sets ?? null,
-      reps: reps ?? null,
-      repsRaw: repsRaw ?? null,
-      weightMode: weightMode ?? null,
-      fixedWeight: fixedWeight ?? null,
-      percentageOfLift: percentageOfLift ?? null,
-      percentageLift: percentageLift ?? null,
-      addedWeight: addedWeight ?? 0,
-      targetDuration: targetDuration ?? null,
-      targetDistance: targetDistance ?? null,
-      targetHeight: targetHeight ?? null,
-      isAmrap: isAmrap ?? false,
-      isAccessory: isAccessory ?? false,
-      isRequired: isRequired !== false,
-      setNumber: setNumber ?? null,
-      progressionAmount: progressionAmount ?? null,
-      progressionInterval: progressionInterval ?? 1,
-      progressionType: progressionType ?? 'fixed',
-    };
+    const insertValues = await buildCustomProgramExerciseValues(db, userId, wid, body);
+    if (insertValues instanceof Response) return insertValues;
+    const requestedId = insertValues.id;
 
     if (typeof requestedId === 'string' && requestedId.trim()) {
       const existingExercise = await db
@@ -578,22 +702,12 @@ router.post(
 // Update exercise within a workout
 router.put(
   '/workouts/exercises/:eid',
-  createHandler(async (c, { db }) => {
+  createHandler(async (c, { userId, db }) => {
     const eid = c.req.param('eid') as string;
     const body = await c.req.json();
 
-    const exerciseRow = await db
-      .select({
-        id: schema.customProgramWorkoutExercises.id,
-        customProgramWorkoutId: schema.customProgramWorkoutExercises.customProgramWorkoutId,
-      })
-      .from(schema.customProgramWorkoutExercises)
-      .where(eq(schema.customProgramWorkoutExercises.id, eid))
-      .get();
-
-    if (!exerciseRow) {
-      return c.json({ message: 'Exercise not found' }, 404);
-    }
+    const exerciseRow = await requireOwnedCustomWorkoutExercise(db, userId, eid);
+    if (exerciseRow instanceof Response) return exerciseRow;
 
     const allowed = [
       'orderIndex',
@@ -615,11 +729,15 @@ router.put(
       'setNumber',
       'progressionAmount',
       'progressionInterval',
+      'progressionType',
     ];
 
-    const updates: Record<string, any> = { updatedAt: new Date() };
+    const updates: Record<string, any> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) updates[key] = body[key];
+    }
+    if (Object.keys(updates).length === 0) {
+      return c.json({ message: 'No fields to update' }, 400);
     }
 
     await db
@@ -640,17 +758,10 @@ router.put(
 // Delete exercise from a workout
 router.delete(
   '/workouts/exercises/:eid',
-  createHandler(async (c, { db }) => {
+  createHandler(async (c, { userId, db }) => {
     const eid = c.req.param('eid') as string;
-    const exerciseRow = await db
-      .select({ id: schema.customProgramWorkoutExercises.id })
-      .from(schema.customProgramWorkoutExercises)
-      .where(eq(schema.customProgramWorkoutExercises.id, eid))
-      .get();
-
-    if (!exerciseRow) {
-      return c.json({ message: 'Exercise not found' }, 404);
-    }
+    const exerciseRow = await requireOwnedCustomWorkoutExercise(db, userId, eid);
+    if (exerciseRow instanceof Response) return exerciseRow;
 
     await db
       .delete(schema.customProgramWorkoutExercises)
@@ -847,12 +958,16 @@ router.post(
             lift: ex.percentageLift ?? null,
             targetWeight,
             sets: ex.sets ?? 3,
-            reps: ex.reps ?? 10,
+            reps: ex.repsRaw ?? ex.reps ?? 10,
             exerciseType: ex.exerciseType ?? 'weights',
             targetDuration: ex.targetDuration ?? null,
             targetDistance: ex.targetDistance ?? null,
             targetHeight: ex.targetHeight ?? null,
             isAmrap: ex.isAmrap ?? false,
+            isAccessory: ex.isAccessory ?? false,
+            isRequired: ex.isRequired !== false,
+            addedWeight: ex.addedWeight ?? 0,
+            setNumber: ex.setNumber ?? null,
             libraryId: ex.libraryId ?? null,
             exerciseId: ex.exerciseId ?? null,
           };
@@ -951,7 +1066,10 @@ router.post(
           targetDistance: ex.targetDistance ?? null,
           targetHeight: ex.targetHeight ?? null,
           isAmrap: ex.isAmrap ?? false,
-          isAccessory: false,
+          isAccessory: ex.isAccessory ?? false,
+          isRequired: ex.isRequired !== false,
+          addedWeight: ex.addedWeight ?? 0,
+          setNumber: ex.setNumber ?? null,
           libraryId: ex.libraryId,
           exerciseId: exerciseIdMap.get(key),
         };

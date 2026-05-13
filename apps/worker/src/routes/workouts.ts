@@ -38,6 +38,10 @@ function parseDateInput(value: unknown): Date | null {
   return null;
 }
 
+function roundToTwoDecimals(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 function resolveWorkoutType(input: { workoutType?: unknown; name?: unknown }) {
   if (input.workoutType === schema.WORKOUT_TYPE_ONE_RM_TEST) {
     return schema.WORKOUT_TYPE_ONE_RM_TEST;
@@ -334,7 +338,7 @@ router.post(
           return {
             workoutExerciseId,
             setNumber: s + 1,
-            weight: historySet?.weight ?? planned.weight,
+            weight: roundToTwoDecimals(historySet?.weight ?? planned.weight),
             reps: historySet?.reps ?? planned.reps,
             duration: historySet?.duration ?? planned.duration,
             distance: historySet?.distance ?? planned.distance,
@@ -448,6 +452,9 @@ router.put(
       'totalSets',
       'durationMinutes',
     ]);
+    if ('totalVolume' in allowed) {
+      allowed.totalVolume = roundToTwoDecimals(allowed.totalVolume);
+    }
     const result = await db
       .update(schema.workouts)
       .set({ ...allowed, updatedAt: new Date() })
@@ -814,10 +821,11 @@ router.post(
       }
 
       const isComplete = set.isComplete === true;
+      const roundedWeight = roundToTwoDecimals(set.weight);
       if (isComplete) {
         totalSets++;
-        if (typeof set.weight === 'number' && typeof set.reps === 'number') {
-          totalVolume += set.weight * set.reps;
+        if (typeof roundedWeight === 'number' && typeof set.reps === 'number') {
+          totalVolume += roundedWeight * set.reps;
         }
       }
 
@@ -825,7 +833,7 @@ router.post(
         id: set.id,
         workoutExerciseId: set.workoutExerciseId,
         setNumber: set.setNumber,
-        weight: set.weight ?? null,
+        weight: roundedWeight,
         reps: set.reps ?? null,
         duration: set.duration ?? null,
         distance: set.distance ?? null,
@@ -856,7 +864,7 @@ router.post(
       .update(schema.workouts)
       .set({
         completedAt,
-        totalVolume,
+        totalVolume: roundToTwoDecimals(totalVolume) ?? 0,
         totalSets,
         durationMinutes,
         updatedAt: now,
@@ -1083,7 +1091,7 @@ router.post(
       .values({
         workoutExerciseId,
         setNumber,
-        weight: weight || null,
+        weight: roundToTwoDecimals(weight),
         reps: reps || null,
         duration: duration ?? null,
         distance: distance ?? null,
@@ -1118,6 +1126,9 @@ router.put(
       'isComplete',
     ]);
     const updateData: any = { ...allowed, updatedAt: new Date() };
+    if ('weight' in updateData) {
+      updateData.weight = roundToTwoDecimals(updateData.weight);
+    }
     if (body.isComplete === true) {
       updateData.completedAt = new Date();
     } else if (body.isComplete === false) {
@@ -1190,7 +1201,7 @@ router.get(
       workoutDate: snapshot.workoutDate,
       sets: snapshot.sets.map(
         (set: { weight: number | null; reps: number | null; rpe: number | null }) => ({
-          weight: set.weight,
+          weight: roundToTwoDecimals(set.weight),
           reps: set.reps,
           rpe: set.rpe,
         }),

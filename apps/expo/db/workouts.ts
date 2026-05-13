@@ -181,6 +181,10 @@ function toIso(value: Date | string | number | null | undefined) {
   return date ? date.toISOString() : null;
 }
 
+function roundToTwoDecimals(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 function isZeroUuid(id: string | null | undefined) {
   return id === '00000000-0000-4000-8000-000000000000';
 }
@@ -375,7 +379,7 @@ function asWorkoutSet(row: LocalWorkoutSet): WorkoutSet {
     id: row.id,
     workoutExerciseId: row.workoutExerciseId,
     setNumber: row.setNumber,
-    weight: row.weight ?? null,
+    weight: roundToTwoDecimals(row.weight),
     reps: row.reps ?? null,
     duration: row.duration ?? null,
     distance: row.distance ?? null,
@@ -395,7 +399,7 @@ function asWorkout(row: LocalWorkout, exercises: WorkoutExercise[]): Workout {
     startedAt: toIso(row.startedAt) ?? new Date().toISOString(),
     completedAt: toIso(row.completedAt),
     notes: row.notes ?? null,
-    totalVolume: row.totalVolume ?? undefined,
+    totalVolume: roundToTwoDecimals(row.totalVolume) ?? undefined,
     totalSets: row.totalSets ?? undefined,
     durationMinutes: row.durationMinutes ?? undefined,
     exerciseCount: exercises.length,
@@ -446,7 +450,14 @@ function computeWorkoutTotals(exercises: WorkoutExercise[], startedAt: string) {
   const rawMinutes = Math.round(elapsedMs / 60000);
   const durationMinutes = rawMinutes > 0 && rawMinutes <= 1440 ? rawMinutes : null;
 
-  return { completedAt, totalSets, totalVolume, durationMinutes, totalDuration, totalDistance };
+  return {
+    completedAt,
+    totalSets,
+    totalVolume: roundToTwoDecimals(totalVolume) ?? 0,
+    durationMinutes,
+    totalDuration,
+    totalDistance,
+  };
 }
 
 function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[]) {
@@ -498,7 +509,7 @@ function replaceLocalExercises(workoutId: string, exercises: LocalExerciseInput[
             id: setId,
             workoutExerciseId,
             setNumber: set.setNumber,
-            weight: set.weight ?? null,
+            weight: roundToTwoDecimals(set.weight),
             reps: set.reps ?? null,
             rpe: set.rpe ?? null,
             duration: set.duration ?? null,
@@ -581,7 +592,7 @@ function upsertLocalExercises(workoutId: string, exercises: LocalExerciseInput[]
         const setValues = {
           workoutExerciseId,
           setNumber: set.setNumber,
-          weight: set.weight ?? null,
+          weight: roundToTwoDecimals(set.weight),
           reps: set.reps ?? null,
           rpe: set.rpe ?? null,
           duration: set.duration ?? null,
@@ -822,10 +833,11 @@ export async function createLocalWorkoutFromTemplate(
         isAmrap,
         sets: Array.from({ length: setCount }, (_, index) => ({
           setNumber: index + 1,
-          weight:
+          weight: roundToTwoDecimals(
             index < historySetCount
               ? (historySets![index].weight ?? buildPlannedSetValues(plannedExercise).weight)
               : buildPlannedSetValues(plannedExercise).weight,
+          ),
           reps:
             index < historySetCount
               ? (historySets![index].reps ?? buildPlannedSetValues(plannedExercise).reps)
@@ -993,7 +1005,7 @@ export async function getLocalLastCompletedExerciseSnapshots(
       ? new Date(latest.workoutCompletedAt).toISOString().split('T')[0]
       : null,
     sets: (setsByWorkoutExerciseId.get(latest.workoutExerciseId) ?? []).map((set) => ({
-      weight: set.weight,
+      weight: roundToTwoDecimals(set.weight),
       reps: set.reps,
       rpe: set.rpe,
       duration: set.duration ?? null,
@@ -1287,7 +1299,7 @@ export async function listLocalWorkoutHistory(userId: string, limit = 50) {
       startedAt: toIso(row.startedAt) ?? new Date().toISOString(),
       completedAt: toIso(row.completedAt),
       durationMinutes: row.durationMinutes ?? null,
-      totalVolume: row.totalVolume ?? null,
+      totalVolume: roundToTwoDecimals(row.totalVolume),
       totalSets: row.totalSets ?? null,
       exerciseCount: counts.get(row.id) ?? 0,
       syncStatus: row.syncStatus as WorkoutSyncStatus,
@@ -1427,7 +1439,7 @@ export async function createLocalOneRMTestDraft(
     sets: [
       {
         setNumber: 1,
-        weight: exercise.weight ?? 0,
+        weight: roundToTwoDecimals(exercise.weight) ?? 0,
         reps: exercise.reps ?? 1,
         rpe: null,
         isComplete: false,
@@ -1462,7 +1474,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
         startedAt: toDate(serverWorkout.startedAt) ?? now,
         completedAt,
         notes: serverWorkout.notes ?? null,
-        totalVolume: serverWorkout.totalVolume ?? null,
+        totalVolume: roundToTwoDecimals(serverWorkout.totalVolume),
         totalSets: serverWorkout.totalSets ?? null,
         durationMinutes: serverWorkout.durationMinutes ?? null,
         isDeleted: false,
@@ -1486,7 +1498,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
           workoutType: resolveWorkoutType(serverWorkout),
           startedAt: toDate(serverWorkout.startedAt) ?? now,
           completedAt,
-          totalVolume: serverWorkout.totalVolume ?? null,
+          totalVolume: roundToTwoDecimals(serverWorkout.totalVolume),
           totalSets: serverWorkout.totalSets ?? null,
           durationMinutes: serverWorkout.durationMinutes ?? null,
           syncStatus: 'synced',
@@ -1513,7 +1525,7 @@ export async function upsertServerWorkoutSnapshot(userId: string, serverWorkout:
           sets: (exercise.sets ?? []).map((set) => ({
             id: set.id,
             setNumber: set.setNumber,
-            weight: set.weight,
+            weight: roundToTwoDecimals(set.weight),
             reps: set.reps,
             rpe: set.rpe,
             duration: set.duration,
@@ -1558,7 +1570,7 @@ export async function completeLocalWorkout(
     db.update(localWorkouts)
       .set({
         completedAt: totals.completedAt,
-        totalVolume: totals.totalVolume,
+        totalVolume: roundToTwoDecimals(totals.totalVolume),
         totalSets: totals.totalSets,
         durationMinutes: totals.durationMinutes,
         workoutType: resolveWorkoutType(workout),
@@ -1585,7 +1597,7 @@ export async function completeLocalWorkout(
         sets: (exercise.sets ?? []).map((set, setIndex) => ({
           id: set.id,
           setNumber: setIndex + 1,
-          weight: set.weight,
+          weight: roundToTwoDecimals(set.weight),
           reps: set.reps,
           rpe: set.rpe,
           duration: set.duration,
@@ -1654,7 +1666,7 @@ export async function saveLocalWorkoutDraft(
         sets: (exercise.sets ?? []).map((set, setIndex) => ({
           id: set.id,
           setNumber: setIndex + 1,
-          weight: set.weight,
+          weight: roundToTwoDecimals(set.weight),
           reps: set.reps,
           rpe: set.rpe,
           duration: set.duration,
@@ -1753,7 +1765,7 @@ export async function buildWorkoutCompletionPayload(workoutId: string) {
         id: set.id,
         workoutExerciseId: exercise.id,
         setNumber: set.setNumber,
-        weight: set.weight,
+        weight: roundToTwoDecimals(set.weight),
         reps: set.reps,
         rpe: set.rpe,
         duration: set.duration,

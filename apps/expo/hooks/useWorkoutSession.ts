@@ -47,6 +47,10 @@ function generateLocalId(): string {
   return generateId();
 }
 
+function roundToTwoDecimals(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 async function fetchExerciseHistorySnapshot(
   exerciseId: string,
   exerciseName?: string | null,
@@ -136,7 +140,7 @@ function buildDirectCompletionPayload(workout: Workout, exercises: WorkoutExerci
         id: set.id,
         workoutExerciseId: exercise.id,
         setNumber: setIndex + 1,
-        weight: set.weight,
+        weight: roundToTwoDecimals(set.weight),
         reps: set.reps,
         duration: set.duration,
         distance: set.distance,
@@ -154,7 +158,7 @@ function buildHistorySets(historySnapshot: ExerciseHistorySnapshot): WorkoutSet[
     id: generateLocalId(),
     workoutExerciseId: '',
     setNumber: set.setNumber ?? index + 1,
-    weight: set.weight,
+    weight: roundToTwoDecimals(set.weight),
     reps: set.reps,
     rpe: set.rpe ?? null,
     duration: set.duration ?? null,
@@ -179,7 +183,7 @@ function buildCachedSet(cached: {
       id: generateLocalId(),
       workoutExerciseId: '',
       setNumber: 1,
-      weight: cached.weight,
+      weight: roundToTwoDecimals(cached.weight),
       reps: cached.reps,
       rpe: cached.rpe ?? null,
       duration: cached.duration ?? null,
@@ -480,7 +484,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
               lastSet.height !== null;
             if (hasRelevantData) {
               const lastWorkout = {
-                weight: lastSet.weight,
+                weight: roundToTwoDecimals(lastSet.weight),
                 reps: lastSet.reps,
                 rpe: lastSet.rpe,
                 duration: lastSet.duration,
@@ -494,7 +498,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
               }
               const existing = lastWorkoutDataRef.current.get(exercise.exerciseId) ?? [];
               existing.push({
-                weight: lastSet.weight,
+                weight: roundToTwoDecimals(lastSet.weight),
                 reps: lastSet.reps,
                 duration: lastSet.duration,
                 distance: lastSet.distance,
@@ -504,7 +508,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
               if (exercise.libraryId) {
                 const existingLibrary = lastWorkoutDataRef.current.get(exercise.libraryId) ?? [];
                 existingLibrary.push({
-                  weight: lastSet.weight,
+                  weight: roundToTwoDecimals(lastSet.weight),
                   reps: lastSet.reps,
                   duration: lastSet.duration,
                   distance: lastSet.distance,
@@ -653,7 +657,8 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
             workoutExerciseId,
             setNumber: sets.length + 1,
             weight:
-              lastSet?.weight ?? (type === 'weights' ? 0 : type === 'bodyweight' ? null : null),
+              roundToTwoDecimals(lastSet?.weight) ??
+              (type === 'weights' ? 0 : type === 'bodyweight' ? null : null),
             reps:
               lastSet?.reps ??
               (type === 'weights' || type === 'bodyweight' || type === 'plyo' ? 0 : null),
@@ -744,7 +749,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       if (!data || data.length === 0) return null;
       const last = data[data.length - 1];
       return {
-        weight: last.weight,
+        weight: roundToTwoDecimals(last.weight),
         reps: last.reps,
         duration: last.duration,
         distance: last.distance,

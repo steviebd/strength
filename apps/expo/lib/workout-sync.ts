@@ -239,61 +239,13 @@ async function handleCustomProgramSync(item: LocalSyncQueueItem) {
       notes: payload.notes,
       daysPerWeek: payload.daysPerWeek,
       weeks: payload.weeks,
+      workouts: Array.isArray(payload.workouts) ? payload.workouts : undefined,
     },
   });
 
   const savedProgramId = savedProgram.id ?? programId;
 
-  // 2. Save workouts + exercises
-  if (Array.isArray(payload.workouts)) {
-    for (const workout of payload.workouts) {
-      const savedWorkout = await apiFetch<any>(`/api/custom-programs/${savedProgramId}/workouts`, {
-        method: 'POST',
-        body: {
-          id: workout.id,
-          customProgramId: savedProgramId,
-          dayIndex: workout.dayIndex,
-          name: workout.name,
-          orderIndex: workout.orderIndex,
-        },
-      });
-      const savedWorkoutId = savedWorkout.id ?? workout.id;
-
-      if (Array.isArray(workout.exercises)) {
-        for (let ei = 0; ei < workout.exercises.length; ei++) {
-          const ex = workout.exercises[ei];
-          await apiFetch<any>(`/api/custom-programs/workouts/${savedWorkoutId}/exercises`, {
-            method: 'POST',
-            body: {
-              id: ex.id,
-              exerciseId: ex.exerciseId,
-              orderIndex: ei,
-              exerciseType: ex.exerciseType ?? 'weights',
-              sets: ex.sets,
-              reps: ex.reps,
-              repsRaw: ex.repsRaw,
-              weightMode: ex.weightMode,
-              fixedWeight: ex.fixedWeight,
-              percentageOfLift: ex.percentageOfLift,
-              percentageLift: ex.percentageLift,
-              addedWeight: ex.addedWeight,
-              targetDuration: ex.targetDuration,
-              targetDistance: ex.targetDistance,
-              targetHeight: ex.targetHeight,
-              isAmrap: ex.isAmrap,
-              isAccessory: ex.isAccessory,
-              isRequired: ex.isRequired,
-              setNumber: ex.setNumber,
-              progressionAmount: ex.progressionAmount,
-              progressionInterval: ex.progressionInterval,
-            },
-          });
-        }
-      }
-    }
-  }
-
-  // 3. Update local cache
+  // 2. Update local cache
   await upsertLocalCustomProgramSnapshot(
     item.userId,
     {

@@ -924,6 +924,7 @@ export interface CustomProgramCacheInput {
       progressionType?: string | null;
       name?: string;
       muscleGroup?: string | null;
+      libraryId?: string | null;
     }>;
   }>;
 }
@@ -1013,6 +1014,9 @@ export async function upsertLocalCustomProgramSnapshot(
                 id: ex.id,
                 customProgramWorkoutId: workout.id,
                 exerciseId: ex.exerciseId,
+                name: ex.name ?? null,
+                muscleGroup: ex.muscleGroup ?? null,
+                libraryId: ex.libraryId ?? null,
                 orderIndex: ex.orderIndex,
                 exerciseType: ex.exerciseType ?? 'weights',
                 sets: ex.sets ?? null,
@@ -1135,9 +1139,9 @@ async function getCachedCustomProgram(programId: string) {
         progressionAmount: ex.progressionAmount,
         progressionInterval: ex.progressionInterval,
         progressionType: ex.progressionType,
-        name: '',
-        muscleGroup: null,
-        libraryId: null,
+        name: ex.name ?? '',
+        muscleGroup: ex.muscleGroup,
+        libraryId: ex.libraryId,
       })),
     })),
   };

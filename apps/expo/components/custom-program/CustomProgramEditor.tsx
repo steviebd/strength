@@ -462,6 +462,9 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
             return {
               id: saveReady.localId,
               exerciseId: saveReady.exerciseId,
+              name: saveReady.name,
+              muscleGroup: saveReady.muscleGroup,
+              libraryId: saveReady.libraryId ?? null,
               orderIndex: ei,
               exerciseType: saveReady.exerciseType,
               sets: saveReady.sets,
@@ -495,34 +498,12 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
         apiCall: async () => {
           const savedProgram = await apiFetch<any>('/api/custom-programs', {
             method: 'POST',
-            body: programPayload,
+            body: {
+              ...programPayload,
+              workouts: snapshot.workouts,
+            },
           });
           const savedProgramId = savedProgram.id ?? programId;
-
-          for (const wDef of snapshot.workouts) {
-            const savedWorkout = await apiFetch<any>(
-              `/api/custom-programs/${savedProgramId}/workouts`,
-              {
-                method: 'POST',
-                body: {
-                  id: wDef.id,
-                  customProgramId: savedProgramId,
-                  dayIndex: wDef.dayIndex,
-                  name: wDef.name,
-                  orderIndex: wDef.orderIndex,
-                },
-              },
-            );
-            const savedWorkoutId = savedWorkout.id ?? wDef.id;
-
-            for (let ei = 0; ei < wDef.exercises.length; ei++) {
-              const ex = wDef.exercises[ei];
-              await apiFetch<any>(`/api/custom-programs/workouts/${savedWorkoutId}/exercises`, {
-                method: 'POST',
-                body: { ...ex, orderIndex: ei },
-              });
-            }
-          }
 
           return { id: savedProgramId, name: formState.name };
         },

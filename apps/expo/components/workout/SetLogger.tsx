@@ -34,13 +34,17 @@ interface SetLoggerProps {
 
 const KG_TO_LBS = 2.20462;
 
+function roundToTwoDecimals(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function convertToDisplayWeight(weightKg: number | null, unit: WeightUnit): number {
   if (weightKg === null) return 0;
-  return unit === 'lbs' ? weightKg * KG_TO_LBS : weightKg;
+  return roundToTwoDecimals(unit === 'lbs' ? weightKg * KG_TO_LBS : weightKg);
 }
 
 function convertToStorageWeight(weight: number, fromUnit: WeightUnit): number {
-  return fromUnit === 'lbs' ? weight / KG_TO_LBS : weight;
+  return roundToTwoDecimals(fromUnit === 'lbs' ? weight / KG_TO_LBS : weight);
 }
 
 function getResponsiveSizes(width: number) {
