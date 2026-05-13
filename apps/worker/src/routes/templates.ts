@@ -1,4 +1,4 @@
-import { eq, and, inArray, desc } from 'drizzle-orm';
+import { eq, and, inArray, desc, or } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { chunkedQueryMany, chunkedInsert } from '@strength/db';
 import { createRouter } from '../lib/router';
@@ -422,7 +422,10 @@ router.delete(
         .where(
           and(
             eq(schema.templateExercises.templateId, id),
-            eq(schema.templateExercises.exerciseId, exerciseId),
+            or(
+              eq(schema.templateExercises.id, exerciseId),
+              eq(schema.templateExercises.exerciseId, exerciseId),
+            ),
           ),
         )
         .run();

@@ -106,10 +106,13 @@ function parseCustomProgramPayload(body: CustomProgramPayload): {
       const isAmrap = rawExercise.isAmrap === true;
       let reps: number | null = null;
       if (!isAmrap) {
-        if (!isPositiveInteger(rawExercise.reps, 1, 200)) {
-          return { error: 'reps must be a whole number between 1 and 200' };
+        if (rawExercise.reps == null || rawExercise.reps === '') {
+          reps = null;
+        } else if (Number.isInteger(rawExercise.reps) && rawExercise.reps >= 0) {
+          reps = rawExercise.reps;
+        } else {
+          return { error: 'reps must be a whole number' };
         }
-        reps = rawExercise.reps;
       }
 
       const startingWeight =
@@ -347,14 +350,22 @@ function buildCustomProgramWorkouts(
   if (!customProgram) return [];
 
   const occurrenceByExerciseId = new Map<string, number>();
+  const lastProgressionByExerciseId = new Map<string, number>();
   const workouts = [];
   for (let weekNumber = 1; weekNumber <= customProgram.weeks; weekNumber++) {
     for (const day of customProgram.days) {
       const sessionNumber = (weekNumber - 1) * customProgram.daysPerWeek + day.dayIndex + 1;
       const exercises = day.exercises.map((exercise: any) => {
         const occurrence = occurrenceByExerciseId.get(exercise.exerciseId) ?? 0;
-        const progressionStep = exercise.progressionMode === 'week' ? weekNumber - 1 : occurrence;
-        occurrenceByExerciseId.set(exercise.exerciseId, occurrence + 1);
+        const progressionStep = exercise.isAmrap
+          ? (lastProgressionByExerciseId.get(exercise.exerciseId) ?? occurrence)
+          : exercise.progressionMode === 'week'
+            ? weekNumber - 1
+            : occurrence;
+        if (!exercise.isAmrap) {
+          occurrenceByExerciseId.set(exercise.exerciseId, occurrence + 1);
+          lastProgressionByExerciseId.set(exercise.exerciseId, progressionStep);
+        }
         const targetWeight =
           exercise.exercise.exerciseType !== 'bodyweight' &&
           exercise.exercise.exerciseType !== 'timed' &&
@@ -387,7 +398,7 @@ function buildCustomProgramWorkouts(
           targetDistance,
           targetHeight,
           sets: exercise.sets,
-          reps: exercise.isAmrap ? 'AMRAP' : Math.round(targetReps),
+          reps: exercise.isAmrap ? 'AMRAP' : targetReps == null ? null : Math.round(targetReps),
           isAmrap: exercise.isAmrap,
           isAccessory: false,
           isRequired: true,

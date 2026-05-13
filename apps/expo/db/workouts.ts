@@ -327,7 +327,7 @@ export async function createLocalWorkoutFromTemplate(
       const historySnapshot = historyByExerciseId.get(exercise.exerciseId);
       const historySetCount = historySnapshot?.sets.length ?? 0;
       const plannedSetCount = Math.max(1, exercise.sets ?? 3);
-      const setCount = Math.max(plannedSetCount, historySetCount);
+      const setCount = exercise.isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);
 
       return {
         exerciseId: exercise.exerciseId,
@@ -338,7 +338,7 @@ export async function createLocalWorkoutFromTemplate(
         isAmrap: Boolean(exercise.isAmrap),
         sets: Array.from({ length: setCount }, (_, index) => {
           const planned = buildPlannedSetValues(exercise);
-          const historySet = historySnapshot?.sets[index];
+          const historySet = exercise.isAmrap ? undefined : historySnapshot?.sets[index];
           return {
             setNumber: index + 1,
             weight: historySet?.weight ?? planned.weight,
@@ -517,7 +517,7 @@ export async function createLocalWorkoutFromProgramCycleWorkout(
   const targetLifts = parseProgramTargetLifts(cycleWorkout.targetLifts);
   const exercises = consolidateProgramTargetLifts(targetLifts.all).map((exercise, index) => {
     const sets = exercise.segments.flatMap((segment) =>
-      Array.from({ length: Math.max(1, segment.sets ?? 1) }, () => ({
+      Array.from({ length: segment.isAmrap ? 1 : Math.max(1, segment.sets ?? 1) }, () => ({
         weight:
           typeof segment.targetWeight === 'number'
             ? segment.targetWeight + (segment.addedWeight ?? 0)

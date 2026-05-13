@@ -254,9 +254,17 @@ export default function WorkoutSessionScreen() {
             ]);
           });
           if (amrapMode === 'cancel') continue;
-          const addedId = await addExercise(exercise, { amrapOnly: amrapMode === 'only' });
-          if (addedId) {
-            updateExercise(addedId, { isAmrap: true });
+          if (amrapMode === 'with-working') {
+            await addExercise(exercise);
+            const amrapId = await addExercise(exercise, { amrapOnly: true });
+            if (amrapId) {
+              updateExercise(amrapId, { isAmrap: true, name: `${exercise.name} (AMRAP)` });
+            }
+          } else {
+            const addedId = await addExercise(exercise, { amrapOnly: true });
+            if (addedId) {
+              updateExercise(addedId, { isAmrap: true, name: `${exercise.name} (AMRAP)` });
+            }
           }
           continue;
         }
@@ -658,7 +666,10 @@ export default function WorkoutSessionScreen() {
                     exercise={{
                       id: exercise.id,
                       exerciseId: exercise.exerciseId,
-                      name: exercise.name,
+                      name:
+                        exercise.isAmrap && !/\s+\(AMRAP\)$/i.test(exercise.name)
+                          ? `${exercise.name} (AMRAP)`
+                          : exercise.name,
                       muscleGroup: exercise.muscleGroup,
                       exerciseType: exercise.exerciseType,
                       isAmrap: exercise.isAmrap,

@@ -140,6 +140,44 @@ async function chooseAmrapMode() {
   });
 }
 
+function buildBuilderExercise(
+  exercise: ExerciseLibraryItem,
+  weightUnit: 'kg' | 'lbs',
+  amrapOnly = false,
+): BuilderExercise {
+  const targets = getDefaultExerciseTargets(exercise.exerciseType);
+  return {
+    id: uid(),
+    exerciseId: exercise.id,
+    libraryId: exercise.libraryId ?? null,
+    name: amrapOnly ? `${exercise.name} (AMRAP)` : exercise.name,
+    muscleGroup: exercise.muscleGroup ?? null,
+    exerciseType: exercise.exerciseType ?? null,
+    sets: amrapOnly ? '1' : targets.sets,
+    reps: amrapOnly ? '' : targets.reps,
+    startingWeight:
+      getProgressionType(exercise.exerciseType) === 'time' ? targets.duration : targets.weight,
+    incrementWeight: getDefaultProgressionIncrement(exercise.exerciseType, weightUnit),
+    targetDuration: targets.duration,
+    targetDistance: targets.distance,
+    targetHeight: targets.height,
+    progressionMode: 'session',
+    isAmrap: amrapOnly,
+  };
+}
+
+function progressionSummary(exercise: BuilderExercise, weightUnit: 'kg' | 'lbs') {
+  const type = getProgressionType(exercise.exerciseType);
+  const mode = exercise.progressionMode === 'week' ? 'week' : 'session';
+  if (type === 'time') {
+    return `Progress duration by ${exercise.incrementWeight || 0} sec per ${mode}`;
+  }
+  if (type === 'reps') {
+    return `Progress reps by ${exercise.incrementWeight || 0} per ${mode}`;
+  }
+  return `Progress weight by ${exercise.incrementWeight || 0} ${weightUnit} per ${mode}`;
+}
+
 function createEmptyDays(daysPerWeek: number): BuilderDay[] {
   return Array.from({ length: daysPerWeek }, (_, index) => ({
     name: `Day ${index + 1}`,
@@ -257,27 +295,14 @@ export function CustomProgramBuilder({
     if (selectingDayIndex == null) return;
     const builderExercises: BuilderExercise[] = [];
     for (const exercise of exercises) {
-      const targets = getDefaultExerciseTargets(exercise.exerciseType);
       const amrapMode = isAmrapExercise(exercise) ? await chooseAmrapMode() : null;
       if (amrapMode === 'skip') continue;
-      builderExercises.push({
-        id: uid(),
-        exerciseId: exercise.id,
-        libraryId: exercise.libraryId ?? null,
-        name: exercise.name,
-        muscleGroup: exercise.muscleGroup ?? null,
-        exerciseType: exercise.exerciseType ?? null,
-        sets: amrapMode === 'only' ? '1' : targets.sets,
-        reps: amrapMode === null ? targets.reps : '',
-        startingWeight:
-          getProgressionType(exercise.exerciseType) === 'time' ? targets.duration : targets.weight,
-        incrementWeight: getDefaultProgressionIncrement(exercise.exerciseType, weightUnit),
-        targetDuration: targets.duration,
-        targetDistance: targets.distance,
-        targetHeight: targets.height,
-        progressionMode: 'session',
-        isAmrap: amrapMode !== null,
-      });
+      if (amrapMode === 'with-working') {
+        builderExercises.push(buildBuilderExercise(exercise, weightUnit));
+        builderExercises.push(buildBuilderExercise(exercise, weightUnit, true));
+        continue;
+      }
+      builderExercises.push(buildBuilderExercise(exercise, weightUnit, amrapMode === 'only'));
     }
     if (builderExercises.length === 0) return;
     setDays((prev) =>
@@ -318,7 +343,12 @@ export function CustomProgramBuilder({
         exercises: day.exercises.map((exercise) => ({
           exerciseId: exercise.exerciseId,
           sets: Number.parseInt(exercise.sets, 10),
-          reps: exercise.isAmrap ? null : Number.parseInt(exercise.reps, 10),
+          reps:
+            exercise.isAmrap ||
+            exercise.exerciseType === 'timed' ||
+            exercise.exerciseType === 'cardio'
+              ? null
+              : Number.parseInt(exercise.reps, 10),
           startingWeight: parseProgressionValue(
             exercise.startingWeight,
             exercise.exerciseType,
@@ -542,6 +572,12 @@ export function CustomProgramBuilder({
                         />
                       )}
                     </View>
+                    <View style={styles.progressionBox}>
+                      <Text style={styles.progressionTitle}>Progression</Text>
+                      <Text style={styles.progressionSummary}>
+                        {progressionSummary(exercise, weightUnit)}
+                      </Text>
+                    </View>
                     <View style={styles.optionRow}>
                       <Pressable
                         style={[
@@ -584,14 +620,30 @@ export function CustomProgramBuilder({
                             },
                             {
                               text: 'Working sets + AMRAP',
-                              onPress: () =>
-                                updateExercise(dayIndex, exercise.id, {
-                                  isAmrap: true,
-                                  sets: String(
-                                    Math.max(2, Number.parseInt(exercise.sets, 10) || 3),
-                                  ),
+                              onPress: () => {
+                                const amrapExercise: BuilderExercise = {
+                                  ...exercise,
+                                  id: uid(),
+                                  name: `${exercise.name.replace(/\s+\(AMRAP\)$/i, '')} (AMRAP)`,
+                                  sets: '1',
                                   reps: '',
-                                }),
+                                  isAmrap: true,
+                                };
+                                setDays((prev) =>
+                                  prev.map((day, index) =>
+                                    index === dayIndex
+                                      ? {
+                                          ...day,
+                                          exercises: day.exercises.flatMap((item) =>
+                                            item.id === exercise.id
+                                              ? [item, amrapExercise]
+                                              : [item],
+                                          ),
+                                        }
+                                      : day,
+                                  ),
+                                );
+                              },
                             },
                             { text: 'Cancel', style: 'cancel' },
                           ]);
@@ -854,6 +906,23 @@ const styles = StyleSheet.create({
   },
   disabledInput: {
     opacity: 0.6,
+  },
+  progressionBox: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  progressionTitle: {
+    color: colors.text,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  progressionSummary: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
   },
   optionRow: {
     flexDirection: 'row',

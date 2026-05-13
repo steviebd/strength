@@ -78,6 +78,37 @@ async function chooseAmrapMode() {
   });
 }
 
+function buildSelectedExercise(
+  exercise: {
+    id: string;
+    libraryId?: string | null;
+    name: string;
+    muscleGroup: string | null;
+    exerciseType?: string | null;
+  },
+  amrapOnly = false,
+): SelectedExercise {
+  const targets = getDefaultExerciseTargets(exercise.exerciseType);
+  return {
+    id: generateId(),
+    exerciseId: exercise.id,
+    libraryId: exercise.libraryId ?? undefined,
+    name: amrapOnly ? `${exercise.name} (AMRAP)` : exercise.name,
+    muscleGroup: exercise.muscleGroup,
+    isAmrap: amrapOnly,
+    isAccessory: false,
+    isRequired: true,
+    exerciseType: exercise.exerciseType ?? 'weighted',
+    sets: amrapOnly ? 1 : Number.parseInt(targets.sets, 10),
+    reps: targets.reps ? Number.parseInt(targets.reps, 10) : DEFAULT_TEMPLATE_REPS,
+    repsRaw: amrapOnly ? 'AMRAP' : targets.reps || DEFAULT_TEMPLATE_REPS.toString(),
+    targetWeight: targets.weight ? Number.parseFloat(targets.weight) : DEFAULT_TEMPLATE_WEIGHT,
+    targetDuration: targets.duration ? Number.parseInt(targets.duration, 10) : null,
+    targetDistance: targets.distance ? Number.parseInt(targets.distance, 10) : null,
+    targetHeight: targets.height ? Number.parseInt(targets.height, 10) : null,
+  };
+}
+
 interface FormData {
   name: string;
   description: string;
@@ -283,13 +314,13 @@ function useTemplateEditorApi({
   }, [mode, templateId, formData, selectedExercises, onSaved]);
 
   const syncExercises = async (currentTemplateId: string, newTemplateId: string) => {
-    const existingExercises = await apiFetch<Array<{ exerciseId: string; orderIndex: number }>>(
+    const existingExercises = await apiFetch<Array<{ id: string; exerciseId: string }>>(
       `/api/templates/${currentTemplateId}/exercises`,
     );
 
     await Promise.all(
       existingExercises.map((existing) =>
-        apiFetch(`/api/templates/${currentTemplateId}/exercises/${existing.exerciseId}`, {
+        apiFetch(`/api/templates/${currentTemplateId}/exercises/${existing.id}`, {
           method: 'DELETE',
         }),
       ),
@@ -369,30 +400,14 @@ export function TemplateEditor({
     ) => {
       pushUndo();
       for (const exercise of exercises) {
-        const targets = getDefaultExerciseTargets(exercise.exerciseType);
         const amrapMode = isAmrapExercise(exercise) ? await chooseAmrapMode() : null;
         if (amrapMode === 'skip') continue;
-        const newExercise: SelectedExercise = {
-          id: generateId(),
-          exerciseId: exercise.id,
-          libraryId: exercise.libraryId ?? undefined,
-          name: exercise.name,
-          muscleGroup: exercise.muscleGroup,
-          isAmrap: amrapMode !== null,
-          isAccessory: false,
-          isRequired: true,
-          exerciseType: exercise.exerciseType ?? 'weighted',
-          sets: amrapMode === 'only' ? 1 : Number.parseInt(targets.sets, 10),
-          reps: targets.reps ? Number.parseInt(targets.reps, 10) : DEFAULT_TEMPLATE_REPS,
-          repsRaw: targets.reps || DEFAULT_TEMPLATE_REPS.toString(),
-          targetWeight: targets.weight
-            ? Number.parseFloat(targets.weight)
-            : DEFAULT_TEMPLATE_WEIGHT,
-          targetDuration: targets.duration ? Number.parseInt(targets.duration, 10) : null,
-          targetDistance: targets.distance ? Number.parseInt(targets.distance, 10) : null,
-          targetHeight: targets.height ? Number.parseInt(targets.height, 10) : null,
-        };
-        addExercise(newExercise);
+        if (amrapMode === 'with-working') {
+          addExercise(buildSelectedExercise(exercise));
+          addExercise(buildSelectedExercise(exercise, true));
+          continue;
+        }
+        addExercise(buildSelectedExercise(exercise, amrapMode === 'only'));
       }
     },
     [pushUndo, addExercise],
@@ -746,7 +761,10 @@ export function TemplateEditor({
                     <Pressable
                       onPress={() => {
                         if (exercise.isAmrap) {
-                          handleUpdateExercise(exercise.id, { isAmrap: false });
+                          handleUpdateExercise(exercise.id, {
+                            isAmrap: false,
+                            name: exercise.name.replace(/\s+\(AMRAP\)$/i, ''),
+                          });
                           return;
                         }
                         Alert.alert('AMRAP sets', 'How should this exercise be added?', [
@@ -755,16 +773,25 @@ export function TemplateEditor({
                             onPress: () =>
                               handleUpdateExercise(exercise.id, {
                                 isAmrap: true,
+                                name: `${exercise.name.replace(/\s+\(AMRAP\)$/i, '')} (AMRAP)`,
                                 sets: 1,
                               }),
                           },
                           {
                             text: 'Working sets + AMRAP',
                             onPress: () =>
-                              handleUpdateExercise(exercise.id, {
-                                isAmrap: true,
-                                sets: Math.max(2, exercise.sets ?? DEFAULT_TEMPLATE_SETS),
-                              }),
+                              addExercise(
+                                buildSelectedExercise(
+                                  {
+                                    id: exercise.exerciseId,
+                                    libraryId: exercise.libraryId,
+                                    name: exercise.name.replace(/\s+\(AMRAP\)$/i, ''),
+                                    muscleGroup: exercise.muscleGroup,
+                                    exerciseType: exercise.exerciseType,
+                                  },
+                                  true,
+                                ),
+                              ),
                           },
                           { text: 'Cancel', style: 'cancel' },
                         ]);

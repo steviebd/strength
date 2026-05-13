@@ -35,8 +35,6 @@ CREATE TABLE `custom_program_exercises` (
 	`reps` integer,
 	`starting_weight` real,
 	`increment_weight` real DEFAULT 0 NOT NULL,
-	`target_distance` integer,
-	`target_height` integer,
 	`progression_mode` text DEFAULT 'session' NOT NULL,
 	`is_amrap` integer DEFAULT false,
 	`created_at` integer NOT NULL,

@@ -8,6 +8,13 @@
       "when": 1778644749607,
       "tag": "0000_lying_ozymandias",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778664000000,
+      "tag": "0001_custom_program_targets",
+      "breakpoints": true
     }
   ]
 }

@@ -156,13 +156,13 @@ export function parseProgramTargetLifts(targetLifts: string | null | undefined) 
 }
 
 export function getProgramTargetLiftKey(targetLift: NormalizedProgramTargetLift): string {
-  return (
+  const baseKey =
     targetLift.exerciseId ??
     targetLift.libraryId ??
     targetLift.accessoryId ??
     targetLift.lift ??
-    targetLift.name.trim().toLowerCase()
-  );
+    targetLift.name.trim().toLowerCase();
+  return targetLift.isAmrap ? `${baseKey}:amrap` : baseKey;
 }
 
 export function consolidateProgramTargetLifts(targetLifts: NormalizedProgramTargetLift[]) {
