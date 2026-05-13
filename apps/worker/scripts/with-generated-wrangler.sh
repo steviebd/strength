@@ -36,4 +36,10 @@ fi
 cd "$WORKER_DIR"
 bun x tsx scripts/generate-wrangler-config.ts --env "$ENV_NAME" --d1-mode "$D1_MODE"
 export PATH="$WORKER_DIR/../../node_modules/.bin:$WORKER_DIR/node_modules/.bin:$PATH"
+# Ensure the project-pinned Node (via Volta) takes precedence since infisical run
+# may inject its own older Node version into the subprocess PATH
+if command -v volta &>/dev/null; then
+  VOLTA_NODE_DIR="$(dirname "$(volta which node)")"
+  export PATH="$VOLTA_NODE_DIR:$PATH"
+fi
 exec "$@"
