@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  ScrollView,
   View,
   Text,
   StyleSheet,
@@ -76,6 +77,26 @@ interface PendingWorkout {
   totalSets: null;
 }
 
+interface IncrementSetReview {
+  weight: string;
+  reps: string;
+  duration: string;
+  distance: string;
+  height: string;
+}
+
+interface IncrementExerciseReview {
+  exerciseId: string;
+  name: string;
+  exerciseType: string;
+  sets: IncrementSetReview[];
+}
+
+interface PendingTemplateIncrement {
+  template: Template;
+  exercises: IncrementExerciseReview[];
+}
+
 async function fetchWorkoutHistory(): Promise<WorkoutHistoryItem[]> {
   return apiFetch<WorkoutHistoryItem[]>('/api/workouts');
 }
@@ -107,18 +128,78 @@ function hasUsableHistory(snapshot: ExerciseHistorySnapshot | null | undefined) 
   );
 }
 
-async function confirmHistoryIncrement() {
-  return new Promise<boolean>((resolve) => {
-    Alert.alert(
-      'Use last workout?',
-      'Previous values were found. Start from them as-is, or increment them by the default amount for each exercise type?',
-      [
-        { text: 'Use as-is', onPress: () => resolve(false) },
-        { text: 'Increment', onPress: () => resolve(true) },
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-      ],
-    );
-  });
+function toReviewValue(value: number | null | undefined) {
+  return value === null || value === undefined ? '' : String(value);
+}
+
+function buildIncrementReview(
+  historySnapshots: ExerciseHistorySnapshot[],
+  exerciseTypeById: Map<string, string | undefined>,
+  exerciseNameById: Map<string, string>,
+): IncrementExerciseReview[] {
+  return historySnapshots.map((snapshot) => ({
+    exerciseId: snapshot.exerciseId,
+    name: exerciseNameById.get(snapshot.exerciseId) ?? snapshot.exerciseId,
+    exerciseType: exerciseTypeById.get(snapshot.exerciseId) ?? 'weighted',
+    sets: snapshot.sets.map((set) => {
+      const incremented = incrementHistorySet(set, exerciseTypeById.get(snapshot.exerciseId));
+      return {
+        weight: toReviewValue(incremented.weight),
+        reps: toReviewValue(incremented.reps),
+        duration: toReviewValue(incremented.duration),
+        distance: toReviewValue(incremented.distance),
+        height: toReviewValue(incremented.height),
+      };
+    }),
+  }));
+}
+
+function reviewToSnapshots(review: IncrementExerciseReview[]): ExerciseHistorySnapshot[] {
+  return review.map((exercise) => ({
+    exerciseId: exercise.exerciseId,
+    workoutDate: null,
+    sets: exercise.sets.map((set, index) => ({
+      setNumber: index + 1,
+      weight: parseReviewNumber(set.weight),
+      reps: parseReviewNumber(set.reps),
+      duration: parseReviewNumber(set.duration),
+      distance: parseReviewNumber(set.distance),
+      height: parseReviewNumber(set.height),
+      rpe: null,
+    })),
+  }));
+}
+
+function parseReviewNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getIncrementFields(exerciseType: string) {
+  switch (exerciseType) {
+    case 'timed':
+      return [{ key: 'duration', label: 'Time (sec)' }] as const;
+    case 'cardio':
+      return [
+        { key: 'duration', label: 'Time (sec)' },
+        { key: 'distance', label: 'Distance (m)' },
+      ] as const;
+    case 'bodyweight':
+      return [{ key: 'reps', label: 'Reps' }] as const;
+    case 'plyo':
+      return [
+        { key: 'reps', label: 'Reps' },
+        { key: 'height', label: 'Height (cm)' },
+      ] as const;
+    case 'weighted':
+    default:
+      return [
+        { key: 'weight', label: 'Weight' },
+        { key: 'reps', label: 'Reps' },
+      ] as const;
+  }
 }
 
 export default function WorkoutsIndex() {
@@ -132,6 +213,9 @@ export default function WorkoutsIndex() {
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [showStartWorkout, setShowStartWorkout] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [pendingTemplateIncrement, setPendingTemplateIncrement] =
+    useState<PendingTemplateIncrement | null>(null);
+  const [isStartingIncrementedTemplate, setIsStartingIncrementedTemplate] = useState(false);
   const { startWorkout, isLoading, error: workoutSessionError } = useWorkoutSessionContext();
   const { weightUnit } = useUserPreferences();
   const session = authClient.useSession();
@@ -309,18 +393,34 @@ export default function WorkoutsIndex() {
           ),
         ];
         const shouldIncrement =
-          historySnapshots.length > 0 ? await confirmHistoryIncrement() : false;
+          historySnapshots.length > 0
+            ? await new Promise<'as-is' | 'review' | 'cancel'>((resolve) => {
+                Alert.alert(
+                  'Use last workout?',
+                  'Previous values were found. Start from them as-is, or review incremental set targets first.',
+                  [
+                    { text: 'Use as-is', onPress: () => resolve('as-is') },
+                    { text: 'Increment', onPress: () => resolve('review') },
+                    { text: 'Cancel', style: 'cancel', onPress: () => resolve('cancel') },
+                  ],
+                );
+              })
+            : 'as-is';
+        if (shouldIncrement === 'cancel') return;
         const exerciseTypeById = new Map(
           templateExercises.map((exercise) => [exercise.exerciseId, exercise.exerciseType]),
         );
-        const resolvedHistorySnapshots = shouldIncrement
-          ? historySnapshots.map((snapshot) => ({
-              ...snapshot,
-              sets: snapshot.sets.map((set) =>
-                incrementHistorySet(set, exerciseTypeById.get(snapshot.exerciseId)),
-              ),
-            }))
-          : historySnapshots;
+        if (shouldIncrement === 'review') {
+          const exerciseNameById = new Map(
+            templateExercises.map((exercise) => [exercise.exerciseId, exercise.name]),
+          );
+          setPendingTemplateIncrement({
+            template,
+            exercises: buildIncrementReview(historySnapshots, exerciseTypeById, exerciseNameById),
+          });
+          return;
+        }
+        const resolvedHistorySnapshots = historySnapshots;
         const local = await createLocalWorkoutFromTemplate(
           userId,
           template.id,
@@ -345,6 +445,48 @@ export default function WorkoutsIndex() {
       Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
     }
   };
+
+  const updatePendingIncrementSet = useCallback(
+    (exerciseIndex: number, setIndex: number, key: keyof IncrementSetReview, value: string) => {
+      setPendingTemplateIncrement((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          exercises: current.exercises.map((exercise, currentExerciseIndex) =>
+            currentExerciseIndex === exerciseIndex
+              ? {
+                  ...exercise,
+                  sets: exercise.sets.map((set, currentSetIndex) =>
+                    currentSetIndex === setIndex ? { ...set, [key]: value } : set,
+                  ),
+                }
+              : exercise,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const startPendingIncrementTemplate = useCallback(async () => {
+    if (!userId || !pendingTemplateIncrement.template.id) return;
+    setIsStartingIncrementedTemplate(true);
+    try {
+      const local = await createLocalWorkoutFromTemplate(
+        userId,
+        pendingTemplateIncrement.template.id,
+        reviewToSnapshots(pendingTemplateIncrement.exercises),
+      );
+      setPendingTemplateIncrement(null);
+      if (local?.id) {
+        router.push(`/workout-session?workoutId=${local.id}`);
+      }
+    } catch (e) {
+      Alert.alert('Unable to start workout', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setIsStartingIncrementedTemplate(false);
+    }
+  }, [pendingTemplateIncrement, router, userId]);
 
   const handleRetrySync = async (workoutId: string) => {
     if (!userId) return;
@@ -790,6 +932,104 @@ export default function WorkoutsIndex() {
       </Modal>
 
       <Modal
+        visible={pendingTemplateIncrement !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPendingTemplateIncrement(null)}
+      >
+        <View style={[styles.modalContent, { paddingTop: insets.top + 16 }]}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderText}>
+              <Text style={styles.modalTitle}>Increment targets</Text>
+              <Text style={styles.modalSubtitle} numberOfLines={2}>
+                Review each set before starting {pendingTemplateIncrement?.template.name}.
+              </Text>
+            </View>
+            <IconButton
+              icon="close"
+              label="Close"
+              variant="ghost"
+              size="sm"
+              onPress={() => setPendingTemplateIncrement(null)}
+            />
+          </View>
+
+          <ScrollView
+            style={styles.incrementScroll}
+            contentContainerStyle={styles.incrementContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {pendingTemplateIncrement?.exercises.map((exercise, exerciseIndex) => {
+              const fields = getIncrementFields(exercise.exerciseType);
+              return (
+                <Surface
+                  key={`increment-exercise:${exercise.exerciseId}`}
+                  style={styles.modalSurface}
+                >
+                  <View style={styles.incrementExerciseHeader}>
+                    <Text style={styles.incrementExerciseName} numberOfLines={1}>
+                      {exercise.name}
+                    </Text>
+                    <Badge label={exercise.exerciseType} tone="neutral" />
+                  </View>
+
+                  <View style={styles.incrementSetList}>
+                    {exercise.sets.map((set, setIndex) => (
+                      <View
+                        key={`increment-set:${exercise.exerciseId}:${setIndex}`}
+                        style={styles.incrementSetRow}
+                      >
+                        <Text style={styles.incrementSetNumber}>Set {setIndex + 1}</Text>
+                        <View style={styles.incrementFields}>
+                          {fields.map((field) => (
+                            <TextField
+                              key={`increment-field:${field.key}`}
+                              label={field.label}
+                              value={set[field.key]}
+                              keyboardType="decimal-pad"
+                              onChangeText={(value) =>
+                                updatePendingIncrementSet(
+                                  exerciseIndex,
+                                  setIndex,
+                                  field.key,
+                                  value.replace(/[^0-9.]/g, ''),
+                                )
+                              }
+                              containerStyle={styles.incrementField}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </Surface>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.incrementFooter}>
+            <View style={styles.flex1}>
+              <Button
+                label="Cancel"
+                variant="secondary"
+                onPress={() => setPendingTemplateIncrement(null)}
+                fullWidth
+              />
+            </View>
+            <View style={styles.flex1}>
+              <Button
+                label={isStartingIncrementedTemplate ? 'Starting...' : 'Start workout'}
+                icon="play"
+                onPress={startPendingIncrementTemplate}
+                disabled={isStartingIncrementedTemplate}
+                fullWidth
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={showTemplateEditor}
         animationType="slide"
         presentationStyle="pageSheet"
@@ -988,12 +1228,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.md,
     marginBottom: spacing.lg,
+  },
+  modalHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
   },
   modalTitle: {
     fontSize: typography.fontSizes.xxl,
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: typography.fontSizes.sm,
+    lineHeight: 20,
+    color: colors.textMuted,
   },
 
   modalSurface: {
@@ -1001,5 +1252,53 @@ const styles = StyleSheet.create({
   },
   modalForm: {
     gap: spacing.md,
+  },
+  incrementScroll: {
+    flex: 1,
+  },
+  incrementContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  incrementExerciseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  incrementExerciseName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text,
+  },
+  incrementSetList: {
+    gap: spacing.md,
+  },
+  incrementSetRow: {
+    gap: spacing.sm,
+  },
+  incrementSetNumber: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.textMuted,
+  },
+  incrementFields: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  incrementField: {
+    flex: 1,
+    minWidth: 0,
+  },
+  incrementFooter: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
 });
