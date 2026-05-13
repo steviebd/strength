@@ -20,6 +20,9 @@ import {
   localTrainingCacheMeta,
   localUserExercises,
   localWorkouts,
+  localCustomPrograms,
+  localCustomProgramWorkouts,
+  localCustomProgramExercises,
   type LocalWorkout,
 } from './local-schema';
 import { normalizeTemplateExerciseForLocalCache, upsertServerWorkoutSnapshot } from './workouts';
@@ -639,7 +642,11 @@ export async function markLocalProgramAdvance(input: {
   workoutId?: string | null;
   currentWeek?: number | null;
   currentSession?: number | null;
+  totalSessionsCompleted?: number | null;
+  totalSessionsPlanned?: number | null;
   status?: string | null;
+  isComplete?: boolean | null;
+  completedAt?: Date | string | number | null;
 }) {
   const db = getLocalDb();
   if (!db) return;
@@ -654,7 +661,15 @@ export async function markLocalProgramAdvance(input: {
     .set({
       currentWeek: input.currentWeek ?? null,
       currentSession: input.currentSession ?? null,
+      ...(input.totalSessionsCompleted != null
+        ? { totalSessionsCompleted: input.totalSessionsCompleted }
+        : {}),
+      ...(input.totalSessionsPlanned != null
+        ? { totalSessionsPlanned: input.totalSessionsPlanned }
+        : {}),
       status: input.status ?? 'active',
+      ...(input.isComplete != null ? { isComplete: input.isComplete } : {}),
+      ...(input.completedAt !== undefined ? { completedAt: toDate(input.completedAt) } : {}),
       updatedAt: now,
       hydratedAt: now,
     })
@@ -866,6 +881,289 @@ export async function updateLocalProgramCycleOneRMs(
   }
 
   db.update(localProgramCycles).set(update).where(eq(localProgramCycles.id, programCycleId)).run();
+}
+
+// ── Custom Program Local Cache ─────────────────────────────────────────────────
+
+export interface CustomProgramCacheInput {
+  id: string;
+  name: string;
+  description?: string | null;
+  notes?: string | null;
+  daysPerWeek: number;
+  weeks: number;
+  createdAt?: number | Date | string | null;
+  updatedAt?: number | Date | string | null;
+  workouts?: Array<{
+    id: string;
+    dayIndex: number;
+    name: string;
+    orderIndex: number;
+    exercises?: Array<{
+      id: string;
+      exerciseId: string;
+      orderIndex: number;
+      exerciseType: string;
+      sets?: number | null;
+      reps?: number | null;
+      repsRaw?: string | null;
+      weightMode?: string | null;
+      fixedWeight?: number | null;
+      percentageOfLift?: number | null;
+      percentageLift?: string | null;
+      addedWeight?: number | null;
+      targetDuration?: number | null;
+      targetDistance?: number | null;
+      targetHeight?: number | null;
+      isAmrap?: boolean;
+      isAccessory?: boolean;
+      isRequired?: boolean;
+      setNumber?: number | null;
+      progressionAmount?: number | null;
+      progressionInterval?: number | null;
+      progressionType?: string | null;
+      name?: string;
+      muscleGroup?: string | null;
+    }>;
+  }>;
+}
+
+export async function upsertLocalCustomProgramSnapshot(
+  userId: string,
+  program: CustomProgramCacheInput,
+  options: { createdLocally?: boolean } = {},
+) {
+  const db = getLocalDb();
+  if (!db || !program.id) return;
+
+  const hydratedAt = new Date();
+  const createdLocally = options.createdLocally ?? false;
+
+  withLocalTransaction(() => {
+    db.insert(localCustomPrograms)
+      .values({
+        id: program.id,
+        userId,
+        name: program.name,
+        description: program.description ?? null,
+        notes: program.notes ?? null,
+        daysPerWeek: program.daysPerWeek,
+        weeks: program.weeks,
+        isDeleted: false,
+        createdLocally,
+        createdAt: toDate(program.createdAt) ?? hydratedAt,
+        updatedAt: toDate(program.updatedAt) ?? hydratedAt,
+        serverUpdatedAt: createdLocally ? null : (toDate(program.updatedAt) ?? hydratedAt),
+        hydratedAt,
+      })
+      .onConflictDoUpdate({
+        target: localCustomPrograms.id,
+        set: {
+          name: program.name,
+          description: program.description ?? null,
+          notes: program.notes ?? null,
+          daysPerWeek: program.daysPerWeek,
+          weeks: program.weeks,
+          isDeleted: false,
+          createdLocally,
+          updatedAt: toDate(program.updatedAt) ?? hydratedAt,
+          serverUpdatedAt: createdLocally ? null : (toDate(program.updatedAt) ?? hydratedAt),
+          hydratedAt,
+        },
+      })
+      .run();
+
+    // Delete old workouts + exercises, re-insert
+    const existingWorkouts = db
+      .select({ id: localCustomProgramWorkouts.id })
+      .from(localCustomProgramWorkouts)
+      .where(eq(localCustomProgramWorkouts.customProgramId, program.id))
+      .all();
+
+    if (existingWorkouts.length > 0) {
+      const oldIds = existingWorkouts.map((w) => w.id);
+      db.delete(localCustomProgramExercises)
+        .where(inArray(localCustomProgramExercises.customProgramWorkoutId, oldIds))
+        .run();
+      db.delete(localCustomProgramWorkouts)
+        .where(eq(localCustomProgramWorkouts.customProgramId, program.id))
+        .run();
+    }
+
+    if (program.workouts) {
+      for (const workout of program.workouts) {
+        db.insert(localCustomProgramWorkouts)
+          .values({
+            id: workout.id,
+            customProgramId: program.id,
+            dayIndex: workout.dayIndex,
+            name: workout.name,
+            orderIndex: workout.orderIndex,
+            isDeleted: false,
+            createdAt: toDate(program.createdAt) ?? hydratedAt,
+            updatedAt: toDate(program.updatedAt) ?? hydratedAt,
+            hydratedAt,
+          })
+          .run();
+
+        if (workout.exercises) {
+          for (const ex of workout.exercises) {
+            db.insert(localCustomProgramExercises)
+              .values({
+                id: ex.id,
+                customProgramWorkoutId: workout.id,
+                exerciseId: ex.exerciseId,
+                orderIndex: ex.orderIndex,
+                exerciseType: ex.exerciseType ?? 'weights',
+                sets: ex.sets ?? null,
+                reps: ex.reps ?? null,
+                repsRaw: ex.repsRaw ?? null,
+                weightMode: ex.weightMode ?? null,
+                fixedWeight: ex.fixedWeight ?? null,
+                percentageOfLift: ex.percentageOfLift ?? null,
+                percentageLift: ex.percentageLift ?? null,
+                addedWeight: ex.addedWeight ?? 0,
+                targetDuration: ex.targetDuration ?? null,
+                targetDistance: ex.targetDistance ?? null,
+                targetHeight: ex.targetHeight ?? null,
+                isAmrap: ex.isAmrap ?? false,
+                isAccessory: ex.isAccessory ?? false,
+                isRequired: ex.isRequired !== false,
+                setNumber: ex.setNumber ?? null,
+                progressionAmount: ex.progressionAmount ?? null,
+                progressionInterval: ex.progressionInterval ?? 1,
+                progressionType: ex.progressionType ?? 'fixed',
+              })
+              .run();
+          }
+        }
+      }
+    }
+  });
+}
+
+export async function getCachedCustomPrograms(userId: string) {
+  const db = getLocalDb();
+  if (!db) return [];
+  const programs = db
+    .select()
+    .from(localCustomPrograms)
+    .where(and(eq(localCustomPrograms.userId, userId), eq(localCustomPrograms.isDeleted, false)))
+    .orderBy(desc(localCustomPrograms.createdAt))
+    .all();
+  const results = await Promise.all(programs.map((p) => getCachedCustomProgram(p.id)));
+  return results.filter(Boolean) as NonNullable<
+    Awaited<ReturnType<typeof getCachedCustomProgram>>
+  >[];
+}
+
+async function getCachedCustomProgram(programId: string) {
+  const db = getLocalDb();
+  if (!db) return null;
+  const program = db
+    .select()
+    .from(localCustomPrograms)
+    .where(eq(localCustomPrograms.id, programId))
+    .get();
+  if (!program || program.isDeleted) return null;
+
+  const workouts = db
+    .select()
+    .from(localCustomProgramWorkouts)
+    .where(eq(localCustomProgramWorkouts.customProgramId, programId))
+    .orderBy(localCustomProgramWorkouts.dayIndex)
+    .all();
+
+  const allExercises =
+    workouts.length > 0
+      ? db
+          .select()
+          .from(localCustomProgramExercises)
+          .where(
+            inArray(
+              localCustomProgramExercises.customProgramWorkoutId,
+              workouts.map((w) => w.id),
+            ),
+          )
+          .orderBy(localCustomProgramExercises.orderIndex)
+          .all()
+      : [];
+
+  const exercisesByWorkout = new Map<string, typeof allExercises>();
+  for (const ex of allExercises) {
+    const list = exercisesByWorkout.get(ex.customProgramWorkoutId) ?? [];
+    list.push(ex);
+    exercisesByWorkout.set(ex.customProgramWorkoutId, list);
+  }
+
+  return {
+    id: program.id,
+    name: program.name,
+    description: program.description,
+    notes: program.notes,
+    daysPerWeek: program.daysPerWeek,
+    weeks: program.weeks,
+    createdAt: program.createdAt?.getTime() ?? Date.now(),
+    updatedAt: program.updatedAt?.getTime() ?? Date.now(),
+    workouts: workouts.map((w) => ({
+      id: w.id,
+      customProgramId: w.customProgramId,
+      dayIndex: w.dayIndex,
+      name: w.name,
+      orderIndex: w.orderIndex,
+      exercises: (exercisesByWorkout.get(w.id) ?? []).map((ex) => ({
+        id: ex.id,
+        customProgramWorkoutId: ex.customProgramWorkoutId,
+        exerciseId: ex.exerciseId,
+        orderIndex: ex.orderIndex,
+        exerciseType: ex.exerciseType,
+        sets: ex.sets,
+        reps: ex.reps,
+        repsRaw: ex.repsRaw,
+        weightMode: ex.weightMode,
+        fixedWeight: ex.fixedWeight,
+        percentageOfLift: ex.percentageOfLift,
+        percentageLift: ex.percentageLift,
+        addedWeight: ex.addedWeight,
+        targetDuration: ex.targetDuration,
+        targetDistance: ex.targetDistance,
+        targetHeight: ex.targetHeight,
+        isAmrap: Boolean(ex.isAmrap),
+        isAccessory: Boolean(ex.isAccessory),
+        isRequired: Boolean(ex.isRequired),
+        setNumber: ex.setNumber,
+        progressionAmount: ex.progressionAmount,
+        progressionInterval: ex.progressionInterval,
+        progressionType: ex.progressionType,
+        name: '',
+        muscleGroup: null,
+        libraryId: null,
+      })),
+    })),
+  };
+}
+
+export async function deleteLocalCustomProgram(programId: string) {
+  const db = getLocalDb();
+  if (!db) return;
+
+  const workouts = db
+    .select({ id: localCustomProgramWorkouts.id })
+    .from(localCustomProgramWorkouts)
+    .where(eq(localCustomProgramWorkouts.customProgramId, programId))
+    .all();
+
+  if (workouts.length > 0) {
+    const workoutIds = workouts.map((w) => w.id);
+    db.delete(localCustomProgramExercises)
+      .where(inArray(localCustomProgramExercises.customProgramWorkoutId, workoutIds))
+      .run();
+    db.delete(localCustomProgramWorkouts)
+      .where(eq(localCustomProgramWorkouts.customProgramId, programId))
+      .run();
+  }
+
+  db.delete(localCustomPrograms).where(eq(localCustomPrograms.id, programId)).run();
 }
 
 const PROGRAMS_CACHE_KEY = 'programs_catalog';

@@ -913,7 +913,11 @@ router.post(
           id: schema.userProgramCycles.id,
           currentWeek: schema.userProgramCycles.currentWeek,
           currentSession: schema.userProgramCycles.currentSession,
+          totalSessionsCompleted: schema.userProgramCycles.totalSessionsCompleted,
+          totalSessionsPlanned: schema.userProgramCycles.totalSessionsPlanned,
           status: schema.userProgramCycles.status,
+          isComplete: schema.userProgramCycles.isComplete,
+          completedAt: schema.userProgramCycles.completedAt,
         })
         .from(schema.userProgramCycles)
         .where(
@@ -929,7 +933,11 @@ router.post(
             completedCycleWorkoutId: workoutInput.cycleWorkoutId ?? undefined,
             currentWeek: cycle.currentWeek,
             currentSession: cycle.currentSession,
+            totalSessionsCompleted: cycle.totalSessionsCompleted,
+            totalSessionsPlanned: cycle.totalSessionsPlanned,
             status: cycle.status,
+            isComplete: cycle.isComplete,
+            completedAt: cycle.completedAt,
           }
         : undefined;
     }

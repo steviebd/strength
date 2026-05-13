@@ -203,6 +203,65 @@ function addLocalProgramCycleWorkoutCacheColumns(sqlite: SQLiteDatabase) {
   }
 }
 
+function addLocalCustomProgramCacheColumns(sqlite: SQLiteDatabase) {
+  for (const [columnName, columnSql] of [
+    ['user_id', "user_id TEXT NOT NULL DEFAULT ''"],
+    ['name', "name TEXT NOT NULL DEFAULT 'Custom Program'"],
+    ['description', 'description TEXT'],
+    ['notes', 'notes TEXT'],
+    ['days_per_week', 'days_per_week INTEGER NOT NULL DEFAULT 1'],
+    ['weeks', 'weeks INTEGER NOT NULL DEFAULT 1'],
+    ['is_deleted', 'is_deleted INTEGER NOT NULL DEFAULT 0'],
+    ['created_locally', 'created_locally INTEGER NOT NULL DEFAULT 0'],
+    ['created_at', 'created_at INTEGER'],
+    ['updated_at', 'updated_at INTEGER'],
+    ['server_updated_at', 'server_updated_at INTEGER'],
+    ['hydrated_at', 'hydrated_at INTEGER NOT NULL DEFAULT 0'],
+  ] as const) {
+    addColumnIfMissing(sqlite, 'local_custom_programs', columnName, columnSql);
+  }
+
+  for (const [columnName, columnSql] of [
+    ['custom_program_id', "custom_program_id TEXT NOT NULL DEFAULT ''"],
+    ['day_index', 'day_index INTEGER NOT NULL DEFAULT 0'],
+    ['name', "name TEXT NOT NULL DEFAULT 'Workout'"],
+    ['order_index', 'order_index INTEGER NOT NULL DEFAULT 0'],
+    ['is_deleted', 'is_deleted INTEGER NOT NULL DEFAULT 0'],
+    ['created_at', 'created_at INTEGER'],
+    ['updated_at', 'updated_at INTEGER'],
+    ['hydrated_at', 'hydrated_at INTEGER NOT NULL DEFAULT 0'],
+  ] as const) {
+    addColumnIfMissing(sqlite, 'local_custom_program_workouts', columnName, columnSql);
+  }
+
+  for (const [columnName, columnSql] of [
+    ['custom_program_workout_id', "custom_program_workout_id TEXT NOT NULL DEFAULT ''"],
+    ['exercise_id', "exercise_id TEXT NOT NULL DEFAULT ''"],
+    ['order_index', 'order_index INTEGER NOT NULL DEFAULT 0'],
+    ['exercise_type', "exercise_type TEXT NOT NULL DEFAULT 'weights'"],
+    ['sets', 'sets INTEGER'],
+    ['reps', 'reps INTEGER'],
+    ['reps_raw', 'reps_raw TEXT'],
+    ['weight_mode', 'weight_mode TEXT'],
+    ['fixed_weight', 'fixed_weight REAL'],
+    ['percentage_of_lift', 'percentage_of_lift REAL'],
+    ['percentage_lift', 'percentage_lift TEXT'],
+    ['added_weight', 'added_weight REAL DEFAULT 0'],
+    ['target_duration', 'target_duration INTEGER'],
+    ['target_distance', 'target_distance INTEGER'],
+    ['target_height', 'target_height INTEGER'],
+    ['is_amrap', 'is_amrap INTEGER NOT NULL DEFAULT 0'],
+    ['is_accessory', 'is_accessory INTEGER NOT NULL DEFAULT 0'],
+    ['is_required', 'is_required INTEGER NOT NULL DEFAULT 1'],
+    ['set_number', 'set_number INTEGER'],
+    ['progression_amount', 'progression_amount REAL'],
+    ['progression_interval', 'progression_interval INTEGER DEFAULT 1'],
+    ['progression_type', "progression_type TEXT DEFAULT 'fixed'"],
+  ] as const) {
+    addColumnIfMissing(sqlite, 'local_custom_program_exercises', columnName, columnSql);
+  }
+}
+
 function addLocalWorkoutSessionCacheColumns(sqlite: SQLiteDatabase) {
   addLocalWorkoutStartColumns(sqlite);
   addLocalWorkoutExerciseStartColumns(sqlite);
@@ -212,6 +271,7 @@ function addLocalWorkoutSessionCacheColumns(sqlite: SQLiteDatabase) {
   addLocalUserExerciseCacheColumns(sqlite);
   addLocalProgramCycleCacheColumns(sqlite);
   addLocalProgramCycleWorkoutCacheColumns(sqlite);
+  addLocalCustomProgramCacheColumns(sqlite);
 }
 
 function createLocalIndexes(sqlite: SQLiteDatabase) {
@@ -230,6 +290,12 @@ function createLocalIndexes(sqlite: SQLiteDatabase) {
       ON local_program_cycles (user_id, status, started_at);
     CREATE INDEX IF NOT EXISTS idx_local_program_cycle_workouts_cycle_order
       ON local_program_cycle_workouts (cycle_id, week_number, session_number);
+    CREATE INDEX IF NOT EXISTS idx_local_custom_programs_user
+      ON local_custom_programs (user_id, is_deleted, created_at);
+    CREATE INDEX IF NOT EXISTS idx_local_custom_program_workouts_program_order
+      ON local_custom_program_workouts (custom_program_id, day_index, order_index);
+    CREATE INDEX IF NOT EXISTS idx_local_custom_program_exercises_workout_order
+      ON local_custom_program_exercises (custom_program_workout_id, order_index);
     CREATE INDEX IF NOT EXISTS idx_local_workout_sets_exercise_deleted_order
       ON local_workout_sets (workout_exercise_id, is_deleted, set_number);
     CREATE INDEX IF NOT EXISTS idx_local_sync_queue_user_runnable
@@ -444,6 +510,60 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
       hydrated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS local_custom_programs (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      notes TEXT,
+      days_per_week INTEGER NOT NULL,
+      weeks INTEGER NOT NULL,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      created_locally INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER,
+      updated_at INTEGER,
+      server_updated_at INTEGER,
+      hydrated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS local_custom_program_workouts (
+      id TEXT PRIMARY KEY NOT NULL,
+      custom_program_id TEXT NOT NULL,
+      day_index INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      order_index INTEGER NOT NULL,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER,
+      updated_at INTEGER,
+      hydrated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS local_custom_program_exercises (
+      id TEXT PRIMARY KEY NOT NULL,
+      custom_program_workout_id TEXT NOT NULL,
+      exercise_id TEXT NOT NULL,
+      order_index INTEGER NOT NULL,
+      exercise_type TEXT NOT NULL DEFAULT 'weights',
+      sets INTEGER,
+      reps INTEGER,
+      reps_raw TEXT,
+      weight_mode TEXT,
+      fixed_weight REAL,
+      percentage_of_lift REAL,
+      percentage_lift TEXT,
+      added_weight REAL DEFAULT 0,
+      target_duration INTEGER,
+      target_distance INTEGER,
+      target_height INTEGER,
+      is_amrap INTEGER NOT NULL DEFAULT 0,
+      is_accessory INTEGER NOT NULL DEFAULT 0,
+      is_required INTEGER NOT NULL DEFAULT 1,
+      set_number INTEGER,
+      progression_amount REAL,
+      progression_interval INTEGER DEFAULT 1,
+      progression_type TEXT DEFAULT 'fixed'
+    );
+
     CREATE TABLE IF NOT EXISTS local_training_cache_meta (
       user_id TEXT NOT NULL,
       cache_key TEXT NOT NULL,
@@ -556,6 +676,66 @@ export function runLocalMigrations(sqlite: SQLiteDatabase) {
 
   applyVersionedMigration(sqlite, '20260505_local_workout_session_cache_columns', () => {
     addLocalWorkoutSessionCacheColumns(sqlite);
+  });
+
+  applyVersionedMigration(sqlite, '20260513_local_custom_program_tables', () => {
+    sqlite.execSync(`
+      CREATE TABLE IF NOT EXISTS local_custom_programs (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        notes TEXT,
+        days_per_week INTEGER NOT NULL,
+        weeks INTEGER NOT NULL,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        created_locally INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER,
+        server_updated_at INTEGER,
+        hydrated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS local_custom_program_workouts (
+        id TEXT PRIMARY KEY NOT NULL,
+        custom_program_id TEXT NOT NULL,
+        day_index INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        order_index INTEGER NOT NULL,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER,
+        hydrated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS local_custom_program_exercises (
+        id TEXT PRIMARY KEY NOT NULL,
+        custom_program_workout_id TEXT NOT NULL,
+        exercise_id TEXT NOT NULL,
+        order_index INTEGER NOT NULL,
+        exercise_type TEXT NOT NULL DEFAULT 'weights',
+        sets INTEGER,
+        reps INTEGER,
+        reps_raw TEXT,
+        weight_mode TEXT,
+        fixed_weight REAL,
+        percentage_of_lift REAL,
+        percentage_lift TEXT,
+        added_weight REAL DEFAULT 0,
+        target_duration INTEGER,
+        target_distance INTEGER,
+        target_height INTEGER,
+        is_amrap INTEGER NOT NULL DEFAULT 0,
+        is_accessory INTEGER NOT NULL DEFAULT 0,
+        is_required INTEGER NOT NULL DEFAULT 1,
+        set_number INTEGER,
+        progression_amount REAL,
+        progression_interval INTEGER DEFAULT 1,
+        progression_type TEXT DEFAULT 'fixed'
+      );
+    `);
+    addLocalCustomProgramCacheColumns(sqlite);
+    createLocalIndexes(sqlite);
   });
 
   applyVersionedMigration(sqlite, '20260506_clear_empty_active_workout_drafts', () => {

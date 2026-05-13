@@ -168,7 +168,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   const handleRepsEditChange = useCallback(
     (value: string) => {
       setEditRepsValue(value);
-      const parsed = parseInt(value, 10);
+      const parsed = parseFloat(value);
       if (!isNaN(parsed) && parsed >= 0) {
         setLocalReps(parsed);
         emitUpdate({ reps: parsed });
@@ -178,7 +178,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
   );
 
   const handleRepsEditEnd = useCallback(() => {
-    const parsed = parseInt(editRepsValue, 10);
+    const parsed = parseFloat(editRepsValue);
     if (!isNaN(parsed) && parsed >= 0) {
       setLocalReps(parsed);
       emitUpdate({ reps: parsed });
@@ -418,7 +418,7 @@ export const SetLogger = forwardRef<View, SetLoggerProps>(function SetLogger(
               onChangeText={handleRepsEditChange}
               onBlur={handleRepsEditEnd}
               onSubmitEditing={handleRepsEditEnd}
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               autoFocus
             />,
             'reps',

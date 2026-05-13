@@ -23,6 +23,7 @@ export type PendingTrainingWriteScope =
   | 'nutrition'
   | 'program'
   | 'program_cycle'
+  | 'custom_program'
   | 'template'
   | 'workout'
   | 'history'
@@ -37,6 +38,7 @@ const SCOPE_OPERATIONS: Record<PendingTrainingWriteScope, string[]> = {
   nutrition: ['save_meal', 'delete_meal', 'update_body_stats', 'save_training_context'],
   program: ['start_program', 'delete_program', 'reschedule_workout'],
   program_cycle: ['update_program_1rms'],
+  custom_program: ['create_custom_program', 'save_custom_program', 'delete_custom_program'],
   template: ['create_template', 'save_template', 'delete_template'],
   workout: ['complete_workout', 'delete_workout'],
   history: ['complete_workout', 'delete_workout'],

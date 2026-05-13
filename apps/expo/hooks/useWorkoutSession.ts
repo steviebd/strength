@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
@@ -231,6 +232,7 @@ interface UseWorkoutSessionReturn {
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => Promise<void>;
+  flushLocalWrites: () => Promise<void>;
   addExercise: (
     exercise: Exercise,
     options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },
@@ -353,6 +355,16 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       }
     });
   }, [workout, exercises, session.data?.user]);
+
+  useEffect(() => {
+    if (!workout || workout.completedAt) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        void flushLocalWrites().catch(() => {});
+      }
+    });
+    return () => subscription.remove();
+  }, [workout?.id, workout?.completedAt]);
 
   const startWorkout = useCallback(
     async (name: string) => {
@@ -755,6 +767,7 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
     loadWorkout,
     completeWorkout,
     discardWorkout,
+    flushLocalWrites,
     addExercise,
     updateExercise,
     removeExercise,

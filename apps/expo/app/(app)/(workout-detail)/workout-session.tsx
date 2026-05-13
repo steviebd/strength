@@ -11,6 +11,7 @@ import {
   Alert,
   useWindowDimensions,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -181,6 +182,7 @@ export default function WorkoutSessionScreen() {
     loadWorkout,
     completeWorkout,
     discardWorkout,
+    flushLocalWrites,
     addExercise,
     addSet,
     updateSet,
@@ -304,6 +306,16 @@ export default function WorkoutSessionScreen() {
       }
     };
   }, [pendingSetScroll, scrollToSetNow]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (workout && !workout.completedAt) {
+          void flushLocalWrites().catch(() => {});
+        }
+      };
+    }, [workout, flushLocalWrites]),
+  );
 
   const handleScroll = useCallback((event: any) => {
     scrollYRef.current = event.nativeEvent.contentOffset.y;
@@ -665,6 +677,12 @@ export default function WorkoutSessionScreen() {
     if (completedWorkoutId) {
       queryClient.invalidateQueries({ queryKey: ['workout', completedWorkoutId] });
     }
+    const programCycleId =
+      workout?.programCycleId ?? (typeof cycleId === 'string' ? cycleId : null);
+    if (programCycleId) {
+      await queryClient.invalidateQueries({ queryKey: ['programSchedule', programCycleId] });
+    }
+    await queryClient.invalidateQueries({ queryKey: ['activePrograms'] });
     queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
     queryClient.invalidateQueries({ queryKey: ['homeSummary'] });
     queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] });
@@ -710,6 +728,7 @@ export default function WorkoutSessionScreen() {
     activeTimezone,
     queryClient,
     router,
+    workout?.programCycleId,
     workout?.id,
     workoutId,
   ]);

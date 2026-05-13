@@ -736,6 +736,34 @@ export function getExerciseTypeByLibraryId(id: string): ExerciseType {
   return EXERCISE_TYPE_BY_LIBRARY_ID[id] ?? 'weights';
 }
 
+export const LIBRARY_ID_TO_LIFT_TYPE: Record<string, string> = {
+  'barbell-squat': 'squat',
+  'front-squat': 'squat',
+  'pause-squat': 'squat',
+  'barbell-bench-press': 'bench',
+  'dumbbell-bench-press': 'bench',
+  'incline-dumbbell-press': 'bench',
+  'paused-bench': 'bench',
+  deadlift: 'deadlift',
+  'paused-deadlift': 'deadlift',
+  'deficit-deadlift': 'deadlift',
+  'rack-pull': 'deadlift',
+  'overhead-press': 'ohp',
+  'dumbbell-shoulder-press': 'ohp',
+  'barbell-row': 'deadlift',
+};
+
+export function getDefaultLiftForExercise(
+  libraryId: string | null | undefined,
+): 'squat' | 'bench' | 'deadlift' | 'ohp' {
+  if (!libraryId) return 'squat';
+  const mapped = LIBRARY_ID_TO_LIFT_TYPE[libraryId];
+  if (mapped === 'squat' || mapped === 'bench' || mapped === 'deadlift' || mapped === 'ohp') {
+    return mapped;
+  }
+  return 'squat';
+}
+
 export function getVideoTutorialByName(
   exerciseName: string | undefined | null,
 ): VideoTutorial | undefined {

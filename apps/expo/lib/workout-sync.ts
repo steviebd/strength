@@ -9,6 +9,7 @@ import {
   type LocalSyncQueueItem,
 } from '@/db/local-schema';
 import {
+  deleteLocalCustomProgram,
   hydrateOfflineTrainingSnapshot,
   markLocalProgramAdvance,
   type OfflineTrainingSnapshot,
@@ -25,6 +26,7 @@ import {
   upsertLocalTemplateSnapshot,
   upsertServerWorkoutSnapshot,
 } from '@/db/workouts';
+import { upsertLocalCustomProgramSnapshot } from '@/db/training-cache';
 import {
   deleteSyncItem,
   getRecoverableWorkoutSyncItems,
@@ -45,7 +47,11 @@ type SyncCompleteResponse = {
     completedCycleWorkoutId?: string;
     currentWeek?: number | null;
     currentSession?: number | null;
+    totalSessionsCompleted?: number | null;
+    totalSessionsPlanned?: number | null;
     status?: string | null;
+    isComplete?: boolean | null;
+    completedAt?: string | number | Date | null;
   };
 };
 
@@ -124,6 +130,13 @@ function getSyncEndpoint(item: LocalSyncQueueItem): { url: string; method: strin
       return { url: '/api/nutrition/training-context', method: 'POST' };
     case 'send_chat_message':
       return { url: '/api/nutrition/chat', method: 'POST' };
+    case 'create_custom_program':
+    case 'save_custom_program':
+      return { url: '/api/custom-programs', method: 'POST' };
+    case 'delete_custom_program':
+      return { url: `/api/custom-programs/${item.entityId}`, method: 'DELETE' };
+    case 'start_custom_program':
+      return { url: `/api/custom-programs/${item.entityId}/start`, method: 'POST' };
     default:
       throw new Error(`Unsupported sync operation: ${item.operation}`);
   }
@@ -209,6 +222,86 @@ async function handleTemplateSync(item: LocalSyncQueueItem) {
       createdLocally: false,
       replaceExercises: Array.isArray(payload.exercises),
     },
+  );
+}
+
+async function handleCustomProgramSync(item: LocalSyncQueueItem) {
+  const payload = JSON.parse(item.payloadJson);
+  const programId = payload.id ?? item.entityId;
+
+  // 1. Save program metadata
+  const savedProgram = await apiFetch<any>('/api/custom-programs', {
+    method: 'POST',
+    body: {
+      id: programId,
+      name: payload.name,
+      description: payload.description,
+      notes: payload.notes,
+      daysPerWeek: payload.daysPerWeek,
+      weeks: payload.weeks,
+    },
+  });
+
+  const savedProgramId = savedProgram.id ?? programId;
+
+  // 2. Save workouts + exercises
+  if (Array.isArray(payload.workouts)) {
+    for (const workout of payload.workouts) {
+      const savedWorkout = await apiFetch<any>(`/api/custom-programs/${savedProgramId}/workouts`, {
+        method: 'POST',
+        body: {
+          id: workout.id,
+          customProgramId: savedProgramId,
+          dayIndex: workout.dayIndex,
+          name: workout.name,
+          orderIndex: workout.orderIndex,
+        },
+      });
+      const savedWorkoutId = savedWorkout.id ?? workout.id;
+
+      if (Array.isArray(workout.exercises)) {
+        for (let ei = 0; ei < workout.exercises.length; ei++) {
+          const ex = workout.exercises[ei];
+          await apiFetch<any>(`/api/custom-programs/workouts/${savedWorkoutId}/exercises`, {
+            method: 'POST',
+            body: {
+              id: ex.id,
+              exerciseId: ex.exerciseId,
+              orderIndex: ei,
+              exerciseType: ex.exerciseType ?? 'weights',
+              sets: ex.sets,
+              reps: ex.reps,
+              repsRaw: ex.repsRaw,
+              weightMode: ex.weightMode,
+              fixedWeight: ex.fixedWeight,
+              percentageOfLift: ex.percentageOfLift,
+              percentageLift: ex.percentageLift,
+              addedWeight: ex.addedWeight,
+              targetDuration: ex.targetDuration,
+              targetDistance: ex.targetDistance,
+              targetHeight: ex.targetHeight,
+              isAmrap: ex.isAmrap,
+              isAccessory: ex.isAccessory,
+              isRequired: ex.isRequired,
+              setNumber: ex.setNumber,
+              progressionAmount: ex.progressionAmount,
+              progressionInterval: ex.progressionInterval,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Update local cache
+  await upsertLocalCustomProgramSnapshot(
+    item.userId,
+    {
+      ...payload,
+      id: savedProgramId,
+      workouts: Array.isArray(payload.workouts) ? payload.workouts : undefined,
+    },
+    { createdLocally: false },
   );
 }
 
@@ -337,8 +430,19 @@ export async function runSyncQueue(userId: string) {
             (item.operation === 'create_template' || item.operation === 'save_template')
           ) {
             await handleTemplateSync(item);
+          } else if (
+            item.entityType === 'custom_program' &&
+            (item.operation === 'create_custom_program' || item.operation === 'save_custom_program')
+          ) {
+            await handleCustomProgramSync(item);
           } else {
             await handleGenericSync(item);
+            if (
+              item.entityType === 'custom_program' &&
+              item.operation === 'delete_custom_program'
+            ) {
+              await deleteLocalCustomProgram(item.entityId);
+            }
           }
           await markSyncItemStatus(item.id, 'done');
           await deleteSyncItem(item.id);

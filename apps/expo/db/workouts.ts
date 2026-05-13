@@ -801,7 +801,12 @@ export async function createLocalWorkoutFromTemplate(
         ? 1
         : Math.max(
             1,
-            exercise.sets ?? (exerciseType === 'cardio' || exerciseType === 'timed' ? 1 : 3),
+            exercise.sets ??
+              (exerciseType === 'cardio' || exerciseType === 'timed'
+                ? 1
+                : exerciseType === 'weights'
+                  ? 4
+                  : 3),
           );
       const historySetCount = historySets?.length ?? 0;
       const setCount = isAmrap ? 1 : Math.max(plannedSetCount, historySetCount);

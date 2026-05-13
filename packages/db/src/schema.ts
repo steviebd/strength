@@ -161,12 +161,12 @@ export const templateExercises = sqliteTable('template_exercises', {
   targetWeight: real('target_weight'),
   addedWeight: real('added_weight').default(0),
   sets: integer('sets'),
-  reps: integer('reps'),
+  reps: real('reps'),
   repsRaw: text('reps_raw'),
   exerciseType: text('exercise_type').notNull(),
-  targetDuration: integer('target_duration'),
-  targetDistance: integer('target_distance'),
-  targetHeight: integer('target_height'),
+  targetDuration: real('target_duration'),
+  targetDistance: real('target_distance'),
+  targetHeight: real('target_height'),
   isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
   isAccessory: integer('is_accessory', { mode: 'boolean' }).default(false),
   isRequired: integer('is_required', { mode: 'boolean' }).default(true),
@@ -241,10 +241,10 @@ export const workoutSets = sqliteTable(
       .references(() => workoutExercises.id, { onDelete: 'cascade' }),
     setNumber: integer('set_number').notNull(),
     weight: real('weight'),
-    reps: integer('reps'),
-    duration: integer('duration'),
-    distance: integer('distance'),
-    height: integer('height'),
+    reps: real('reps'),
+    duration: real('duration'),
+    distance: real('distance'),
+    height: real('height'),
     rpe: real('rpe'),
     isComplete: integer('is_complete', { mode: 'boolean' }).default(false),
     completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
@@ -709,4 +709,87 @@ export const nutritionTrainingContext = sqliteTable(
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [unique('nutrition_training_context_user_id_unique').on(t.userId)],
+);
+
+export const customPrograms = sqliteTable(
+  'custom_programs',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    notes: text('notes'),
+    daysPerWeek: integer('days_per_week').notNull(),
+    weeks: integer('weeks').notNull(),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('idx_custom_programs_user_deleted_created_at').on(t.userId, t.isDeleted, t.createdAt),
+  ],
+);
+
+export const customProgramWorkouts = sqliteTable(
+  'custom_program_workouts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    customProgramId: text('custom_program_id')
+      .notNull()
+      .references(() => customPrograms.id, { onDelete: 'cascade' }),
+    dayIndex: integer('day_index').notNull(),
+    name: text('name').notNull(),
+    orderIndex: integer('order_index').notNull(),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('idx_custom_program_workouts_program_day').on(t.customProgramId, t.dayIndex)],
+);
+
+export const customProgramWorkoutExercises = sqliteTable(
+  'custom_program_workout_exercises',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    customProgramWorkoutId: text('custom_program_workout_id')
+      .notNull()
+      .references(() => customProgramWorkouts.id, { onDelete: 'cascade' }),
+    exerciseId: text('exercise_id')
+      .notNull()
+      .references(() => exercises.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull(),
+    exerciseType: text('exercise_type').notNull(),
+    sets: integer('sets'),
+    reps: integer('reps'),
+    repsRaw: text('reps_raw'),
+    weightMode: text('weight_mode'),
+    fixedWeight: real('fixed_weight'),
+    percentageOfLift: real('percentage_of_lift'),
+    percentageLift: text('percentage_lift'),
+    addedWeight: real('added_weight').default(0),
+    targetDuration: real('target_duration'),
+    targetDistance: real('target_distance'),
+    targetHeight: real('target_height'),
+    isAmrap: integer('is_amrap', { mode: 'boolean' }).default(false),
+    isAccessory: integer('is_accessory', { mode: 'boolean' }).default(false),
+    isRequired: integer('is_required', { mode: 'boolean' }).default(true),
+    setNumber: integer('set_number'),
+    progressionAmount: real('progression_amount'),
+    progressionInterval: integer('progression_interval').default(1),
+    progressionType: text('progression_type').default('fixed'),
+  },
+  (t) => [
+    index('idx_custom_program_workout_exercises_workout_order').on(
+      t.customProgramWorkoutId,
+      t.orderIndex,
+    ),
+  ],
 );

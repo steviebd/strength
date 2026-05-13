@@ -76,11 +76,11 @@ export const localWorkoutSets = sqliteTable('local_workout_sets', {
   workoutExerciseId: text('workout_exercise_id').notNull(),
   setNumber: integer('set_number').notNull(),
   weight: real('weight'),
-  reps: integer('reps'),
+  reps: real('reps'),
   rpe: real('rpe'),
-  duration: integer('duration'),
-  distance: integer('distance'),
-  height: integer('height'),
+  duration: real('duration'),
+  distance: real('distance'),
+  height: real('height'),
   isComplete: integer('is_complete', { mode: 'boolean' }).notNull().default(false),
   completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
   isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
@@ -118,11 +118,11 @@ export const localTemplateExercises = sqliteTable('local_template_exercises', {
   targetWeight: real('target_weight'),
   addedWeight: real('added_weight'),
   sets: integer('sets'),
-  reps: integer('reps'),
+  reps: real('reps'),
   repsRaw: text('reps_raw'),
-  targetDuration: integer('target_duration'),
-  targetDistance: integer('target_distance'),
-  targetHeight: integer('target_height'),
+  targetDuration: real('target_duration'),
+  targetDistance: real('target_distance'),
+  targetHeight: real('target_height'),
   isAmrap: integer('is_amrap', { mode: 'boolean' }).notNull().default(false),
   isAccessory: integer('is_accessory', { mode: 'boolean' }).notNull().default(false),
   isRequired: integer('is_required', { mode: 'boolean' }).notNull().default(true),
@@ -363,3 +363,61 @@ export type LocalWhoopDatum = typeof localWhoopData.$inferSelect;
 export type LocalNutritionChatMessage = typeof localNutritionChatMessages.$inferSelect;
 export type LocalNutritionEntry = typeof localNutritionEntries.$inferSelect;
 export type LocalNutritionTrainingContext = typeof localNutritionTrainingContext.$inferSelect;
+
+export const localCustomPrograms = sqliteTable('local_custom_programs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  notes: text('notes'),
+  daysPerWeek: integer('days_per_week').notNull(),
+  weeks: integer('weeks').notNull(),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  createdLocally: integer('created_locally', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  serverUpdatedAt: integer('server_updated_at', { mode: 'timestamp_ms' }),
+  hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localCustomProgramWorkouts = sqliteTable('local_custom_program_workouts', {
+  id: text('id').primaryKey(),
+  customProgramId: text('custom_program_id').notNull(),
+  dayIndex: integer('day_index').notNull(),
+  name: text('name').notNull(),
+  orderIndex: integer('order_index').notNull(),
+  isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }),
+  hydratedAt: integer('hydrated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const localCustomProgramExercises = sqliteTable('local_custom_program_exercises', {
+  id: text('id').primaryKey(),
+  customProgramWorkoutId: text('custom_program_workout_id').notNull(),
+  exerciseId: text('exercise_id').notNull(),
+  orderIndex: integer('order_index').notNull(),
+  exerciseType: text('exercise_type').notNull().default('weights'),
+  sets: integer('sets'),
+  reps: integer('reps'),
+  repsRaw: text('reps_raw'),
+  weightMode: text('weight_mode'),
+  fixedWeight: real('fixed_weight'),
+  percentageOfLift: real('percentage_of_lift'),
+  percentageLift: text('percentage_lift'),
+  addedWeight: real('added_weight').default(0),
+  targetDuration: integer('target_duration'),
+  targetDistance: integer('target_distance'),
+  targetHeight: integer('target_height'),
+  isAmrap: integer('is_amrap', { mode: 'boolean' }).notNull().default(false),
+  isAccessory: integer('is_accessory', { mode: 'boolean' }).notNull().default(false),
+  isRequired: integer('is_required', { mode: 'boolean' }).notNull().default(true),
+  setNumber: integer('set_number'),
+  progressionAmount: real('progression_amount'),
+  progressionInterval: integer('progression_interval').default(1),
+  progressionType: text('progression_type').default('fixed'),
+});
+
+export type LocalCustomProgram = typeof localCustomPrograms.$inferSelect;
+export type LocalCustomProgramWorkout = typeof localCustomProgramWorkouts.$inferSelect;
+export type LocalCustomProgramExercise = typeof localCustomProgramExercises.$inferSelect;

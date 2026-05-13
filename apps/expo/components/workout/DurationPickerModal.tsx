@@ -106,7 +106,8 @@ export function DurationPickerModal({
         style={styles.fieldInput}
         value={String(value)}
         onChangeText={(text) => {
-          const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
+          const cleaned = text.replace(/[^0-9.]/g, '');
+          const num = parseFloat(cleaned);
           if (Number.isNaN(num)) {
             if (field === 'hours') setHours(0);
             if (field === 'minutes') setMinutes(0);
@@ -118,7 +119,7 @@ export function DurationPickerModal({
           if (field === 'minutes') setMinutes(clamped);
           if (field === 'seconds') setSeconds(clamped);
         }}
-        keyboardType="number-pad"
+        keyboardType="decimal-pad"
         selectTextOnFocus
         textAlign="center"
       />

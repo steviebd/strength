@@ -42,6 +42,8 @@ import {
   type ActiveProgram,
   type ProgramListItem,
 } from '@/hooks/usePrograms';
+import { useCustomPrograms } from '@/hooks/useCustomPrograms';
+import CustomProgramEditor from '@/components/custom-program/CustomProgramEditor';
 import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import { ActionButton, Badge, SectionTitle, Surface } from '@/components/ui/app-primitives';
 import {
@@ -423,6 +425,11 @@ const styles = StyleSheet.create({
   inputFocused: {
     borderColor: border.focus,
   },
+  inputHint: {
+    color: colors.textMuted,
+    fontSize: typography.fontSizes.xs,
+    marginTop: spacing.xs,
+  },
   startButton: {
     borderRadius: radius.lg,
     backgroundColor: colors.accent,
@@ -529,10 +536,12 @@ const styles = StyleSheet.create({
   },
   dayChipsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   timeChipsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   dateButton: {
@@ -723,6 +732,22 @@ const styles = StyleSheet.create({
     lineHeight: textRoles.metricValue.lineHeight,
     fontWeight: textRoles.metricValue.fontWeight,
   },
+  createCustomButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  createCustomButtonText: {
+    color: colors.text,
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.medium,
+  },
 });
 
 function getDifficultyColor(difficulty: string) {
@@ -760,68 +785,14 @@ function OneRmInputFields({
     deadlift: deadliftWrapperRef,
     ohp: ohpWrapperRef,
   };
-  const [editingKey, setEditingKey] = useState<keyof OneRmValues | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const editingKeyRef = useRef<keyof OneRmValues | null>(null);
-  editingKeyRef.current = editingKey;
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRefs = useRef<Record<keyof OneRmValues, TextInput | null>>({
+    squat: null,
+    bench: null,
+    deadlift: null,
+    ohp: null,
+  });
+  const [focusedKey, setFocusedKey] = useState<keyof OneRmValues | null>(null);
   const inputOrder = ['squat', 'bench', 'deadlift', 'ohp'] as const;
-
-  useEffect(() => {
-    return () => {
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    };
-  }, []);
-
-  const handleEditStart = useCallback(
-    (key: keyof OneRmValues) => {
-      if (dismissTimerRef.current) {
-        clearTimeout(dismissTimerRef.current);
-        dismissTimerRef.current = null;
-      }
-
-      if (editingKey === key) {
-        setEditingKey(null);
-        return;
-      }
-
-      if (editingKey) {
-        const sanitized = editValue.replace(/[^0-9.]/g, '');
-        setOneRmValues({ ...valuesRef.current, [editingKey]: sanitized });
-      }
-
-      setEditValue(valuesRef.current[key]);
-      scrollToInput(wrapperRefs[key], 200);
-      setEditingKey(key);
-    },
-    [editingKey, editValue, scrollToInput, setOneRmValues],
-  );
-
-  const handleEditEnd = useCallback(
-    (key: keyof OneRmValues) => {
-      if (editingKeyRef.current !== key) return;
-      const sanitized = editValue.replace(/[^0-9.]/g, '');
-      setOneRmValues({ ...valuesRef.current, [key]: sanitized });
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-      dismissTimerRef.current = setTimeout(() => {
-        if (editingKeyRef.current === key) {
-          setEditingKey(null);
-        }
-      }, 150);
-    },
-    [editValue],
-  );
-
-  const focusNextInput = (key: (typeof inputOrder)[number]) => {
-    const currentIndex = inputOrder.indexOf(key);
-    const nextKey = inputOrder[currentIndex + 1];
-
-    handleEditEnd(key);
-
-    if (nextKey) {
-      handleEditStart(nextKey);
-    }
-  };
 
   return (
     <View style={styles.inputGroup}>
@@ -841,33 +812,44 @@ function OneRmInputFields({
             </View>
             <Text style={styles.inputUnit}>{weightUnit}</Text>
           </View>
-          <View ref={wrapperRefs[key]} collapsable={false}>
-            <Pressable
+          <View
+            ref={wrapperRefs[key]}
+            collapsable={false}
+            style={[styles.input, focusedKey === key && styles.inputFocused]}
+          >
+            <TextInput
               testID={`program-1rm-${key}`}
               accessibilityLabel={`program-1rm-${key}`}
-              onPress={() => handleEditStart(key)}
-              style={[styles.input, editingKey === key && styles.inputFocused]}
-            >
-              {editingKey === key ? (
-                <TextInput
-                  style={styles.editInput}
-                  value={editValue}
-                  onChangeText={setEditValue}
-                  keyboardType="decimal-pad"
-                  autoFocus
-                  selectTextOnFocus
-                  returnKeyType={key === 'ohp' ? 'done' : 'next'}
-                  blurOnSubmit={key === 'ohp'}
-                  onFocus={() => scrollToInput(wrapperRefs[key], 200)}
-                  onBlur={() => handleEditEnd(key)}
-                  onSubmitEditing={() => focusNextInput(key as (typeof inputOrder)[number])}
-                />
-              ) : (
-                <Text style={values[key] ? styles.inputText : styles.inputPlaceholder}>
-                  {values[key] || '0'}
-                </Text>
-              )}
-            </Pressable>
+              ref={(el) => {
+                inputRefs.current[key] = el;
+              }}
+              style={styles.editInput}
+              value={values[key] || '0'}
+              onChangeText={(text) => {
+                const sanitized = text.replace(/[^0-9.]/g, '');
+                setOneRmValues({ ...valuesRef.current, [key]: sanitized });
+              }}
+              onFocus={() => {
+                setFocusedKey(key);
+                scrollToInput(wrapperRefs[key], 120);
+              }}
+              onBlur={() => {
+                setFocusedKey((prev) => (prev === key ? null : prev));
+              }}
+              selectTextOnFocus
+              keyboardType="decimal-pad"
+              returnKeyType={key === 'ohp' ? 'done' : 'next'}
+              blurOnSubmit={key === 'ohp'}
+              onSubmitEditing={() => {
+                const currentIndex = inputOrder.indexOf(key);
+                const nextKey = inputOrder[currentIndex + 1];
+                if (nextKey) {
+                  inputRefs.current[nextKey]?.focus();
+                } else {
+                  inputRefs.current.ohp?.blur();
+                }
+              }}
+            />
           </View>
         </View>
       ))}
@@ -885,7 +867,10 @@ export default function ProgramsScreen() {
   const [startingProgram, setStartingProgram] = useState(false);
   const [openingProgramWorkoutId, setOpeningProgramWorkoutId] = useState<string | null>(null);
   const [deletingProgramId, setDeletingProgramId] = useState<string | null>(null);
+  const [_startingCustomProgramId, setStartingCustomProgramId] = useState<string | null>(null);
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [showCustomEditor, setShowCustomEditor] = useState(false);
+  const [editingCustomProgramId, setEditingCustomProgramId] = useState<string | null>(null);
   const { isRefreshing, handleRefresh } = usePullToRefresh(userId);
   const [values, setValues] = useState<OneRmValues>({
     squat: '',
@@ -893,7 +878,9 @@ export default function ProgramsScreen() {
     deadlift: '',
     ohp: '',
   });
-  const [scheduleStep, setScheduleStep] = useState<'1rm' | 'schedule' | 'review'>('1rm');
+  const [scheduleStep, setScheduleStep] = useState<'1rm' | 'schedule' | 'custom_1rms' | 'review'>(
+    '1rm',
+  );
   const [preferredGymDays, setPreferredGymDays] = useState<DayOfWeek[]>([]);
   const [preferredTime, setPreferredTime] = useState<PreferredTime>('morning');
   const [programStartDate, setProgramStartDate] = useState<Date>(new Date());
@@ -902,6 +889,10 @@ export default function ProgramsScreen() {
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [showStartModeChoice, setShowStartModeChoice] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customOneRmValues, setCustomOneRmValues] = useState<Record<string, string>>({});
+  const [customPromptExercises, setCustomPromptExercises] = useState<
+    Array<{ exerciseId: string; name: string; percentageOfLift: number | null }>
+  >([]);
   const { activeTimezone, weightUnit } = useUserPreferences();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -914,7 +905,14 @@ export default function ProgramsScreen() {
     useProgramsCatalog(PROGRAM_INFO);
   const { activePrograms, isLoading: isLoadingActivePrograms } = useActivePrograms();
   const { latestOneRMs } = useLatestOneRms();
+  const { programs: customPrograms, fetchPrograms } = useCustomPrograms();
   const loading = isLoadingPrograms || isLoadingActivePrograms;
+
+  useEffect(() => {
+    if (userId) {
+      fetchPrograms();
+    }
+  }, [userId, fetchPrograms]);
 
   const scrollToScheduleSection = useCallback(() => {
     if (scheduleSectionY.current === null || !scrollViewRef.current) {
@@ -1001,10 +999,21 @@ export default function ProgramsScreen() {
     if (!selectedProgram) return;
     if (!userId) return;
 
+    const isCustom = selectedProgram.slug.startsWith('custom:');
+    const customProgramId = isCustom ? selectedProgram.slug.replace('custom:', '') : null;
+
     setOfflineMessage(null);
     setStartingProgram(true);
     try {
       const convertToKg = (value: number) => (weightUnit === 'lbs' ? value * LBS_TO_KG : value);
+
+      const exercise1rms: Record<string, number> = {};
+      for (const ex of customPromptExercises) {
+        const val = customOneRmValues[ex.exerciseId];
+        if (val) {
+          exercise1rms[ex.exerciseId] = convertToKg(parseFloat(val));
+        }
+      }
 
       const payload = {
         programSlug: selectedProgram.slug,
@@ -1013,12 +1022,59 @@ export default function ProgramsScreen() {
         bench1rm: convertToKg(parseFloat(values.bench)),
         deadlift1rm: convertToKg(parseFloat(values.deadlift)),
         ohp1rm: convertToKg(parseFloat(values.ohp)),
+        exercise1rms,
         preferredGymDays,
         preferredTimeOfDay: preferredTime,
         programStartDate: programStartDate.toISOString().split('T')[0],
         firstSessionDate: firstSessionDate.toISOString().split('T')[0],
       };
       const cycleId = generateId();
+
+      if (isCustom && customProgramId) {
+        // Custom program: POST to /api/custom-programs/:id/start
+        await tryOnlineOrEnqueue({
+          apiCall: () =>
+            apiFetch(`/api/custom-programs/${customProgramId}/start`, {
+              method: 'POST',
+              body: {
+                id: cycleId,
+                name: selectedProgram.name,
+                squat1rm: payload.squat1rm,
+                bench1rm: payload.bench1rm,
+                deadlift1rm: payload.deadlift1rm,
+                ohp1rm: payload.ohp1rm,
+                exercise1rms: payload.exercise1rms,
+                preferredGymDays,
+                preferredTimeOfDay: preferredTime,
+                programStartDate: payload.programStartDate,
+                firstSessionDate: payload.firstSessionDate,
+              },
+            }),
+          userId,
+          entityType: 'custom_program',
+          operation: 'start_custom_program',
+          entityId: customProgramId,
+          payload: {
+            ...payload,
+            id: cycleId,
+            customProgramId,
+            programSlug: `custom:${customProgramId}`,
+          },
+        });
+
+        setShowStartModal(false);
+        setShowDetailModal(false);
+        setSelectedProgram(null);
+        setOneRmValues({ squat: '', bench: '', deadlift: '', ohp: '' });
+        setScheduleStep('1rm');
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ['activePrograms'] }),
+          queryClient.refetchQueries({ queryKey: ['latestOneRms'] }),
+          queryClient.refetchQueries({ queryKey: ['homeSummary', activeTimezone] }),
+        ]);
+        router.push(`/(app)/home?focusProgramId=${cycleId}`);
+        return;
+      }
 
       const plan = await createLocalProgramCycleFromStartPayload(userId, {
         id: cycleId,
@@ -1154,6 +1210,35 @@ export default function ProgramsScreen() {
 
   const openStartModal = () => {
     setOfflineMessage(null);
+
+    // Find exercises with prompt_1rm mode for custom programs
+    if (selectedProgram?.slug.startsWith('custom:')) {
+      const programId = selectedProgram.slug.replace('custom:', '');
+      const customProgram = customPrograms.find((p) => p.id === programId);
+      if (customProgram) {
+        const promptExercises = customProgram.workouts
+          .flatMap((w) => w.exercises)
+          .filter((ex) => ex.weightMode === 'prompt_1rm')
+          .map((ex) => ({
+            exerciseId: ex.exerciseId,
+            name: ex.name,
+            percentageOfLift: ex.percentageOfLift,
+          }));
+        setCustomPromptExercises(promptExercises);
+        const initial: Record<string, string> = {};
+        for (const ex of promptExercises) {
+          initial[ex.exerciseId] = '';
+        }
+        setCustomOneRmValues(initial);
+      } else {
+        setCustomPromptExercises([]);
+        setCustomOneRmValues({});
+      }
+    } else {
+      setCustomPromptExercises([]);
+      setCustomOneRmValues({});
+    }
+
     if (latestOneRMs) {
       const toDisplay = (value: number | null) => {
         if (value === null) return '';
@@ -1266,6 +1351,72 @@ export default function ProgramsScreen() {
               ))}
             </View>
           )}
+
+          <View style={styles.activeSection}>
+            <Text style={styles.sectionTitle}>Your Custom Programs</Text>
+            <Pressable
+              style={styles.createCustomButton}
+              onPress={() => {
+                setEditingCustomProgramId(null);
+                setShowCustomEditor(true);
+              }}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.text} />
+              <Text style={styles.createCustomButtonText}>Create Custom Program</Text>
+            </Pressable>
+            {customPrograms.map((program) => (
+              <View key={`custom:${program.id}`} style={styles.activeCard}>
+                <View style={styles.activeCardHeader}>
+                  <View>
+                    <Text style={styles.activeCardTitle}>{program.name}</Text>
+                    <Text style={styles.activeCardMeta}>
+                      {program.daysPerWeek} days/week · {program.weeks} weeks ·{' '}
+                      {program.daysPerWeek * program.weeks} total sessions
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.activeCardButtonsRow}>
+                  <View style={styles.flex1}>
+                    <ActionButton
+                      label="Edit"
+                      icon="create-outline"
+                      variant="secondary"
+                      onPress={() => {
+                        setEditingCustomProgramId(program.id);
+                        setShowCustomEditor(true);
+                      }}
+                    />
+                  </View>
+                  <View style={styles.flex1}>
+                    <ActionButton
+                      label="Start"
+                      icon="play"
+                      onPress={() => {
+                        const customProgramInfo = {
+                          slug: `custom:${program.id}`,
+                          name: program.name,
+                          description: 'Custom program',
+                          difficulty: 'intermediate' as const,
+                          daysPerWeek: program.daysPerWeek,
+                          estimatedWeeks: program.weeks,
+                          totalSessions: program.daysPerWeek * program.weeks,
+                        };
+                        setSelectedProgram(customProgramInfo);
+                        setStartingCustomProgramId(program.id);
+                        // Set gym days inline since openStartModal reads selectedProgram (async)
+                        setPreferredGymDays(
+                          program.daysPerWeek === 4
+                            ? ['monday', 'wednesday', 'thursday', 'friday']
+                            : ['monday', 'wednesday', 'friday'],
+                        );
+                        setShowStartModal(true);
+                      }}
+                    />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
 
           <Text style={styles.sectionTitle}>Available Programs</Text>
           <View style={styles.programsList}>
@@ -1404,9 +1555,10 @@ export default function ProgramsScreen() {
               ref={scrollViewRef}
               style={styles.modalScroll}
               bottomInset={layout.bottomInsetForm}
+              topPadding={insets.top + spacing.md}
               keyboardShouldPersistTaps="handled"
             >
-              <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
+              <View style={styles.modalHeader}>
                 <Pressable
                   style={styles.backButton}
                   onPress={() => {
@@ -1696,7 +1848,11 @@ export default function ProgramsScreen() {
                             style={styles.primaryButton}
                             onPress={() => {
                               setReviewConfirmed(true);
-                              setScheduleStep('review');
+                              if (customPromptExercises.length > 0) {
+                                setScheduleStep('custom_1rms');
+                              } else {
+                                setScheduleStep('review');
+                              }
                             }}
                           >
                             <Text style={styles.primaryButtonText}>Confirm</Text>
@@ -1745,7 +1901,11 @@ export default function ProgramsScreen() {
                             setReviewConfirmed(true);
                             setFirstSessionDate(programStartDate);
                             setShowStartModeChoice(false);
-                            setScheduleStep('review');
+                            if (customPromptExercises.length > 0) {
+                              setScheduleStep('custom_1rms');
+                            } else {
+                              setScheduleStep('review');
+                            }
                           }
                         }}
                         disabled={showStartModeChoice && !reviewConfirmed}
@@ -1760,6 +1920,64 @@ export default function ProgramsScreen() {
                       </Pressable>
                     </View>
                   </View>
+                )}
+
+                {scheduleStep === 'custom_1rms' && customPromptExercises.length > 0 && (
+                  <>
+                    <SectionTitle title="Custom 1RM" />
+                    <Text style={styles.instructionsText}>
+                      Enter your current 1RM for each exercise. Weights will be calculated as a
+                      percentage of these values.
+                    </Text>
+                    {customPromptExercises.map((ex) => (
+                      <View key={`custom-1rm-${ex.exerciseId}`} style={styles.inputCard}>
+                        <View style={styles.inputHeaderRow}>
+                          <Text style={styles.inputLabel}>{ex.name} 1RM</Text>
+                          <Text style={styles.inputUnit}>{weightUnit}</Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.input,
+                            customOneRmValues[ex.exerciseId] ? styles.inputFocused : undefined,
+                          ]}
+                        >
+                          <TextInput
+                            style={styles.editInput}
+                            value={customOneRmValues[ex.exerciseId] || ''}
+                            onChangeText={(text) => {
+                              const sanitized = text.replace(/[^0-9.]/g, '');
+                              setCustomOneRmValues((prev) => ({
+                                ...prev,
+                                [ex.exerciseId]: sanitized,
+                              }));
+                            }}
+                            selectTextOnFocus
+                            keyboardType="decimal-pad"
+                            placeholder="0"
+                          />
+                        </View>
+                        {ex.percentageOfLift != null && (
+                          <Text style={styles.inputHint}>
+                            Weight will be {ex.percentageOfLift}% of the 1RM you enter
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                    <View style={styles.scheduleButtons}>
+                      <Pressable
+                        style={styles.primaryButton}
+                        onPress={() => setScheduleStep('review')}
+                      >
+                        <Text style={styles.primaryButtonText}>Continue to Review</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => setScheduleStep('schedule')}
+                      >
+                        <Text style={styles.secondaryButtonText}>Back</Text>
+                      </Pressable>
+                    </View>
+                  </>
                 )}
 
                 {scheduleStep === 'review' && (
@@ -1861,6 +2079,35 @@ export default function ProgramsScreen() {
             </FormScrollView>
           </KeyboardFormLayout>
         ) : null}
+      </Modal>
+
+      <Modal
+        visible={showCustomEditor}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setShowCustomEditor(false)}
+      >
+        <CustomProgramEditor
+          initialData={
+            editingCustomProgramId
+              ? (customPrograms.find((p) => p.id === editingCustomProgramId) as any)
+              : undefined
+          }
+          onSaved={() => {
+            setShowCustomEditor(false);
+            setEditingCustomProgramId(null);
+            fetchPrograms();
+          }}
+          onDeleted={() => {
+            setShowCustomEditor(false);
+            setEditingCustomProgramId(null);
+            fetchPrograms();
+          }}
+          onClose={() => {
+            setShowCustomEditor(false);
+            setEditingCustomProgramId(null);
+          }}
+        />
       </Modal>
     </PageLayout>
   );

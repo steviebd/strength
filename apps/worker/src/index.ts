@@ -47,6 +47,7 @@ import whoopRouter from './routes/whoop';
 import nutritionRouter from './routes/nutrition';
 import homeRouter from './routes/home';
 import trainingRouter from './routes/training';
+import customProgramsRouter from './routes/custom-programs';
 import { processNutritionChatJob } from './api/nutrition/chat';
 
 type Variables = {
@@ -437,6 +438,7 @@ app.route('/api/whoop', whoopRouter);
 app.route('/api/nutrition', nutritionRouter);
 app.route('/api/home', homeRouter);
 app.route('/api/training', trainingRouter);
+app.route('/api/custom-programs', customProgramsRouter);
 
 // CSRF cookie setter for authenticated responses
 app.use('/api/*', async (c, next) => {

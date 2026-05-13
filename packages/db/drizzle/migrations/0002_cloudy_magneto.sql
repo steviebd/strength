@@ -1,0 +1,1 @@
+ALTER TABLE `custom_program_workout_exercises` ADD `progression_type` text DEFAULT 'fixed';

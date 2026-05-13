@@ -1,6 +1,7 @@
 export const METERS_PER_MILE = 1609.344;
 export const CM_PER_INCH = 2.54;
 
+export type WeightUnit = 'kg' | 'lbs';
 export type DistanceUnit = 'km' | 'mi';
 export type HeightUnit = 'cm' | 'in';
 
@@ -39,6 +40,17 @@ export function formatHeight(cm: number, unit: HeightUnit): string {
   }
   const inches = cm / CM_PER_INCH;
   return `${Math.round(inches)} in`;
+}
+
+export const LBS_TO_KG = 0.453592;
+export const KG_TO_LBS = 2.20462;
+
+export function toDisplayWeight(kg: number, unit: WeightUnit): number {
+  return unit === 'kg' ? kg : kg * KG_TO_LBS;
+}
+
+export function toStorageWeight(value: number, unit: WeightUnit): number {
+  return unit === 'kg' ? value : value * LBS_TO_KG;
 }
 
 export function parseDistanceInput(value: number, unit: DistanceUnit): number {

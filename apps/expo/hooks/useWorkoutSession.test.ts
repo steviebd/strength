@@ -32,6 +32,12 @@ vi.mock('react', async () => {
   };
 });
 
+vi.mock('react-native', () => ({
+  AppState: {
+    addEventListener: vi.fn(() => ({ remove: vi.fn() })),
+  },
+}));
+
 vi.mock('@/lib/auth-client', () => ({
   authClient: {
     useSession: vi.fn(() => ({ data: { user: { id: 'user-1' } } })),

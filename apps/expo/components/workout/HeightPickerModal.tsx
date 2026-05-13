@@ -23,7 +23,7 @@ export function HeightPickerModal({
 
   useEffect(() => {
     if (initialCm != null && initialCm > 0) {
-      setValue(String(Math.round(toDisplayHeight(initialCm, unit))));
+      setValue(toDisplayHeight(initialCm, unit).toString());
     } else {
       setValue('');
     }

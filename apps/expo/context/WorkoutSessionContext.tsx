@@ -80,6 +80,7 @@ interface WorkoutSessionContextValue {
   loadWorkout: (workoutOrId: string | Workout) => Promise<void>;
   completeWorkout: () => Promise<void>;
   discardWorkout: () => void;
+  flushLocalWrites: () => Promise<void>;
   addExercise: (
     exercise: Exercise,
     options?: { historySnapshot?: ExerciseHistorySnapshot | null; ignoreHistory?: boolean },

@@ -15,7 +15,7 @@ export async function cleanupStaleLocalData(userId: string) {
   if (!db) return;
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-  const twelveHoursAgo = new Date(now - 12 * 60 * 60 * 1000);
+  const thirtySixHoursAgo = new Date(now - 36 * 60 * 60 * 1000);
 
   // Delete nutrition daily summaries older than 7 days
   db.delete(localNutritionDailySummaries)
@@ -64,7 +64,7 @@ export async function cleanupStaleLocalData(userId: string) {
         isNotNull(localWorkouts.templateId),
         isNull(localWorkouts.programCycleId),
         isNull(localWorkouts.cycleWorkoutId),
-        lt(localWorkouts.updatedAt, twelveHoursAgo),
+        lt(localWorkouts.updatedAt, thirtySixHoursAgo),
       ),
     )
     .all();

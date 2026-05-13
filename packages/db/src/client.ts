@@ -4,7 +4,11 @@ export {
   generateId,
   type WorkoutType,
 } from './schema';
-export { exerciseLibrary, type ExerciseLibraryItem } from './exercise-library';
+export {
+  exerciseLibrary,
+  getDefaultLiftForExercise,
+  type ExerciseLibraryItem,
+} from './exercise-library';
 export { convertToDisplayWeight, convertToStorageWeight } from './utils/units';
 export {
   normalizeProgramSetCount,
