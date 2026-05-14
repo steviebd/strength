@@ -5,27 +5,27 @@
 Linting, formatting, and type-checking are handled by Vite+ (oxlint + oxfmt + tsc). Tests use Vitest.
 
 ```bash
-bun run check        # vp check: lint + fmt + typecheck (warnings pass, errors fail) + bun run lint:keys
-bun run check --fix  # auto-fix linting and formatting
-bun run test         # vp test run (Vitest, node environment)
-bun run lint         # vp lint (oxlint only)
-bun run fmt          # vp fmt (oxfmt only)
+pnpm run check        # vp check: lint + fmt + typecheck (warnings pass, errors fail) + pnpm run lint:keys
+pnpm run check --fix  # auto-fix linting and formatting
+pnpm run test         # vp test run (Vitest, node environment)
+pnpm run lint         # vp lint (oxlint only)
+pnpm run fmt          # vp fmt (oxfmt only)
 ```
 
-Note: `bun run check` exits 0 even with lint warnings (warnings are not errors). To suppress warnings for intentionally unused code (e.g., catch parameters), add `/* oxlint-disable no-unused-vars */` at the top of the file. Run `bun run check --fix` to auto-fix formatting and lint issues.
+Note: `pnpm run check` exits 0 even with lint warnings (warnings are not errors). To suppress warnings for intentionally unused code (e.g., catch parameters), add `/* oxlint-disable no-unused-vars */` at the top of the file. Run `pnpm run check --fix` to auto-fix formatting and lint issues.
 
 ## Dev Commands
 
 Worker config is generated from Infisical-injected environment variables. For local development, authenticate with `infisical login` and create/confirm the ignored local `.infisical.json` with `infisical init`; do not use Machine Identity client credentials for local commands.
 
 ```bash
-bun run dev          # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with local D1
+pnpm run dev          # starts Hono/Cloudflare Worker on 0.0.0.0:8787 with local D1
 
-bun run db:generate   # generate Drizzle migrations (runs @strength/db)
-bun run db:apply:local # apply migrations to local D1 (runs @strength/worker)
+pnpm run db:generate   # generate Drizzle migrations (runs @strength/db)
+pnpm run db:apply:local # apply migrations to local D1 (runs @strength/worker)
 ```
 
-Note: Dev uses a static Expo web build (like staging), not Metro HMR. Run `bun run web:build` after any Expo code changes to update the static files. The worker serves these via `[assets]` at `strength-dev.stevenduong.com`.
+Note: Dev uses a static Expo web build (like staging), not Metro HMR. Run `pnpm run web:build` after any Expo code changes to update the static files. The worker serves these via `[assets]` at `strength-dev.stevenduong.com`.
 
 ## Architecture
 
@@ -68,7 +68,7 @@ Existing handlers in `index.ts` (inline) and `apps/worker/src/api/nutrition/` (m
 2. Run `infisical init` and select the strength Infisical project
 3. `cd apps/worker && wrangler d1 create strength-db-dev-remote`
 4. Store the returned UUID in Infisical `dev` as `CLOUDFLARE_D1_ID`
-5. `bun run db:push:dev`
+5. `pnpm run db:push:dev`
 
 `apps/worker/wrangler.toml` is generated from `apps/worker/wrangler.template.toml` and uses the relative path `../../packages/db/drizzle/migrations` for migrations. It contains plaintext secret values, is gitignored, and should never be committed.
 
@@ -94,4 +94,4 @@ Secrets are injected by Infisical at runtime. There is no `.env` file in the rep
 
 ## Package Manager
 
-Bun (bun@1.3.13). Use `bun install`, `bun run`, etc. Do not use npm/yarn/pnpm.
+pnpm (pnpm@11.1.1). Use `pnpm install`, `pnpm run`, etc.

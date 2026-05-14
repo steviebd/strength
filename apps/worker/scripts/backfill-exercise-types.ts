@@ -5,10 +5,10 @@
  * mappings and runs them against the local or remote D1 database via wrangler.
  *
  * Usage:
- *   cd apps/worker && bun run scripts/backfill-exercise-types.ts
+ *   cd apps/worker && pnpm exec tsx scripts/backfill-exercise-types.ts
  *
  * For remote database:
- *   cd apps/worker && WRANGLER_ENV=production bun run scripts/backfill-exercise-types.ts
+ *   cd apps/worker && WRANGLER_ENV=production pnpm exec tsx scripts/backfill-exercise-types.ts
  */
 
 import { EXERCISE_TYPE_BY_LIBRARY_ID } from '@strength/db/exercise-library';

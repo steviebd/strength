@@ -17,7 +17,7 @@ only when the worker is not on that local address.
 Start the normal local dev stack:
 
 ```bash
-bun run dev
+pnpm run dev
 ```
 
 This starts the Worker through Infisical with local D1, then starts Expo. Maestro uses the same
@@ -41,41 +41,41 @@ Coverage:
 Run all flows:
 
 ```bash
-bun run e2e:maestro
+pnpm run e2e:maestro
 ```
 
 Recommended Expo Go loop:
 
 ```bash
 # terminal 1: Worker + Expo
-bun run dev
+pnpm run dev
 
 # open the project in Expo Go on the emulator/device
 
 # terminal 2: run one flow
-bun run e2e:maestro apps/expo/.maestro/00-auth.yml
+pnpm run e2e:maestro apps/expo/.maestro/00-auth.yml
 ```
 
 For a physical Android device:
 
 ```bash
-MAESTRO_OPEN_LINK=exp://<your-lan-ip>:8081 bun run e2e:maestro apps/expo/.maestro/00-auth.yml
+MAESTRO_OPEN_LINK=exp://<your-lan-ip>:8081 pnpm run e2e:maestro apps/expo/.maestro/00-auth.yml
 ```
 
 To run against a built APK instead of Expo Go:
 
 ```bash
 # Production build
-MAESTRO_APP_ID=com.strength.app bun run e2e:maestro
+MAESTRO_APP_ID=com.strength.app pnpm run e2e:maestro
 
 # Staging build
-MAESTRO_APP_ID=com.strength.app.staging bun run e2e:maestro
+MAESTRO_APP_ID=com.strength.app.staging pnpm run e2e:maestro
 ```
 
 To launch Maestro Studio with Infisical-loaded env:
 
 ```bash
-bun run e2e:maestro:studio
+pnpm run e2e:maestro:studio
 ```
 
 If you open the Maestro desktop app directly, it will not inherit Infisical env from this repo. Launch
