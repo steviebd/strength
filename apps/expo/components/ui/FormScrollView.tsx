@@ -50,7 +50,7 @@ export const FormScrollView = React.forwardRef<ScrollView, FormScrollViewProps>(
     React.useImperativeHandle(ref, () => scrollViewRef.current as ScrollView);
 
     return (
-      <ScrollProvider scrollViewRef={scrollViewRef} topInset={topPadding} keyboardHeight={keyboardHeight}>
+      <ScrollProvider scrollViewRef={scrollViewRef} topInset={topPadding}>
         <ScrollView
           ref={scrollViewRef}
           style={[{ flex: 1, backgroundColor: colors.background }, style]}

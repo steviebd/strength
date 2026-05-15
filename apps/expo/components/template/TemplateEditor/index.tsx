@@ -15,8 +15,7 @@ import { colors, spacing, statusBg, typography } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { Collapsible } from '@/components/ui/Collapsible';
-import { ScreenScrollView } from '@/components/ui/Screen';
+import { FormScrollView } from '@/components/ui/FormScrollView';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { useUndo } from '@/hooks/useUndo';
 import { apiFetch } from '@/lib/api';
@@ -26,7 +25,25 @@ import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { toDisplayHeight, toStorageHeight } from '@/lib/units';
 import { upsertLocalTemplateSnapshot } from '@/db/workouts';
 import { exerciseLibrary } from '@strength/db/client';
+import { useScrollToInput } from '@/context/ScrollContext';
 import type { SelectedExercise, Template, TemplateEditorProps } from './types';
+
+function CounterTextInput(props: React.ComponentProps<typeof TextInput>) {
+  const containerRef = useRef<View>(null);
+  const scrollToInput = useScrollToInput();
+
+  return (
+    <View ref={containerRef} collapsable={false} style={{ flex: 1 }}>
+      <TextInput
+        {...props}
+        onFocus={(e) => {
+          requestAnimationFrame(() => scrollToInput(containerRef));
+          props.onFocus?.(e);
+        }}
+      />
+    </View>
+  );
+}
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -81,7 +98,6 @@ function buildTemplateExercisePayload(exercise: SelectedExercise, orderIndex: nu
 interface FormData {
   name: string;
   description: string;
-  notes: string;
 }
 
 type ProgressionValues = {
@@ -122,7 +138,6 @@ function useTemplateEditorState(
   const [formData, setFormDataState] = useState<FormData>({
     name: initialFormData?.name ?? '',
     description: initialFormData?.description ?? '',
-    notes: initialFormData?.notes ?? '',
   });
   const [selectedExercises, setSelectedExercises] = useState<SelectedExercise[]>(
     initialExercises ?? [],
@@ -301,7 +316,6 @@ function useTemplateEditorApi({
         ...(isNew ? { id: entityId } : {}),
         name: formData.name,
         description: formData.description || undefined,
-        notes: formData.notes || undefined,
         defaultWeightIncrement: progressionValues.defaultWeightIncrement,
         defaultBodyweightIncrement: progressionValues.defaultBodyweightIncrement,
         defaultCardioIncrement: progressionValues.defaultCardioIncrement,
@@ -331,7 +345,6 @@ function useTemplateEditorApi({
               ...templatePayload,
               id: entityId,
               description: formData.description || null,
-              notes: formData.notes || null,
               createdAt: now,
               updatedAt: now,
               exercises: exercisePayloads,
@@ -568,7 +581,6 @@ export function TemplateEditor({
   const initialFormData = {
     name: initialData?.name ?? '',
     description: initialData?.description ?? '',
-    notes: initialData?.notes ?? '',
   };
 
   const initialExercises =
@@ -778,7 +790,7 @@ export function TemplateEditor({
 
   return (
     <View style={styles.container}>
-      <ScreenScrollView bottomInset={160} horizontalPadding={16} topPadding={insets.top + 16}>
+      <FormScrollView bottomInset={160} horizontalPadding={16} topPadding={insets.top + 16}>
         <View style={styles.section}>
           <Text style={styles.label}>Template Name *</Text>
           <Input
@@ -799,15 +811,6 @@ export function TemplateEditor({
             onChangeText={(text) => setFormData({ description: text })}
           />
         </View>
-
-        <Collapsible label="Notes" style={styles.section}>
-          <Input
-            placeholder="Enter notes (optional)"
-            value={formData.notes}
-            onChangeText={(text) => setFormData({ notes: text })}
-            style={styles.notesInput}
-          />
-        </Collapsible>
 
         {selectedExercises.length > 0 && (
           <View style={styles.section}>
@@ -929,7 +932,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="numeric"
                             selectTextOnFocus
@@ -981,7 +984,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="decimal-pad"
                             selectTextOnFocus
@@ -1041,7 +1044,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="decimal-pad"
                             selectTextOnFocus
@@ -1088,7 +1091,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="decimal-pad"
                             selectTextOnFocus
@@ -1135,7 +1138,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="decimal-pad"
                             selectTextOnFocus
@@ -1183,7 +1186,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="decimal-pad"
                             selectTextOnFocus
@@ -1236,7 +1239,7 @@ export function TemplateEditor({
                           >
                             <Text style={styles.counterButtonText}>-</Text>
                           </Pressable>
-                          <TextInput
+                          <CounterTextInput
                             style={styles.counterInput}
                             keyboardType="numeric"
                             selectTextOnFocus
@@ -1360,7 +1363,7 @@ export function TemplateEditor({
             </View>
           )}
         </View>
-      </ScreenScrollView>
+      </FormScrollView>
 
       {offlineMessage && (
         <View style={styles.offlineBanner}>
@@ -1428,11 +1431,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.error,
     marginTop: 4,
-  },
-  notesInput: {
-    height: 96,
-    paddingVertical: 12,
-    textAlignVertical: 'top',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1578,13 +1576,12 @@ const styles = StyleSheet.create({
   },
   typeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 4,
     marginBottom: 12,
   },
   typeChip: {
     borderRadius: 9999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     paddingVertical: 6,
     borderWidth: 1,
   },
