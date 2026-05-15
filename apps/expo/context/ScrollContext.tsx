@@ -20,9 +20,15 @@ interface ScrollProviderProps {
   children: ReactNode;
   scrollViewRef: RefObject<ScrollView | null>;
   topInset?: number;
+  keyboardHeight?: number;
 }
 
-export function ScrollProvider({ children, scrollViewRef, topInset = 0 }: ScrollProviderProps) {
+export function ScrollProvider({
+  children,
+  scrollViewRef,
+  topInset = 0,
+  keyboardHeight = 0,
+}: ScrollProviderProps) {
   function measureAndScroll(inputRef: RefObject<any>, offset: number, retry = true) {
     const inputNode = inputRef?.current;
     const scrollView = scrollViewRef?.current;
@@ -58,7 +64,7 @@ export function ScrollProvider({ children, scrollViewRef, topInset = 0 }: Scroll
       },
       (_x: number, y: number) => {
         scrollView.scrollTo({
-          y: Math.max(0, y - offset - topInset),
+          y: Math.max(0, y - offset - keyboardHeight - topInset),
           animated: true,
         });
       },
