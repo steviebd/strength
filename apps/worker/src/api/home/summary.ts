@@ -242,6 +242,7 @@ export async function homeSummaryHandler(c: any) {
       ),
     )
     .orderBy(desc(schema.userProgramCycles.startedAt))
+    .limit(1)
     .all();
 
   if (needsRecompute) {
@@ -484,39 +485,41 @@ export async function homeSummaryHandler(c: any) {
       ? `${Math.round(displayVolume / 1000)}k ${weightUnit}`
       : `${Math.round(displayVolume)} ${weightUnit}`;
 
-  const lookbackStartLocal = addDaysToLocalDate(localDate, -365);
-  const { start: streakRangeStart } = getUtcRangeForLocalDate(lookbackStartLocal, timezone);
-  const { end: streakRangeEnd } = getUtcRangeForLocalDate(localDate, timezone);
-
-  const recentWorkoutDates = await db
-    .select({ completedAt: schema.workouts.completedAt })
-    .from(schema.workouts)
-    .where(
-      and(
-        eq(schema.workouts.userId, userId),
-        eq(schema.workouts.isDeleted, false),
-        isNotNull(schema.workouts.completedAt),
-        gte(schema.workouts.completedAt, streakRangeStart),
-        lte(schema.workouts.completedAt, streakRangeEnd),
-      ),
-    )
-    .limit(500)
-    .all();
-
-  const workoutDates = new Set(
-    recentWorkoutDates
-      .map((w) => (w.completedAt ? formatLocalDate(new Date(w.completedAt), timezone) : null))
-      .filter((d): d is string => d !== null),
-  );
-  const streakDays = computeStreak(localDate, workoutDates);
-
   const weeklyStats = {
     workoutsCompleted,
     workoutsTarget,
-    streakDays,
+    streakDays: cached?.streakCount ?? 0,
     totalVolume,
     totalVolumeLabel,
   };
+
+  if (needsRecompute) {
+    const lookbackStartLocal = addDaysToLocalDate(localDate, -365);
+    const { start: streakRangeStart } = getUtcRangeForLocalDate(lookbackStartLocal, timezone);
+    const { end: streakRangeEnd } = getUtcRangeForLocalDate(localDate, timezone);
+
+    const recentWorkoutDates = await db
+      .select({ completedAt: schema.workouts.completedAt })
+      .from(schema.workouts)
+      .where(
+        and(
+          eq(schema.workouts.userId, userId),
+          eq(schema.workouts.isDeleted, false),
+          isNotNull(schema.workouts.completedAt),
+          gte(schema.workouts.completedAt, streakRangeStart),
+          lte(schema.workouts.completedAt, streakRangeEnd),
+        ),
+      )
+      .limit(500)
+      .all();
+
+    const workoutDates = new Set(
+      recentWorkoutDates
+        .map((w) => (w.completedAt ? formatLocalDate(new Date(w.completedAt), timezone) : null))
+        .filter((d): d is string => d !== null),
+    );
+    weeklyStats.streakDays = computeStreak(localDate, workoutDates);
+  }
 
   const isWhoopConnected = !!whoopProfile;
   const strain = whoopCycles.length > 0 ? (whoopCycles[0].dayStrain ?? null) : null;

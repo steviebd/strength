@@ -29,6 +29,7 @@ router.get(
       .from(schema.templates)
       .where(and(eq(schema.templates.userId, userId), eq(schema.templates.isDeleted, false)))
       .orderBy(desc(schema.templates.createdAt))
+      .limit(50)
       .all();
 
     if (results.length === 0) {
