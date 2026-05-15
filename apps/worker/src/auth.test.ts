@@ -25,11 +25,19 @@ vi.mock('drizzle-orm/d1', () => ({
 }));
 
 const mockDb = {} as D1Database;
+const mockRateLimit = { limit: () => Promise.resolve({ success: true }) } as unknown as RateLimit;
+const baseEnv = {
+  DB: mockDb,
+  RATE_LIMITER_AUTH: mockRateLimit,
+  RATE_LIMITER_GENERAL: mockRateLimit,
+  RATE_LIMITER_CHAT: mockRateLimit,
+  RATE_LIMITER_WHOOP: mockRateLimit,
+};
 
 describe('createAuth', () => {
   test('configures sessions to expire after 10 days of inactivity', () => {
     createAuth({
-      DB: mockDb,
+      ...baseEnv,
       BETTER_AUTH_SECRET: 'secret',
       WORKER_BASE_URL: 'http://localhost:8787',
       APP_ENV: 'development',
@@ -54,7 +62,7 @@ describe('createAuth', () => {
   test('throws in production when WORKER_BASE_URL is missing', () => {
     expect(() =>
       createAuth({
-        DB: mockDb,
+        ...baseEnv,
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: '',
         APP_ENV: 'production',
@@ -69,7 +77,7 @@ describe('createAuth', () => {
   test('throws in production when WORKER_BASE_URL is http', () => {
     expect(() =>
       createAuth({
-        DB: mockDb,
+        ...baseEnv,
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: 'http://example.com',
         APP_ENV: 'production',
@@ -84,7 +92,7 @@ describe('createAuth', () => {
   test('does not throw in development with http base URL', () => {
     expect(() =>
       createAuth({
-        DB: mockDb,
+        ...baseEnv,
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: 'http://localhost:8787',
         APP_ENV: 'development',
@@ -97,7 +105,7 @@ describe('createAuth', () => {
   test('does not throw in production with https base URL', () => {
     expect(() =>
       createAuth({
-        DB: mockDb,
+        ...baseEnv,
         BETTER_AUTH_SECRET: 'secret',
         WORKER_BASE_URL: 'https://example.com',
         APP_ENV: 'production',

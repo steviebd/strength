@@ -11,6 +11,10 @@ import { sendPasswordResetEmail, sendVerificationEmail } from './auth/email';
 export interface WorkerEnv {
   DB: D1Database;
   NUTRITION_CHAT_QUEUE?: Queue<NutritionChatQueueMessage>;
+  RATE_LIMITER_AUTH: RateLimit;
+  RATE_LIMITER_GENERAL: RateLimit;
+  RATE_LIMITER_CHAT: RateLimit;
+  RATE_LIMITER_WHOOP: RateLimit;
   BETTER_AUTH_SECRET: string;
   WORKER_BASE_URL: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
@@ -28,7 +32,6 @@ export interface WorkerEnv {
   ENCRYPTION_MASTER_KEY?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  RATE_LIMIT_REQUEST_PER_HOUR?: string;
   SKIP_RATE_LIMIT?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;

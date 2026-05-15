@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { getModel } from '../../lib/ai';
-import { checkRateLimit, getRateLimitPerHour, shouldSkipRateLimit } from '../../lib/rate-limit';
+import { checkRateLimit, shouldSkipRateLimit } from '../../lib/rate-limit';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
@@ -387,9 +387,9 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   if (!shouldSkipRateLimit(c.env)) {
-    const rateLimit = await checkRateLimit(userId, 'nutrition-chat', getRateLimitPerHour(c.env));
+    const rateLimit = await checkRateLimit(c.env, userId, '/api/nutrition/chat');
     if (!rateLimit.allowed) {
-      return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
+      return c.json({ message: 'Rate limit exceeded' }, 429);
     }
   }
 

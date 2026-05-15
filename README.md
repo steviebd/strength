@@ -122,11 +122,17 @@ then pass the generated values directly to `eas build --local`.
 
 Staging and production apps can be installed side-by-side because they use different package/bundle identifiers.
 
+**Required in all environments:**
+
+| Secret | Notes |
+|--------|-------|
+| `RATE_LIMIT_NAMESPACE_AUTH`, `RATE_LIMIT_NAMESPACE_GENERAL`, `RATE_LIMIT_NAMESPACE_CHAT`, `RATE_LIMIT_NAMESPACE_WHOOP` | Namespace IDs for Cloudflare Rate Limiting bindings (unique positive integers per account) |
+| `RATE_LIMIT_AUTH`, `RATE_LIMIT_GENERAL`, `RATE_LIMIT_CHAT`, `RATE_LIMIT_WHOOP` | Per-60s rate limits for each namespace |
+
 **Optional:**
 
 | Secret | Notes |
 |--------|-------|
-| `RATE_LIMIT_REQUEST_PER_HOUR` | Overrides the default rate limit of 1000 req/hr per user per endpoint |
 | `AI_GATEWAY_NAME` | Cloudflare AI Gateway ID |
 | `AI_MODEL_NAME` | Model name (defaults in worker) |
 

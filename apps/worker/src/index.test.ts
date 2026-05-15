@@ -68,12 +68,18 @@ function createMockDb() {
   };
 }
 
+const mockRateLimit = { limit: () => Promise.resolve({ success: true }) } as unknown as RateLimit;
+
 const baseEnv = {
   APP_ENV: 'development',
   WORKER_BASE_URL: 'http://localhost:8787',
   APP_SCHEME: 'strength',
   DB: {} as D1Database,
   BETTER_AUTH_SECRET: 'secret',
+  RATE_LIMITER_AUTH: mockRateLimit,
+  RATE_LIMITER_GENERAL: mockRateLimit,
+  RATE_LIMITER_CHAT: mockRateLimit,
+  RATE_LIMITER_WHOOP: mockRateLimit,
 };
 
 beforeEach(() => {

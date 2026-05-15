@@ -1208,12 +1208,12 @@ export default function ProgramsScreen() {
     setShowDetailModal(true);
   };
 
-  const openStartModal = () => {
+  const openStartModal = (programOverride?: { slug: string; daysPerWeek: number }) => {
+    const program = programOverride ?? selectedProgram;
     setOfflineMessage(null);
 
-    // Find exercises with prompt_1rm mode for custom programs
-    if (selectedProgram?.slug.startsWith('custom:')) {
-      const programId = selectedProgram.slug.replace('custom:', '');
+    if (program?.slug.startsWith('custom:')) {
+      const programId = program.slug.replace('custom:', '');
       const customProgram = customPrograms.find((p) => p.id === programId);
       if (customProgram) {
         const promptExercises = customProgram.workouts
@@ -1256,7 +1256,7 @@ export default function ProgramsScreen() {
     }
 
     const defaultDays: DayOfWeek[] =
-      selectedProgram?.daysPerWeek === 4
+      program?.daysPerWeek === 4
         ? ['monday', 'wednesday', 'thursday', 'friday']
         : ['monday', 'wednesday', 'friday'];
 
@@ -1403,13 +1403,7 @@ export default function ProgramsScreen() {
                         };
                         setSelectedProgram(customProgramInfo);
                         setStartingCustomProgramId(program.id);
-                        // Set gym days inline since openStartModal reads selectedProgram (async)
-                        setPreferredGymDays(
-                          program.daysPerWeek === 4
-                            ? ['monday', 'wednesday', 'thursday', 'friday']
-                            : ['monday', 'wednesday', 'friday'],
-                        );
-                        setShowStartModal(true);
+                        openStartModal(customProgramInfo);
                       }}
                     />
                   </View>

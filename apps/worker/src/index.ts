@@ -23,13 +23,7 @@ import {
   buildWhoopCallbackRedirect,
   resolveWhoopRedirectBaseURL,
 } from './lib/whoop-oauth';
-import {
-  checkRateLimit,
-  getRateLimitGranularity,
-  getRateLimitPerHour,
-  getRateLimitByEndpoint,
-  shouldSkipRateLimit,
-} from './lib/rate-limit';
+import { checkRateLimit, shouldSkipRateLimit } from './lib/rate-limit';
 import { eq } from 'drizzle-orm';
 import * as schema from '@strength/db';
 import { hashPassword } from './auth/password';
@@ -351,16 +345,7 @@ app.use('/api/*', async (c, next) => {
   const user = c.get('user');
   const key =
     user?.id ?? c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown';
-  const granularity = getRateLimitGranularity(c.req.method, c.req.path);
-
-  if (granularity === 'skip') {
-    await next();
-    return;
-  }
-
-  const rateLimitEndpoint = granularity === 'read' ? 'read' : c.req.path;
-  const limit = getRateLimitByEndpoint(c.req.path);
-  const result = await checkRateLimit(key, rateLimitEndpoint, limit);
+  const result = await checkRateLimit(c.env, key, c.req.path);
   if (!result.allowed) {
     return c.json({ message: 'Rate limit exceeded' }, 429);
   }
@@ -587,11 +572,7 @@ app.get('/api/auth/whoop/callback', async (c) => {
   const redirectUri = `${baseURL}/api/auth/whoop/callback`;
 
   if (!shouldSkipRateLimit(resolvedEnv)) {
-    const rateLimit = await checkRateLimit(
-      userId,
-      'whoop-callback',
-      getRateLimitPerHour(resolvedEnv),
-    );
+    const rateLimit = await checkRateLimit(resolvedEnv, userId, '/api/auth/whoop/callback');
     if (!rateLimit.allowed) {
       return c.redirect(buildWhoopCallbackRedirect(deepLink, { error: 'rate_limited' }));
     }
@@ -681,7 +662,7 @@ app.post('/api/webhooks/whoop', async (c) => {
     }
 
     if (!shouldSkipRateLimit(c.env)) {
-      const rateLimit = await checkRateLimit(userId, 'whoop-webhook', getRateLimitPerHour(c.env));
+      const rateLimit = await checkRateLimit(c.env, userId, '/api/webhooks/whoop');
       if (!rateLimit.allowed) {
         return c.json({ error: 'Rate limit exceeded' }, 429);
       }
