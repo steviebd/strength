@@ -229,7 +229,7 @@ function buildTemplateValues(args: Args): Record<string, string> {
     '',
     renderQueueBlock(`strength-nutrition-chat-${envName}`, `env.${envName}.`),
     '',
-    renderRatelimitsBlock(rateLimitVars).replace(/^\[/gm, `[env.${envName}.`),
+    renderRatelimitsBlock(rateLimitVars).replace(/\[ratelimits/g, `[env.${envName}.ratelimits`),
     '',
     renderVarsTable(`[env.${envName}.vars]`, vars),
   ]
