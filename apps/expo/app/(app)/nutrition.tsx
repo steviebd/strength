@@ -91,6 +91,11 @@ interface ChatCreateResponse {
   status: 'pending';
 }
 
+interface ChatCreateImageResponse {
+  content: string;
+  assistantMessageId: string;
+}
+
 interface ChatJobResponse {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -746,14 +751,35 @@ export default function NutritionScreen() {
           },
         });
 
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === assistantMsgId
-              ? { ...message, jobId: response.jobId, status: undefined }
-              : message,
-          ),
-        );
-        await pollChatJob(response.jobId, assistantMsgId);
+        if ('jobId' in response && response.jobId) {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantMsgId
+                ? { ...message, jobId: response.jobId, status: undefined }
+                : message,
+            ),
+          );
+          await pollChatJob(response.jobId, assistantMsgId);
+        } else {
+          const imageResponse = response as unknown as ChatCreateImageResponse;
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantMsgId
+                ? {
+                    ...message,
+                    content: imageResponse.content,
+                    isPlaceholder: false,
+                    queueId: undefined,
+                    jobId: undefined,
+                    status: undefined,
+                    analysis:
+                      parseMealAnalysisFromContent(imageResponse.content) ?? message.analysis,
+                  }
+                : message,
+            ),
+          );
+          setIsLoading(false);
+        }
       } catch (error) {
         if (error instanceof OfflineError || (error as Error)?.name === 'OfflineError') {
           setMessages((prev) =>
