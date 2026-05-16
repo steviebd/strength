@@ -1,0 +1,76 @@
+appId: ${MAESTRO_APP_ID}
+---
+- runFlow: _shared-login.yml
+- tapOn: 'Programs'
+- tapOn:
+    id: 'program-create-custom'
+- tapOn:
+    id: 'custom-program-name'
+- inputText: 'E2E Custom Program ${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'custom-program-workout-name-1'
+- eraseText
+- inputText: 'AMRAP Strength Day'
+- tapOn:
+    id: 'custom-program-workout-1-add-exercise'
+- tapOn:
+    id: 'workout-exercise-create-open'
+- tapOn:
+    id: 'workout-exercise-create-name'
+- inputText: 'E2E AMRAP Press ${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'workout-exercise-create-muscle-Chest'
+- tapOn:
+    id: 'workout-exercise-create-amrap'
+- tapOn:
+    id: 'workout-exercise-create-submit'
+- extendedWaitUntil:
+    visible: 'E2E AMRAP Press ${MAESTRO_RUN_ID}'
+    timeout: 15000
+- tapOn:
+    id: 'workout-exercise-confirm'
+- assertVisible: 'AMRAP'
+- tapOn:
+    id: 'custom-program-exercise-1-mode-prompt_1rm'
+- tapOn:
+    id: 'custom-program-save'
+- extendedWaitUntil:
+    visible: 'E2E Custom Program ${MAESTRO_RUN_ID}'
+    timeout: 15000
+- tapOn:
+    id: 'custom-program-start-e2e-custom-program-${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'program-1rm-squat'
+- inputText: '100'
+- tapOn:
+    id: 'program-1rm-bench'
+- inputText: '80'
+- tapOn:
+    id: 'program-1rm-deadlift'
+- inputText: '120'
+- tapOn:
+    id: 'program-1rm-ohp'
+- inputText: '50'
+- tapOn:
+    id: 'program-continue-to-schedule'
+- assertVisible: 'Schedule'
+- tapOn:
+    id: 'program-continue-to-review'
+- assertVisible: 'Custom 1RM'
+- tapOn:
+    id: 'program-custom-1rm-1'
+- inputText: '90'
+- tapOn:
+    id: 'program-custom-1rm-continue'
+- assertVisible: 'Review'
+- tapOn:
+    id: 'program-confirm-start'
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 20000
+- tapOn: 'Programs'
+- assertVisible: 'Active Programs'
+- assertVisible: 'E2E Custom Program ${MAESTRO_RUN_ID}'
+- tapOn: 'View Schedule'
+- assertVisible: 'Upcoming Schedule'
+- assertVisible: 'AMRAP Strength Day'

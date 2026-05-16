@@ -1,0 +1,27 @@
+appId: ${MAESTRO_APP_ID}
+---
+- launchApp
+- openLink: ${MAESTRO_OPEN_LINK}
+- tapOn:
+    text: 'Sign In'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Welcome back'
+    timeout: 45000
+- tapOn:
+    id: 'auth-sign-in-email'
+- inputText: '${E2E_EMAIL}'
+- tapOn:
+    id: 'auth-sign-in-password'
+- inputText: '${E2E_PASSWORD}'
+- tapOn:
+    id: 'auth-sign-in-submit'
+- extendedWaitUntil:
+    visible: 'Home'
+    timeout: 15000
+- tapOn:
+    id: 'onboarding-timezone-confirm'
+    optional: true
+- tapOn:
+    id: 'onboarding-weight-skip'
+    optional: true

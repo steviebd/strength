@@ -500,6 +500,7 @@ export function ExerciseSearch({
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Name *</Text>
               <TextInput
+                testID="workout-exercise-create-name"
                 style={styles.formInput}
                 placeholder="e.g. Hammer Curls"
                 placeholderTextColor={colors.placeholderText}
@@ -518,6 +519,8 @@ export function ExerciseSearch({
                   const isSelected = createForm.muscleGroup === group;
                   return (
                     <Pressable
+                      testID={`workout-exercise-create-muscle-${group}`}
+                      accessibilityLabel={`workout-exercise-create-muscle-${group}`}
                       key={`muscle-group:${group}`}
                       onPress={() => handleSelectMuscleGroup(group)}
                       style={[
@@ -569,6 +572,8 @@ export function ExerciseSearch({
                   const isSelected = createForm.exerciseType === type;
                   return (
                     <Pressable
+                      testID={`workout-exercise-create-type-${type}`}
+                      accessibilityLabel={`workout-exercise-create-type-${type}`}
                       key={`exercise-type:${type}`}
                       onPress={() => setCreateForm((f) => ({ ...f, exerciseType: type }))}
                       style={[
@@ -593,6 +598,8 @@ export function ExerciseSearch({
             <View style={[styles.formField, styles.amrapRow]}>
               <Text style={styles.formLabel}>AMRAP</Text>
               <Pressable
+                testID="workout-exercise-create-amrap"
+                accessibilityLabel="workout-exercise-create-amrap"
                 onPress={() => setCreateForm((f) => ({ ...f, isAmrap: !f.isAmrap }))}
                 style={[styles.amrapTrack, createForm.isAmrap && styles.amrapTrackOn]}
               >
@@ -624,6 +631,8 @@ export function ExerciseSearch({
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
             <Pressable
+              testID="workout-exercise-create-submit"
+              accessibilityLabel="workout-exercise-create-submit"
               onPress={handleCreateExercise}
               disabled={creating}
               style={({ pressed }) => [
@@ -639,6 +648,8 @@ export function ExerciseSearch({
       ) : (
         <>
           <Pressable
+            testID="workout-exercise-create-open"
+            accessibilityLabel="workout-exercise-create-open"
             onPress={() => {
               setShowCreateForm(true);
               setSearchQuery('');

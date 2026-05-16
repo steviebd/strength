@@ -253,6 +253,64 @@ app.use('/api/*', async (c, next) => {
   await next();
 });
 
+// CSRF cookie setter for authenticated responses.
+// Register before routes so it wraps route handlers.
+app.use('/api/*', async (c, next) => {
+  await next();
+
+  const path = c.req.path;
+  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) {
+    return;
+  }
+
+  const user = c.get('user');
+  if (user) {
+    const existing = getCookie(c, 'csrf_token');
+    if (!existing) {
+      setCookie(c, 'csrf_token', generateCsrfToken(), {
+        path: '/',
+        sameSite: 'Lax',
+        secure: c.env.APP_ENV !== 'development',
+      });
+    }
+  }
+});
+
+// Cache-Control middleware for read-heavy GET endpoints.
+// Register before routes so it wraps route handlers.
+app.use('/api/*', async (c, next) => {
+  await next();
+  if (c.req.method === 'GET') {
+    const path = c.req.path;
+    const cacheablePrefixes = ['/api/exercises', '/api/programs'];
+    const isCacheable =
+      cacheablePrefixes.some((prefix) => path.startsWith(prefix)) || path === '/api/home/summary';
+    if (isCacheable) {
+      c.header('Cache-Control', 'private, max-age=30');
+    }
+  }
+});
+
+// Security headers middleware. Register before routes so it wraps all responses.
+app.use('*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  if (c.env.APP_ENV !== 'development') {
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  const contentType = c.res.headers.get('content-type') ?? '';
+  const htmlAllowsInline = contentType.toLowerCase().includes('text/html');
+  c.header(
+    'Content-Security-Policy',
+    htmlAllowsInline
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
+      : "default-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+  );
+});
+
 app.use('/api/*', async (c, next) => {
   await next();
 
@@ -424,52 +482,6 @@ app.route('/api/nutrition', nutritionRouter);
 app.route('/api/home', homeRouter);
 app.route('/api/training', trainingRouter);
 app.route('/api/custom-programs', customProgramsRouter);
-
-// CSRF cookie setter for authenticated responses
-app.use('/api/*', async (c, next) => {
-  await next();
-
-  const path = c.req.path;
-  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) {
-    return;
-  }
-
-  const user = c.get('user');
-  if (user) {
-    const existing = getCookie(c, 'csrf_token');
-    if (!existing) {
-      setCookie(c, 'csrf_token', generateCsrfToken(), {
-        path: '/',
-        sameSite: 'Lax',
-        secure: c.env.APP_ENV !== 'development',
-      });
-    }
-  }
-});
-
-// Cache-Control middleware for read-heavy GET endpoints
-app.use('/api/*', async (c, next) => {
-  await next();
-  if (c.req.method === 'GET') {
-    const path = c.req.path;
-    const cacheablePrefixes = ['/api/exercises', '/api/programs'];
-    const isCacheable =
-      cacheablePrefixes.some((prefix) => path.startsWith(prefix)) || path === '/api/home/summary';
-    if (isCacheable) {
-      c.header('Cache-Control', 'private, max-age=30');
-    }
-  }
-});
-
-// Security headers middleware
-app.use('*', async (c, next) => {
-  await next();
-  c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
-  c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-  c.header('Content-Security-Policy', "default-src 'self'");
-});
 
 // WHOOP OAuth landing page (no auth)
 app.get('/connect-whoop', (c) => {

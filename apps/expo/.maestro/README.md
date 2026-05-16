@@ -35,14 +35,22 @@ Coverage:
   workout.
 - `20-programs.yml`: create a StrongLifts program, verify scheduled/program weights, complete a
   cycle session, inspect schedule, and delete the program.
+- `25-custom-programs.yml`: create a custom program with a new custom AMRAP exercise, configure it
+  to ask for a custom 1RM at start, start the program, verify the custom 1RM step, and inspect its
+  schedule.
 - `30-nutrition.yml`: submit a deterministic Big Mac/fries prompt, verify returned macros, save,
   unsave, re-save, and delete the meal.
 
 Run all flows:
 
 ```bash
+pnpm run e2e:maestro:verify
 pnpm run e2e:maestro
 ```
+
+`e2e:maestro:verify` is a static preflight. It verifies helper flow references, runnable flow
+discovery, source `testID`/`accessibilityLabel` references, and the required coverage signals. The
+real device verification is still `pnpm run e2e:maestro`.
 
 Recommended Expo Go loop:
 

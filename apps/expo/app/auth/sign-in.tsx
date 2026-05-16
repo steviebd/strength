@@ -353,14 +353,6 @@ export default function SignInScreen() {
             </Text>
           </Link>
         </View>
-
-        <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: spacing.xs }}>
-          <Link href={'/auth/forgot-password' as any}>
-            <Text style={{ ...textRoles.body, color: colors.accent, fontWeight: '500' }}>
-              Forgot password?
-            </Text>
-          </Link>
-        </View>
       </View>
 
       {/* Proactive OAuth-only detection modal */}
