@@ -65,7 +65,7 @@ export function ScrollProvider({ children, scrollViewRef, topInset = 0 }: Scroll
     );
   }
 
-  function scrollToInput(inputRef: RefObject<any>, offset = 80) {
+  function scrollToInput(inputRef: RefObject<any>, offset = 60) {
     measureAndScroll(inputRef, offset);
   }
 

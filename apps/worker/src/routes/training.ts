@@ -286,36 +286,22 @@ router.get(
   createHandler(async (c, { userId, db }) => {
     const recentWorkoutLimit = parseLimit(c.req.query('recentWorkoutLimit'), 20);
 
-    const templateMax = await db
-      .select({ max: sql`max(${schema.templates.updatedAt})` })
-      .from(schema.templates)
-      .where(and(eq(schema.templates.userId, userId), eq(schema.templates.isDeleted, false)))
-      .get();
-    const exerciseMax = await db
-      .select({ max: sql`max(${schema.exercises.updatedAt})` })
-      .from(schema.exercises)
-      .where(and(eq(schema.exercises.userId, userId), eq(schema.exercises.isDeleted, false)))
-      .get();
-    const cycleMax = await db
-      .select({ max: sql`max(${schema.userProgramCycles.updatedAt})` })
-      .from(schema.userProgramCycles)
-      .where(
-        and(
-          eq(schema.userProgramCycles.userId, userId),
-          eq(schema.userProgramCycles.status, 'active'),
-        ),
-      )
-      .get();
-    const workoutsMax = await db
-      .select({ max: sql`max(${schema.workouts.updatedAt})` })
-      .from(schema.workouts)
-      .where(and(eq(schema.workouts.userId, userId), eq(schema.workouts.isDeleted, false)))
-      .get();
-
-    const timestamps = [templateMax?.max, exerciseMax?.max, cycleMax?.max, workoutsMax?.max]
-      .filter(Boolean)
-      .map((d) => new Date(d as string).getTime());
-    const maxTimestamp = timestamps.length > 0 ? Math.max(...timestamps) : 0;
+    const rows = await db.all<{ max: string | null }>(
+      sql`SELECT MAX(m) as max FROM (
+        SELECT ${schema.templates.updatedAt} as m FROM ${schema.templates}
+          WHERE ${and(eq(schema.templates.userId, userId), eq(schema.templates.isDeleted, false))}
+        UNION ALL
+        SELECT ${schema.exercises.updatedAt} FROM ${schema.exercises}
+          WHERE ${and(eq(schema.exercises.userId, userId), eq(schema.exercises.isDeleted, false))}
+        UNION ALL
+        SELECT ${schema.userProgramCycles.updatedAt} FROM ${schema.userProgramCycles}
+          WHERE ${and(eq(schema.userProgramCycles.userId, userId), eq(schema.userProgramCycles.status, 'active'))}
+        UNION ALL
+        SELECT ${schema.workouts.updatedAt} FROM ${schema.workouts}
+          WHERE ${and(eq(schema.workouts.userId, userId), eq(schema.workouts.isDeleted, false))}
+      )`,
+    );
+    const maxTimestamp = rows?.[0]?.max ? new Date(rows[0].max).getTime() : 0;
     const etag = `"${maxTimestamp}"`;
 
     const ifNoneMatch = c.req.header('If-None-Match');

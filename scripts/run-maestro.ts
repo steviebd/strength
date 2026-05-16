@@ -50,7 +50,7 @@ async function assertWorkerReady() {
     response = await fetch(statusUrl);
   } catch (error) {
     console.error(`Unable to reach worker at ${statusUrl}.`);
-    console.error('Start it with `bun run dev`, then rerun the Maestro command.');
+    console.error('Start it with `pnpm run dev`, then rerun the Maestro command.');
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
@@ -62,7 +62,7 @@ async function assertWorkerReady() {
   const body = await response.text().catch(() => '');
   console.error(`Worker preflight failed: ${response.status} ${body}`);
   console.error(`Checked: ${statusUrl}`);
-  console.error('This usually means the worker was not started with `bun run dev`.');
+  console.error('This usually means the worker was not started with `pnpm run dev`.');
   process.exit(1);
 }
 

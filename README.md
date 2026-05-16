@@ -8,16 +8,16 @@ Fitness tracking app with WHOOP sync, structured training programs, and nutritio
 - **Cloudflare Worker + D1** — backend API
 - **Drizzle ORM** — database access
 - **Better Auth** — email/password authentication
-- **Bun workspaces** — monorepo package management
+- **pnpm workspaces** — monorepo package management
 
 ## Quick Start
 
-1. `bun install`
+1. `pnpm install`
 2. `infisical login && infisical init` — select the strength project
 3. `cd apps/worker && wrangler d1 create strength-db-dev-remote`
 4. Store the D1 UUID in Infisical `dev` as `CLOUDFLARE_D1_ID`
-5. `bun run db:apply:local`
-6. `bun run dev`
+5. `pnpm run db:apply:local`
+6. `pnpm run dev`
 
 ## Project Structure
 
@@ -107,9 +107,9 @@ Secrets are injected by Infisical at runtime. No `.env` file.
 | `EXPO_PUBLIC_WORKER_BASE_URL` | HTTPS Worker URL embedded into the native app bundle |
 | `EXPO_PUBLIC_APP_SCHEME` | `strength-staging` for staging, `strength` for prod. Also injected into the Worker as `APP_SCHEME` for CORS/trusted origins. |
 
-`bun run dev:expo` writes Infisical `dev` `EXPO_PUBLIC_*` values to
-`apps/expo/.env.local` before starting Metro. `bun run dev:expo:staging` and
-`bun run build:android:staging` write Infisical `staging` values first. Build scripts
+`pnpm run dev:expo` writes Infisical `dev` `EXPO_PUBLIC_*` values to
+`apps/expo/.env.local` before starting Metro. `pnpm run dev:expo:staging` and
+`pnpm run build:android:staging` write Infisical `staging` values first. Build scripts
 validate that `EXPO_PUBLIC_WORKER_BASE_URL` is present and HTTPS for staging/prod,
 then pass the generated values directly to `eas build --local`.
 
@@ -122,11 +122,17 @@ then pass the generated values directly to `eas build --local`.
 
 Staging and production apps can be installed side-by-side because they use different package/bundle identifiers.
 
+**Required in all environments:**
+
+| Secret | Notes |
+|--------|-------|
+| `RATE_LIMIT_NAMESPACE_AUTH`, `RATE_LIMIT_NAMESPACE_GENERAL`, `RATE_LIMIT_NAMESPACE_CHAT`, `RATE_LIMIT_NAMESPACE_WHOOP` | Namespace IDs for Cloudflare Rate Limiting bindings (unique positive integers per account) |
+| `RATE_LIMIT_AUTH`, `RATE_LIMIT_GENERAL`, `RATE_LIMIT_CHAT`, `RATE_LIMIT_WHOOP` | Per-60s rate limits for each namespace |
+
 **Optional:**
 
 | Secret | Notes |
 |--------|-------|
-| `RATE_LIMIT_REQUEST_PER_HOUR` | Overrides the default rate limit of 1000 req/hr per user per endpoint |
 | `AI_GATEWAY_NAME` | Cloudflare AI Gateway ID |
 | `AI_MODEL_NAME` | Model name (defaults in worker) |
 
@@ -143,18 +149,18 @@ When `APP_ENV=development` and `SKIP_RATE_LIMIT=true`, all API rate limits are b
 ## Development
 
 ```bash
-bun run dev              # Worker + Expo concurrently (local D1)
-bun run dev:remote       # Worker against remote dev D1
-bun run dev:expo         # Expo only
+pnpm run dev              # Worker + Expo concurrently (local D1)
+pnpm run dev:remote       # Worker against remote dev D1
+pnpm run dev:expo         # Expo only
 
-bun run build:android:staging  # Local EAS APK build (staging)
-bun run build:android:prod     # Local EAS APK build (production)
-bun run build:ios:staging      # Local EAS IPA build (staging)
-bun run build:ios:prod         # Local EAS IPA build (production)
+pnpm run build:android:staging  # Local EAS APK build (staging)
+pnpm run build:android:prod     # Local EAS APK build (production)
+pnpm run build:ios:staging      # Local EAS IPA build (staging)
+pnpm run build:ios:prod         # Local EAS IPA build (production)
 
-bun run db:apply:local   # Push migrations to local D1
-bun run db:apply:remote   # Push migrations to remote dev D1
-bun run db:generate       # Generate new migration
+pnpm run db:apply:local   # Push migrations to local D1
+pnpm run db:apply:remote   # Push migrations to remote dev D1
+pnpm run db:generate       # Generate new migration
 ```
 
 ### Testing Physical Devices
@@ -168,7 +174,7 @@ For WHOOP OAuth on physical devices, use a Cloudflare Tunnel instead of LAN HTTP
 GitHub Actions deploys via Infisical OIDC — no long-lived credentials stored as secrets.
 
 ```bash
-bun run check   # lint + typecheck + tests
+pnpm run check   # lint + typecheck + tests
 ```
 
 ### Cloudflare Queues
@@ -190,8 +196,8 @@ the Worker is deployed with the generated Wrangler config.
 After queue creation, apply migrations and deploy the Worker:
 
 ```bash
-bun run db:apply:staging
-bun run deploy:staging
+pnpm run db:apply:staging
+pnpm run deploy:staging
 ```
 
 If the Cloudflare dashboard still shows no consumer after deploy, attach it manually:

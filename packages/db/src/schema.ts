@@ -532,18 +532,6 @@ export const webhookEventLog = sqliteTable('webhook_event_log', {
   processedAt: integer('processed_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-export const rateLimit = sqliteTable('rate_limit', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => generateId()),
-  userId: text('user_id').notNull(),
-  endpoint: text('endpoint').notNull(),
-  requests: integer('requests').notNull().default(0),
-  windowStart: integer('window_start', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
-});
-
 export const _whoopProfileUserIdIdx = index('idx_whoop_profile_user_id').on(whoopProfile.userId);
 
 export const _whoopWorkoutUserIdStartIdx = index('idx_whoop_workout_user_id_start').on(
@@ -575,13 +563,6 @@ export const _whoopSleepUserIdSleepPerformanceIdx = index(
 export const _whoopBodyMeasurementUserIdMeasurementDateIdx = index(
   'idx_whoop_body_measurement_user_id_measurement_date',
 ).on(whoopBodyMeasurement.userId, whoopBodyMeasurement.measurementDate);
-
-export const _rateLimitWindowStartIdx = index('idx_rate_limit_window_start').on(
-  rateLimit.windowStart,
-);
-export const _rateLimitUserIdEndpointUniqueIdx = uniqueIndex(
-  'rate_limit_user_id_endpoint_unique',
-).on(rateLimit.userId, rateLimit.endpoint);
 
 export const nutritionEntries = sqliteTable(
   'nutrition_entries',
@@ -638,7 +619,6 @@ export const nutritionChatJobs = sqliteTable(
     messagesJson: text('messages_json').notNull(),
     date: text('date').notNull(),
     hasImage: integer('has_image', { mode: 'boolean' }).default(false),
-    imageBase64: text('image_base64'),
     assistantMessageId: text('assistant_message_id'),
     syncOperationId: text('sync_operation_id'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),

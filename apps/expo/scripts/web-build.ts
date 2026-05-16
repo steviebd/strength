@@ -99,7 +99,7 @@ async function main() {
     return;
   }
 
-  const result = spawnSync('bun', ['run', 'sync-env:dev'], {
+  const result = spawnSync('pnpm', ['run', 'sync-env:dev'], {
     stdio: 'inherit',
   });
 

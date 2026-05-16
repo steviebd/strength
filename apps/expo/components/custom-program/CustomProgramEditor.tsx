@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,14 @@ import {
   StyleSheet,
   TextInput,
 } from 'react-native';
+import { useScrollToInput } from '@/context/ScrollContext';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, typography, statusBg } from '@/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { ScreenScrollView } from '@/components/ui/Screen';
+import { FormScrollView } from '@/components/ui/FormScrollView';
 import { ExerciseSearch } from '@/components/workout/ExerciseSearch';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { authClient } from '@/lib/auth-client';
@@ -588,7 +589,7 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
 
   return (
     <View style={styles.container}>
-      <ScreenScrollView bottomInset={160} horizontalPadding={16} topPadding={insets.top + 16}>
+      <FormScrollView bottomInset={160} horizontalPadding={16} topPadding={insets.top + 16}>
         {/* Program Info */}
         <View style={styles.section}>
           <Text style={styles.label}>Program Name *</Text>
@@ -1202,7 +1203,7 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
             </Pressable>
           </View>
         ) : null}
-      </ScreenScrollView>
+      </FormScrollView>
 
       {offlineMessage && (
         <View style={styles.offlineBanner}>
@@ -1262,34 +1263,39 @@ function EditorTextInput({
   style?: any;
 }) {
   const [local, setLocal] = useState(String(value));
+  const containerRef = useRef<View>(null);
+  const scrollToInput = useScrollToInput();
 
   useEffect(() => {
     setLocal(String(value));
   }, [value]);
 
   return (
-    <TextInput
-      style={style}
-      keyboardType={keyboardType ?? 'numeric'}
-      selectTextOnFocus
-      value={local}
-      onChangeText={(t) => {
-        setLocal(t);
-        if (t.trim() === '' || t === '.') return;
-        const parsed = parseNumeric(t);
-        if (Number.isFinite(parsed)) {
-          onChange(parsed);
-        }
-      }}
-      onBlur={() => {
-        const parsed = parseNumeric(local);
-        if (Number.isFinite(parsed)) {
-          onChange(parsed);
-        } else {
-          setLocal(String(value));
-        }
-      }}
-    />
+    <View ref={containerRef} collapsable={false} style={{ flex: 1 }}>
+      <TextInput
+        style={style}
+        keyboardType={keyboardType ?? 'numeric'}
+        selectTextOnFocus
+        value={local}
+        onChangeText={(t) => {
+          setLocal(t);
+          if (t.trim() === '' || t === '.') return;
+          const parsed = parseNumeric(t);
+          if (Number.isFinite(parsed)) {
+            onChange(parsed);
+          }
+        }}
+        onFocus={() => requestAnimationFrame(() => scrollToInput(containerRef))}
+        onBlur={() => {
+          const parsed = parseNumeric(local);
+          if (Number.isFinite(parsed)) {
+            onChange(parsed);
+          } else {
+            setLocal(String(value));
+          }
+        }}
+      />
+    </View>
   );
 }
 
@@ -1473,13 +1479,12 @@ const styles = StyleSheet.create({
   },
   typeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 4,
     marginBottom: 8,
   },
   typeChip: {
     borderRadius: 9999,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 4,
     borderWidth: 1,
   },

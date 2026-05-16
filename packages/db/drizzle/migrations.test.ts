@@ -21,7 +21,6 @@ describe('migration guardrails', () => {
     expect(sql).toContain('idx_workout_sets_exercise_set_number');
     expect(sql).toContain('idx_exercises_user_deleted_lower_name');
     expect(sql).toContain('idx_templates_user_deleted_created_at');
-    expect(sql).toContain('rate_limit_user_id_endpoint_unique');
   });
 
   test('contains uniqueness needed for safe user/provider upserts', () => {

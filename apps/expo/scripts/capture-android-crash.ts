@@ -108,7 +108,7 @@ const apkPath = options.apkPath ?? getLatestApk();
 if (options.install) {
   if (!apkPath) {
     console.error(
-      'No APK found. Run `bun run build:android:staging` first or pass `--apk <path>`.',
+      'No APK found. Run `pnpm run build:android:staging` first or pass `--apk <path>`.',
     );
     process.exit(1);
   }

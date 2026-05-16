@@ -36,13 +36,22 @@ const INFISICAL_KEYS = [
   'GOOGLE_CLIENT_SECRET',
   'WHOOP_CLIENT_ID',
   'WHOOP_CLIENT_SECRET',
-  'WHOOP_SYNC_RATE_LIMIT_PER_HOUR',
   'WHOOP_WEBHOOK_SECRET',
-  'RATE_LIMIT_REQUEST_PER_HOUR',
   'RESEND_API_KEY',
   'RESEND_FROM_EMAIL',
   'POSTHOG_API_KEY',
   'POSTHOG_PROJECT_URL',
+] as const;
+
+const RATE_LIMIT_ENV_KEYS = [
+  'RATE_LIMIT_NAMESPACE_AUTH',
+  'RATE_LIMIT_NAMESPACE_GENERAL',
+  'RATE_LIMIT_NAMESPACE_CHAT',
+  'RATE_LIMIT_NAMESPACE_WHOOP',
+  'RATE_LIMIT_AUTH',
+  'RATE_LIMIT_GENERAL',
+  'RATE_LIMIT_CHAT',
+  'RATE_LIMIT_WHOOP',
 ] as const;
 
 function parseArgs(): Args {
@@ -99,15 +108,6 @@ function quoteToml(value: string): string {
   return `"${escapeTomlString(value)}"`;
 }
 
-function getRequiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    console.error(`Missing required environment variable '${name}'.`);
-    process.exit(1);
-  }
-  return value;
-}
-
 const OPTIONAL_INFISICAL_KEYS = new Set(['EXPO_PUBLIC_APP_SCHEME']);
 
 function getInfisicalVars(): Record<string, string> {
@@ -131,11 +131,60 @@ function getInfisicalVars(): Record<string, string> {
   return vars;
 }
 
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`Missing required environment variable '${name}'.`);
+    process.exit(1);
+  }
+  return value;
+}
+
+function getRateLimitEnvVars(): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const key of RATE_LIMIT_ENV_KEYS) {
+    const value = process.env[key];
+    if (!value) {
+      console.error(
+        `Missing required environment variable '${key}'. Set it in Infisical under all environments (dev/staging/prod).`,
+      );
+      process.exit(1);
+    }
+    vars[key] = value;
+  }
+  return vars;
+}
+
+function renderRatelimitsBlock(rl: Record<string, string>): string {
+  const bindings = [
+    { binding: 'RATE_LIMITER_AUTH', ns: rl.RATE_LIMIT_NAMESPACE_AUTH, limit: rl.RATE_LIMIT_AUTH },
+    {
+      binding: 'RATE_LIMITER_GENERAL',
+      ns: rl.RATE_LIMIT_NAMESPACE_GENERAL,
+      limit: rl.RATE_LIMIT_GENERAL,
+    },
+    { binding: 'RATE_LIMITER_CHAT', ns: rl.RATE_LIMIT_NAMESPACE_CHAT, limit: rl.RATE_LIMIT_CHAT },
+    {
+      binding: 'RATE_LIMITER_WHOOP',
+      ns: rl.RATE_LIMIT_NAMESPACE_WHOOP,
+      limit: rl.RATE_LIMIT_WHOOP,
+    },
+  ];
+  return bindings
+    .map(
+      (b) =>
+        `[[ratelimits]]\nname = "${b.binding}"\nnamespace_id = "${b.ns}"\n[ratelimits.simple]\nlimit = ${b.limit}\nperiod = 60`,
+    )
+    .join('\n\n');
+}
+
 function buildTemplateValues(args: Args): Record<string, string> {
   const vars = getInfisicalVars();
+  const rateLimitVars = getRateLimitEnvVars();
   const values: Record<string, string> = {
     D1_BLOCK: '',
     QUEUE_BLOCK: '',
+    RATELIMITS_BLOCK: '',
     VARS_BLOCK: '',
     ENV_BLOCK: '',
   };
@@ -157,6 +206,7 @@ function buildTemplateValues(args: Args): Record<string, string> {
       .filter(Boolean)
       .join('\n');
     values.QUEUE_BLOCK = renderQueueBlock('strength-nutrition-chat-dev');
+    values.RATELIMITS_BLOCK = renderRatelimitsBlock(rateLimitVars);
 
     values.VARS_BLOCK = renderVarsTable('[vars]', vars);
     return values;
@@ -178,6 +228,8 @@ function buildTemplateValues(args: Args): Record<string, string> {
     'migrations_dir = "../../packages/db/drizzle/migrations"',
     '',
     renderQueueBlock(`strength-nutrition-chat-${envName}`, `env.${envName}.`),
+    '',
+    renderRatelimitsBlock(rateLimitVars).replace(/\[ratelimits/g, `[env.${envName}.ratelimits`),
     '',
     renderVarsTable(`[env.${envName}.vars]`, vars),
   ]

@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { eq, and, desc, gte, lt, sql } from 'drizzle-orm';
 import { getModel } from '../../lib/ai';
-import { checkRateLimit, getRateLimitPerHour, shouldSkipRateLimit } from '../../lib/rate-limit';
+import { checkRateLimit, shouldSkipRateLimit } from '../../lib/rate-limit';
 import {
   assembleSystemPrompt,
   assembleStructuredNutritionContext,
@@ -23,7 +23,7 @@ import type { NutritionChatQueueMessage, WorkerEnv } from '../../auth';
 interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
   date?: string;
-  hasImage: boolean;
+  hasImage?: boolean;
   imageBase64?: string;
   timezone?: string;
   syncOperationId?: string;
@@ -387,9 +387,9 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   if (!shouldSkipRateLimit(c.env)) {
-    const rateLimit = await checkRateLimit(userId, 'nutrition-chat', getRateLimitPerHour(c.env));
+    const rateLimit = await checkRateLimit(c.env, userId, '/api/nutrition/chat');
     if (!rateLimit.allowed) {
-      return c.json({ message: 'Rate limit exceeded', retryAfter: rateLimit.retryAfter }, 429);
+      return c.json({ message: 'Rate limit exceeded' }, 429);
     }
   }
 
@@ -409,6 +409,41 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
   }
 
   const userMessageContent = messages[messages.length - 1].content;
+
+  if (hasImageFlag) {
+    const assistant = await generateNutritionChatAssistantContent({
+      db,
+      env: c.env,
+      userId,
+      body,
+    });
+
+    await db.insert(schema.nutritionChatMessages).values({
+      userId,
+      role: 'user',
+      content: userMessageContent,
+      hasImage: true,
+      createdAt: new Date(),
+    });
+
+    await db.insert(schema.nutritionChatMessages).values({
+      id: assistant.assistantMessageId,
+      userId,
+      role: 'assistant',
+      content: assistant.content,
+      hasImage: false,
+      createdAt: new Date(),
+    });
+
+    return c.json(
+      {
+        content: assistant.content,
+        assistantMessageId: assistant.assistantMessageId,
+      },
+      201,
+    );
+  }
+
   const jobId = crypto.randomUUID();
   const now = new Date();
 
@@ -421,8 +456,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
         status: 'pending',
         messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
         date: dateResult.date,
-        hasImage: hasImageFlag,
-        imageBase64: hasImageFlag ? imageBase64 : null,
         syncOperationId,
         createdAt: now,
         updatedAt: now,
@@ -455,8 +488,6 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
       status: 'pending',
       messagesJson: JSON.stringify({ messages, timezone: dateResult.timezone }),
       date: dateResult.date,
-      hasImage: hasImageFlag,
-      imageBase64: hasImageFlag ? imageBase64 : null,
       syncOperationId: null,
       createdAt: now,
       updatedAt: now,
@@ -467,7 +498,7 @@ export const chatHandler = createHandler(async (c, { userId, db }) => {
     userId,
     role: 'user',
     content: userMessageContent,
-    hasImage: hasImageFlag,
+    hasImage: false,
     createdAt: new Date(),
   });
 
@@ -559,8 +590,6 @@ export async function processNutritionChatJob(env: WorkerEnv, message: Nutrition
         messages,
         date: job.date,
         timezone: timezone ?? undefined,
-        hasImage: job.hasImage ?? false,
-        imageBase64: job.imageBase64 ?? undefined,
       },
     });
 

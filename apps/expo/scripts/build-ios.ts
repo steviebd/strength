@@ -69,7 +69,7 @@ async function findAvailablePort(startPort: number) {
 }
 
 function syncEnv(env: BuildEnv) {
-  const result = spawnSync('bun', ['run', `sync-env:${env}`], {
+  const result = spawnSync('pnpm', ['run', `sync-env:${env}`], {
     cwd: process.cwd(),
     env: process.env,
     stdio: 'inherit',
@@ -108,7 +108,7 @@ function readEnvLocal() {
 function parseArgs(): BuildEnv {
   const arg = process.argv[2];
   if (!arg || !ALLOWED_ENVS.includes(arg as BuildEnv)) {
-    console.error(`Usage: bun run scripts/build-ios.ts <${ALLOWED_ENVS.join('|')}>`);
+    console.error(`Usage: pnpm exec tsx scripts/build-ios.ts <${ALLOWED_ENVS.join('|')}>`);
     process.exit(1);
   }
   return arg as BuildEnv;
