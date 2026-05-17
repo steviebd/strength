@@ -3,13 +3,13 @@ import { AppState } from 'react-native';
 import { authClient } from '@/lib/auth-client';
 import { apiFetch } from '@/lib/api';
 import { removePendingWorkout } from '@/lib/storage';
+import { startCustomWorkoutDraft } from '@/lib/workout-start';
 import { getLastWorkout, setLastWorkout } from '@/db/last-workouts';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { generateId, WORKOUT_TYPE_ONE_RM_TEST } from '@strength/db/client';
 import { exerciseLibrary } from '@strength/db/client';
 import {
   completeLocalWorkout,
-  createLocalWorkout,
   discardLocalWorkout,
   getLocalLastCompletedExerciseSnapshots,
   getLocalWorkout,
@@ -376,9 +376,9 @@ export function useWorkoutSession(): UseWorkoutSessionReturn {
       setIsLoading(true);
       setError(null);
       try {
-        const local = await createLocalWorkout(session.data.user.id, { name });
+        const local = await startCustomWorkoutDraft(session.data.user.id, name);
         if (!local) {
-          setError('Failed to create workout locally. Please try again.');
+          setError('Failed to create workout. Please try again.');
           return null;
         }
         setWorkout(local);

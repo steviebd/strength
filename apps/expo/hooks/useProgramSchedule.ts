@@ -6,8 +6,8 @@ import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { getCachedProgramSchedule } from '@/db/training-cache';
 import { getLocalDb } from '@/db/client';
 import { localProgramCycleWorkouts } from '@/db/local-schema';
-import { createLocalWorkoutFromProgramCycleWorkoutDefinition } from '@/db/workouts';
 import { hasPendingTrainingWrites } from '@/db/training-read-model';
+import { startCycleWorkoutDraft } from '@/lib/workout-start';
 import { useOfflineQuery } from './useOfflineQuery';
 import { tryOnlineOrEnqueue, OfflineError } from '@/lib/offline-mutation';
 
@@ -70,29 +70,11 @@ export function useStartCycleWorkout() {
         throw new Error('Not authenticated');
       }
 
-      const definition = await apiFetch<any>(`/api/programs/cycle-workouts/${cycleWorkoutId}`);
-      if (definition.isComplete) {
-        return {
-          workoutId: definition.workoutId ?? '',
-          sessionName: definition.sessionName,
-          created: false,
-          completed: true,
-          programCycleId: definition.cycleId,
-        };
+      const started = await startCycleWorkoutDraft(userId, cycleWorkoutId);
+      if (!started.workoutId) {
+        throw new Error('Failed to create workout. Please try again.');
       }
-
-      const local = await createLocalWorkoutFromProgramCycleWorkoutDefinition(userId, definition);
-      if (!local?.id) {
-        throw new Error('Failed to create workout locally. Please try again.');
-      }
-
-      return {
-        workoutId: local.id,
-        sessionName: local.name,
-        created: true,
-        completed: false,
-        programCycleId: local.programCycleId ?? definition.cycleId,
-      };
+      return started;
     },
     onMutate: async (cycleWorkoutId: string) => {
       if (!userId) return {};

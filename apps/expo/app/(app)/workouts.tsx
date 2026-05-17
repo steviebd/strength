@@ -35,6 +35,7 @@ import { useWorkoutSessionContext } from '@/context/WorkoutSessionContext';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { apiFetch } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import { startCurrentProgramWorkoutDraft, startTemplateWorkoutDraft } from '@/lib/workout-start';
 import {
   buildHistorySnapshotFromSelection,
   getDefaultProgressionIncrement,
@@ -44,9 +45,6 @@ import {
 import {
   cacheTemplates,
   createLocalOneRMTestDraft,
-  createLocalWorkoutFromCurrentProgramCycle,
-  createLocalWorkoutFromProgramCycleWorkoutDefinition,
-  createLocalWorkoutFromTemplate,
   discardLocalWorkout,
   getLocalActiveOneRMTestDraft,
   getLocalLastCompletedExerciseSnapshots,
@@ -310,16 +308,15 @@ export default function WorkoutsIndex() {
         return;
       }
 
-      const local = await createLocalWorkoutFromTemplate(
+      const started = await startTemplateWorkoutDraft(
         userId,
-        template.id,
+        { id: template.id, name: template.name },
         options,
         templateExercises,
       );
-
-      if (local?.id) {
+      if (started?.workoutId) {
         setPendingTemplateStart(null);
-        router.push(`/workout-session?workoutId=${local.id}`);
+        router.push(`/workout-session?workoutId=${started.workoutId}`);
         return;
       }
 
@@ -593,17 +590,8 @@ export default function WorkoutsIndex() {
         return;
       }
 
-      const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
-      if (local?.id) {
-        const params = new URLSearchParams({ workoutId: local.id, source: 'program' });
-        if (local.programCycleId) params.set('cycleId', local.programCycleId);
-        if (local.cycleWorkoutId) params.set('cycleWorkoutId', local.cycleWorkoutId);
-        router.push(`/workout-session?${params.toString()}`);
-        return;
-      }
-
-      const definition = await apiFetch<any>(`/api/programs/cycles/${program.id}/workouts/current`);
-      if (definition.isComplete) {
+      const started = await startCurrentProgramWorkoutDraft(userId, program.id);
+      if (started.completed) {
         Alert.alert(
           'Session Already Completed',
           'This program session has already been completed.',
@@ -612,18 +600,15 @@ export default function WorkoutsIndex() {
         return;
       }
 
-      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
-        userId,
-        definition,
-      );
-      if (!remoteLocal?.id) {
+      if (!started.workoutId) {
         Alert.alert('Error', 'Failed to create workout. Please try again.');
         return;
       }
 
-      router.push(
-        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleId=${program.id}&cycleWorkoutId=${remoteLocal.cycleWorkoutId ?? definition.id}`,
-      );
+      const params = new URLSearchParams({ workoutId: started.workoutId, source: 'program' });
+      params.set('cycleId', started.programCycleId ?? program.id);
+      if (started.cycleWorkoutId) params.set('cycleWorkoutId', started.cycleWorkoutId);
+      router.push(`/workout-session?${params.toString()}`);
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to open current session');
     } finally {

@@ -215,6 +215,7 @@ router.post(
     if (!name) {
       return c.json({ message: 'Name is required' }, 400);
     }
+    const ignoreHistory = body.ignoreHistory === true;
 
     const now = new Date();
     if (templateId) {
@@ -279,7 +280,18 @@ router.post(
           setNumber: number | null;
         }[];
       };
-      const allHistorySnapshots = await getLastCompletedExerciseSnapshots(db, userId, exerciseIds);
+      const providedHistorySnapshots = Array.isArray(body.historySnapshots)
+        ? body.historySnapshots.filter(
+            (snapshot: any) =>
+              typeof snapshot?.exerciseId === 'string' && Array.isArray(snapshot.sets),
+          )
+        : [];
+      const allHistorySnapshots =
+        providedHistorySnapshots.length > 0
+          ? (providedHistorySnapshots as Snapshot[])
+          : ignoreHistory
+            ? []
+            : await getLastCompletedExerciseSnapshots(db, userId, exerciseIds);
       const unfilteredHistorySnapshots = allHistorySnapshots;
       const filteredHistorySnapshots = [
         allHistorySnapshots.filter((s) => s.isAmrap === false),

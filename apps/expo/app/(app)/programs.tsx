@@ -19,10 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
-import {
-  createLocalWorkoutFromCurrentProgramCycle,
-  createLocalWorkoutFromProgramCycleWorkoutDefinition,
-} from '@/db/workouts';
+import { startCurrentProgramWorkoutDraft } from '@/lib/workout-start';
 import { createLocalProgramCycleFromStartPayload } from '@/db/training-cache';
 import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
@@ -1136,9 +1133,20 @@ export default function ProgramsScreen() {
     setOpeningProgramWorkoutId(program.id);
     try {
       if (userId) {
-        const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
-        if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+        const started = await startCurrentProgramWorkoutDraft(userId, program.id);
+        if (started.completed) {
+          Alert.alert(
+            'Session Already Completed',
+            'This program session has already been completed.',
+          );
+          await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
+          return;
+        }
+        if (started.workoutId) {
+          const params = new URLSearchParams({ workoutId: started.workoutId, source: 'program' });
+          params.set('cycleId', started.programCycleId ?? program.id);
+          if (started.cycleWorkoutId) params.set('cycleWorkoutId', started.cycleWorkoutId);
+          router.push(`/workout-session?${params.toString()}`);
           return;
         }
       }
@@ -1146,27 +1154,7 @@ export default function ProgramsScreen() {
         throw new Error('Not authenticated');
       }
 
-      const definition = await apiFetch<any>(`/api/programs/cycles/${program.id}/workouts/current`);
-      if (definition.isComplete) {
-        Alert.alert(
-          'Session Already Completed',
-          'This program session has already been completed.',
-        );
-        await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
-        return;
-      }
-
-      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
-        userId,
-        definition,
-      );
-      if (!remoteLocal?.id) {
-        throw new Error('Failed to open current session');
-      }
-
-      router.push(
-        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleId=${program.id}&cycleWorkoutId=${remoteLocal.cycleWorkoutId ?? definition.id}`,
-      );
+      throw new Error('Failed to open current session');
     } catch (e) {
       if (e instanceof Error && e.message === 'Network request failed') {
         setOfflineMessage('Unable to open session while offline.');
