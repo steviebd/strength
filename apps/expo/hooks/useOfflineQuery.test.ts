@@ -3,6 +3,7 @@ import { useOfflineQuery } from './useOfflineQuery';
 
 const setQueryDataMock = vi.fn();
 let lastQueryOptions: { queryFn: () => Promise<unknown> } | undefined;
+const mockPlatform = vi.hoisted(() => ({ OS: 'ios' }));
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: vi.fn(() => ({
@@ -14,7 +15,12 @@ vi.mock('@tanstack/react-query', () => ({
   }),
 }));
 
+vi.mock('react-native', () => ({
+  Platform: mockPlatform,
+}));
+
 beforeEach(() => {
+  mockPlatform.OS = 'ios';
   vi.clearAllMocks();
   lastQueryOptions = undefined;
 });
@@ -177,6 +183,28 @@ describe('useOfflineQuery', () => {
 
     const data = await lastQueryOptions!.queryFn();
     expect(data).toEqual(cached);
+    expect(writeCacheFn).not.toHaveBeenCalled();
+  });
+
+  test('web: uses API only and skips local cache reads and writes', async () => {
+    mockPlatform.OS = 'web';
+    const apiData = { id: 'api' };
+    const cacheFn = vi.fn().mockResolvedValue({ id: 'cached' });
+    const apiFn = vi.fn().mockResolvedValue(apiData);
+    const writeCacheFn = vi.fn().mockResolvedValue(undefined);
+
+    useOfflineQuery({
+      queryKey: ['web-test'],
+      apiFn,
+      cacheFn,
+      writeCacheFn,
+      fallbackToCacheOnError: true,
+    });
+
+    const data = await lastQueryOptions!.queryFn();
+    expect(data).toEqual(apiData);
+    expect(apiFn).toHaveBeenCalledTimes(1);
+    expect(cacheFn).not.toHaveBeenCalled();
     expect(writeCacheFn).not.toHaveBeenCalled();
   });
 });
