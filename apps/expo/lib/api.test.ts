@@ -25,6 +25,7 @@ process.env.EXPO_PUBLIC_WORKER_BASE_URL = 'http://localhost:8787';
 describe('apiFetch', () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    Reflect.deleteProperty(globalThis, 'document');
   });
 
   test('calls auth client with resolved relative API URL', async () => {
@@ -54,5 +55,24 @@ describe('apiFetch', () => {
     fetchMock.mockResolvedValue({ data: null, error: null });
 
     await expect(apiFetch('/api/no-content')).resolves.toBeNull();
+  });
+
+  test('adds CSRF header from web cookie for mutations', async () => {
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        cookie: 'other=value; csrf_token=csrf-123',
+      },
+    });
+
+    const { apiFetch } = await import('./api');
+    fetchMock.mockResolvedValue({ data: { ok: true }, error: null });
+
+    await expect(apiFetch('/api/profile/preferences', { method: 'PUT' })).resolves.toEqual({
+      ok: true,
+    });
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.headers.get('x-csrf-token')).toBe('csrf-123');
   });
 });

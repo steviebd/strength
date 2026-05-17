@@ -26,6 +26,7 @@ export default defineConfig({
       '.wrangler/**',
       'apps/expo/node_modules/**',
       '.agents/**',
+      '.clawpatch/**',
     ],
   },
   fmt: {

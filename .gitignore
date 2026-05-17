@@ -24,6 +24,7 @@ apps/worker/.dev.vars
 expo-env.d.ts
 # @end expo-cli
 .fallow/
+.clawpatch/
 .yarn/
 .vite-hooks/
 apps/expo/.eas/workflows/

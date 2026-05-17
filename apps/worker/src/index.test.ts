@@ -145,6 +145,20 @@ describe('CORS origin', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('https://fit.example.com');
   });
 
+  test('prod allows same-origin custom domain even when base URL differs', async () => {
+    const req = new Request('https://staging.fit.stevenduong.com/api/health', {
+      headers: { origin: 'https://staging.fit.stevenduong.com' },
+    });
+    const res = await app.fetch(req, {
+      ...baseEnv,
+      APP_ENV: 'production',
+      WORKER_BASE_URL: 'https://strength-dev.stevenduong.com',
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe(
+      'https://staging.fit.stevenduong.com',
+    );
+  });
+
   test('prod denies unknown origin', async () => {
     const req = new Request('https://app.example.com/api/health', {
       headers: { origin: 'https://evil.com' },

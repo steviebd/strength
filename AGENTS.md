@@ -6,13 +6,13 @@ Linting, formatting, and type-checking are handled by Vite+ (oxlint + oxfmt + ts
 
 ```bash
 pnpm run check        # vp check: lint + fmt + typecheck (warnings pass, errors fail) + pnpm run lint:keys
-pnpm run check --fix  # auto-fix linting and formatting
+pnpm run check:fix    # auto-fix linting and formatting
 pnpm run test         # vp test run (Vitest, node environment)
 pnpm run lint         # vp lint (oxlint only)
 pnpm run fmt          # vp fmt (oxfmt only)
 ```
 
-Note: `pnpm run check` exits 0 even with lint warnings (warnings are not errors). To suppress warnings for intentionally unused code (e.g., catch parameters), add `/* oxlint-disable no-unused-vars */` at the top of the file. Run `pnpm run check --fix` to auto-fix formatting and lint issues.
+Note: `pnpm run check` exits 0 even with lint warnings (warnings are not errors). To suppress warnings for intentionally unused code (e.g., catch parameters), add `/* oxlint-disable no-unused-vars */` at the top of the file. Run `pnpm run check:fix` to auto-fix formatting and lint issues.
 
 ## Dev Commands
 

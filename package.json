@@ -27,11 +27,12 @@
     "db:apply:prod": "pnpm --filter @strength/worker db:apply:prod",
     "db:reset": "rm -rf apps/worker/.wrangler/ && pnpm run db:apply:local",
     "lint:keys": "node scripts/lint-react-keys.mjs",
-    "typecheck": "pnpm --filter '*' typecheck",
-    "check": "bash -c 'export PATH=\"$HOME/.vite-plus/bin:$PATH\"; if [ \"$1\" = \"--fix\" ]; then vp check --fix; else vp check; fi && pnpm run lint:keys && pnpm run typecheck' --",
+    "typecheck": "pnpm --filter './apps/*' --filter './packages/*' typecheck",
+    "check": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp check && pnpm run lint:keys && pnpm run typecheck",
+    "check:fix": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp check --fix && pnpm run lint:keys && pnpm run typecheck",
     "test": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp test run",
-    "lint": "source ~/.vite-plus/env && vp lint && pnpm run lint:keys",
-    "fmt": "source ~/.vite-plus/env && vp fmt"
+    "lint": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp lint && pnpm run lint:keys",
+    "fmt": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp fmt"
   },
   "dependencies": {
     "@strength/db": "workspace:*"

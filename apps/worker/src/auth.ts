@@ -190,8 +190,7 @@ export function createAuth(env: WorkerEnv, headers?: Headers, requestOrigin?: st
   const clientProtocol = headers ? getClientProtocol(headers) : 'http';
   const baseURL = resolveBaseURL(resolvedEnv);
   const cookiePolicy = resolveCookiePolicy(baseURL, clientProtocol, resolvedEnv.APP_ENV);
-  const trustedRequestOrigin =
-    resolvedEnv.APP_ENV === 'development' ? normalizeTrustedOrigin(requestOrigin) : undefined;
+  const trustedRequestOrigin = normalizeTrustedOrigin(requestOrigin);
   const appScheme = resolvedEnv.APP_SCHEME ?? 'strength';
   const trustedOrigins = [
     `${appScheme}://`,

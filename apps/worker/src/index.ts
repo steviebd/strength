@@ -77,8 +77,24 @@ function parseTrustedOrigins(value: string | undefined) {
     .filter(Boolean);
 }
 
-function getAllowedOrigins(env: WorkerEnv): { origins: string[]; baseURLOrigin?: string } {
+function getURLOrigin(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function getAllowedOrigins(
+  env: WorkerEnv,
+  requestURL?: string,
+): { origins: string[]; baseURLOrigin?: string; requestOrigin?: string } {
   const appScheme = env.APP_SCHEME ?? 'strength';
+  const requestOrigin = getURLOrigin(requestURL);
   const origins: string[] = [
     `${appScheme}://`,
     'exp://',
@@ -87,12 +103,15 @@ function getAllowedOrigins(env: WorkerEnv): { origins: string[]; baseURLOrigin?:
   let baseURLOrigin: string | undefined;
   const baseURL = env.WORKER_BASE_URL;
   if (baseURL) {
-    try {
-      baseURLOrigin = new URL(baseURL).origin;
+    baseURLOrigin = getURLOrigin(baseURL);
+    if (baseURLOrigin) {
       origins.push(baseURLOrigin);
-    } catch {}
+    }
   }
-  return { origins, baseURLOrigin };
+  if (requestOrigin) {
+    origins.push(requestOrigin);
+  }
+  return { origins, baseURLOrigin, requestOrigin };
 }
 
 function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
@@ -201,7 +220,11 @@ app.use(
   cors({
     origin: (origin, c) => {
       const env = c.env as WorkerEnv;
-      const { origins: allowedOrigins, baseURLOrigin } = getAllowedOrigins(env);
+      const {
+        origins: allowedOrigins,
+        baseURLOrigin,
+        requestOrigin,
+      } = getAllowedOrigins(env, c.req.url);
 
       if (!origin) {
         return undefined;
@@ -219,6 +242,9 @@ app.use(
       if (strictAllowed.has(origin)) {
         return origin;
       }
+      if (requestOrigin && origin === requestOrigin) {
+        return origin;
+      }
       if (baseURLOrigin) {
         try {
           if (new URL(origin).origin === baseURLOrigin) {
@@ -228,8 +254,8 @@ app.use(
       }
       return undefined;
     },
-    allowHeaders: ['Content-Type', 'Authorization', 'Cookie'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'Cookie', 'x-csrf-token'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     exposeHeaders: ['Set-Cookie'],
     credentials: true,
   }),
@@ -367,11 +393,16 @@ app.use('/api/*', async (c, next) => {
       }
     })();
 
-    const { origins: allowedOrigins, baseURLOrigin } = getAllowedOrigins(c.env);
+    const {
+      origins: allowedOrigins,
+      baseURLOrigin,
+      requestOrigin,
+    } = getAllowedOrigins(c.env, c.req.url);
     const strictAllowed = new Set([...allowedOrigins, ...(baseURLOrigin ? [baseURLOrigin] : [])]);
 
     const isAllowed =
       strictAllowed.has(sourceOrigin) ||
+      sourceOrigin === requestOrigin ||
       (c.env.APP_ENV === 'development' && isAllowedDevOrigin(sourceOrigin, allowedOrigins));
 
     if (!isAllowed) {

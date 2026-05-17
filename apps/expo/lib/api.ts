@@ -48,6 +48,35 @@ function serializeFetchBody(body: ApiFetchOptions['body']): BodyInit | undefined
   return JSON.stringify(body);
 }
 
+function isMutatingMethod(method: string | undefined): boolean {
+  return ['POST', 'PUT', 'DELETE', 'PATCH'].includes((method ?? 'GET').toUpperCase());
+}
+
+function getWebCookie(name: string): string | null {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') {
+    return null;
+  }
+
+  const encodedName = `${encodeURIComponent(name)}=`;
+  const cookie = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(encodedName));
+
+  return cookie ? decodeURIComponent(cookie.slice(encodedName.length)) : null;
+}
+
+function applyWebCsrfHeader(headers: Headers, method: string | undefined) {
+  if (!isMutatingMethod(method) || headers.has('x-csrf-token')) {
+    return;
+  }
+
+  const csrfToken = getWebCookie('csrf_token');
+  if (csrfToken) {
+    headers.set('x-csrf-token', csrfToken);
+  }
+}
+
 function getNativeAuthHeaders(): HeadersInit {
   if (Platform.OS === 'web') {
     return {};
@@ -74,6 +103,7 @@ async function apiFetchStream(endpoint: string, options: ApiFetchOptions): Promi
   const url = resolveApiUrl(endpoint);
   const headers = new Headers(options.headers);
   const body = serializeFetchBody(normalizeBody(options.body));
+  applyWebCsrfHeader(headers, options.method);
 
   if (body !== undefined && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -116,7 +146,15 @@ export async function apiFetch<T>(endpoint: string, options?: ApiFetchOptions): 
     return apiFetchStream(endpoint, normalizedOptions) as Promise<T>;
   }
 
-  const result = await authClient.$fetch(url, normalizedOptions as RequestInit);
+  const requestOptions = normalizedOptions
+    ? ({ ...normalizedOptions, headers: new Headers(normalizedOptions.headers) } as RequestInit)
+    : undefined;
+
+  if (requestOptions?.headers instanceof Headers) {
+    applyWebCsrfHeader(requestOptions.headers, requestOptions.method);
+  }
+
+  const result = await authClient.$fetch(url, requestOptions);
 
   if (result.error) {
     const message =
