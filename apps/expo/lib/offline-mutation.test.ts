@@ -12,9 +12,14 @@ const MockApiError = vi.hoisted(() => {
     }
   };
 });
+const mockPlatform = vi.hoisted(() => ({ OS: 'ios' }));
 
 vi.mock('./api', () => ({
   ApiError: MockApiError,
+}));
+
+vi.mock('react-native', () => ({
+  Platform: mockPlatform,
 }));
 
 vi.mock('@/db/sync-queue', () => ({
@@ -29,6 +34,7 @@ import { enqueueSyncItem } from '@/db/sync-queue';
 import { OfflineError, isNetworkError, tryOnlineOrEnqueue } from './offline-mutation';
 
 beforeEach(() => {
+  mockPlatform.OS = 'ios';
   vi.clearAllMocks();
 });
 
@@ -116,6 +122,24 @@ describe('tryOnlineOrEnqueue', () => {
     ).rejects.toThrow(OfflineError);
 
     expect(onEnqueue).toHaveBeenCalled();
+  });
+
+  test('re-throws web network errors without enqueuing', async () => {
+    mockPlatform.OS = 'web';
+    const apiCall = vi.fn().mockRejectedValue(new Error('Network request failed'));
+
+    await expect(
+      tryOnlineOrEnqueue({
+        apiCall,
+        userId: 'u1',
+        entityType: 'test',
+        entityId: 'e1',
+        operation: 'op',
+        payload: {},
+      }),
+    ).rejects.toThrow('Network request failed');
+
+    expect(enqueueSyncItem).not.toHaveBeenCalled();
   });
 
   test('re-throws non-network errors without enqueuing', async () => {

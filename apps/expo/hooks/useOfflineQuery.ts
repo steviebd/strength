@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Platform } from 'react-native';
 import { enqueueLocalRead } from '../db/read-queue';
 import { enqueueLocalWrite } from '../db/write-queue';
 
@@ -19,6 +20,7 @@ export function useOfflineQuery<TData>(options: {
   const queryClient = useQueryClient();
   const readCache = () => enqueueLocalRead(options.cacheFn);
   const writeCache = (data: TData) => enqueueLocalWrite(() => options.writeCacheFn(data));
+  const useLocalCache = Platform.OS !== 'web';
   return useQuery<TData, Error, TData>({
     queryKey: options.queryKey,
     enabled: options.enabled,
@@ -27,6 +29,10 @@ export function useOfflineQuery<TData>(options: {
     refetchOnWindowFocus: options.refetchOnWindowFocus ?? true,
     refetchInterval: options.refetchInterval,
     queryFn: async () => {
+      if (!useLocalCache) {
+        return options.apiFn();
+      }
+
       if (options.networkFirst) {
         try {
           const data = await options.apiFn();

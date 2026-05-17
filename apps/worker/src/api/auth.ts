@@ -20,7 +20,7 @@ export type AppVariables = {
 
 type AppContext = Context<{ Bindings: WorkerEnv; Variables: AppVariables }>;
 
-const authByEnv = new WeakMap<WorkerEnv, AuthInstance>();
+const authByEnv = new WeakMap<WorkerEnv, Map<string, AuthInstance>>();
 
 export function createDb(env: WorkerEnv) {
   return drizzle(env.DB, { schema });
@@ -47,21 +47,34 @@ export function getAuth(c: any) {
   }
 
   const env = c.env as WorkerEnv;
+  const headers = getAuthHeaders(c);
+  const clientOrigin = headers.get('origin');
+  const requestOrigin = (() => {
+    try {
+      return new URL(c.req.url).origin;
+    } catch {
+      return undefined;
+    }
+  })();
+  // Trust the browser Origin dynamically only when it matches the URL serving this request.
+  const sameOrigin = clientOrigin && requestOrigin && clientOrigin === requestOrigin;
+  // For native clients without standard Origin header, use the worker's configured base URL.
+  const origin = sameOrigin ? clientOrigin : requestOrigin || resolveBaseURL(env) || undefined;
+  const cacheKey = origin ?? '__default__';
+
   if (env.APP_ENV !== 'development') {
-    const cachedForEnv = authByEnv.get(env);
+    const cachedForEnv = authByEnv.get(env)?.get(cacheKey);
     if (cachedForEnv) {
       c.set('auth', cachedForEnv);
       return cachedForEnv;
     }
   }
 
-  const headers = getAuthHeaders(c);
-  const clientOrigin = headers.get('origin');
-  // For native clients without standard Origin header, use the worker's configured base URL
-  const origin = clientOrigin || resolveBaseURL(env) || undefined;
   const auth = createAuth(env, headers, origin);
   if (env.APP_ENV !== 'development') {
-    authByEnv.set(env, auth);
+    const envCache = authByEnv.get(env) ?? new Map<string, AuthInstance>();
+    envCache.set(cacheKey, auth);
+    authByEnv.set(env, envCache);
   }
   c.set('auth', auth);
   return auth;

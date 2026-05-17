@@ -77,8 +77,24 @@ function parseTrustedOrigins(value: string | undefined) {
     .filter(Boolean);
 }
 
-function getAllowedOrigins(env: WorkerEnv): { origins: string[]; baseURLOrigin?: string } {
+function getURLOrigin(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function getAllowedOrigins(
+  env: WorkerEnv,
+  requestURL?: string,
+): { origins: string[]; baseURLOrigin?: string; requestOrigin?: string } {
   const appScheme = env.APP_SCHEME ?? 'strength';
+  const requestOrigin = getURLOrigin(requestURL);
   const origins: string[] = [
     `${appScheme}://`,
     'exp://',
@@ -87,12 +103,15 @@ function getAllowedOrigins(env: WorkerEnv): { origins: string[]; baseURLOrigin?:
   let baseURLOrigin: string | undefined;
   const baseURL = env.WORKER_BASE_URL;
   if (baseURL) {
-    try {
-      baseURLOrigin = new URL(baseURL).origin;
+    baseURLOrigin = getURLOrigin(baseURL);
+    if (baseURLOrigin) {
       origins.push(baseURLOrigin);
-    } catch {}
+    }
   }
-  return { origins, baseURLOrigin };
+  if (requestOrigin) {
+    origins.push(requestOrigin);
+  }
+  return { origins, baseURLOrigin, requestOrigin };
 }
 
 function isAllowedDevOrigin(origin: string, allowedOrigins: string[]) {
@@ -201,7 +220,11 @@ app.use(
   cors({
     origin: (origin, c) => {
       const env = c.env as WorkerEnv;
-      const { origins: allowedOrigins, baseURLOrigin } = getAllowedOrigins(env);
+      const {
+        origins: allowedOrigins,
+        baseURLOrigin,
+        requestOrigin,
+      } = getAllowedOrigins(env, c.req.url);
 
       if (!origin) {
         return undefined;
@@ -219,6 +242,9 @@ app.use(
       if (strictAllowed.has(origin)) {
         return origin;
       }
+      if (requestOrigin && origin === requestOrigin) {
+        return origin;
+      }
       if (baseURLOrigin) {
         try {
           if (new URL(origin).origin === baseURLOrigin) {
@@ -228,8 +254,8 @@ app.use(
       }
       return undefined;
     },
-    allowHeaders: ['Content-Type', 'Authorization', 'Cookie'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'Cookie', 'x-csrf-token'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     exposeHeaders: ['Set-Cookie'],
     credentials: true,
   }),
@@ -251,6 +277,64 @@ app.use('/api/*', async (c, next) => {
 
   await populateAuthContext(c);
   await next();
+});
+
+// CSRF cookie setter for authenticated responses.
+// Register before routes so it wraps route handlers.
+app.use('/api/*', async (c, next) => {
+  await next();
+
+  const path = c.req.path;
+  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) {
+    return;
+  }
+
+  const user = c.get('user');
+  if (user) {
+    const existing = getCookie(c, 'csrf_token');
+    if (!existing) {
+      setCookie(c, 'csrf_token', generateCsrfToken(), {
+        path: '/',
+        sameSite: 'Lax',
+        secure: c.env.APP_ENV !== 'development',
+      });
+    }
+  }
+});
+
+// Cache-Control middleware for read-heavy GET endpoints.
+// Register before routes so it wraps route handlers.
+app.use('/api/*', async (c, next) => {
+  await next();
+  if (c.req.method === 'GET') {
+    const path = c.req.path;
+    const cacheablePrefixes = ['/api/exercises', '/api/programs'];
+    const isCacheable =
+      cacheablePrefixes.some((prefix) => path.startsWith(prefix)) || path === '/api/home/summary';
+    if (isCacheable) {
+      c.header('Cache-Control', 'private, max-age=30');
+    }
+  }
+});
+
+// Security headers middleware. Register before routes so it wraps all responses.
+app.use('*', async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  if (c.env.APP_ENV !== 'development') {
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  const contentType = c.res.headers.get('content-type') ?? '';
+  const htmlAllowsInline = contentType.toLowerCase().includes('text/html');
+  c.header(
+    'Content-Security-Policy',
+    htmlAllowsInline
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
+      : "default-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+  );
 });
 
 app.use('/api/*', async (c, next) => {
@@ -309,11 +393,16 @@ app.use('/api/*', async (c, next) => {
       }
     })();
 
-    const { origins: allowedOrigins, baseURLOrigin } = getAllowedOrigins(c.env);
+    const {
+      origins: allowedOrigins,
+      baseURLOrigin,
+      requestOrigin,
+    } = getAllowedOrigins(c.env, c.req.url);
     const strictAllowed = new Set([...allowedOrigins, ...(baseURLOrigin ? [baseURLOrigin] : [])]);
 
     const isAllowed =
       strictAllowed.has(sourceOrigin) ||
+      sourceOrigin === requestOrigin ||
       (c.env.APP_ENV === 'development' && isAllowedDevOrigin(sourceOrigin, allowedOrigins));
 
     if (!isAllowed) {
@@ -424,52 +513,6 @@ app.route('/api/nutrition', nutritionRouter);
 app.route('/api/home', homeRouter);
 app.route('/api/training', trainingRouter);
 app.route('/api/custom-programs', customProgramsRouter);
-
-// CSRF cookie setter for authenticated responses
-app.use('/api/*', async (c, next) => {
-  await next();
-
-  const path = c.req.path;
-  if (path.startsWith('/api/auth/') || path.startsWith('/api/webhooks/')) {
-    return;
-  }
-
-  const user = c.get('user');
-  if (user) {
-    const existing = getCookie(c, 'csrf_token');
-    if (!existing) {
-      setCookie(c, 'csrf_token', generateCsrfToken(), {
-        path: '/',
-        sameSite: 'Lax',
-        secure: c.env.APP_ENV !== 'development',
-      });
-    }
-  }
-});
-
-// Cache-Control middleware for read-heavy GET endpoints
-app.use('/api/*', async (c, next) => {
-  await next();
-  if (c.req.method === 'GET') {
-    const path = c.req.path;
-    const cacheablePrefixes = ['/api/exercises', '/api/programs'];
-    const isCacheable =
-      cacheablePrefixes.some((prefix) => path.startsWith(prefix)) || path === '/api/home/summary';
-    if (isCacheable) {
-      c.header('Cache-Control', 'private, max-age=30');
-    }
-  }
-});
-
-// Security headers middleware
-app.use('*', async (c, next) => {
-  await next();
-  c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
-  c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-  c.header('Content-Security-Policy', "default-src 'self'");
-});
 
 // WHOOP OAuth landing page (no auth)
 app.get('/connect-whoop', (c) => {

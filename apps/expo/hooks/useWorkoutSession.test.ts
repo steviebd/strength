@@ -100,6 +100,10 @@ vi.mock('@/lib/api', () => ({
   apiFetch: vi.fn(),
 }));
 
+vi.mock('@/lib/workout-start', () => ({
+  startCustomWorkoutDraft: vi.fn(),
+}));
+
 beforeEach(() => {
   stateIndex = 0;
   stateValues.length = 0;

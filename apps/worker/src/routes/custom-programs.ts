@@ -9,6 +9,7 @@ import { getOrCreateExerciseForUser, generateWorkoutSchedule, batchParallel } fr
 import { createProgramCycle } from '@strength/db';
 import { resolveUserTimezone } from '../lib/timezone';
 import { zonedDateTimeToUtc } from '@strength/db';
+import { pickDefinedAllowedKeys } from '../lib/validation';
 
 const router = createRouter();
 
@@ -24,14 +25,6 @@ const EXERCISE_TYPES = ['weights', 'bodyweight', 'timed', 'cardio', 'plyo'] as c
 
 function normalizeExerciseType(value: unknown) {
   return typeof value === 'string' && EXERCISE_TYPES.includes(value as any) ? value : 'weights';
-}
-
-function pickAllowedKeys(body: Record<string, any>, keys: readonly string[]) {
-  const values: Record<string, any> = {};
-  for (const key of keys) {
-    if (body[key] !== undefined) values[key] = body[key];
-  }
-  return values;
 }
 
 async function requireOwnedCustomWorkout(
@@ -620,7 +613,7 @@ router.put(
 
     const body = await c.req.json();
     const keys = ['name', 'dayIndex', 'orderIndex'] as const;
-    const allowed = pickAllowedKeys(body, keys);
+    const allowed = pickDefinedAllowedKeys(body, keys);
     if (Object.keys(allowed).length === 0) {
       return c.json({ message: 'No fields to update' }, 400);
     }

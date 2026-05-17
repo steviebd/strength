@@ -125,11 +125,9 @@ describe('CORS origin', () => {
       headers: { origin: 'https://app.example.com' },
     });
     const res = await app.fetch(req, {
+      ...baseEnv,
       APP_ENV: 'production',
       WORKER_BASE_URL: 'https://app.example.com',
-      APP_SCHEME: 'strength',
-      DB: {} as D1Database,
-      BETTER_AUTH_SECRET: 'secret',
     });
     expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com');
   });
@@ -139,14 +137,26 @@ describe('CORS origin', () => {
       headers: { origin: 'https://fit.example.com' },
     });
     const res = await app.fetch(req, {
+      ...baseEnv,
       APP_ENV: 'production',
       WORKER_BASE_URL: 'https://api.example.com',
       BETTER_AUTH_TRUSTED_ORIGINS: 'https://fit.example.com',
-      APP_SCHEME: 'strength',
-      DB: {} as D1Database,
-      BETTER_AUTH_SECRET: 'secret',
     });
     expect(res.headers.get('access-control-allow-origin')).toBe('https://fit.example.com');
+  });
+
+  test('prod allows same-origin custom domain even when base URL differs', async () => {
+    const req = new Request('https://staging.fit.stevenduong.com/api/health', {
+      headers: { origin: 'https://staging.fit.stevenduong.com' },
+    });
+    const res = await app.fetch(req, {
+      ...baseEnv,
+      APP_ENV: 'production',
+      WORKER_BASE_URL: 'https://strength-dev.stevenduong.com',
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe(
+      'https://staging.fit.stevenduong.com',
+    );
   });
 
   test('prod denies unknown origin', async () => {
@@ -154,11 +164,9 @@ describe('CORS origin', () => {
       headers: { origin: 'https://evil.com' },
     });
     const res = await app.fetch(req, {
+      ...baseEnv,
       APP_ENV: 'production',
       WORKER_BASE_URL: 'https://app.example.com',
-      APP_SCHEME: 'strength',
-      DB: {} as D1Database,
-      BETTER_AUTH_SECRET: 'secret',
     });
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
   });
@@ -172,6 +180,43 @@ describe('/connect-whoop HTML', () => {
     const html = await res.text();
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  test('sets security headers on routed HTML responses without blocking bridge scripts', async () => {
+    const req = new Request('http://localhost:8787/connect-whoop');
+    const res = await app.fetch(req, { ...baseEnv, APP_ENV: 'production' });
+
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('strict-transport-security')).toContain('max-age=31536000');
+    expect(res.headers.get('content-security-policy')).toContain(
+      "script-src 'self' 'unsafe-inline'",
+    );
+  });
+});
+
+describe('response middleware', () => {
+  test('sets security headers on API routes', async () => {
+    const req = new Request('http://localhost:8787/api/health');
+    const res = await app.fetch(req, {
+      ...baseEnv,
+      APP_ENV: 'production',
+      WORKER_BASE_URL: 'https://app.example.com',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('strict-transport-security')).toContain('max-age=31536000');
+    expect(res.headers.get('content-security-policy')).toContain("default-src 'self'");
+  });
+
+  test('sets cache headers on public programs route', async () => {
+    const req = new Request('http://localhost:8787/api/programs');
+    const res = await app.fetch(req, baseEnv);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('private, max-age=30');
   });
 });
 

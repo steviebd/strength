@@ -19,10 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { apiFetch } from '@/lib/api';
-import {
-  createLocalWorkoutFromCurrentProgramCycle,
-  createLocalWorkoutFromProgramCycleWorkoutDefinition,
-} from '@/db/workouts';
+import { startCurrentProgramWorkoutDraft } from '@/lib/workout-start';
 import { createLocalProgramCycleFromStartPayload } from '@/db/training-cache';
 import { authClient } from '@/lib/auth-client';
 import { OfflineError, tryOnlineOrEnqueue } from '@/lib/offline-mutation';
@@ -59,6 +56,13 @@ import {
 } from '@/theme';
 
 const LBS_TO_KG = 0.453592;
+
+function toTestIdPart(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 type OneRmValues = { squat: string; bench: string; deadlift: string; ohp: string };
@@ -1129,9 +1133,20 @@ export default function ProgramsScreen() {
     setOpeningProgramWorkoutId(program.id);
     try {
       if (userId) {
-        const local = await createLocalWorkoutFromCurrentProgramCycle(userId, program.id);
-        if (local?.id) {
-          router.push(`/workout-session?workoutId=${local.id}&source=program`);
+        const started = await startCurrentProgramWorkoutDraft(userId, program.id);
+        if (started.completed) {
+          Alert.alert(
+            'Session Already Completed',
+            'This program session has already been completed.',
+          );
+          await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
+          return;
+        }
+        if (started.workoutId) {
+          const params = new URLSearchParams({ workoutId: started.workoutId, source: 'program' });
+          params.set('cycleId', started.programCycleId ?? program.id);
+          if (started.cycleWorkoutId) params.set('cycleWorkoutId', started.cycleWorkoutId);
+          router.push(`/workout-session?${params.toString()}`);
           return;
         }
       }
@@ -1139,27 +1154,7 @@ export default function ProgramsScreen() {
         throw new Error('Not authenticated');
       }
 
-      const definition = await apiFetch<any>(`/api/programs/cycles/${program.id}/workouts/current`);
-      if (definition.isComplete) {
-        Alert.alert(
-          'Session Already Completed',
-          'This program session has already been completed.',
-        );
-        await queryClient.refetchQueries({ queryKey: ['activePrograms'] });
-        return;
-      }
-
-      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
-        userId,
-        definition,
-      );
-      if (!remoteLocal?.id) {
-        throw new Error('Failed to open current session');
-      }
-
-      router.push(
-        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleId=${program.id}&cycleWorkoutId=${remoteLocal.cycleWorkoutId ?? definition.id}`,
-      );
+      throw new Error('Failed to open current session');
     } catch (e) {
       if (e instanceof Error && e.message === 'Network request failed') {
         setOfflineMessage('Unable to open session while offline.');
@@ -1355,6 +1350,8 @@ export default function ProgramsScreen() {
           <View style={styles.activeSection}>
             <Text style={styles.sectionTitle}>Your Custom Programs</Text>
             <Pressable
+              testID="program-create-custom"
+              accessibilityLabel="program-create-custom"
               style={styles.createCustomButton}
               onPress={() => {
                 setEditingCustomProgramId(null);
@@ -1378,6 +1375,7 @@ export default function ProgramsScreen() {
                 <View style={styles.activeCardButtonsRow}>
                   <View style={styles.flex1}>
                     <ActionButton
+                      testID={`custom-program-edit-${program.id}`}
                       label="Edit"
                       icon="create-outline"
                       variant="secondary"
@@ -1389,6 +1387,7 @@ export default function ProgramsScreen() {
                   </View>
                   <View style={styles.flex1}>
                     <ActionButton
+                      testID={`custom-program-start-${toTestIdPart(program.name)}`}
                       label="Start"
                       icon="play"
                       onPress={() => {
@@ -1923,7 +1922,7 @@ export default function ProgramsScreen() {
                       Enter your current 1RM for each exercise. Weights will be calculated as a
                       percentage of these values.
                     </Text>
-                    {customPromptExercises.map((ex) => (
+                    {customPromptExercises.map((ex, index) => (
                       <View key={`custom-1rm-${ex.exerciseId}`} style={styles.inputCard}>
                         <View style={styles.inputHeaderRow}>
                           <Text style={styles.inputLabel}>{ex.name} 1RM</Text>
@@ -1936,6 +1935,8 @@ export default function ProgramsScreen() {
                           ]}
                         >
                           <TextInput
+                            testID={`program-custom-1rm-${index + 1}`}
+                            accessibilityLabel={`program-custom-1rm-${index + 1}`}
                             style={styles.editInput}
                             value={customOneRmValues[ex.exerciseId] || ''}
                             onChangeText={(text) => {
@@ -1959,6 +1960,8 @@ export default function ProgramsScreen() {
                     ))}
                     <View style={styles.scheduleButtons}>
                       <Pressable
+                        testID="program-custom-1rm-continue"
+                        accessibilityLabel="program-custom-1rm-continue"
                         style={styles.primaryButton}
                         onPress={() => setScheduleStep('review')}
                       >

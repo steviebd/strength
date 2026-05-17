@@ -594,6 +594,7 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
         <View style={styles.section}>
           <Text style={styles.label}>Program Name *</Text>
           <Input
+            testID="custom-program-name"
             placeholder="Enter program name"
             value={formState.name}
             onChangeText={(text) => setFormState((prev) => ({ ...prev, name: text }))}
@@ -661,6 +662,7 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
           <Card key={`workout-${workout.localId}`} style={styles.workoutCard}>
             <View style={styles.workoutHeader}>
               <TextInput
+                testID={`custom-program-workout-name-${wi + 1}`}
                 style={styles.workoutNameInput}
                 value={workout.name}
                 onChangeText={(text) => updateWorkout(wi, { name: text })}
@@ -712,6 +714,8 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
                     const isSelected = exercise.exerciseType === type;
                     return (
                       <Pressable
+                        testID={`custom-program-exercise-${ei + 1}-type-${type}`}
+                        accessibilityLabel={`custom-program-exercise-${ei + 1}-type-${type}`}
                         key={`type-${exercise.localId}-${type}`}
                         onPress={() =>
                           updateExerciseInWorkout(
@@ -794,6 +798,8 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
                                     : exercise.weightMode === mode;
                                 return (
                                   <Pressable
+                                    testID={`custom-program-exercise-${ei + 1}-mode-${mode}`}
+                                    accessibilityLabel={`custom-program-exercise-${ei + 1}-mode-${mode}`}
                                     key={`mode-${exercise.localId}-${mode}`}
                                     onPress={() =>
                                       updateExerciseInWorkout(wi, exercise.localId, {
@@ -1173,6 +1179,8 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
 
             <Pressable
               style={styles.addExerciseBtn}
+              testID={`custom-program-workout-${wi + 1}-add-exercise`}
+              accessibilityLabel={`custom-program-workout-${wi + 1}-add-exercise`}
               onPress={() => {
                 setActiveWorkoutIndex(wi);
                 setShowExerciseSearch(true);
@@ -1218,7 +1226,13 @@ export default function CustomProgramEditor({ initialData, onSaved, onDeleted, o
           </Button>
         </View>
         <View style={styles.footerButton}>
-          <Button size="lg" onPress={handleSave} disabled={isSaving || isDeleting} fullWidth>
+          <Button
+            testID="custom-program-save"
+            size="lg"
+            onPress={handleSave}
+            disabled={isSaving || isDeleting}
+            fullWidth
+          >
             {isSaving ? (
               <ActivityIndicator size="small" color={colors.text} />
             ) : (

@@ -17,6 +17,7 @@
     "build:ios:prod": "pnpm --filter @strength/expo build:ios:prod",
     "size:android": "pnpm --filter @strength/expo size:android",
     "e2e:maestro": "infisical run --env=dev --project-config-dir . -- pnpm exec tsx scripts/run-maestro.ts",
+    "e2e:maestro:verify": "pnpm exec tsx scripts/verify-maestro-flows.ts",
     "e2e:maestro:studio": "infisical run --env=dev --project-config-dir . -- bash -lc 'export MAESTRO_APP_ID=${MAESTRO_APP_ID:-host.exp.exponent}; export MAESTRO_OPEN_LINK=${MAESTRO_OPEN_LINK:-exp://10.0.2.2:8081}; export WORKER_BASE_URL=${MAESTRO_WORKER_BASE_URL:-http://127.0.0.1:8787}; export PATH=\"$HOME/.maestro/bin:$PATH\"; maestro studio apps/expo/.maestro'",
     "serve": "cd apps/expo/builds && ifconfig en0 | grep 'inet ' | awk '{print $2}' && python3 -m http.server 8080",
     "db:generate": "pnpm --filter @strength/db db:generate",
@@ -26,11 +27,12 @@
     "db:apply:prod": "pnpm --filter @strength/worker db:apply:prod",
     "db:reset": "rm -rf apps/worker/.wrangler/ && pnpm run db:apply:local",
     "lint:keys": "node scripts/lint-react-keys.mjs",
-    "typecheck": "pnpm --filter '*' typecheck",
-    "check": "bash -c 'export PATH=\"$HOME/.vite-plus/bin:$PATH\"; if [ \"$1\" = \"--fix\" ]; then vp check --fix; else vp check; fi && pnpm run lint:keys && pnpm run typecheck' --",
+    "typecheck": "pnpm --filter './apps/*' --filter './packages/*' typecheck",
+    "check": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp check && pnpm run lint:keys && pnpm run typecheck",
+    "check:fix": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp check --fix && pnpm run lint:keys && pnpm run typecheck",
     "test": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp test run",
-    "lint": "source ~/.vite-plus/env && vp lint && pnpm run lint:keys",
-    "fmt": "source ~/.vite-plus/env && vp fmt"
+    "lint": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp lint && pnpm run lint:keys",
+    "fmt": "export PATH=\"$HOME/.vite-plus/bin:$PATH\" && vp fmt"
   },
   "dependencies": {
     "@strength/db": "workspace:*"

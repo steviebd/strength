@@ -15,6 +15,7 @@ function pickLimiter(
   },
   path: string,
 ): RateLimit {
+  if (path === '/api/auth/get-session') return env.RATE_LIMITER_GENERAL;
   if (path.startsWith('/api/auth/')) return env.RATE_LIMITER_AUTH;
   if (path === '/api/nutrition/chat') return env.RATE_LIMITER_CHAT;
   if (path.startsWith('/api/whoop/') || path.startsWith('/api/webhooks/whoop'))

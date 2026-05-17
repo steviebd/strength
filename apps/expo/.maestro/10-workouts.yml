@@ -1,34 +1,6 @@
 appId: ${MAESTRO_APP_ID}
 ---
-- launchApp:
-    clearState: true
-- openLink: ${MAESTRO_OPEN_LINK}
-- tapOn:
-    text: 'Continue'
-    optional: true
-- tapOn:
-    text: 'Close'
-    optional: true
-- extendedWaitUntil:
-    visible: 'Welcome back'
-    timeout: 45000
-- tapOn:
-    id: 'auth-sign-in-email'
-- inputText: '${E2E_EMAIL}'
-- tapOn:
-    id: 'auth-sign-in-password'
-- inputText: '${E2E_PASSWORD}'
-- tapOn:
-    id: 'auth-sign-in-submit'
-- extendedWaitUntil:
-    visible: 'Home'
-    timeout: 15000
-- tapOn:
-    id: 'onboarding-timezone-confirm'
-    optional: true
-- tapOn:
-    id: 'onboarding-weight-skip'
-    optional: true
+- runFlow: _shared-login.yml
 - tapOn: 'Workouts'
 - tapOn:
     id: 'workouts-new-template'
@@ -38,20 +10,20 @@ appId: ${MAESTRO_APP_ID}
 - tapOn:
     id: 'template-add-exercise'
 - tapOn:
-    id: 'template-exercise-search'
+    id: 'workout-exercise-search'
 - inputText: 'Squat'
 - tapOn:
     text: 'Squat'
     index: 0
 - tapOn:
-    id: 'template-exercise-search'
+    id: 'workout-exercise-search'
 - eraseText
 - inputText: 'Bench Press'
 - tapOn:
     text: 'Bench Press'
     index: 0
 - tapOn:
-    id: 'template-exercise-confirm'
+    id: 'workout-exercise-confirm'
 - assertVisible: 'Exercises (2)'
 - tapOn:
     id: 'template-save'

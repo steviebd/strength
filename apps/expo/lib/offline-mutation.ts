@@ -1,5 +1,6 @@
 import { enqueueSyncItem } from '@/db/sync-queue';
 import { enqueueLocalWrite } from '@/db/write-queue';
+import { Platform } from 'react-native';
 
 export class OfflineError extends Error {
   constructor(message = 'Saved locally. Will sync when online.') {
@@ -28,6 +29,9 @@ export async function tryOnlineOrEnqueue<T>(options: {
     return await options.apiCall();
   } catch (error) {
     if (isNetworkError(error)) {
+      if (Platform.OS === 'web') {
+        throw error;
+      }
       await enqueueSyncItem(
         options.userId,
         options.entityType,

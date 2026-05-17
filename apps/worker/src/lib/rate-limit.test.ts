@@ -36,6 +36,13 @@ describe('checkRateLimit', () => {
     expect(env.RATE_LIMITER_AUTH.limit).toHaveBeenCalledWith({ key: 'user-1' });
   });
 
+  test('routes get-session to RATE_LIMITER_GENERAL', async () => {
+    const env = makeEnv();
+    await checkRateLimit(env, 'user-1', '/api/auth/get-session');
+    expect(env.RATE_LIMITER_GENERAL.limit).toHaveBeenCalledWith({ key: 'user-1' });
+    expect(env.RATE_LIMITER_AUTH.limit).not.toHaveBeenCalled();
+  });
+
   test('routes nutrition chat to RATE_LIMITER_CHAT', async () => {
     const env = makeEnv();
     await checkRateLimit(env, 'user-1', '/api/nutrition/chat');

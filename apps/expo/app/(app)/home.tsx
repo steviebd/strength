@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { authClient } from '@/lib/auth-client';
-import { apiFetch } from '@/lib/api';
 import { OfflineError } from '@/lib/offline-mutation';
+import { startCycleWorkoutDraft } from '@/lib/workout-start';
 import { convertToDisplayWeight } from '@strength/db/client';
 import { colors, overlay, radius, spacing, typography, textRoles } from '@/theme';
 import { Button } from '@/components/ui/Button';
@@ -21,8 +21,6 @@ import { useHomeSummary } from '@/hooks/useHomeSummary';
 import { useUserPreferences } from '@/context/UserPreferencesContext';
 import { usePullToRefresh, getPullToRefreshErrorMessage } from '@/hooks/usePullToRefresh';
 import {
-  createLocalWorkoutFromProgramCycleWorkout,
-  createLocalWorkoutFromProgramCycleWorkoutDefinition,
   discardLocalWorkout,
   listLocalActiveWorkoutDrafts,
   type LocalActiveWorkoutDraftItem,
@@ -141,45 +139,28 @@ export default function HomeScreen() {
           );
           return;
         }
-
-        const local = await createLocalWorkoutFromProgramCycleWorkout(
-          user.id,
-          startableCycleWorkoutId,
-        );
-        if (local?.id) {
-          const params = new URLSearchParams({
-            workoutId: local.id,
-            source: 'program',
-            cycleWorkoutId: startableCycleWorkoutId,
-          });
-          if (local.programCycleId) params.set('cycleId', local.programCycleId);
-          router.push(`/workout-session?${params.toString()}`);
-          return;
-        }
       }
       if (!user?.id) {
         throw new Error('Not authenticated');
       }
 
-      const definition = await apiFetch<any>(
-        `/api/programs/cycle-workouts/${startableCycleWorkoutId}`,
-      );
-      if (definition.isComplete) {
+      const started = await startCycleWorkoutDraft(user.id, startableCycleWorkoutId);
+      if (started.completed) {
         Alert.alert('Already Completed', 'This workout has already been completed.');
         return;
       }
 
-      const remoteLocal = await createLocalWorkoutFromProgramCycleWorkoutDefinition(
-        user.id,
-        definition,
-      );
-      if (!remoteLocal?.id) {
+      if (!started.workoutId) {
         throw new Error('Failed to start workout');
       }
 
-      router.push(
-        `/workout-session?workoutId=${remoteLocal.id}&source=program&cycleWorkoutId=${startableCycleWorkoutId}`,
-      );
+      const params = new URLSearchParams({
+        workoutId: started.workoutId,
+        source: 'program',
+        cycleWorkoutId: startableCycleWorkoutId,
+      });
+      if (started.programCycleId) params.set('cycleId', started.programCycleId);
+      router.push(`/workout-session?${params.toString()}`);
     } catch (e) {
       if (e instanceof OfflineError || (e as Error)?.name === 'OfflineError') {
         setOfflineMessage('Unable to start workout while offline.');
