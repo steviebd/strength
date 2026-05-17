@@ -1309,7 +1309,7 @@ export default function ProgramsScreen() {
                       </View>
                     )}
                     <ActionButton
-                      testID={`program-active-start-${program.id}`}
+                      testID={`program-active-start-${toTestIdPart(program.programSlug)}`}
                       label={
                         openingProgramWorkoutId === program.id ? 'Opening...' : 'Start Next Session'
                       }
@@ -1320,7 +1320,7 @@ export default function ProgramsScreen() {
                     <View style={styles.activeCardButtonsRow}>
                       <View style={styles.flex1}>
                         <ActionButton
-                          testID={`program-active-schedule-${program.id}`}
+                          testID={`program-active-schedule-${toTestIdPart(program.programSlug)}`}
                           label="View Schedule"
                           icon="calendar-outline"
                           variant="secondary"
@@ -1329,8 +1329,8 @@ export default function ProgramsScreen() {
                         />
                       </View>
                       <Pressable
-                        testID={`program-active-delete-${program.id}`}
-                        accessibilityLabel={`program-active-delete-${program.id}`}
+                        testID={`program-active-delete-${toTestIdPart(program.programSlug)}`}
+                        accessibilityLabel={`program-active-delete-${toTestIdPart(program.programSlug)}`}
                         style={[
                           styles.deleteButton,
                           deletingProgramId === program.id && styles.deleteButtonDisabled,

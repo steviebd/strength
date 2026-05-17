@@ -2,9 +2,15 @@ appId: ${MAESTRO_APP_ID}
 ---
 - runFlow: _shared-login.yml
 - assertVisible: 'Home'
-- tapOn: 'Profile'
+- tapOn:
+    id: 'tab-profile'
+- scrollUntilVisible:
+    element:
+      id: 'profile-sign-out'
+    direction: DOWN
+    timeout: 10000
 - tapOn:
     id: 'profile-sign-out'
 - extendedWaitUntil:
-    visible: 'Welcome back'
+    visible: 'Sign In'
     timeout: 10000

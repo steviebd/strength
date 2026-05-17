@@ -228,8 +228,53 @@ async function assertWorkerReady() {
   process.exit(1);
 }
 
+async function prewarmExpoGoBundle() {
+  if (process.env.MAESTRO_APP_ID !== 'host.exp.exponent') {
+    return;
+  }
+
+  const openLink = process.env.MAESTRO_OPEN_LINK;
+  if (!openLink?.startsWith('exp://')) {
+    return;
+  }
+
+  const metroUrl = new URL(openLink.replace(/^exp:\/\//, 'http://'));
+  if (metroUrl.hostname === '10.0.2.2') {
+    metroUrl.hostname = '127.0.0.1';
+  }
+  metroUrl.pathname = '/node_modules/expo-router/entry.bundle';
+  metroUrl.search = new URLSearchParams({
+    platform: 'android',
+    dev: 'true',
+    minify: 'false',
+    'transform.routerRoot': 'app',
+  }).toString();
+
+  let response: Response;
+  try {
+    response = await fetch(metroUrl);
+  } catch (error) {
+    console.error(`Unable to prewarm Expo bundle at ${metroUrl}.`);
+    console.error('Start Expo with `pnpm run dev:expo`, then rerun the Maestro command.');
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  if (response.ok) {
+    await response.arrayBuffer();
+    return;
+  }
+
+  const body = await response.text().catch(() => '');
+  console.error(`Expo bundle preflight failed: ${response.status} ${body.slice(0, 1000)}`);
+  console.error(`Checked: ${metroUrl}`);
+  console.error('This usually means Expo is not serving the app project on the configured port.');
+  process.exit(1);
+}
+
 async function main() {
   await assertWorkerReady();
+  await prewarmExpoGoBundle();
   const maestroCommand = resolveMaestroCommand();
   assertDeviceAvailable(maestroCommand);
 
@@ -243,7 +288,15 @@ async function main() {
   const deviceArgs = process.env.MAESTRO_DEVICE_ID
     ? ['--device', process.env.MAESTRO_DEVICE_ID]
     : [];
-  const result = spawnSync(maestroCommand, [...deviceArgs, 'test', ...targets], {
+  const flowEnvArgs = [
+    'MAESTRO_APP_ID',
+    'MAESTRO_OPEN_LINK',
+    'WORKER_BASE_URL',
+    'E2E_EMAIL',
+    'E2E_PASSWORD',
+    'MAESTRO_RUN_ID',
+  ].flatMap((key) => ['-e', `${key}=${process.env[key] ?? ''}`]);
+  const result = spawnSync(maestroCommand, [...deviceArgs, 'test', ...flowEnvArgs, ...targets], {
     cwd: repoRoot,
     env: process.env,
     stdio: 'inherit',

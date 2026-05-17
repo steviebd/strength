@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
   LayoutChangeEvent,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exerciseLibrary, type ExerciseLibraryItem as LibItem } from '@strength/db/client';
@@ -103,6 +104,7 @@ export function ExerciseSearch({
   const [confirming, setConfirming] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<string[]>([]);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewportHeight = useRef(0);
   const createScrollRef = useRef<ScrollView>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -146,6 +148,20 @@ export function ExerciseSearch({
       controller.abort();
     };
   }, [searchQuery, visible]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   async function handleCreateExercise() {
     if (!createForm.name.trim()) {
@@ -393,7 +409,7 @@ export function ExerciseSearch({
     const isSelected = pendingSelection.includes(selectionKey);
     return (
       <Pressable
-        testID={`workout-exercise-${isUser ? 'user' : 'library'}-${ex.id}`}
+        testID={isUser ? `workout-exercise-user-${ex.id}` : `workout-exercise-library-${ex.id}`}
         accessibilityLabel={`workout-exercise-${ex.name}`}
         disabled={deletingExerciseId === ex.id}
         style={({ pressed }) => [
@@ -679,7 +695,15 @@ export function ExerciseSearch({
           />
 
           {pendingSelection.length > 0 && (
-            <View style={[styles.selectionBar, { paddingBottom: insets.bottom + spacing.md }]}>
+            <View
+              style={[
+                styles.selectionBar,
+                {
+                  bottom: keyboardHeight,
+                  paddingBottom: keyboardHeight > 0 ? spacing.md : insets.bottom + spacing.md,
+                },
+              ]}
+            >
               <Text style={styles.selectionText}>{pendingSelection.length} selected</Text>
               <Pressable
                 testID="workout-exercise-confirm"

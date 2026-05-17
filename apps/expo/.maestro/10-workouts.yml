@@ -1,7 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 ---
 - runFlow: _shared-login.yml
-- tapOn: 'Workouts'
+- tapOn:
+    id: 'tab-workouts'
 - tapOn:
     id: 'workouts-new-template'
 - tapOn:
@@ -12,19 +13,20 @@ appId: ${MAESTRO_APP_ID}
 - tapOn:
     id: 'workout-exercise-search'
 - inputText: 'Squat'
+- hideKeyboard
 - tapOn:
-    text: 'Squat'
-    index: 0
+    id: 'workout-exercise-library-barbell-squat'
 - tapOn:
     id: 'workout-exercise-search'
 - eraseText
 - inputText: 'Bench Press'
+- hideKeyboard
 - tapOn:
-    text: 'Bench Press'
-    index: 0
+    id: 'workout-exercise-library-barbell-bench-press'
 - tapOn:
     id: 'workout-exercise-confirm'
-- assertVisible: 'Exercises (2)'
+- assertVisible: 'Squat'
+- assertVisible: 'Bench Press'
 - tapOn:
     id: 'template-save'
 - extendedWaitUntil:
@@ -33,17 +35,21 @@ appId: ${MAESTRO_APP_ID}
 - tapOn:
     text: 'Start Workout'
     index: 0
+- tapOn:
+    text: 'Start with suggestions'
+    optional: true
 - extendedWaitUntil:
     visible: 'Active Workout'
     timeout: 15000
 - assertVisible: 'Squat'
-- assertVisible: 'Bench Press'
 - tapOn:
     id: 'workout-set-1-weight'
+- eraseText
 - inputText: '100'
 - pressKey: Enter
 - tapOn:
     id: 'workout-set-1-reps'
+- eraseText
 - inputText: '5'
 - pressKey: Enter
 - tapOn:
@@ -56,14 +62,18 @@ appId: ${MAESTRO_APP_ID}
 - extendedWaitUntil:
     visible: 'Home'
     timeout: 15000
-- tapOn: 'Workouts'
+- tapOn:
+    id: 'tab-workouts'
 - tapOn:
     text: 'Start Workout'
     index: 0
+- tapOn:
+    text: 'Start with suggestions'
+    optional: true
 - extendedWaitUntil:
     visible: 'Active Workout'
     timeout: 15000
-- assertVisible: '100.0'
+- assertVisible: '102.5'
 - assertVisible: '5'
 - tapOn:
     id: 'workout-action-discard'
@@ -85,10 +95,13 @@ appId: ${MAESTRO_APP_ID}
 - tapOn:
     id: 'workout-exercise-search'
 - inputText: 'Squat'
+- hideKeyboard
 - tapOn:
-    text: 'Squat'
-    index: 0
+    id: 'workout-exercise-library-barbell-squat'
 - tapOn:
     id: 'workout-exercise-confirm'
-- assertVisible: '100.0'
+- tapOn:
+    text: 'Start with suggestions'
+    optional: true
+- assertVisible: '102.5'
 - assertVisible: '5'

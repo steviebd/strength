@@ -1,7 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 ---
 - runFlow: _shared-login.yml
-- tapOn: 'Programs'
+- tapOn:
+    id: 'tab-programs'
 - tapOn:
     id: 'program-create-custom'
 - tapOn:
@@ -11,6 +12,12 @@ appId: ${MAESTRO_APP_ID}
     id: 'custom-program-workout-name-1'
 - eraseText
 - inputText: 'AMRAP Strength Day'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'custom-program-workout-1-add-exercise'
+    direction: DOWN
+    timeout: 10000
 - tapOn:
     id: 'custom-program-workout-1-add-exercise'
 - tapOn:
@@ -21,11 +28,69 @@ appId: ${MAESTRO_APP_ID}
 - tapOn:
     id: 'workout-exercise-create-muscle-Chest'
 - tapOn:
+    id: 'workout-exercise-create-type-weights'
+- tapOn:
     id: 'workout-exercise-create-amrap'
 - tapOn:
     id: 'workout-exercise-create-submit'
 - extendedWaitUntil:
     visible: 'E2E AMRAP Press ${MAESTRO_RUN_ID}'
+    timeout: 15000
+- tapOn:
+    id: 'workout-exercise-create-open'
+- tapOn:
+    id: 'workout-exercise-create-name'
+- inputText: 'E2E Bodyweight ${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'workout-exercise-create-muscle-Back'
+- tapOn:
+    id: 'workout-exercise-create-type-bodyweight'
+- tapOn:
+    id: 'workout-exercise-create-submit'
+- extendedWaitUntil:
+    visible: 'E2E Bodyweight ${MAESTRO_RUN_ID}'
+    timeout: 15000
+- tapOn:
+    id: 'workout-exercise-create-open'
+- tapOn:
+    id: 'workout-exercise-create-name'
+- inputText: 'E2E Timed Hold ${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'workout-exercise-create-muscle-Core'
+- tapOn:
+    id: 'workout-exercise-create-type-timed'
+- tapOn:
+    id: 'workout-exercise-create-submit'
+- extendedWaitUntil:
+    visible: 'E2E Timed Hold ${MAESTRO_RUN_ID}'
+    timeout: 15000
+- tapOn:
+    id: 'workout-exercise-create-open'
+- tapOn:
+    id: 'workout-exercise-create-name'
+- inputText: 'E2E Cardio Run ${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'workout-exercise-create-muscle-Legs'
+- tapOn:
+    id: 'workout-exercise-create-type-cardio'
+- tapOn:
+    id: 'workout-exercise-create-submit'
+- extendedWaitUntil:
+    visible: 'E2E Cardio Run ${MAESTRO_RUN_ID}'
+    timeout: 15000
+- tapOn:
+    id: 'workout-exercise-create-open'
+- tapOn:
+    id: 'workout-exercise-create-name'
+- inputText: 'E2E Plyo Jump ${MAESTRO_RUN_ID}'
+- tapOn:
+    id: 'workout-exercise-create-muscle-Legs'
+- tapOn:
+    id: 'workout-exercise-create-type-plyo'
+- tapOn:
+    id: 'workout-exercise-create-submit'
+- extendedWaitUntil:
+    visible: 'E2E Plyo Jump ${MAESTRO_RUN_ID}'
     timeout: 15000
 - tapOn:
     id: 'workout-exercise-confirm'
@@ -68,7 +133,8 @@ appId: ${MAESTRO_APP_ID}
 - extendedWaitUntil:
     visible: 'Home'
     timeout: 20000
-- tapOn: 'Programs'
+- tapOn:
+    id: 'tab-programs'
 - assertVisible: 'Active Programs'
 - assertVisible: 'E2E Custom Program ${MAESTRO_RUN_ID}'
 - tapOn: 'View Schedule'

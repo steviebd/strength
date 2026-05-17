@@ -49,6 +49,7 @@ export default function LandingPage() {
         />
         <Text style={styles.signInText}>Already have an account?</Text>
         <Button
+          testID="landing-sign-in"
           label="Sign In"
           variant="outline"
           size="md"

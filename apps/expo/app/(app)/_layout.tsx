@@ -140,6 +140,8 @@ function AppTabs() {
           name="home"
           options={{
             title: TAB_ICONS.home.title,
+            tabBarAccessibilityLabel: 'tab-home',
+            tabBarButtonTestID: 'tab-home',
             tabBarIcon: ({ color, focused }) => (
               <TabIconWithBadge icon={TAB_ICONS.home} color={color} focused={focused} />
             ),
@@ -149,6 +151,8 @@ function AppTabs() {
           name="workouts"
           options={{
             title: TAB_ICONS.workouts.title,
+            tabBarAccessibilityLabel: 'tab-workouts',
+            tabBarButtonTestID: 'tab-workouts',
             tabBarIcon: ({ color, focused }) => (
               <TabIconWithBadge icon={TAB_ICONS.workouts} color={color} focused={focused} />
             ),
@@ -158,6 +162,8 @@ function AppTabs() {
           name="programs"
           options={{
             title: TAB_ICONS.programs.title,
+            tabBarAccessibilityLabel: 'tab-programs',
+            tabBarButtonTestID: 'tab-programs',
             tabBarIcon: ({ color, focused }) => (
               <TabIconWithBadge icon={TAB_ICONS.programs} color={color} focused={focused} />
             ),
@@ -167,6 +173,8 @@ function AppTabs() {
           name="nutrition"
           options={{
             title: TAB_ICONS.nutrition.title,
+            tabBarAccessibilityLabel: 'tab-nutrition',
+            tabBarButtonTestID: 'tab-nutrition',
             tabBarIcon: ({ color, focused }) => (
               <TabIconWithBadge icon={TAB_ICONS.nutrition} color={color} focused={focused} />
             ),
@@ -176,6 +184,8 @@ function AppTabs() {
           name="profile"
           options={{
             title: TAB_ICONS.profile.title,
+            tabBarAccessibilityLabel: 'tab-profile',
+            tabBarButtonTestID: 'tab-profile',
             tabBarIcon: ({ color, focused }) => (
               <TabIconWithBadge icon={TAB_ICONS.profile} color={color} focused={focused} />
             ),

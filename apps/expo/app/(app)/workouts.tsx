@@ -70,6 +70,13 @@ import type { Template } from '@/components/template/TemplateEditor/types';
 import type { SelectedExercise } from '@/components/template/TemplateEditor/types';
 import { colors, radius, spacing, statusBg, typography } from '@/theme';
 
+function toTestIdPart(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 interface WorkoutHistoryItem {
   id: string;
   name: string;
@@ -790,6 +797,7 @@ export default function WorkoutsIndex() {
 
                 <View style={styles.programActions}>
                   <Button
+                    testID={`workouts-program-start-${toTestIdPart(program.programSlug)}`}
                     label={
                       isOpening
                         ? 'Opening session...'
@@ -806,6 +814,7 @@ export default function WorkoutsIndex() {
                   <View style={styles.programActionsRow}>
                     <View style={styles.flex1}>
                       <Button
+                        testID={`workouts-program-1rm-${toTestIdPart(program.programSlug)}`}
                         label={
                           opening1RMTestId === program.id
                             ? 'Opening...'
@@ -820,6 +829,7 @@ export default function WorkoutsIndex() {
                       />
                     </View>
                     <Button
+                      testID={`workouts-program-schedule-${toTestIdPart(program.programSlug)}`}
                       label="View Schedule"
                       icon="calendar-outline"
                       variant="secondary"

@@ -34,10 +34,10 @@ Coverage:
   pre-populates the next template session, then verify the same exercise history appears in a custom
   workout.
 - `20-programs.yml`: create a StrongLifts program, verify scheduled/program weights, complete a
-  cycle session, inspect schedule, and delete the program.
-- `25-custom-programs.yml`: create a custom program with a new custom AMRAP exercise, configure it
-  to ask for a custom 1RM at start, start the program, verify the custom 1RM step, and inspect its
-  schedule.
+  cycle session, inspect schedule, run the 1RM test, and save 1RMs to close the program.
+- `25-custom-programs.yml`: create a custom program with custom exercises covering weights,
+  bodyweight, timed, cardio, and plyo types, configure the AMRAP weights exercise to ask for a
+  custom 1RM at start, start the program, verify the custom 1RM step, and inspect its schedule.
 - `30-nutrition.yml`: submit a deterministic Big Mac/fries prompt, verify returned macros, save,
   unsave, re-save, and delete the meal.
 

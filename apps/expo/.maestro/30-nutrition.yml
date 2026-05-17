@@ -1,7 +1,8 @@
 appId: ${MAESTRO_APP_ID}
 ---
 - runFlow: _shared-login.yml
-- tapOn: 'Nutrition'
+- tapOn:
+    id: 'tab-nutrition'
 - tapOn:
     id: 'nutrition-chat-input'
 - inputText: 'large Big Mac and large fries'

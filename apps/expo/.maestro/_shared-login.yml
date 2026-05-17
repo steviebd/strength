@@ -3,8 +3,14 @@ appId: ${MAESTRO_APP_ID}
 - launchApp
 - openLink: ${MAESTRO_OPEN_LINK}
 - tapOn:
-    text: 'Sign In'
+    text: 'Continue'
     optional: true
+- extendedWaitUntil:
+    visible:
+      id: 'landing-sign-in'
+    timeout: 45000
+- tapOn:
+    id: 'landing-sign-in'
 - extendedWaitUntil:
     visible: 'Welcome back'
     timeout: 45000

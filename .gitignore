@@ -33,3 +33,5 @@ apps/worker/.staging.vars
 apps/worker/wrangler.toml
 .infisical.json.bak
 apps/expo/@stevenbduong__strength.bak.jks
+.pnpm-store/v11/index.db
+.pnpm-store/v11/.pnpm-needs-build-marker

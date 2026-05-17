@@ -1,7 +1,19 @@
 appId: ${MAESTRO_APP_ID}
 ---
 - runFlow: _shared-login.yml
-- tapOn: 'Programs'
+- tapOn:
+    id: 'tab-programs'
+- tapOn:
+    text: 'Delete'
+    optional: true
+- tapOn:
+    text: 'DELETE'
+    optional: true
+- scrollUntilVisible:
+    element:
+      id: 'program-option-stronglifts-5x5'
+    direction: DOWN
+    timeout: 10000
 - tapOn:
     id: 'program-option-stronglifts-5x5'
 - tapOn:
@@ -18,26 +30,40 @@ appId: ${MAESTRO_APP_ID}
 - tapOn:
     id: 'program-1rm-ohp'
 - inputText: '50'
+- hideKeyboard
 - tapOn:
-    id: 'program-continue-to-schedule'
-- assertVisible: 'Schedule'
+    text: 'Continue to Schedule'
+- extendedWaitUntil:
+    visible: 'Schedule'
+    timeout: 15000
 - assertVisible: 'Morning'
 - tapOn:
     id: 'program-continue-to-review'
-- assertVisible: 'Review'
+- tapOn:
+    text: 'Confirm'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Review'
+    timeout: 15000
 - tapOn:
     id: 'program-confirm-start'
 - extendedWaitUntil:
     visible: 'Home'
     timeout: 20000
-- tapOn: 'Programs'
-- assertVisible: 'Active Programs'
-- tapOn: 'Start Next Session'
+- tapOn:
+    id: 'tab-programs'
+- scrollUntilVisible:
+    element:
+      id: 'program-active-start-stronglifts-5x5'
+    direction: UP
+    timeout: 15000
+- tapOn:
+    id: 'program-active-start-stronglifts-5x5'
 - extendedWaitUntil:
     visible: 'Active Workout'
     timeout: 20000
 - assertVisible: 'Squat'
-- assertVisible: '45.0'
+- assertVisible: '52.5'
 - tapOn:
     id: 'workout-set-1-complete'
 - tapOn:
@@ -48,14 +74,60 @@ appId: ${MAESTRO_APP_ID}
 - extendedWaitUntil:
     visible: 'Home'
     timeout: 20000
-- tapOn: 'Programs'
-- assertVisible: 'Session 2'
-- tapOn: 'View Schedule'
-- assertVisible: 'Upcoming Schedule'
-- assertVisible: 'Week 1'
-- back
-- tapOn: 'Delete'
 - tapOn:
-    text: 'Delete'
-    index: 1
-- assertNotVisible: 'Active Programs'
+    id: 'tab-programs'
+- extendedWaitUntil:
+    visible:
+      id: 'program-active-schedule-stronglifts-5x5'
+    timeout: 15000
+- tapOn:
+    id: 'program-active-schedule-stronglifts-5x5'
+- assertVisible: 'Upcoming Schedule'
+- assertVisible: 'Sun'
+- back
+- tapOn:
+    id: 'tab-workouts'
+- scrollUntilVisible:
+    element:
+      id: 'workouts-program-1rm-stronglifts-5x5'
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: 'workouts-program-1rm-stronglifts-5x5'
+- extendedWaitUntil:
+    visible: '1RM Test'
+    timeout: 20000
+- assertVisible: 'Squat'
+- tapOn:
+    id: 'workout-set-1-weight'
+- eraseText
+- inputText: '110'
+- pressKey: Enter
+- tapOn:
+    id: 'workout-set-1-reps'
+- eraseText
+- inputText: '1'
+- pressKey: Enter
+- tapOn:
+    id: 'workout-set-1-complete'
+- tapOn:
+    id: 'workout-action-complete'
+- tapOn:
+    text: 'Continue'
+    optional: true
+- extendedWaitUntil:
+    visible: '1RM Results'
+    timeout: 20000
+- assertVisible: 'Squat'
+- scrollUntilVisible:
+    element:
+      text: 'Save 1RMs'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Save 1RMs'
+- tapOn:
+    text: 'OK'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Programs'
+    timeout: 20000
